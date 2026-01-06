@@ -1,5 +1,11 @@
 # @authhero/react-admin
 
+## 0.19.0
+
+### Minor Changes
+
+- 47fe928: Refactor create authhero
+
 ## 0.18.0
 
 ### Minor Changes

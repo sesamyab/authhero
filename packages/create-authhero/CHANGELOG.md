@@ -1,5 +1,12 @@
 # create-authhero
 
+## 0.21.0
+
+### Minor Changes
+
+- 47fe928: Refactor create authhero
+- b6d3411: Add a hono demo for the widget
+
 ## 0.20.0
 
 ### Minor Changes
