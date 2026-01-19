@@ -1,5 +1,11 @@
 # @authhero/docs
 
+## 1.35.0
+
+### Minor Changes
+
+- 7bf78f7: Add deploy buttons for react-admin
+
 ## 1.34.0
 
 ### Minor Changes
