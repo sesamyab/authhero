@@ -50,7 +50,6 @@ export {
 } from "./Flows";
 export * from "./AuthParams";
 export * from "./Branding";
-export * from "./LegacyClient";
 export * from "./Code";
 export * from "./Connection";
 export * from "./CustomDomain";
@@ -83,3 +82,4 @@ export * from "./Organization";
 export * from "./UserOrganization";
 export * from "./TenantSettings";
 export * from "./Stats";
+export * from "./CustomText";

@@ -1,5 +1,130 @@
 # @authhero/kysely-adapter
 
+## 10.93.0
+
+### Minor Changes
+
+- ac8af37: Add custom text support
+
+### Patch Changes
+
+- Updated dependencies [ac8af37]
+  - @authhero/adapter-interfaces@0.130.0
+
+## 10.92.0
+
+### Minor Changes
+
+- 3b4445f: Handle conversion of is_system
+
+## 10.91.0
+
+### Minor Changes
+
+- a8e70e6: Update schemas to remove old fallbacks
+
+### Patch Changes
+
+- Updated dependencies [a8e70e6]
+  - @authhero/adapter-interfaces@0.129.0
+
+## 10.90.0
+
+### Minor Changes
+
+- e7f5ce5: Fix the universal-login-template in kysley
+
+## 10.89.0
+
+### Minor Changes
+
+- 6585906: Move universal login templates to separate adapter
+
+### Patch Changes
+
+- Updated dependencies [6585906]
+  - @authhero/adapter-interfaces@0.128.0
+
+## 10.88.0
+
+### Minor Changes
+
+- fd374a9: Set theme id
+- 8150432: Replaced legacy client
+
+### Patch Changes
+
+- Updated dependencies [fd374a9]
+- Updated dependencies [8150432]
+  - @authhero/adapter-interfaces@0.127.0
+
+## 10.87.1
+
+### Patch Changes
+
+- Updated dependencies [154993d]
+  - @authhero/adapter-interfaces@0.126.0
+
+## 10.87.0
+
+### Minor Changes
+
+- 491842a: Bump packages to make sure the universal_login_templates is available
+
+### Patch Changes
+
+- Updated dependencies [491842a]
+  - @authhero/adapter-interfaces@0.125.0
+
+## 10.86.0
+
+### Minor Changes
+
+- 2af900c: Create a per user session cleanup
+- 2be02f8: Add dynamic liquid templates
+- 2af900c: Update guids to ulids
+
+### Patch Changes
+
+- Updated dependencies [2af900c]
+- Updated dependencies [2be02f8]
+  - @authhero/adapter-interfaces@0.124.0
+
+## 10.85.0
+
+### Minor Changes
+
+- 2d0a7f4: Add a auth0-conformance flag
+
+### Patch Changes
+
+- Updated dependencies [2d0a7f4]
+  - @authhero/adapter-interfaces@0.123.0
+
+## 10.84.0
+
+### Minor Changes
+
+- 49039c0: Add profile data for primary user in indentities
+
+## 10.83.0
+
+### Minor Changes
+
+- 76510cd: Fixes for branding page and endpoint
+
+## 10.82.0
+
+### Minor Changes
+
+- 846a92c: Split the migrations
+
+## 10.81.0
+
+### Minor Changes
+
+- 168b585: Update the schemas for the sessions
+
 ## 10.80.1
 
 ### Patch Changes

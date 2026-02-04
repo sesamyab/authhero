@@ -2,17 +2,18 @@ import {
   AuthorizationResponseMode,
   AuthorizationResponseType,
   AuthParams,
-  LegacyClient,
   LoginSession,
   LoginSessionState,
   User,
   TokenResponse,
 } from "@authhero/adapter-interfaces";
+import { EnrichedClient } from "../helpers/client";
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { TimeSpan } from "oslo";
 import { createJWT } from "oslo/jwt";
 import { nanoid } from "nanoid";
+import { ulid } from "ulid";
 import { generateCodeVerifier } from "oslo/oauth2";
 import { pemToBuffer } from "../utils/crypto";
 import { Bindings, Variables } from "../types";
@@ -33,10 +34,11 @@ import {
   LoginSessionEventType,
 } from "../state-machines/login-session";
 import { createServiceToken } from "../helpers/service-token";
+import { redactUrlForLogging } from "../utils/url";
 
 export interface CreateAuthTokensParams {
   authParams: AuthParams;
-  client: LegacyClient;
+  client: EnrichedClient;
   loginSession?: LoginSession;
   user?: User;
   session_id?: string;
@@ -48,6 +50,8 @@ export interface CreateAuthTokensParams {
   permissions?: string[];
   grantType?: GrantType;
   impersonatingUser?: User; // The original user who is impersonating
+  // OIDC Core 2.1: auth_time is required when max_age is used in authorization request
+  auth_time?: number; // Unix timestamp of when the user was authenticated
 }
 
 const RESERVED_CLAIMS = ["sub", "iss", "aud", "exp", "nbf", "iat", "jti"];
@@ -64,6 +68,7 @@ export async function createAuthTokens(
     organization,
     permissions,
     impersonatingUser,
+    auth_time,
   } = params;
 
   const { signingKeys } = await ctx.env.data.keys.list({
@@ -114,8 +119,30 @@ export async function createAuthTokens(
     permissions,
   };
 
+  // Parse scopes to determine which claims to include in id_token
+  // Following OIDC Core spec section 5.4 for standard claims
+  const scopes = authParams.scope?.split(" ") || [];
+  const hasOpenidScope = scopes.includes("openid");
+  const hasProfileScope = scopes.includes("profile");
+  const hasEmailScope = scopes.includes("email");
+
+  // Per OIDC Core section 5.4: Claims requested by profile, email, address, and phone
+  // scopes are returned from the UserInfo Endpoint, EXCEPT for response_type=id_token
+  // where there is no access token issued to access the userinfo endpoint.
+  //
+  // However, Auth0's behavior differs: it always includes profile/email claims in the
+  // ID token when those scopes are requested, regardless of response_type.
+  //
+  // We use the client's auth0_conformant flag to determine which behavior to use:
+  // - auth0_conformant=true (default): Auth0-compatible behavior (always include claims in ID token)
+  // - auth0_conformant=false: Strict OIDC 5.4 compliance (claims only in ID token for response_type=id_token)
+  const isIdTokenOnlyFlow =
+    authParams.response_type === AuthorizationResponseType.ID_TOKEN;
+  const shouldIncludeProfileClaimsInIdToken =
+    client.auth0_conformant !== false || isIdTokenOnlyFlow;
+
   const idTokenPayload =
-    user && authParams.scope?.split(" ").includes("openid")
+    user && hasOpenidScope
       ? {
           // The audience for an id token is the client id
           aud: authParams.client_id,
@@ -123,14 +150,36 @@ export async function createAuthTokens(
           iss,
           sid: session_id,
           nonce: authParams.nonce,
-          given_name: user.given_name,
-          family_name: user.family_name,
-          nickname: user.nickname,
-          picture: user.picture,
-          locale: user.locale,
-          name: user.name,
-          email: user.email,
-          email_verified: user.email_verified,
+          // OIDC Core 2.1: auth_time is REQUIRED when max_age was used in authorization request
+          // It's the time when the End-User authentication occurred (Unix timestamp)
+          ...(authParams.max_age !== undefined && auth_time !== undefined
+            ? { auth_time }
+            : {}),
+          // OIDC Core 2.1: When acr_values is requested, the server SHOULD return
+          // an acr claim with one of the requested values
+          ...(authParams.acr_values
+            ? { acr: authParams.acr_values.split(" ")[0] }
+            : {}),
+          // Profile scope claims - include based on auth0_conformant setting
+          // For auth0_conformant clients (default): always include when profile scope is requested
+          // For strict OIDC clients: only include for response_type=id_token (per OIDC 5.4)
+          ...(hasProfileScope &&
+            shouldIncludeProfileClaimsInIdToken && {
+              given_name: user.given_name,
+              family_name: user.family_name,
+              nickname: user.nickname,
+              picture: user.picture,
+              locale: user.locale,
+              name: user.name,
+            }),
+          // Email scope claims - include based on auth0_conformant setting
+          // For auth0_conformant clients (default): always include when email scope is requested
+          // For strict OIDC clients: only include for response_type=id_token (per OIDC 5.4)
+          ...(hasEmailScope &&
+            shouldIncludeProfileClaimsInIdToken && {
+              email: user.email,
+              email_verified: user.email_verified,
+            }),
           act: impersonatingUser
             ? { sub: impersonatingUser.user_id }
             : undefined,
@@ -230,7 +279,7 @@ export async function createAuthTokens(
 
 export interface CreateCodeParams {
   user: User;
-  client: LegacyClient;
+  client: EnrichedClient;
   authParams: AuthParams;
   login_id: string;
 }
@@ -240,7 +289,7 @@ export async function createCodeData(
   params: CreateCodeParams,
 ) {
   const code = await ctx.env.data.codes.create(params.client.tenant.id, {
-    code_id: nanoid(),
+    code_id: nanoid(32), // 32 chars = 192 bits of entropy (RFC6749-10.10 requires high entropy)
     user_id: params.user.user_id,
     code_type: "authorization_code",
     login_id: params.login_id,
@@ -262,7 +311,7 @@ export async function createCodeData(
 
 export interface CreateRefreshTokenParams {
   user: User;
-  client: LegacyClient;
+  client: EnrichedClient;
   session_id: string;
   scope: string;
   audience?: string;
@@ -283,7 +332,7 @@ export async function createRefreshToken(
   const refreshToken = await ctx.env.data.refreshTokens.create(
     client.tenant.id,
     {
-      id: nanoid(),
+      id: ulid(),
       session_id,
       client_id: client.client_id,
       idle_expires_at: new Date(
@@ -314,7 +363,7 @@ export async function createRefreshToken(
 
 export interface CreateSessionParams {
   user: User;
-  client: LegacyClient;
+  client: EnrichedClient;
   loginSession: LoginSession;
 }
 
@@ -328,7 +377,7 @@ async function createNewSession(
 ) {
   // Create a new session
   const session = await ctx.env.data.sessions.create(client.tenant.id, {
-    id: nanoid(),
+    id: ulid(),
     user_id: user.user_id,
     login_session_id: loginSession.id,
     idle_expires_at: new Date(
@@ -339,7 +388,7 @@ async function createNewSession(
       initial_ip: ctx.var.ip || "",
       last_user_agent: ctx.var.useragent || "",
       initial_user_agent: ctx.var.useragent || "",
-      // TODO: add Authentication Strength Name
+      // TODO: add Autonomous System Number
       initial_asn: "",
       last_asn: "",
     },
@@ -351,7 +400,7 @@ async function createNewSession(
 
 export interface AuthenticateLoginSessionParams {
   user: User;
-  client: LegacyClient;
+  client: EnrichedClient;
   loginSession: LoginSession;
   /** Optional existing session to reuse instead of creating a new one */
   existingSessionId?: string;
@@ -416,26 +465,30 @@ export async function authenticateLoginSession(
   // Determine the session ID - either use existing or create new
   let session_id: string;
   if (existingSessionId) {
-    // Verify the existing session exists
+    // Verify the existing session exists and is not revoked
     const existingSession = await ctx.env.data.sessions.get(
       client.tenant.id,
       existingSessionId,
     );
 
-    if (!existingSession) {
-      throw new HTTPException(400, {
-        message: `Session ${existingSessionId} not found or has expired`,
+    if (!existingSession || existingSession.revoked_at) {
+      // Session doesn't exist or was revoked - create a new one instead
+      const newSession = await createNewSession(ctx, {
+        user,
+        client,
+        loginSession,
       });
-    }
+      session_id = newSession.id;
+    } else {
+      // Reuse existing valid session
+      session_id = existingSessionId;
 
-    // Reuse existing session
-    session_id = existingSessionId;
-
-    // Ensure the client is associated with the existing session
-    if (!existingSession.clients.includes(client.client_id)) {
-      await ctx.env.data.sessions.update(client.tenant.id, existingSessionId, {
-        clients: [...existingSession.clients, client.client_id],
-      });
+      // Ensure the client is associated with the existing session
+      if (!existingSession.clients.includes(client.client_id)) {
+        await ctx.env.data.sessions.update(client.tenant.id, existingSessionId, {
+          clients: [...existingSession.clients, client.client_id],
+        });
+      }
     }
   } else {
     // Create a new session
@@ -674,6 +727,13 @@ export async function startLoginSessionContinuation(
         continuationReturnUrl: returnUrl,
       }),
     });
+  } else {
+    // Log when state transition is invalid (state didn't change)
+    console.warn(
+      `Failed to start continuation for login session ${loginSession.id}: ` +
+        `cannot transition from ${currentState} to AWAITING_CONTINUATION. ` +
+        `Scope: ${JSON.stringify(scope)}, Return URL: ${redactUrlForLogging(returnUrl)}`,
+    );
   }
 }
 
@@ -722,6 +782,10 @@ export async function completeLoginSessionContinuation(
       state: newState,
       state_data: undefined, // Clear continuation data
     });
+  } else {
+    console.warn(
+      `completeLoginSessionContinuation: State transition from ${currentState} with COMPLETE_CONTINUATION was invalid or no-op`,
+    );
   }
 
   return returnUrl;
@@ -759,7 +823,7 @@ export function hasValidContinuationScope(
 
 export interface CreateAuthResponseParams {
   authParams: AuthParams;
-  client: LegacyClient;
+  client: EnrichedClient;
   user: User;
   loginSession?: LoginSession;
   /**
@@ -835,7 +899,7 @@ export async function createFrontChannelAuthResponse(
     const co_id = nanoid(12);
 
     const code = await ctx.env.data.codes.create(client.tenant.id, {
-      code_id: nanoid(),
+      code_id: nanoid(32), // Use high entropy for security
       code_type: "ticket",
       login_id: params.loginSession.id,
       expires_at: new Date(Date.now() + TICKET_EXPIRATION_TIME).toISOString(),
@@ -994,14 +1058,14 @@ export async function createFrontChannelAuthResponse(
 
     const headers = new Headers();
     if (session_id) {
-      const authCookie = serializeAuthCookie(
+      const authCookies = serializeAuthCookie(
         client.tenant.id,
         session_id,
         ctx.var.host || "",
       );
-      if (authCookie) {
-        headers.set("set-cookie", authCookie);
-      }
+      authCookies.forEach((cookie) => {
+        headers.append("set-cookie", cookie);
+      });
     } else {
       console.warn(
         "Session ID not available for WEB_MESSAGE, cookie will not be set.",
@@ -1027,14 +1091,14 @@ export async function createFrontChannelAuthResponse(
 
   const headers = new Headers();
   if (session_id) {
-    const authCookie = serializeAuthCookie(
+    const authCookies = serializeAuthCookie(
       client.tenant.id,
       session_id,
       ctx.var.custom_domain || ctx.req.header("host") || "",
     );
-    if (authCookie) {
-      headers.set("set-cookie", authCookie);
-    }
+    authCookies.forEach((cookie) => {
+      headers.append("set-cookie", cookie);
+    });
   }
 
   // Fallback for other redirect-based responses

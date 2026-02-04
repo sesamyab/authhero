@@ -20,9 +20,13 @@ describe("logout", () => {
     const location = response.headers.get("location");
     expect(location).toBe("https://example.com/callback");
 
-    const cookie = response.headers.get("set-cookie");
-    expect(cookie).toBe(
-      "tenantId-auth-token=; HttpOnly; Max-Age=0; Path=/; SameSite=None; Secure",
+    const cookies = response.headers.get("set-cookie");
+    // Double-Clear: Should have both non-partitioned clear and partitioned clear
+    expect(cookies).toContain(
+      "tenantId-auth-token=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=None",
+    );
+    expect(cookies).toContain(
+      "tenantId-auth-token=; Max-Age=0; Path=/; HttpOnly; Secure; Partitioned; SameSite=None",
     );
   });
 

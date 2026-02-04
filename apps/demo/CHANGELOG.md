@@ -1,5 +1,43 @@
 # @authhero/demo
 
+## 0.30.0
+
+### Minor Changes
+
+- ac8af37: Add custom text support
+
+### Patch Changes
+
+- Updated dependencies [88a03cd]
+- Updated dependencies [ac8af37]
+  - @authhero/widget@0.9.0
+  - authhero@4.28.0
+  - @authhero/kysely-adapter@10.93.0
+
+## 0.29.0
+
+### Minor Changes
+
+- d979690: Update the widget embed functionality
+
+### Patch Changes
+
+- Updated dependencies [d979690]
+  - @authhero/widget@0.8.0
+  - authhero@4.19.0
+
+## 0.28.0
+
+### Minor Changes
+
+- 8b9cb85: First passing openid test
+
+### Patch Changes
+
+- Updated dependencies [8b9cb85]
+- Updated dependencies [16d21c8]
+  - authhero@4.13.0
+
 ## 0.27.2
 
 ### Patch Changes

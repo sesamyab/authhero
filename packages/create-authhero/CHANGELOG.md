@@ -1,5 +1,17 @@
 # create-authhero
 
+## 0.27.0
+
+### Minor Changes
+
+- ac8af37: Add custom text support
+
+## 0.26.0
+
+### Minor Changes
+
+- 8b9cb85: First passing openid test
+
 ## 0.25.0
 
 ### Minor Changes

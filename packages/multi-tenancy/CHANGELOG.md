@@ -1,5 +1,51 @@
 # @authhero/multi-tenancy
 
+## 14.9.0
+
+### Minor Changes
+
+- d1df006: Add fallback to control plane client
+
+## 14.8.0
+
+### Minor Changes
+
+- a8e70e6: Fix fallbacks for sms service options
+- a8e70e6: Update schemas to remove old fallbacks
+
+### Patch Changes
+
+- Updated dependencies [a8e70e6]
+- Updated dependencies [a8e70e6]
+  - authhero@4.27.0
+  - @authhero/adapter-interfaces@0.129.0
+
+## 14.7.0
+
+### Minor Changes
+
+- 8150432: Replaced legacy client
+
+### Patch Changes
+
+- Updated dependencies [fd374a9]
+- Updated dependencies [8150432]
+  - @authhero/adapter-interfaces@0.127.0
+  - authhero@4.23.0
+
+## 14.6.0
+
+### Minor Changes
+
+- 829afab: Hide sensistive info in management api
+
+### Patch Changes
+
+- Updated dependencies [5519225]
+- Updated dependencies [829afab]
+- Updated dependencies [76510cd]
+  - authhero@4.12.0
+
 ## 14.5.0
 
 ### Minor Changes

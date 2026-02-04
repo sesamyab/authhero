@@ -2,12 +2,13 @@ import {
   ClientsAdapter,
   Client,
   ClientInsert,
+  ClientWithTenantId,
   Totals,
   ListParams,
   clientSchema,
 } from "@authhero/adapter-interfaces";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
-import { clientKeys } from "../keys";
+import { clientKeys, legacyClientKeys } from "../keys";
 import {
   getItem,
   putItem,
@@ -40,6 +41,7 @@ interface ClientItem extends DynamoDBBaseItem {
   global: boolean;
   is_first_party: boolean;
   oidc_conformant: boolean;
+  auth0_conformant: boolean;
   sso?: boolean;
   sso_disabled?: boolean;
   cross_origin_authentication?: boolean;
@@ -107,6 +109,14 @@ function toClient(item: ClientItem): Client {
   return clientSchema.parse(data);
 }
 
+function toClientWithTenantId(item: ClientItem): ClientWithTenantId {
+  const client = toClient(item);
+  return {
+    ...client,
+    tenant_id: item.tenant_id,
+  };
+}
+
 export function createClientsAdapter(ctx: DynamoDBContext): ClientsAdapter {
   return {
     async create(_tenantId: string, params: ClientInsert): Promise<Client> {
@@ -136,6 +146,7 @@ export function createClientsAdapter(ctx: DynamoDBContext): ClientsAdapter {
         global: params.global ?? false,
         is_first_party: params.is_first_party ?? false,
         oidc_conformant: params.oidc_conformant ?? true,
+        auth0_conformant: params.auth0_conformant ?? true,
         sso: params.sso,
         sso_disabled: params.sso_disabled,
         cross_origin_authentication: params.cross_origin_authentication,
@@ -187,6 +198,29 @@ export function createClientsAdapter(ctx: DynamoDBContext): ClientsAdapter {
       if (!item) return null;
 
       return toClient(item);
+    },
+
+    async getByClientId(clientId: string): Promise<ClientWithTenantId | null> {
+      // Lookup the client from the legacy clients table which stores
+      // a reference by client_id only
+      const legacyItem = await getItem<{ tenant_id: string }>(
+        ctx,
+        legacyClientKeys.pk(),
+        legacyClientKeys.sk(clientId),
+      );
+
+      if (!legacyItem?.tenant_id) return null;
+
+      // Now fetch the full client from the clients table
+      const item = await getItem<ClientItem>(
+        ctx,
+        clientKeys.pk(legacyItem.tenant_id),
+        clientKeys.sk(clientId),
+      );
+
+      if (!item) return null;
+
+      return toClientWithTenantId(item);
     },
 
     async list(

@@ -173,7 +173,7 @@ describe("token", () => {
       expect(payload.scope).not.toContain("read:posts"); // This wasn't granted
     });
 
-    it("should return ALL granted scopes regardless of requested scope (Auth0 behavior)", async () => {
+    it("should return intersection of requested and granted scopes when scopes are requested (Auth0 behavior)", async () => {
       const { oauthApp, env } = await getTestServer();
       const client = testClient(oauthApp, env);
 
@@ -224,10 +224,10 @@ describe("token", () => {
         aud: "https://test-api.example.com",
       });
 
-      // Auth0 behavior: token ALWAYS includes ALL granted scopes, not just requested
+      // Auth0 behavior: when scopes ARE requested, return intersection of requested and granted
       const payload2 = accessToken?.payload as any;
       expect(payload2.scope).toContain("read:users");
-      expect(payload2.scope).toContain("write:users"); // Auth0 includes ALL granted scopes
+      expect(payload2.scope).not.toContain("write:users"); // Only requested scope is returned
     });
   });
 
@@ -300,7 +300,7 @@ describe("token", () => {
           authParams: {
             client_id: "clientId",
             username: "foo@exampl.com",
-            scope: "openid",
+            scope: "openid profile email",
             audience: "http://example.com",
           },
         });
@@ -347,12 +347,15 @@ describe("token", () => {
 
         const idToken = parseJWT(body.id_token);
 
+        // Auth0 compatible behavior: email and profile claims should be included
+        // in the id_token when the corresponding scopes are requested.
+        // The claims are also available from the userinfo endpoint.
         expect(idToken?.payload).toMatchObject({
           sub: "email|userId",
           iss: "http://localhost:3000/",
           aud: "clientId",
+          // Auth0 includes profile/email claims in id_token when scopes are requested
           nickname: "Test User",
-          picture: "https://example.com/test.png",
           name: "Test User",
           email: "foo@example.com",
           email_verified: true,
@@ -434,6 +437,56 @@ describe("token", () => {
         expect(response.status).toBe(403);
         const body = await response.json();
 
+        expect(body).toEqual({ message: "Invalid redirect uri" });
+      });
+
+      it("should return a 403 if redirect_uri differs only by trailing slash (strict comparison per RFC 6749)", async () => {
+        const { oauthApp, env } = await getTestServer();
+        const client = testClient(oauthApp, env);
+
+        // Create the login session with redirect_uri WITHOUT trailing slash
+        const loginSesssion = await env.data.loginSessions.create("tenantId", {
+          expires_at: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
+          csrf_token: "csrfToken",
+          authParams: {
+            client_id: "clientId",
+            username: "foo@exampl.com",
+            scope: "openid",
+            audience: "http://example.com",
+            redirect_uri: "http://localhost:3000/callback",
+          },
+        });
+
+        await env.data.codes.create("tenantId", {
+          code_type: "authorization_code",
+          user_id: "email|userId",
+          code_id: "123456",
+          login_id: loginSesssion.id,
+          expires_at: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
+          redirect_uri: "http://localhost:3000/callback",
+        });
+
+        // Try to exchange with redirect_uri WITH trailing slash - should fail per RFC 6749
+        const response = await client.oauth.token.$post(
+          // @ts-expect-error - testClient type requires both form and json
+          {
+            form: {
+              grant_type: "authorization_code",
+              code: "123456",
+              redirect_uri: "http://localhost:3000/callback/", // Note: trailing slash
+              client_id: "clientId",
+              client_secret: "clientSecret",
+            },
+          },
+          {
+            headers: {
+              "tenant-id": "tenantId",
+            },
+          },
+        );
+
+        expect(response.status).toBe(403);
+        const body = await response.json();
         expect(body).toEqual({ message: "Invalid redirect uri" });
       });
 
@@ -587,7 +640,7 @@ describe("token", () => {
           },
         );
 
-        expect(secondResponse.status).toBe(403);
+        expect(secondResponse.status).toBe(400);
       });
 
       it("should set a silent authentication token", async () => {
@@ -632,9 +685,13 @@ describe("token", () => {
           throw new Error("sid is missing");
         }
 
-        const cookie = response.headers.get("set-cookie");
-        expect(cookie).toBe(
-          `tenantId-auth-token=${accessToken?.payload.sid}; HttpOnly; Max-Age=2592000; Path=/; SameSite=None; Secure`,
+        const cookies = response.headers.get("set-cookie");
+        // Double-Clear: Should have non-partitioned clear and partitioned cookie with session
+        expect(cookies).toContain(
+          "tenantId-auth-token=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=None",
+        );
+        expect(cookies).toContain(
+          `tenantId-auth-token=${accessToken?.payload.sid}; Max-Age=2592000; Path=/; HttpOnly; Secure; Partitioned; SameSite=None`,
         );
       });
 
@@ -693,7 +750,7 @@ describe("token", () => {
             },
           },
         );
-        expect(secondResponse.status).toBe(403);
+        expect(secondResponse.status).toBe(400);
         const secondBody = (await secondResponse.json()) as ErrorResponse;
         expect(secondBody).toEqual({
           error: "invalid_grant",
@@ -2025,8 +2082,8 @@ describe("token", () => {
           expect.arrayContaining(["read:data", "write:data"]),
         );
 
-        // For access_token_authz dialect, scopes should be empty
-        expect(payload.scope).toBe("");
+        // Auth0 behavior: scopes should also be in the scope claim
+        expect(payload.scope).toBe("read:data write:data");
 
         // Clean up
         await env.data.resourceServers.remove("tenantId", resourceServer.id!);

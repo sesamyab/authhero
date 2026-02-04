@@ -18,6 +18,8 @@ export * from "./components";
 export * from "./styles";
 export * from "./adapters";
 export { waitUntil } from "./helpers/wait-until";
+export { cleanupUserSessions } from "./helpers/user-session-cleanup";
+export type { UserSessionCleanupParams } from "./helpers/user-session-cleanup";
 export { addEntityHooks } from "./helpers/entity-hooks-wrapper";
 export { seed, MANAGEMENT_API_SCOPES } from "./seed";
 export type { SeedOptions, SeedResult } from "./seed";
@@ -81,6 +83,11 @@ export function init(config: AuthHeroConfig) {
     // Add samlSigner from config if provided
     if (config.samlSigner) {
       ctx.env.samlSigner = config.samlSigner;
+    }
+
+    // Add poweredByLogo from config if provided
+    if (config.poweredByLogo) {
+      ctx.env.poweredByLogo = config.poweredByLogo;
     }
 
     await next();

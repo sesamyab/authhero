@@ -22,8 +22,16 @@ function buildSocialButtons(context: ScreenContext): FormNodeComponent[] {
     return [];
   }
 
+  // Create provider details with icon URLs and display names
+  const providerDetails = socialConnections.map((conn) => ({
+    name: conn.name,
+    strategy: conn.strategy,
+    display_name: conn.display_name || conn.name,
+    icon_url: conn.options?.icon_url,
+  }));
+
   // Create a single SOCIAL component with all providers
-  const providers = socialConnections.map((conn) => conn.strategy);
+  const providers = socialConnections.map((conn) => conn.name);
 
   const socialButton: FormNodeComponent = {
     id: "social-buttons",
@@ -32,6 +40,7 @@ function buildSocialButtons(context: ScreenContext): FormNodeComponent[] {
     visible: true,
     config: {
       providers,
+      provider_details: providerDetails,
     },
     order: 0,
   };
@@ -109,6 +118,22 @@ export async function signupScreen(context: ScreenContext): Promise<ScreenResult
         order: order++,
         hint: errors?.password,
       },
+      // Confirm password input
+      {
+        id: "re_password",
+        type: "PASSWORD",
+        category: "FIELD",
+        visible: true,
+        label: "Confirm password",
+        config: {
+          placeholder: "Confirm your password",
+          show_toggle: true,
+        },
+        required: true,
+        sensitive: true,
+        order: order++,
+        hint: errors?.re_password,
+      },
       // Submit button
       {
         id: "submit",
@@ -132,7 +157,8 @@ export async function signupScreen(context: ScreenContext): Promise<ScreenResult
   }
 
   const screen: UiScreen = {
-    action: `${baseUrl}/u/widget/signup?state=${encodeURIComponent(state)}`,
+    // Action points to HTML endpoint for no-JS fallback
+    action: `${baseUrl}/u2/signup?state=${encodeURIComponent(state)}`,
     method: "POST",
     title: "Create your account",
     description: client.name
@@ -144,7 +170,7 @@ export async function signupScreen(context: ScreenContext): Promise<ScreenResult
         id: "login",
         text: "Already have an account?",
         linkText: "Log in",
-        href: `${baseUrl}/u/widget/identifier?state=${encodeURIComponent(state)}`,
+        href: `${baseUrl}/u2/login/identifier?state=${encodeURIComponent(state)}`,
       },
     ],
   };

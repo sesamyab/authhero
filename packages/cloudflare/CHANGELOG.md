@@ -1,5 +1,118 @@
 # @authhero/cloudflare-adapter
 
+## 2.18.6
+
+### Patch Changes
+
+- Updated dependencies [ac8af37]
+  - @authhero/adapter-interfaces@0.130.0
+  - @authhero/kysely-adapter@10.93.0
+
+## 2.18.5
+
+### Patch Changes
+
+- Updated dependencies [3b4445f]
+  - @authhero/kysely-adapter@10.92.0
+
+## 2.18.4
+
+### Patch Changes
+
+- Updated dependencies [a8e70e6]
+  - @authhero/adapter-interfaces@0.129.0
+  - @authhero/kysely-adapter@10.91.0
+
+## 2.18.3
+
+### Patch Changes
+
+- Updated dependencies [e7f5ce5]
+  - @authhero/kysely-adapter@10.90.0
+
+## 2.18.2
+
+### Patch Changes
+
+- Updated dependencies [6585906]
+  - @authhero/adapter-interfaces@0.128.0
+  - @authhero/kysely-adapter@10.89.0
+
+## 2.18.1
+
+### Patch Changes
+
+- Updated dependencies [fd374a9]
+- Updated dependencies [8150432]
+  - @authhero/adapter-interfaces@0.127.0
+  - @authhero/kysely-adapter@10.88.0
+
+## 2.18.0
+
+### Minor Changes
+
+- 154993d: Improve react-admin experience by clearing caches and setting cores
+
+### Patch Changes
+
+- Updated dependencies [154993d]
+  - @authhero/adapter-interfaces@0.126.0
+  - @authhero/kysely-adapter@10.87.1
+
+## 2.17.24
+
+### Patch Changes
+
+- Updated dependencies [491842a]
+  - @authhero/adapter-interfaces@0.125.0
+  - @authhero/kysely-adapter@10.87.0
+
+## 2.17.23
+
+### Patch Changes
+
+- Updated dependencies [2af900c]
+- Updated dependencies [2be02f8]
+- Updated dependencies [2af900c]
+  - @authhero/adapter-interfaces@0.124.0
+  - @authhero/kysely-adapter@10.86.0
+
+## 2.17.22
+
+### Patch Changes
+
+- Updated dependencies [2d0a7f4]
+  - @authhero/adapter-interfaces@0.123.0
+  - @authhero/kysely-adapter@10.85.0
+
+## 2.17.21
+
+### Patch Changes
+
+- Updated dependencies [49039c0]
+  - @authhero/kysely-adapter@10.84.0
+
+## 2.17.20
+
+### Patch Changes
+
+- Updated dependencies [76510cd]
+  - @authhero/kysely-adapter@10.83.0
+
+## 2.17.19
+
+### Patch Changes
+
+- Updated dependencies [846a92c]
+  - @authhero/kysely-adapter@10.82.0
+
+## 2.17.18
+
+### Patch Changes
+
+- Updated dependencies [168b585]
+  - @authhero/kysely-adapter@10.81.0
+
 ## 2.17.17
 
 ### Patch Changes

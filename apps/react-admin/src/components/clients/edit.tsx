@@ -1226,6 +1226,12 @@ export function ClientEdit() {
             format={(value) => value === "true" || value === true}
             parse={(value) => (value ? "true" : "false")}
           />
+          <BooleanInput
+            source="auth0_conformant"
+            label="Auth0 Conformant Mode"
+            helperText="Enable Auth0-compatible behavior. Disable for strict OIDC compliance."
+            defaultValue={true}
+          />
           <ClientMetadataInput source="client_metadata" />
           <GrantTypesInput source="grant_types" />
           <ArrayInput source="callbacks">
@@ -1317,6 +1323,21 @@ export function ClientEdit() {
         </TabbedForm.Tab>
         <TabbedForm.Tab label="Connections">
           <ConnectionsTab />
+        </TabbedForm.Tab>
+        <TabbedForm.Tab label="Advanced">
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            These settings control OAuth/OIDC protocol conformance behavior.
+          </Typography>
+          <BooleanInput
+            source="oidc_conformant"
+            label="OIDC Conformant"
+            helperText="When enabled, the client will strictly follow the OIDC specification. This affects token claims, scopes, and other protocol behaviors."
+          />
+          <BooleanInput
+            source="is_first_party"
+            label="First Party Application"
+            helperText="First party applications are trusted applications that don't require user consent for standard scopes."
+          />
         </TabbedForm.Tab>
         <TabbedForm.Tab label="Raw JSON">
           <FunctionField

@@ -1,8 +1,9 @@
 /**
- * Widget Routes - Universal Login with built-in screens
+ * Widget Routes - Universal Login with built-in screens (SSR + Hydration)
  *
  * These routes serve the widget UI for each screen in the login flow.
- * The screens are defined in code (./screens/) rather than stored in the database.
+ * The widget is server-side rendered for instant display, then hydrated
+ * on the client for interactivity.
  *
  * Route pattern: /u/widget/:screenId?state=...
  *
@@ -22,18 +23,17 @@ import { getScreen, isValidScreenId, listScreenIds } from "./screens/registry";
 import type { ScreenContext } from "./screens/types";
 import { HTTPException } from "hono/http-exception";
 import {
-  escapeHtml,
-  escapeJs,
   sanitizeUrl,
   sanitizeCssColor,
-  buildPageBackground,
+  buildThemePageBackground,
 } from "./sanitization-utils";
+import { renderToString } from "@authhero/widget/hydrate";
 
 /**
- * Render the widget page HTML
+ * Props for the WidgetPage component
  */
-function renderWidgetPage(options: {
-  screen: Record<string, unknown>;
+type WidgetPageProps = {
+  widgetHtml: string;
   branding?: {
     colors?: {
       primary?: string;
@@ -45,12 +45,30 @@ function renderWidgetPage(options: {
     favicon_url?: string;
     font?: { url?: string };
   };
+  themePageBackground?: {
+    background_color?: string;
+    background_image_url?: string;
+    page_layout?: string;
+  };
   clientName: string;
-  baseUrl: string;
-  state: string;
-}): string {
-  const { screen, branding, clientName, baseUrl, state } = options;
+  poweredByLogo?: {
+    url: string;
+    alt: string;
+    href?: string;
+    height?: number;
+  };
+};
 
+/**
+ * Widget page component - renders the HTML page with SSR widget
+ */
+function WidgetPage({
+  widgetHtml,
+  branding,
+  themePageBackground,
+  clientName,
+  poweredByLogo,
+}: WidgetPageProps) {
   // Build CSS variables from branding
   const cssVariables: string[] = [];
   const primaryColor = sanitizeCssColor(branding?.colors?.primary);
@@ -58,153 +76,106 @@ function renderWidgetPage(options: {
     cssVariables.push(`--ah-color-primary: ${primaryColor}`);
   }
 
-  const pageBackground = buildPageBackground(branding?.colors?.page_background);
+  const pageBackground = buildThemePageBackground(
+    themePageBackground,
+    branding?.colors?.page_background,
+  );
   const faviconUrl = sanitizeUrl(branding?.favicon_url);
   const fontUrl = sanitizeUrl(branding?.font?.url);
-  const safeClientName = escapeHtml(clientName);
 
-  // Serialize screen for JavaScript (will be hydrated on client)
-  const screenJson = JSON.stringify(screen);
-  const brandingJson = branding ? JSON.stringify(branding) : "null";
+  // Sanitize powered-by logo URLs
+  const safePoweredByUrl = poweredByLogo?.url
+    ? sanitizeUrl(poweredByLogo.url)
+    : null;
+  const safePoweredByHref = poweredByLogo?.href
+    ? sanitizeUrl(poweredByLogo.href)
+    : null;
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign in - ${safeClientName}</title>
-  ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ""}
-  ${fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : ""}
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    
-    body {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: ${pageBackground};
-      font-family: ${fontUrl ? "'Inter', system-ui, sans-serif" : "system-ui, -apple-system, sans-serif"};
-      padding: 20px;
-    }
-    
-    authhero-widget {
-      ${cssVariables.join(";\n      ")};
-      max-width: 400px;
-      width: 100%;
-    }
-    
-    .loading {
-      text-align: center;
-      padding: 40px;
-      color: #666;
-    }
-    
-    .error {
-      background: #fee2e2;
-      border: 1px solid #ef4444;
-      color: #dc2626;
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-    }
-  </style>
-  <script type="module" src="/u/widget/authhero-widget.esm.js"></script>
-</head>
-<body>
-  <authhero-widget id="widget">
-    <div class="loading">Loading...</div>
-  </authhero-widget>
+  // Determine justify-content based on page_layout
+  const pageLayout = themePageBackground?.page_layout || "center";
+  const justifyContent =
+    pageLayout === "left"
+      ? "flex-start"
+      : pageLayout === "right"
+        ? "flex-end"
+        : "center";
+  // Adjust padding based on page_layout
+  const padding =
+    pageLayout === "left"
+      ? "20px 20px 20px 80px"
+      : pageLayout === "right"
+        ? "20px 80px 20px 20px"
+        : "20px";
 
-  <script type="module">
-    const widget = document.getElementById('widget');
-    const baseUrl = '${escapeJs(baseUrl)}';
-    const state = '${escapeJs(state)}';
-    
-    // Initial screen data (hydration)
-    const initialScreen = ${screenJson};
-    const initialBranding = ${brandingJson};
-    
-    // Set the initial screen
-    widget.screen = initialScreen;
-    if (initialBranding) {
-      widget.branding = initialBranding;
-    }
-    
-    // Handle form submissions
-    widget.addEventListener('formSubmit', async (event) => {
-      const { screen, data } = event.detail;
-      
-      widget.loading = true;
-      
-      try {
-        const response = await fetch(screen.action, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({ data }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.redirect) {
-          window.location.href = result.redirect;
-          return;
-        }
-        
-        if (result.screen) {
-          widget.screen = result.screen;
-          if (result.branding) {
-            widget.branding = result.branding;
-          }
-        }
-      } catch (error) {
-        console.error('Form submission error:', error);
-        widget.innerHTML = '<div class="error">Something went wrong. Please try again.</div>';
-      } finally {
-        widget.loading = false;
-      }
-    });
-    
-    // Handle button clicks (social login, etc.)
-    widget.addEventListener('buttonClick', (event) => {
-      const { id, type, value } = event.detail;
-      
-      if (type === 'SOCIAL' && value) {
-        // Redirect to social provider
-        const socialUrl = baseUrl + '/authorize?' + new URLSearchParams({
-          connection: value,
-          state: state,
-        }).toString();
-        window.location.href = socialUrl;
-      }
-      
-      if (type === 'RESEND_BUTTON') {
-        // Trigger resend action
-        fetch(widget.screen?.action + '&action=resend', {
-          method: 'POST',
-          credentials: 'include',
-        });
-      }
-    });
-    
-    // Handle link clicks
-    widget.addEventListener('linkClick', (event) => {
-      const { href } = event.detail;
-      if (href) {
-        window.location.href = href;
-      }
-    });
-  </script>
-</body>
-</html>`;
+  const bodyStyle = {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent,
+    background: pageBackground,
+    fontFamily: fontUrl
+      ? "'Inter', system-ui, sans-serif"
+      : "system-ui, -apple-system, sans-serif",
+    padding,
+  };
+
+  const widgetContainerStyle =
+    cssVariables.length > 0
+      ? cssVariables.join("; ") + "; max-width: 400px; width: 100%;"
+      : "max-width: 400px; width: 100%;";
+
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Sign in - {clientName}</title>
+        {faviconUrl && <link rel="icon" href={faviconUrl} />}
+        {fontUrl && <link rel="stylesheet" href={fontUrl} />}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              .powered-by { position: fixed; bottom: 16px; left: 16px; opacity: 0.7; transition: opacity 0.2s; }
+              .powered-by:hover { opacity: 1; }
+              .powered-by img { display: block; }
+            `,
+          }}
+        />
+        <script type="module" src="/u/widget/authhero-widget.esm.js" />
+      </head>
+      <body style={bodyStyle}>
+        {/* SSR widget - rendered server-side, hydrated on client */}
+        <div
+          style={widgetContainerStyle}
+          dangerouslySetInnerHTML={{ __html: widgetHtml }}
+        />
+        {safePoweredByUrl && (
+          <div class="powered-by">
+            {safePoweredByHref ? (
+              <a
+                href={safePoweredByHref}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img
+                  src={safePoweredByUrl}
+                  alt={poweredByLogo?.alt || ""}
+                  height={poweredByLogo?.height || 20}
+                />
+              </a>
+            ) : (
+              <img
+                src={safePoweredByUrl}
+                alt={poweredByLogo?.alt || ""}
+                height={poweredByLogo?.height || 20}
+              />
+            )}
+          </div>
+        )}
+      </body>
+    </html>
+  );
 }
 
 export const widgetRoutes = new OpenAPIHono<{
@@ -255,26 +226,22 @@ export const widgetRoutes = new OpenAPIHono<{
         });
       }
 
-      const { branding, client, loginSession } = await initJSXRoute(
+      const { theme, branding, client, loginSession } = await initJSXRoute(
         ctx,
         state,
         true,
       );
 
-      // Get connections for this client
-      const connectionsResult = await ctx.env.data.connections.list(
-        client.tenant.id,
-      );
-
       const baseUrl = new URL(ctx.req.url).origin;
 
       // Build screen context
+      // Use client.connections which is already ordered per the client's configuration
       const screenContext: ScreenContext = {
         ctx,
         tenant: client.tenant,
         client,
         branding: branding ?? undefined,
-        connections: connectionsResult.connections,
+        connections: client.connections,
         state,
         baseUrl,
         prefill: {
@@ -297,15 +264,46 @@ export const widgetRoutes = new OpenAPIHono<{
       // Handle both sync and async screen factories
       const result = await screenResult;
 
-      const html = renderWidgetPage({
-        screen: result.screen as unknown as Record<string, unknown>,
-        branding: result.branding,
-        clientName: client.name || "AuthHero",
-        baseUrl,
-        state,
+      // Serialize data for widget attributes
+      const screenJson = JSON.stringify(result.screen);
+      const brandingJson = result.branding
+        ? JSON.stringify(result.branding)
+        : undefined;
+      const authParamsJson = JSON.stringify({
+        client_id: loginSession.authParams.client_id,
+        redirect_uri: loginSession.authParams.redirect_uri,
+        scope: loginSession.authParams.scope,
+        audience: loginSession.authParams.audience,
+        nonce: loginSession.authParams.nonce,
+        response_type: loginSession.authParams.response_type,
       });
 
-      return ctx.html(html);
+      // Server-side render the widget
+      const widgetHtmlResult = await renderToString(
+        `<authhero-widget
+          id="widget"
+          screen='${screenJson.replace(/'/g, "&#39;")}'
+          ${brandingJson ? `branding='${brandingJson.replace(/'/g, "&#39;")}'` : ""}
+          state="${state}"
+          auth-params='${authParamsJson.replace(/'/g, "&#39;")}'
+          auto-submit="true"
+          auto-navigate="true"
+        ></authhero-widget>`,
+        {
+          fullDocument: false,
+          serializeShadowRoot: "declarative-shadow-dom",
+        },
+      );
+
+      return ctx.html(
+        <WidgetPage
+          widgetHtml={widgetHtmlResult.html || ""}
+          branding={result.branding}
+          themePageBackground={theme?.page_background}
+          clientName={client.name || "AuthHero"}
+          poweredByLogo={ctx.env.poweredByLogo}
+        />,
+      );
     },
   )
   // --------------------------------
@@ -368,9 +366,6 @@ export const widgetRoutes = new OpenAPIHono<{
         true,
       );
 
-      const connectionsResult = await ctx.env.data.connections.list(
-        client.tenant.id,
-      );
       const baseUrl = new URL(ctx.req.url).origin;
 
       // Placeholder: determine next screen based on current screen and data
@@ -405,6 +400,10 @@ export const widgetRoutes = new OpenAPIHono<{
             errors = { email: "Email is required" };
           } else if (!data.password) {
             errors = { password: "Password is required" };
+          } else if (!data.re_password) {
+            errors = { re_password: "Please confirm your password" };
+          } else if (data.password !== data.re_password) {
+            errors = { re_password: "Passwords do not match" };
           }
           break;
 
@@ -418,12 +417,13 @@ export const widgetRoutes = new OpenAPIHono<{
       }
 
       // Build context for next screen
+      // Use client.connections which is already ordered per the client's configuration
       const screenContext: ScreenContext = {
         ctx,
         tenant: client.tenant,
         client,
         branding: branding ?? undefined,
-        connections: connectionsResult.connections,
+        connections: client.connections,
         state,
         baseUrl,
         prefill: {

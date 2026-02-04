@@ -56,6 +56,28 @@ export interface ManagementApiExtension {
 
 export interface AuthHeroConfig {
   dataAdapter: DataAdapters;
+
+  /**
+   * Optional separate data adapter for the management API.
+   * If provided, the management API will use this adapter instead of `dataAdapter`.
+   *
+   * This is useful when you want different behavior for auth flows vs management API,
+   * such as excluding sensitive fields from control plane fallback in management API
+   * while keeping them for authentication flows.
+   *
+   * @example
+   * ```typescript
+   * const { app } = init({
+   *   dataAdapter: withRuntimeFallback(baseAdapters, { controlPlaneTenantId: "main" }),
+   *   managementDataAdapter: withRuntimeFallback(baseAdapters, {
+   *     controlPlaneTenantId: "main",
+   *     excludeSensitiveFields: true, // Don't expose control plane secrets in management API
+   *   }),
+   * });
+   * ```
+   */
+  managementDataAdapter?: DataAdapters;
+
   allowedOrigins?: string[];
   samlSigner?: SamlSigner;
 
@@ -135,4 +157,32 @@ export interface AuthHeroConfig {
    * ```
    */
   managementApiExtensions?: ManagementApiExtension[];
+
+  /**
+   * Optional powered-by logo to display at the bottom left of the login widget.
+   * This is only configurable in code, not stored in the database.
+   *
+   * @example
+   * ```typescript
+   * const { app } = init({
+   *   dataAdapter,
+   *   poweredByLogo: {
+   *     url: "https://example.com/logo.svg",
+   *     alt: "Powered by Example",
+   *     href: "https://example.com", // optional link
+   *     height: 24, // optional height in pixels (default: 20)
+   *   },
+   * });
+   * ```
+   */
+  poweredByLogo?: {
+    /** URL of the logo image */
+    url: string;
+    /** Alt text for the logo */
+    alt: string;
+    /** Optional link URL - if provided, the logo will be clickable */
+    href?: string;
+    /** Optional height in pixels (default: 20) */
+    height?: number;
+  };
 }

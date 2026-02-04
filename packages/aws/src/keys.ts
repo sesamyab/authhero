@@ -89,6 +89,12 @@ export const brandingKeys = {
   sk: () => "BRANDING",
 };
 
+// Universal login template keys (one per tenant)
+export const universalLoginTemplateKeys = {
+  pk: (tenantId: string) => `TENANT#${tenantId}`,
+  sk: () => "UNIVERSAL_LOGIN_TEMPLATE",
+};
+
 // Theme keys
 export const themeKeys = {
   pk: (tenantId: string) => `TENANT#${tenantId}`,
@@ -255,4 +261,11 @@ export const clientConnectionKeys = {
   gsi1pk: (tenantId: string, connectionId: string) =>
     `TENANT#${tenantId}#CONNECTION#${connectionId}`,
   gsi1sk: (clientId: string) => `CLIENT_CONNECTION#${clientId}`,
+};
+
+// Custom text keys
+export const customTextKeys = {
+  pk: (tenantId: string) => `TENANT#${tenantId}`,
+  sk: (prompt: string, language: string) => `CUSTOM_TEXT#${prompt}#${language}`,
+  skPrefix: () => "CUSTOM_TEXT#",
 };

@@ -6,23 +6,26 @@ import {
   AuthParams,
   Theme,
   Branding,
-  LegacyClient,
 } from "@authhero/adapter-interfaces";
+import { EnrichedClient } from "../helpers/client";
 
 type Props = {
   error?: string;
   theme: Theme | null;
   branding: Branding | null;
-  client: LegacyClient;
+  client: EnrichedClient;
   authParams: AuthParams;
 };
 
 const UserNotFound: FC<Props> = (params) => {
   const { theme, branding, client, authParams } = params;
 
-  const linkParams = new URLSearchParams({
-    ...authParams,
-  });
+  // Convert authParams to URL-safe string values
+  const linkParams = new URLSearchParams(
+    Object.entries(authParams)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => [key, String(value)]),
+  );
   const restartFlowLink = `/authorize?${linkParams}`;
 
   return (

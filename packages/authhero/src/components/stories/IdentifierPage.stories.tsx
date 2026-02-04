@@ -6,11 +6,11 @@ import {
 } from "../../storybook-utils/HonoJSXWrapper";
 import IdentifierPage from "../IdentifierPage";
 import type {
-  LegacyClient,
   LoginSession,
   Theme,
   Branding,
 } from "@authhero/adapter-interfaces";
+import type { EnrichedClient } from "../../helpers/client";
 import {
   AuthorizationResponseType,
   LoginSessionState,
@@ -101,12 +101,13 @@ const mockBranding: Branding = {
   },
 };
 
-const createMockClient = (connections: string[]): LegacyClient => ({
+const createMockClient = (connections: string[]): EnrichedClient => ({
   name: "Mock Application",
   client_id: "mock-client-id",
   global: false,
   is_first_party: false,
   oidc_conformant: true,
+  auth0_conformant: true,
   sso: false,
   sso_disabled: false,
   cross_origin_authentication: false,

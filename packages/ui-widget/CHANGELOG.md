@@ -1,5 +1,74 @@
 # @authhero/widget
 
+## 0.9.0
+
+### Minor Changes
+
+- 88a03cd: Add ssr for widget
+- ac8af37: Add custom text support
+
+### Patch Changes
+
+- Updated dependencies [ac8af37]
+  - @authhero/adapter-interfaces@0.130.0
+
+## 0.8.6
+
+### Patch Changes
+
+- Updated dependencies [a8e70e6]
+  - @authhero/adapter-interfaces@0.129.0
+
+## 0.8.5
+
+### Patch Changes
+
+- Updated dependencies [6585906]
+  - @authhero/adapter-interfaces@0.128.0
+
+## 0.8.4
+
+### Patch Changes
+
+- Updated dependencies [fd374a9]
+- Updated dependencies [8150432]
+  - @authhero/adapter-interfaces@0.127.0
+
+## 0.8.3
+
+### Patch Changes
+
+- Updated dependencies [154993d]
+  - @authhero/adapter-interfaces@0.126.0
+
+## 0.8.2
+
+### Patch Changes
+
+- Updated dependencies [491842a]
+  - @authhero/adapter-interfaces@0.125.0
+
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [2af900c]
+- Updated dependencies [2be02f8]
+  - @authhero/adapter-interfaces@0.124.0
+
+## 0.8.0
+
+### Minor Changes
+
+- d979690: Update the widget embed functionality
+
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [2d0a7f4]
+  - @authhero/adapter-interfaces@0.123.0
+
 ## 0.7.1
 
 ### Patch Changes

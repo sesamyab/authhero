@@ -1,5 +1,97 @@
 # @authhero/drizzle
 
+## 0.21.0
+
+### Minor Changes
+
+- ac8af37: Add custom text support
+
+### Patch Changes
+
+- Updated dependencies [ac8af37]
+  - @authhero/adapter-interfaces@0.130.0
+
+## 0.20.4
+
+### Patch Changes
+
+- Updated dependencies [a8e70e6]
+  - @authhero/adapter-interfaces@0.129.0
+
+## 0.20.3
+
+### Patch Changes
+
+- Updated dependencies [6585906]
+  - @authhero/adapter-interfaces@0.128.0
+
+## 0.20.2
+
+### Patch Changes
+
+- Updated dependencies [fd374a9]
+- Updated dependencies [8150432]
+  - @authhero/adapter-interfaces@0.127.0
+
+## 0.20.1
+
+### Patch Changes
+
+- Updated dependencies [154993d]
+  - @authhero/adapter-interfaces@0.126.0
+
+## 0.20.0
+
+### Minor Changes
+
+- 491842a: Bump packages to make sure the universal_login_templates is available
+
+### Patch Changes
+
+- Updated dependencies [491842a]
+  - @authhero/adapter-interfaces@0.125.0
+
+## 0.19.0
+
+### Minor Changes
+
+- 2be02f8: Add dynamic liquid templates
+
+### Patch Changes
+
+- Updated dependencies [2af900c]
+- Updated dependencies [2be02f8]
+  - @authhero/adapter-interfaces@0.124.0
+
+## 0.18.0
+
+### Minor Changes
+
+- 2d0a7f4: Add a auth0-conformance flag
+
+### Patch Changes
+
+- Updated dependencies [2d0a7f4]
+  - @authhero/adapter-interfaces@0.123.0
+
+## 0.17.0
+
+### Minor Changes
+
+- 49039c0: Add profile data for primary user in indentities
+
+## 0.16.0
+
+### Minor Changes
+
+- 846a92c: Split the migrations
+
+## 0.15.0
+
+### Minor Changes
+
+- 168b585: Update the schemas for the sessions
+
 ## 0.14.1
 
 ### Patch Changes

@@ -13,6 +13,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { GrantFlowUserResult } from "src/types/GrantFlowResult";
 import { logMessage } from "../helpers/logging";
+import { getEnrichedClient } from "../helpers/client";
 
 export const authorizationCodeGrantParamsSchema = z
   .object({
@@ -47,10 +48,11 @@ export async function authorizationCodeGrantUser(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   params: AuthorizationCodeGrantTypeParams,
 ): Promise<GrantFlowUserResult> {
-  const client = await ctx.env.data.legacyClients.get(params.client_id);
-  if (!client) {
-    throw new JSONHTTPException(403, { message: "Client not found" });
-  }
+  const client = await getEnrichedClient(
+    ctx.env,
+    params.client_id,
+    ctx.var.tenant_id,
+  );
 
   const code = await ctx.env.data.codes.get(
     client.tenant.id,
@@ -77,7 +79,7 @@ export async function authorizationCodeGrantUser(
       description: "Invalid authorization code",
       userId: code.user_id,
     });
-    throw new JSONHTTPException(403, {
+    throw new JSONHTTPException(400, {
       error: "invalid_grant",
       error_description: "Invalid authorization code",
     });
@@ -107,8 +109,12 @@ export async function authorizationCodeGrantUser(
   // Validate the secret or PKCE
   if ("client_secret" in params) {
     // A temporary solution to handle cross tenant clients
-    const defaultClient =
-      await ctx.env.data.legacyClients.get("DEFAULT_CLIENT");
+    let defaultClient;
+    try {
+      defaultClient = await getEnrichedClient(ctx.env, "DEFAULT_CLIENT");
+    } catch {
+      // DEFAULT_CLIENT may not exist
+    }
 
     // Code flow
     if (
@@ -146,7 +152,7 @@ export async function authorizationCodeGrantUser(
     }
   }
 
-  // Validate the redirect_uri
+  // Validate the redirect_uri (RFC 6749 requires exact string comparison)
   if (code.redirect_uri && code.redirect_uri !== params.redirect_uri) {
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_EXCHANGE_AUTHORIZATION_CODE_FOR_ACCESS_TOKEN,
@@ -200,6 +206,19 @@ export async function authorizationCodeGrantUser(
     }
   }
 
+  // OIDC Core 2.1: When max_age was used in authorization request, auth_time is required in ID token
+  // Fetch the session to get the authenticated_at timestamp
+  let auth_time: number | undefined;
+  if (loginSession.authParams.max_age !== undefined && loginSession.session_id) {
+    const session = await ctx.env.data.sessions.get(
+      client.tenant.id,
+      loginSession.session_id,
+    );
+    if (session?.authenticated_at) {
+      auth_time = Math.floor(new Date(session.authenticated_at).getTime() / 1000);
+    }
+  }
+
   return {
     user,
     client,
@@ -207,6 +226,7 @@ export async function authorizationCodeGrantUser(
     session_id: loginSession.session_id,
     refresh_token: refreshToken?.id,
     organization,
+    auth_time,
     authParams: {
       ...loginSession.authParams,
       // Use the state and nonce from the code as it might differ if it's a silent auth login

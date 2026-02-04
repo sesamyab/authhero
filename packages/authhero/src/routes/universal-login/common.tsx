@@ -1,8 +1,7 @@
 import { Context } from "hono";
 import { JSONHTTPException } from "../../errors/json-http-exception";
-import { getClientWithDefaults } from "../../helpers/client";
+import { getClientWithDefaults, EnrichedClient } from "../../helpers/client";
 import i18next from "i18next";
-import { LegacyClient } from "@authhero/adapter-interfaces";
 import {
   getPrimaryUserByEmail,
   getPrimaryUserByProvider,
@@ -63,6 +62,14 @@ export async function initJSXRoute(
   const theme = await env.data.themes.get(tenant.id, "default");
   const branding = await env.data.branding.get(tenant.id);
 
+  // Only include favicon_url when on a custom domain
+  const brandingWithFavicon = branding
+    ? {
+        ...branding,
+        favicon_url: ctx.var.custom_domain ? branding.favicon_url : undefined,
+      }
+    : null;
+
   const loginSessionLanguage = loginSession.authParams?.ui_locales
     ?.split(" ")
     ?.map((locale) => locale.split("-")[0])
@@ -76,7 +83,7 @@ export async function initJSXRoute(
 
   return {
     theme,
-    branding,
+    branding: brandingWithFavicon,
     client,
     tenant,
     loginSession,
@@ -156,7 +163,8 @@ export async function initJSXRouteWithSession(
   }
 
   // Normal authenticated session flow
-  if (!authSession || !loginSession.session_id) {
+  // Check that the session exists, is not revoked, and loginSession has session_id
+  if (!authSession || authSession.revoked_at || !loginSession.session_id) {
     throw new RedirectException(
       `/u/login/identifier?state=${encodeURIComponent(state)}`,
     );
@@ -201,7 +209,7 @@ const STRATEGY_MAP: Record<string, LoginStrategy> = {
 
 export async function getLoginStrategy(
   ctx: Context,
-  client: LegacyClient,
+  client: EnrichedClient,
   username: string,
   connectionType: "email" | "sms" | "username",
   login_selection?: "password" | "code",

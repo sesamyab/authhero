@@ -30,13 +30,23 @@ const sqlThemeSchema = flattenSchema(themeSchema).extend({
   tenant_id: z.string(),
 });
 
-const sqlLoginSchema = flattenSchema(loginSessionSchema).extend({
-  tenant_id: z.string(),
-  state: z.string().optional().default("pending"),
-  state_data: z.string().optional(),
-  failure_reason: z.string().optional(),
-  user_id: z.string().optional(),
-});
+const sqlLoginSchema = flattenSchema(loginSessionSchema)
+  .omit({
+    created_at: true,
+    updated_at: true,
+    expires_at: true,
+  })
+  .extend({
+    tenant_id: z.string(),
+    state: z.string().optional().default("pending"),
+    state_data: z.string().optional(),
+    failure_reason: z.string().optional(),
+    user_id: z.string().optional(),
+    // Date fields - bigint timestamps with _ts suffix
+    created_at_ts: z.number(),
+    updated_at_ts: z.number(),
+    expires_at_ts: z.number(),
+  });
 
 const sqlConnectionSchema = flattenSchema(connectionSchema).extend({
   tenant_id: z.string(),
@@ -46,6 +56,22 @@ const sqlConnectionSchema = flattenSchema(connectionSchema).extend({
 
 const sqlBrandingSchema = flattenSchema(brandingSchema).extend({
   tenant_id: z.string(),
+});
+
+const sqlUniversalLoginTemplateSchema = z.object({
+  tenant_id: z.string(),
+  body: z.string(),
+  created_at_ts: z.number(),
+  updated_at_ts: z.number(),
+});
+
+const sqlCustomTextSchema = z.object({
+  tenant_id: z.string(),
+  prompt: z.string(),
+  language: z.string(),
+  custom_text: z.string(), // JSON string
+  created_at_ts: z.number(),
+  updated_at_ts: z.number(),
 });
 
 const sqlPromptSettingSchema = z.object({
@@ -70,9 +96,11 @@ const sqlPasswordSchema = z.object({
 export const sqlUserSchema = z.object({
   ...userSchema.shape,
   email_verified: z.number(),
+  phone_verified: z.number().optional().nullable(),
   is_social: z.number(),
   app_metadata: z.string(),
   user_metadata: z.string(),
+  address: z.string().optional().nullable(),
   tenant_id: z.string(),
 });
 
@@ -99,20 +127,55 @@ const sqlEmailProvidersSchema = z.object({
   updated_at: z.string(),
 });
 
-const sqlSessionSchema = z.object({
-  ...sessionSchema.shape,
-  tenant_id: z.string(),
-  device: z.string(),
-  clients: z.string(),
-});
+const sqlSessionSchema = sessionSchema
+  .omit({
+    created_at: true,
+    updated_at: true,
+    expires_at: true,
+    idle_expires_at: true,
+    authenticated_at: true,
+    last_interaction_at: true,
+    used_at: true,
+    revoked_at: true,
+    device: true,
+    clients: true,
+  })
+  .extend({
+    tenant_id: z.string(),
+    device: z.string(),
+    clients: z.string(),
+    // Date fields - bigint timestamps with _ts suffix
+    created_at_ts: z.number(),
+    updated_at_ts: z.number(),
+    expires_at_ts: z.number().nullable().optional(),
+    idle_expires_at_ts: z.number().nullable().optional(),
+    authenticated_at_ts: z.number().nullable().optional(),
+    last_interaction_at_ts: z.number().nullable().optional(),
+    used_at_ts: z.number().nullable().optional(),
+    revoked_at_ts: z.number().nullable().optional(),
+  });
 
-const sqlRefreshTokensSchema = z.object({
-  ...refreshTokenSchema.shape,
-  tenant_id: z.string(),
-  device: z.string(),
-  resource_servers: z.string(),
-  rotating: z.number(),
-});
+const sqlRefreshTokensSchema = refreshTokenSchema
+  .omit({
+    created_at: true,
+    expires_at: true,
+    idle_expires_at: true,
+    last_exchanged_at: true,
+    device: true,
+    resource_servers: true,
+    rotating: true,
+  })
+  .extend({
+    tenant_id: z.string(),
+    device: z.string(),
+    resource_servers: z.string(),
+    rotating: z.number(),
+    // Date fields - bigint timestamps with _ts suffix
+    created_at_ts: z.number(),
+    expires_at_ts: z.number().nullable().optional(),
+    idle_expires_at_ts: z.number().nullable().optional(),
+    last_exchanged_at_ts: z.number().nullable().optional(),
+  });
 
 const sqlCustomDomainSchema = z.object({
   ...customDomainSchema.shape,
@@ -268,6 +331,7 @@ const sqlClientSchema = z.object({
   global: z.number(),
   is_first_party: z.number(),
   oidc_conformant: z.number(),
+  auth0_conformant: z.number(),
   sso: z.number(),
   sso_disabled: z.number(),
   cross_origin_authentication: z.number(),
@@ -328,4 +392,6 @@ export interface Database {
   organizations: z.infer<typeof sqlOrganizationSchema>;
   user_organizations: z.infer<typeof sqlUserOrganizationSchema>;
   invites: z.infer<typeof sqlInviteSchema>;
+  universal_login_templates: z.infer<typeof sqlUniversalLoginTemplateSchema>;
+  custom_text: z.infer<typeof sqlCustomTextSchema>;
 }

@@ -15,6 +15,7 @@ import { createClientConnectionsAdapter } from "./adapters/clientConnections";
 import { createConnectionsAdapter } from "./adapters/connections";
 import { createLoginSessionsAdapter } from "./adapters/loginSessions";
 import { createBrandingAdapter } from "./adapters/branding";
+import { createUniversalLoginTemplatesAdapter } from "./adapters/universalLoginTemplates";
 import { createHooksAdapter } from "./adapters/hooks";
 import { createKeysAdapter } from "./adapters/keys";
 import { createCustomDomainsAdapter } from "./adapters/customDomains";
@@ -32,7 +33,7 @@ import { createUserRolesAdapter } from "./adapters/userRoles";
 import { createOrganizationsAdapter } from "./adapters/organizations";
 import { createUserOrganizationsAdapter } from "./adapters/userOrganizations";
 import { createInvitesAdapter } from "./adapters/invites";
-import { createLegacyClientsAdapter } from "./adapters/legacyClients";
+import { createCustomTextAdapter } from "./adapters/customText";
 
 export type { DynamoDBConfig, DynamoDBContext } from "./types";
 
@@ -80,7 +81,6 @@ export default function createAdapters(
     hooks: createHooksAdapter(ctx),
     invites: createInvitesAdapter(ctx),
     keys: createKeysAdapter(ctx),
-    legacyClients: createLegacyClientsAdapter(ctx),
     loginSessions: createLoginSessionsAdapter(ctx),
     logs: createLogsAdapter(ctx),
     organizations: createOrganizationsAdapter(ctx),
@@ -93,6 +93,8 @@ export default function createAdapters(
     sessions: createSessionsAdapter(ctx),
     tenants: createTenantsAdapter(ctx),
     themes: createThemesAdapter(ctx),
+    universalLoginTemplates: createUniversalLoginTemplatesAdapter(ctx),
+    customText: createCustomTextAdapter(ctx),
     userOrganizations: createUserOrganizationsAdapter(ctx),
     userPermissions: createUserPermissionsAdapter(ctx),
     userRoles: createUserRolesAdapter(ctx),
@@ -129,7 +131,6 @@ export { createUserRolesAdapter } from "./adapters/userRoles";
 export { createOrganizationsAdapter } from "./adapters/organizations";
 export { createUserOrganizationsAdapter } from "./adapters/userOrganizations";
 export { createInvitesAdapter } from "./adapters/invites";
-export { createLegacyClientsAdapter } from "./adapters/legacyClients";
 export { createFlowsAdapter } from "./adapters/flows";
 
 // Re-export utilities for custom implementations

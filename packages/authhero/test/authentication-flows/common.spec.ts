@@ -13,6 +13,7 @@ import {
   AuthorizationResponseMode,
 } from "@authhero/adapter-interfaces";
 import { parseJWT } from "oslo/jwt";
+import { getEnrichedClient } from "../../src/helpers/client";
 
 describe("common", () => {
   describe("createAuthTokens", () => {
@@ -28,7 +29,7 @@ describe("common", () => {
         Variables: Variables;
       }>;
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       const user = await getPrimaryUserByEmail({
         userAdapter: env.data.users,
         tenant_id: "tenantId",
@@ -69,7 +70,7 @@ describe("common", () => {
         Variables: Variables;
       }>;
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       const user = await getPrimaryUserByEmail({
         userAdapter: env.data.users,
         tenant_id: "tenantId",
@@ -99,6 +100,465 @@ describe("common", () => {
       });
     });
 
+    it("should NOT include email claims in id_token when only openid scope is requested (OIDC compliance)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+          scope: "openid", // Only openid scope, no email scope
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Should have basic claims
+      expect(payload.sub).toBeDefined();
+      expect(payload.aud).toBeDefined();
+      expect(payload.iss).toBeDefined();
+
+      // Should NOT have email claims when email scope is not requested
+      expect(payload.email).toBeUndefined();
+      expect(payload.email_verified).toBeUndefined();
+
+      // Should NOT have profile claims when profile scope is not requested
+      expect(payload.name).toBeUndefined();
+      expect(payload.nickname).toBeUndefined();
+      expect(payload.picture).toBeUndefined();
+      expect(payload.given_name).toBeUndefined();
+      expect(payload.family_name).toBeUndefined();
+      expect(payload.locale).toBeUndefined();
+    });
+
+    it("should include email claims in id_token when email scope is requested (Auth0 compatible behavior)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // Auth0 includes email claims in id_token whenever email scope is requested
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.ID_TOKEN,
+          scope: "openid email", // Request email scope
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Should have email claims when email scope is requested
+      expect(payload.email).toBe("foo@example.com");
+      expect(payload.email_verified).toBeDefined();
+
+      // Should NOT have profile claims when profile scope is not requested
+      expect(payload.name).toBeUndefined();
+      expect(payload.nickname).toBeUndefined();
+    });
+
+    it("should include email claims in id_token when email scope is requested with TOKEN_ID_TOKEN (Auth0 compatible behavior)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // Auth0 includes email claims in id_token whenever email scope is requested,
+      // regardless of whether an access token is also issued
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+          scope: "openid email", // Request email scope
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Auth0 behavior: email claims should be in id_token when email scope is requested
+      expect(payload.email).toBe("foo@example.com");
+      expect(payload.email_verified).toBeDefined();
+
+      // Should NOT have profile claims when profile scope is not requested
+      expect(payload.name).toBeUndefined();
+      expect(payload.nickname).toBeUndefined();
+    });
+
+    it("should include profile claims in id_token when profile scope is requested (Auth0 compatible behavior)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // Auth0 includes profile claims in id_token whenever profile scope is requested
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.ID_TOKEN,
+          scope: "openid profile", // Request profile scope
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Should have profile claims when profile scope is requested
+      expect(payload.nickname).toBeDefined();
+      expect(payload.name).toBeDefined();
+
+      // Should NOT have email claims when email scope is not requested
+      expect(payload.email).toBeUndefined();
+      expect(payload.email_verified).toBeUndefined();
+    });
+
+    it("should include profile claims in id_token when profile scope is requested with TOKEN_ID_TOKEN (Auth0 compatible behavior)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // Auth0 includes profile claims in id_token whenever profile scope is requested,
+      // regardless of whether an access token is also issued
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+          scope: "openid profile", // Request profile scope
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Auth0 behavior: profile claims should be in id_token when profile scope is requested
+      expect(payload.nickname).toBeDefined();
+      expect(payload.name).toBeDefined();
+
+      // Should NOT have email claims when email scope is not requested
+      expect(payload.email).toBeUndefined();
+      expect(payload.email_verified).toBeUndefined();
+    });
+
+    it("should include both email and profile claims when both scopes are requested (Auth0 compatible behavior)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // Auth0 includes claims in id_token whenever the corresponding scopes are requested
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.ID_TOKEN,
+          scope: "openid profile email", // Request both scopes
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Should have both email and profile claims when both scopes are requested
+      expect(payload.email).toBe("foo@example.com");
+      expect(payload.email_verified).toBeDefined();
+      expect(payload.nickname).toBeDefined();
+      expect(payload.name).toBeDefined();
+    });
+
+    it("should include email and profile claims in id_token when requested with TOKEN_ID_TOKEN (Auth0 compatible behavior)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // Auth0 includes claims in id_token whenever the corresponding scopes are requested,
+      // regardless of whether an access token is also issued
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+          scope: "openid profile email", // Request both scopes
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Auth0 behavior: claims should be in id_token when scopes are requested
+      expect(payload.email).toBe("foo@example.com");
+      expect(payload.email_verified).toBeDefined();
+      expect(payload.nickname).toBeDefined();
+      expect(payload.name).toBeDefined();
+    });
+
+    it("should NOT include profile/email claims in id_token when auth0_conformant=false and response_type is TOKEN_ID_TOKEN (strict OIDC 5.4)", async () => {
+      const { env } = await getTestServer();
+
+      // Update client to use strict OIDC mode
+      await env.data.clients.update("tenantId", "clientId", {
+        auth0_conformant: false,
+      });
+
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // With auth0_conformant=false and response_type=TOKEN_ID_TOKEN,
+      // claims should NOT be in id_token (strict OIDC 5.4 compliance)
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+          scope: "openid profile email",
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Strict OIDC 5.4: claims should NOT be in id_token when access token is issued
+      expect(payload.email).toBeUndefined();
+      expect(payload.email_verified).toBeUndefined();
+      expect(payload.nickname).toBeUndefined();
+      expect(payload.name).toBeUndefined();
+
+      // Reset client back to default
+      await env.data.clients.update("tenantId", "clientId", {
+        auth0_conformant: true,
+      });
+    });
+
+    it("should include profile/email claims in id_token when auth0_conformant=false but response_type is ID_TOKEN (strict OIDC 5.4)", async () => {
+      const { env } = await getTestServer();
+
+      // Update client to use strict OIDC mode
+      await env.data.clients.update("tenantId", "clientId", {
+        auth0_conformant: false,
+      });
+
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // With auth0_conformant=false but response_type=ID_TOKEN,
+      // claims SHOULD be in id_token (no access token to use with userinfo)
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.ID_TOKEN,
+          scope: "openid profile email",
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      // Even with strict OIDC, response_type=id_token should include claims
+      expect(payload.email).toBe("foo@example.com");
+      expect(payload.email_verified).toBeDefined();
+      expect(payload.nickname).toBeDefined();
+      expect(payload.name).toBeDefined();
+
+      // Reset client back to default
+      await env.data.clients.update("tenantId", "clientId", {
+        auth0_conformant: true,
+      });
+    });
+
     it("should create tokens with 1-hour expiration for impersonated users", async () => {
       const { env } = await getTestServer();
       const ctx = {
@@ -111,7 +571,7 @@ describe("common", () => {
         Variables: Variables;
       }>;
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       const user = await getPrimaryUserByEmail({
         userAdapter: env.data.users,
         tenant_id: "tenantId",
@@ -166,7 +626,7 @@ describe("common", () => {
         Variables: Variables;
       }>;
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       const user = await getPrimaryUserByEmail({
         userAdapter: env.data.users,
         tenant_id: "tenantId",
@@ -250,7 +710,7 @@ describe("common", () => {
       },
     });
 
-    const client = await env.data.legacyClients.get("clientId");
+    const client = await getEnrichedClient(env, "clientId");
     const user = await getPrimaryUserByEmail({
       userAdapter: env.data.users,
       tenant_id: "tenantId",
@@ -342,7 +802,7 @@ describe("common", () => {
       },
     });
 
-    const client = await env.data.legacyClients.get("clientId");
+    const client = await getEnrichedClient(env, "clientId");
     const user = await getPrimaryUserByEmail({
       userAdapter: env.data.users,
       tenant_id: "tenantId",
@@ -391,6 +851,99 @@ describe("common", () => {
       loginSession.id,
     );
     expect(updatedLoginSession?.session_id).toEqual("existingSessionId");
+  });
+
+  it("should create a new session when existingSessionIdToLink points to a revoked session", async () => {
+    const { env } = await getTestServer();
+
+    const ctx = {
+      env,
+      var: {
+        tenant_id: "tenantId",
+      },
+      req: {
+        header: () => {},
+        query: () => {},
+        queries: () => {},
+      },
+      header: () => null,
+      html: (content: string) => {
+        return new Response(content, {
+          headers: { "Content-Type": "text/html" },
+        });
+      },
+    } as unknown as Context<{
+      Bindings: Bindings;
+      Variables: Variables;
+    }>;
+
+    // Create a revoked session first
+    const loginSession = await env.data.loginSessions.create("tenantId", {
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      csrf_token: "csrfToken",
+      authParams: {
+        client_id: "clientId",
+      },
+    });
+
+    const revokedSession = await env.data.sessions.create("tenantId", {
+      id: "revokedSessionId",
+      user_id: "email|userId",
+      login_session_id: loginSession.id,
+      device: {
+        last_ip: "",
+        initial_ip: "",
+        last_user_agent: "",
+        initial_user_agent: "",
+        initial_asn: "",
+        last_asn: "",
+      },
+      clients: ["clientId"],
+      revoked_at: new Date().toISOString(), // Session is revoked
+    });
+
+    const client = await getEnrichedClient(env, "clientId");
+    const user = await env.data.users.get("tenantId", "email|userId");
+
+    if (!client || !user) {
+      throw new Error("Client or user not found");
+    }
+
+    // Call createAuthResponse with the revoked session
+    // It should create a new session instead of reusing the revoked one
+    const authResponse = (await createFrontChannelAuthResponse(ctx, {
+      authParams: {
+        client_id: "clientId",
+        response_type: AuthorizationResponseType.CODE,
+        scope: "openid",
+        redirect_uri: "http://example.com/callback",
+      },
+      client,
+      user,
+      loginSession,
+      existingSessionIdToLink: revokedSession.id,
+    })) as Response;
+
+    expect(authResponse.status).toEqual(302);
+
+    // Get the updated login session to confirm a NEW session_id was created
+    const updatedLoginSession = await env.data.loginSessions.get(
+      "tenantId",
+      loginSession.id,
+    );
+
+    // Should NOT be the revoked session
+    expect(updatedLoginSession?.session_id).not.toEqual("revokedSessionId");
+    // Should have created a new session
+    expect(updatedLoginSession?.session_id).toBeTruthy();
+
+    // Verify the new session exists and is not revoked
+    const newSession = await env.data.sessions.get(
+      "tenantId",
+      updatedLoginSession!.session_id!,
+    );
+    expect(newSession).toBeTruthy();
+    expect(newSession?.revoked_at).toBeUndefined();
   });
 
   it("should create a refresh token even if there is an existing session and offline_access scope is requested", async () => {
@@ -453,7 +1006,7 @@ describe("common", () => {
       session_id: session.id,
     });
 
-    const client = await env.data.legacyClients.get("clientId");
+    const client = await getEnrichedClient(env, "clientId");
     const user = await getPrimaryUserByEmail({
       userAdapter: env.data.users,
       tenant_id: "tenantId",
@@ -501,7 +1054,7 @@ describe("common", () => {
       Variables: Variables;
     }>;
 
-    const client = await env.data.legacyClients.get("clientId");
+    const client = await getEnrichedClient(env, "clientId");
     const user = await getPrimaryUserByEmail({
       userAdapter: env.data.users,
       tenant_id: "tenantId",
@@ -606,7 +1159,7 @@ describe("common", () => {
       },
     });
 
-    const client = await env.data.legacyClients.get("clientId");
+    const client = await getEnrichedClient(env, "clientId");
     const user = await getPrimaryUserByEmail({
       userAdapter: env.data.users,
       tenant_id: "tenantId",
@@ -703,7 +1256,7 @@ describe("common", () => {
         "Username-Password-Authentication",
       );
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       if (!client) {
         throw new Error("Client not found");
       }
@@ -778,7 +1331,7 @@ describe("common", () => {
         email: "foo@example.com",
       });
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       if (!client || !user) {
         throw new Error("Client or user not found");
       }
@@ -851,7 +1404,7 @@ describe("common", () => {
         email: "foo@example.com",
       });
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       if (!client || !user) {
         throw new Error("Client or user not found");
       }
@@ -940,7 +1493,7 @@ describe("common", () => {
         Variables: Variables;
       }>;
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       const user = await getPrimaryUserByEmail({
         userAdapter: env.data.users,
         tenant_id: "tenantId",
@@ -996,7 +1549,7 @@ describe("common", () => {
         Variables: Variables;
       }>;
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       const user = await getPrimaryUserByEmail({
         userAdapter: env.data.users,
         tenant_id: "tenantId",
@@ -1097,7 +1650,7 @@ describe("common", () => {
         Variables: Variables;
       }>;
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       const user = await getPrimaryUserByEmail({
         userAdapter: env.data.users,
         tenant_id: "tenantId",
@@ -1155,7 +1708,7 @@ describe("common", () => {
         Variables: Variables;
       }>;
 
-      const client = await env.data.legacyClients.get("clientId");
+      const client = await getEnrichedClient(env, "clientId");
       const user = await getPrimaryUserByEmail({
         userAdapter: env.data.users,
         tenant_id: "tenantId",

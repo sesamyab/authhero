@@ -1,5 +1,175 @@
 # authhero
 
+## 4.28.0
+
+### Minor Changes
+
+- 88a03cd: Add ssr for widget
+- ac8af37: Add custom text support
+
+### Patch Changes
+
+- Updated dependencies [88a03cd]
+- Updated dependencies [ac8af37]
+  - @authhero/widget@0.9.0
+  - @authhero/adapter-interfaces@0.130.0
+
+## 4.27.0
+
+### Minor Changes
+
+- a8e70e6: Fix fallbacks for sms service options
+- a8e70e6: Update schemas to remove old fallbacks
+
+### Patch Changes
+
+- Updated dependencies [a8e70e6]
+  - @authhero/adapter-interfaces@0.129.0
+
+## 4.26.0
+
+### Minor Changes
+
+- f0fc1a0: Render themes and branding for widget
+
+## 4.25.0
+
+### Minor Changes
+
+- e7f5ce5: Fix the universal-login-template in kysley
+
+## 4.24.0
+
+### Minor Changes
+
+- 6585906: Move universal login templates to separate adapter
+
+### Patch Changes
+
+- Updated dependencies [6585906]
+  - @authhero/adapter-interfaces@0.128.0
+
+## 4.23.0
+
+### Minor Changes
+
+- fd374a9: Set theme id
+- 8150432: Replaced legacy client
+
+### Patch Changes
+
+- Updated dependencies [fd374a9]
+- Updated dependencies [8150432]
+  - @authhero/adapter-interfaces@0.127.0
+
+## 4.22.0
+
+### Minor Changes
+
+- de7cb56: Filter out revoked sessions
+- 154993d: Improve react-admin experience by clearing caches and setting cores
+
+### Patch Changes
+
+- Updated dependencies [154993d]
+  - @authhero/adapter-interfaces@0.126.0
+
+## 4.21.0
+
+### Minor Changes
+
+- 491842a: Bump packages to make sure the universal_login_templates is available
+
+### Patch Changes
+
+- Updated dependencies [491842a]
+  - @authhero/adapter-interfaces@0.125.0
+
+## 4.20.0
+
+### Minor Changes
+
+- 2af900c: Create a per user session cleanup
+- 2be02f8: Add dynamic liquid templates
+- 2af900c: Update guids to ulids
+
+### Patch Changes
+
+- Updated dependencies [2af900c]
+- Updated dependencies [2be02f8]
+  - @authhero/adapter-interfaces@0.124.0
+
+## 4.19.0
+
+### Minor Changes
+
+- d979690: Update the widget embed functionality
+
+## 4.18.0
+
+### Minor Changes
+
+- 147462f: Fix logouts for custom domains
+
+## 4.17.0
+
+### Minor Changes
+
+- 9e7e36d: Handle multiple cookies
+- c0792f6: Fix trailings slashes in redirect url
+
+## 4.16.0
+
+### Minor Changes
+
+- f44bcd8: Temporary fix for move to partitioned cookies
+
+## 4.15.0
+
+### Minor Changes
+
+- 2d0a7f4: Add a auth0-conformance flag
+
+### Patch Changes
+
+- Updated dependencies [2d0a7f4]
+  - @authhero/adapter-interfaces@0.123.0
+
+## 4.14.0
+
+### Minor Changes
+
+- 6f09503: Add favicon support to ui
+
+## 4.13.0
+
+### Minor Changes
+
+- 8b9cb85: First passing openid test
+- 16d21c8: Add paritioned cookies
+
+## 4.12.0
+
+### Minor Changes
+
+- 5519225: Patch the scopes for client credentials
+- 829afab: Hide sensistive info in management api
+- 76510cd: Fixes for branding page and endpoint
+
+## 4.11.0
+
+### Minor Changes
+
+- be0ac26: Fixed and issue with email users not being logged in after form hook
+
+## 4.10.0
+
+### Minor Changes
+
+- a5f451a: Update the state logic for the continue endpoint
+- 2cb9fc0: Fix the social links in the login-widget
+- 2cb9fc0: Add a powered-by logo
+
 ## 4.9.1
 
 ### Patch Changes

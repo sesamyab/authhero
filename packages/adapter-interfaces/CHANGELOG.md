@@ -1,5 +1,55 @@
 # @authhero/adapter-interfaces
 
+## 0.130.0
+
+### Minor Changes
+
+- ac8af37: Add custom text support
+
+## 0.129.0
+
+### Minor Changes
+
+- a8e70e6: Update schemas to remove old fallbacks
+
+## 0.128.0
+
+### Minor Changes
+
+- 6585906: Move universal login templates to separate adapter
+
+## 0.127.0
+
+### Minor Changes
+
+- fd374a9: Set theme id
+- 8150432: Replaced legacy client
+
+## 0.126.0
+
+### Minor Changes
+
+- 154993d: Improve react-admin experience by clearing caches and setting cores
+
+## 0.125.0
+
+### Minor Changes
+
+- 491842a: Bump packages to make sure the universal_login_templates is available
+
+## 0.124.0
+
+### Minor Changes
+
+- 2af900c: Create a per user session cleanup
+- 2be02f8: Add dynamic liquid templates
+
+## 0.123.0
+
+### Minor Changes
+
+- 2d0a7f4: Add a auth0-conformance flag
+
 ## 0.122.0
 
 ### Minor Changes

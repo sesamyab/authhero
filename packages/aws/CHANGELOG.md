@@ -1,5 +1,88 @@
 # @authhero/aws-adapter
 
+## 0.15.1
+
+### Patch Changes
+
+- Updated dependencies [ac8af37]
+  - @authhero/adapter-interfaces@0.130.0
+
+## 0.15.0
+
+### Minor Changes
+
+- a8e70e6: Update schemas to remove old fallbacks
+
+### Patch Changes
+
+- Updated dependencies [a8e70e6]
+  - @authhero/adapter-interfaces@0.129.0
+
+## 0.14.0
+
+### Minor Changes
+
+- 6585906: Move universal login templates to separate adapter
+
+### Patch Changes
+
+- Updated dependencies [6585906]
+  - @authhero/adapter-interfaces@0.128.0
+
+## 0.13.0
+
+### Minor Changes
+
+- fd374a9: Set theme id
+- 8150432: Replaced legacy client
+
+### Patch Changes
+
+- Updated dependencies [fd374a9]
+- Updated dependencies [8150432]
+  - @authhero/adapter-interfaces@0.127.0
+
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [154993d]
+  - @authhero/adapter-interfaces@0.126.0
+
+## 0.12.0
+
+### Minor Changes
+
+- 491842a: Bump packages to make sure the universal_login_templates is available
+
+### Patch Changes
+
+- Updated dependencies [491842a]
+  - @authhero/adapter-interfaces@0.125.0
+
+## 0.11.0
+
+### Minor Changes
+
+- 2be02f8: Add dynamic liquid templates
+
+### Patch Changes
+
+- Updated dependencies [2af900c]
+- Updated dependencies [2be02f8]
+  - @authhero/adapter-interfaces@0.124.0
+
+## 0.10.0
+
+### Minor Changes
+
+- 2d0a7f4: Add a auth0-conformance flag
+
+### Patch Changes
+
+- Updated dependencies [2d0a7f4]
+  - @authhero/adapter-interfaces@0.123.0
+
 ## 0.9.1
 
 ### Patch Changes
