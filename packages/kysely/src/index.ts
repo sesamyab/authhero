@@ -1,4 +1,5 @@
 import { Kysely } from "kysely";
+import { createActionsAdapter } from "./actions";
 import { createUsersAdapter } from "./users";
 import { createFlowsAdapter } from "./flows";
 import { createTenantsAdapter } from "./tenants";
@@ -11,11 +12,13 @@ import { createConnectionsAdapter } from "./connections";
 import { createClientsAdapter } from "./clients";
 import { createClientConnectionsAdapter } from "./clientConnections";
 import { createClientGrantsAdapter } from "./clientGrants";
+import { createClientRegistrationTokensAdapter } from "./clientRegistrationTokens";
 import { createKeysAdapter } from "./keys";
 import { createCustomDomainsAdapter } from "./customDomains";
 import { createBrandingAdapter } from "./branding";
 import { createUniversalLoginTemplatesAdapter } from "./universalLoginTemplates";
 import { createHooksAdapter } from "./hooks";
+import { createHookCodeAdapter } from "./hook-code";
 import { createThemesAdapter } from "./themes";
 import { DataAdapters } from "@authhero/adapter-interfaces";
 import { createLoginAdapter } from "./loginSessions";
@@ -44,16 +47,19 @@ export default function createAdapters(
   databaseOptions = { useTransactions: true },
 ): DataAdapters {
   const adapters: DataAdapters = {
+    actions: createActionsAdapter(db),
     branding: createBrandingAdapter(db),
     clients: createClientsAdapter(db),
     clientConnections: createClientConnectionsAdapter(db),
     clientGrants: createClientGrantsAdapter(db),
+    clientRegistrationTokens: createClientRegistrationTokensAdapter(db),
     codes: createCodesAdapter(db),
     connections: createConnectionsAdapter(db),
     emailProviders: createEmailProvidersAdapter(db),
     customDomains: createCustomDomainsAdapter(db),
     flows: createFlowsAdapter(db),
     forms: createFormsAdapter(db),
+    hookCode: createHookCodeAdapter(db),
     hooks: createHooksAdapter(db),
     invites: createInvitesAdapter(db),
     keys: createKeysAdapter(db),
@@ -74,7 +80,7 @@ export default function createAdapters(
     themes: createThemesAdapter(db),
     universalLoginTemplates: createUniversalLoginTemplatesAdapter(db),
     customText: createCustomTextAdapter(db),
-    users: createUsersAdapter(db, databaseOptions),
+    users: createUsersAdapter(db),
     organizations: createOrganizationsAdapter(db),
     userOrganizations: createUserOrganizationsAdapter(db),
     stats: createStatsAdapter(db),
@@ -86,7 +92,10 @@ export default function createAdapters(
         return fn(adapters);
       }
       return db.transaction().execute(async (trx) => {
-        const trxAdapters = createAdapters(trx, databaseOptions);
+        const trxAdapters = createAdapters(trx, {
+          ...databaseOptions,
+          useTransactions: false,
+        });
         return fn(trxAdapters);
       });
     },

@@ -75,6 +75,7 @@ CREATE TABLE `users` (
 	`last_ip` text(255),
 	`login_count` integer NOT NULL,
 	`last_login` text(255),
+	`registration_completed_at` text(35),
 	`provider` text(255) NOT NULL,
 	`connection` text(255),
 	`email_verified` integer NOT NULL,
@@ -145,22 +146,7 @@ CREATE TABLE `login_sessions` (
 	`tenant_id` text(191) NOT NULL,
 	`session_id` text(21),
 	`csrf_token` text(21) NOT NULL,
-	`authParams_client_id` text(191) NOT NULL,
-	`authParams_vendor_id` text(255),
-	`authParams_username` text(255),
-	`authParams_response_type` text(255),
-	`authParams_response_mode` text(255),
-	`authParams_audience` text(255),
-	`authParams_scope` text,
-	`authParams_state` text,
-	`authParams_nonce` text(255),
-	`authParams_code_challenge_method` text(255),
-	`authParams_code_challenge` text(255),
-	`authParams_redirect_uri` text,
-	`authParams_organization` text(255),
-	`authParams_prompt` text(32),
-	`authParams_act_as` text(256),
-	`authParams_ui_locales` text(32),
+	`auth_params` text,
 	`authorization_url` text,
 	`created_at_ts` integer NOT NULL,
 	`updated_at_ts` integer NOT NULL,
@@ -173,6 +159,9 @@ CREATE TABLE `login_sessions` (
 	`failure_reason` text,
 	`user_id` text(255),
 	`auth_connection` text(255),
+	`auth_strategy_strategy` text(64),
+	`auth_strategy_strategy_type` text(64),
+	`authenticated_at` text(35),
 	PRIMARY KEY(`tenant_id`, `id`),
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -210,7 +199,7 @@ CREATE TABLE `refresh_tokens` (
 	`id` text(21) NOT NULL,
 	`tenant_id` text(191) NOT NULL,
 	`client_id` text(191) NOT NULL,
-	`session_id` text(21) NOT NULL,
+	`login_id` text(21) NOT NULL,
 	`user_id` text(255),
 	`resource_servers` text NOT NULL,
 	`device` text NOT NULL,
@@ -219,12 +208,13 @@ CREATE TABLE `refresh_tokens` (
 	`expires_at_ts` integer,
 	`idle_expires_at_ts` integer,
 	`last_exchanged_at_ts` integer,
+	`revoked_at_ts` integer,
 	PRIMARY KEY(`tenant_id`, `id`),
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE INDEX `idx_refresh_tokens_user_id` ON `refresh_tokens` (`tenant_id`,`user_id`);--> statement-breakpoint
-CREATE INDEX `idx_refresh_tokens_session_id` ON `refresh_tokens` (`session_id`);--> statement-breakpoint
+CREATE INDEX `idx_refresh_tokens_login_id` ON `refresh_tokens` (`login_id`);--> statement-breakpoint
 CREATE INDEX `idx_refresh_tokens_expires_at_ts` ON `refresh_tokens` (`expires_at_ts`);--> statement-breakpoint
 CREATE TABLE `sessions` (
 	`id` text(21) NOT NULL,
@@ -335,10 +325,32 @@ CREATE TABLE `clients` (
 	`created_at` text(35) NOT NULL,
 	`updated_at` text(35) NOT NULL,
 	`connections` text DEFAULT '[]' NOT NULL,
+	`owner_user_id` text(255),
+	`registration_type` text(32),
+	`registration_metadata` text,
 	PRIMARY KEY(`tenant_id`, `client_id`),
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_clients_owner_user_id` ON `clients` (`tenant_id`,`owner_user_id`);--> statement-breakpoint
+CREATE TABLE `client_registration_tokens` (
+	`id` text(255) PRIMARY KEY NOT NULL,
+	`tenant_id` text(191) NOT NULL,
+	`token_hash` text(64) NOT NULL,
+	`type` text(8) NOT NULL,
+	`client_id` text(191),
+	`sub` text(255),
+	`constraints` text,
+	`single_use` integer DEFAULT 0 NOT NULL,
+	`used_at_ts` integer,
+	`expires_at_ts` integer,
+	`created_at_ts` integer NOT NULL,
+	`revoked_at_ts` integer,
+	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_client_registration_tokens_hash` ON `client_registration_tokens` (`tenant_id`,`token_hash`);--> statement-breakpoint
+CREATE INDEX `idx_client_registration_tokens_client` ON `client_registration_tokens` (`tenant_id`,`client_id`);--> statement-breakpoint
 CREATE TABLE `connections` (
 	`id` text(255) NOT NULL,
 	`tenant_id` text(191) NOT NULL,
@@ -377,6 +389,7 @@ CREATE TABLE `custom_domains` (
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `custom_domains_domain_unique` ON `custom_domains` (`domain`);--> statement-breakpoint
 CREATE TABLE `domains` (
 	`id` text(255) PRIMARY KEY NOT NULL,
 	`tenant_id` text(191) NOT NULL,
@@ -572,6 +585,17 @@ CREATE TABLE `forms` (
 );
 --> statement-breakpoint
 CREATE INDEX `forms_tenant_id_idx` ON `forms` (`tenant_id`);--> statement-breakpoint
+CREATE TABLE `hook_code` (
+	`id` text(21) PRIMARY KEY NOT NULL,
+	`tenant_id` text(191) NOT NULL,
+	`code` text NOT NULL,
+	`secrets` text,
+	`created_at_ts` integer NOT NULL,
+	`updated_at_ts` integer NOT NULL,
+	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `hook_code_tenant_id_idx` ON `hook_code` (`tenant_id`);--> statement-breakpoint
 CREATE TABLE `hooks` (
 	`hook_id` text(21) PRIMARY KEY NOT NULL,
 	`tenant_id` text(191) NOT NULL,
@@ -584,9 +608,11 @@ CREATE TABLE `hooks` (
 	`priority` integer,
 	`form_id` text(128),
 	`template_id` text(64),
+	`code_id` text(21),
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `hooks_tenant_id_idx` ON `hooks` (`tenant_id`);--> statement-breakpoint
 CREATE TABLE `keys` (
 	`kid` text(255) PRIMARY KEY NOT NULL,
 	`tenant_id` text(191),
@@ -682,6 +708,27 @@ CREATE TABLE `universal_login_templates` (
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE TABLE `authentication_methods` (
+	`id` text(26) PRIMARY KEY NOT NULL,
+	`tenant_id` text(191) NOT NULL,
+	`user_id` text(255) NOT NULL,
+	`type` text(32) NOT NULL,
+	`phone_number` text(32),
+	`totp_secret` text(255),
+	`credential_id` text(512),
+	`public_key` text,
+	`sign_count` integer,
+	`credential_backed_up` integer,
+	`transports` text(512),
+	`friendly_name` text(255),
+	`confirmed` integer DEFAULT 0 NOT NULL,
+	`created_at_ts` integer NOT NULL,
+	`updated_at_ts` integer NOT NULL,
+	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `authentication_methods_tenant_user_idx` ON `authentication_methods` (`tenant_id`,`user_id`);--> statement-breakpoint
+CREATE INDEX `authentication_methods_credential_id_idx` ON `authentication_methods` (`credential_id`);--> statement-breakpoint
 CREATE TABLE `logs` (
 	`log_id` text(21) PRIMARY KEY NOT NULL,
 	`category` text(255),
@@ -717,4 +764,28 @@ CREATE TABLE `logs` (
 CREATE INDEX `logs_user_id` ON `logs` (`user_id`);--> statement-breakpoint
 CREATE INDEX `logs_tenant_id` ON `logs` (`tenant_id`);--> statement-breakpoint
 CREATE INDEX `logs_date` ON `logs` (`date`);--> statement-breakpoint
-CREATE INDEX `IDX_logs_tenant_date_type_user` ON `logs` (`tenant_id`,`date`,`type`,`user_id`);
+CREATE INDEX `IDX_logs_tenant_date_type_user` ON `logs` (`tenant_id`,`date`,`type`,`user_id`);--> statement-breakpoint
+CREATE TABLE `outbox_events` (
+	`id` text(26) PRIMARY KEY NOT NULL,
+	`tenant_id` text(191) NOT NULL,
+	`event_type` text(64) NOT NULL,
+	`log_type` text(64) NOT NULL,
+	`aggregate_type` text(64) NOT NULL,
+	`aggregate_id` text(255) NOT NULL,
+	`payload` text NOT NULL,
+	`created_at` text(35) NOT NULL,
+	`processed_at` text(35),
+	`retry_count` integer DEFAULT 0 NOT NULL,
+	`next_retry_at` text(35),
+	`error` text,
+	`claimed_by` text(255),
+	`claim_expires_at` text(35),
+	`dead_lettered_at` text(35),
+	`final_error` text,
+	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_outbox_events_tenant_id` ON `outbox_events` (`tenant_id`);--> statement-breakpoint
+CREATE INDEX `idx_outbox_events_processed_at` ON `outbox_events` (`processed_at`);--> statement-breakpoint
+CREATE INDEX `idx_outbox_events_claimed_by` ON `outbox_events` (`claimed_by`);--> statement-breakpoint
+CREATE INDEX `idx_outbox_events_tenant_dead_lettered` ON `outbox_events` (`tenant_id`,`dead_lettered_at`);

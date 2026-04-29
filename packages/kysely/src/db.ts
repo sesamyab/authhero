@@ -47,6 +47,16 @@ const sqlLoginSchema = flattenSchema(loginSessionSchema)
     failure_reason: z.string().optional(),
     user_id: z.string().optional(),
     auth_connection: z.string().optional(),
+    auth_strategy_strategy: z.string().optional(),
+    auth_strategy_strategy_type: z.string().optional(),
+    authenticated_at: z.string().optional(),
+    // JSON-serialized authParams. Sole storage for authParams — the legacy
+    // hoisted authParams_* columns are dropped in
+    // 2026-04-21T10:00:00_drop_login_sessions_hoisted_authparams (the
+    // preceding 2026-04-20T12:00:00_relax_login_sessions_authparams drops
+    // the FK and relaxes NOT NULL so the blob-only write path works on the
+    // pre-drop schema too).
+    auth_params: z.string().optional(),
     // Date fields - bigint timestamps with _ts suffix
     created_at_ts: z.number(),
     updated_at_ts: z.number(),
@@ -121,6 +131,31 @@ const sqlHookSchema = z.object({
   url: z.string().optional().nullable(),
   form_id: z.string().optional().nullable(),
   template_id: z.string().optional().nullable(),
+  code_id: z.string().optional().nullable(),
+});
+
+export const sqlActionSchema = z.object({
+  id: z.string(),
+  tenant_id: z.string(),
+  name: z.string(),
+  code: z.string(),
+  runtime: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+  secrets: z.string().optional().nullable(),
+  dependencies: z.string().optional().nullable(),
+  supported_triggers: z.string().optional().nullable(),
+  deployed_at_ts: z.number().optional().nullable(),
+  created_at_ts: z.number(),
+  updated_at_ts: z.number(),
+});
+
+export const sqlHookCodeSchema = z.object({
+  id: z.string(),
+  tenant_id: z.string(),
+  code: z.string(),
+  secrets: z.string().optional().nullable(),
+  created_at_ts: z.number(),
+  updated_at_ts: z.number(),
 });
 
 const sqlEmailProvidersSchema = z.object({
@@ -167,6 +202,7 @@ const sqlRefreshTokensSchema = refreshTokenSchema
     expires_at: true,
     idle_expires_at: true,
     last_exchanged_at: true,
+    revoked_at: true,
     device: true,
     resource_servers: true,
     rotating: true,
@@ -181,6 +217,7 @@ const sqlRefreshTokensSchema = refreshTokenSchema
     expires_at_ts: z.number().nullable().optional(),
     idle_expires_at_ts: z.number().nullable().optional(),
     last_exchanged_at_ts: z.number().nullable().optional(),
+    revoked_at_ts: z.number().nullable().optional(),
   });
 
 const sqlCustomDomainSchema = z.object({
@@ -368,6 +405,24 @@ const sqlClientSchema = z.object({
   client_authentication_methods: z.string(),
   signed_request_object: z.string(),
   token_quota: z.string(),
+  owner_user_id: z.string().optional().nullable(),
+  registration_type: z.string().optional().nullable(),
+  registration_metadata: z.string().optional().nullable(),
+});
+
+export const sqlClientRegistrationTokenSchema = z.object({
+  id: z.string(),
+  tenant_id: z.string(),
+  token_hash: z.string(),
+  type: z.string(),
+  client_id: z.string().optional().nullable(),
+  sub: z.string().optional().nullable(),
+  constraints: z.string().optional().nullable(),
+  single_use: z.number(),
+  used_at_ts: z.number().optional().nullable(),
+  expires_at_ts: z.number().optional().nullable(),
+  created_at_ts: z.number(),
+  revoked_at_ts: z.number().optional().nullable(),
 });
 
 export const sqlAuthenticationMethodSchema = z.object({
@@ -389,15 +444,18 @@ export const sqlAuthenticationMethodSchema = z.object({
 });
 
 export interface Database {
+  actions: z.infer<typeof sqlActionSchema>;
   flows: z.infer<typeof sqlFlowSchema>;
   branding: z.infer<typeof sqlBrandingSchema>;
   clients: z.infer<typeof sqlClientSchema>;
   client_grants: z.infer<typeof sqlClientGrantSchema>;
+  client_registration_tokens: z.infer<typeof sqlClientRegistrationTokenSchema>;
   codes: Code & { tenant_id: string };
   connections: z.infer<typeof sqlConnectionSchema>;
   custom_domains: z.infer<typeof sqlCustomDomainSchema>;
   email_providers: z.infer<typeof sqlEmailProvidersSchema>;
   forms: z.infer<typeof sqlFormSchema>;
+  hook_code: z.infer<typeof sqlHookCodeSchema>;
   hooks: z.infer<typeof sqlHookSchema>;
   keys: SigningKey & { created_at: string };
   login_sessions: z.infer<typeof sqlLoginSchema>;
@@ -435,5 +493,7 @@ export interface Database {
     error: string | null;
     claimed_by: string | null;
     claim_expires_at: string | null;
+    dead_lettered_at: string | null;
+    final_error: string | null;
   };
 }

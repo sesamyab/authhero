@@ -148,6 +148,7 @@ describe("authorize", () => {
       state: "state",
       ui_locales: "en",
       organization: "organization",
+      audience: "https://example.com",
     });
     expect(login.auth0Client).toBe("auth0-spa-js/2.1.3");
 
@@ -391,7 +392,9 @@ describe("authorize", () => {
       // Fetch the session
       const session = await env.data.sessions.get("tenantId", "sessionId");
       expect(session?.used_at).toBeDefined();
-      expect(session?.idle_expires_at).not.toBe(idle_expires_at);
+      expect(
+        new Date(session!.idle_expires_at).getTime(),
+      ).toBeGreaterThanOrEqual(new Date(idle_expires_at).getTime());
 
       // Fetch the code
       const code = await env.data.codes.get(
@@ -485,7 +488,9 @@ describe("authorize", () => {
       // Fetch the session
       const session = await env.data.sessions.get("tenantId", "sessionId");
       expect(session?.used_at).toBeDefined();
-      expect(session?.idle_expires_at).not.toBe(idle_expires_at);
+      expect(
+        new Date(session!.idle_expires_at).getTime(),
+      ).toBeGreaterThanOrEqual(new Date(idle_expires_at).getTime());
     });
 
     it("should return a web_message response with login required for a expired session", async () => {
@@ -915,6 +920,307 @@ describe("authorize", () => {
 
       expect(login).toBeTruthy();
       expect(login?.authParams.state).toBe("query-state");
+    });
+  });
+
+  describe("sso_disabled", () => {
+    it("should return login_required for prompt=none when sso_disabled is true despite valid session", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const oauthClient = testClient(oauthApp, env);
+
+      // Update the client to have sso_disabled=true
+      await env.data.clients.update("tenantId", "clientId", {
+        sso_disabled: true,
+      });
+
+      const loginSession = await env.data.loginSessions.create("tenantId", {
+        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+        csrf_token: "csrfToken",
+        authParams: {
+          client_id: "clientId",
+          username: "foo@example.com",
+          redirect_uri: "https://example.com/callback",
+        },
+      });
+
+      await env.data.sessions.create("tenantId", {
+        id: "ssoDisabledSessionId",
+        user_id: "email|userId",
+        clients: ["clientId"],
+        idle_expires_at: new Date(Date.now() + 1000).toISOString(),
+        login_session_id: loginSession.id,
+        device: {
+          last_ip: "",
+          initial_ip: "",
+          last_user_agent: "",
+          initial_user_agent: "",
+          initial_asn: "",
+          last_asn: "",
+        },
+      });
+
+      const response = await oauthClient.authorize.$get(
+        {
+          query: {
+            client_id: "clientId",
+            redirect_uri: "https://example.com/callback",
+            state: "state",
+            nonce: "nonce",
+            code_challenge: "codeChallenge",
+            code_challenge_method: CodeChallengeMethod.S256,
+            scope: "openid email profile",
+            prompt: "none",
+            response_mode: AuthorizationResponseMode.WEB_MESSAGE,
+            response_type: AuthorizationResponseType.CODE,
+          },
+        },
+        {
+          headers: {
+            origin: "https://example.com",
+            cookie: "tenantId-auth-token=ssoDisabledSessionId",
+          },
+        },
+      );
+
+      expect(response.status).toEqual(200);
+      const body = await response.text();
+      expect(body).toContain("login_required");
+    });
+
+    it("should redirect to login when sso_disabled is true despite valid session", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const oauthClient = testClient(oauthApp, env);
+
+      // Update the client to have sso_disabled=true
+      await env.data.clients.update("tenantId", "clientId", {
+        sso_disabled: true,
+      });
+
+      const loginSession = await env.data.loginSessions.create("tenantId", {
+        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+        csrf_token: "csrfToken",
+        authParams: {
+          client_id: "clientId",
+          username: "foo@example.com",
+          redirect_uri: "https://example.com/callback",
+        },
+      });
+
+      await env.data.sessions.create("tenantId", {
+        id: "ssoDisabledSessionId2",
+        user_id: "email|userId",
+        clients: ["clientId"],
+        idle_expires_at: new Date(Date.now() + 1000).toISOString(),
+        login_session_id: loginSession.id,
+        device: {
+          last_ip: "",
+          initial_ip: "",
+          last_user_agent: "",
+          initial_user_agent: "",
+          initial_asn: "",
+          last_asn: "",
+        },
+      });
+
+      const response = await oauthClient.authorize.$get(
+        {
+          query: {
+            client_id: "clientId",
+            redirect_uri: "https://example.com/callback",
+            state: "state",
+            nonce: "nonce",
+            scope: "openid email profile",
+            response_type: AuthorizationResponseType.CODE,
+          },
+        },
+        {
+          headers: {
+            origin: "https://example.com",
+            cookie: "tenantId-auth-token=ssoDisabledSessionId2",
+          },
+        },
+      );
+
+      // Should redirect to login, not to check-account
+      expect(response.status).toEqual(302);
+      const location = response.headers.get("location");
+      expect(location).toContain("/u/login/identifier");
+      expect(location).not.toContain("/check-account");
+    });
+
+    it("should reuse session for prompt=none when sso_disabled is false", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const oauthClient = testClient(oauthApp, env);
+
+      // Default test client has sso_disabled=false, but set explicitly for clarity
+      await env.data.clients.update("tenantId", "clientId", {
+        sso_disabled: false,
+      });
+
+      const loginSession = await env.data.loginSessions.create("tenantId", {
+        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+        csrf_token: "csrfToken",
+        authParams: {
+          client_id: "clientId",
+          username: "foo@example.com",
+          redirect_uri: "https://example.com/callback",
+        },
+      });
+
+      await env.data.sessions.create("tenantId", {
+        id: "ssoEnabledSessionId",
+        user_id: "email|userId",
+        clients: ["clientId"],
+        idle_expires_at: new Date(Date.now() + 1000).toISOString(),
+        login_session_id: loginSession.id,
+        device: {
+          last_ip: "",
+          initial_ip: "",
+          last_user_agent: "",
+          initial_user_agent: "",
+          initial_asn: "",
+          last_asn: "",
+        },
+      });
+
+      const response = await oauthClient.authorize.$get(
+        {
+          query: {
+            client_id: "clientId",
+            redirect_uri: "https://example.com/callback",
+            state: "state",
+            nonce: "nonce",
+            code_challenge: "codeChallenge",
+            code_challenge_method: CodeChallengeMethod.S256,
+            scope: "openid email profile",
+            prompt: "none",
+            response_mode: AuthorizationResponseMode.WEB_MESSAGE,
+            response_type: AuthorizationResponseType.CODE,
+          },
+        },
+        {
+          headers: {
+            origin: "https://example.com",
+            cookie: "tenantId-auth-token=ssoEnabledSessionId",
+          },
+        },
+      );
+
+      expect(response.status).toEqual(200);
+      const body = await response.text();
+      expect(body).toContain('"code":"');
+    });
+  });
+
+  describe("screen_hint", () => {
+    it("should skip check-account and go to login/identifier when screen_hint=login and a session exists", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const oauthClient = testClient(oauthApp, env);
+
+      const loginSession = await env.data.loginSessions.create("tenantId", {
+        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+        csrf_token: "csrfToken",
+        authParams: {
+          client_id: "clientId",
+          username: "foo@example.com",
+          redirect_uri: "https://example.com/callback",
+        },
+      });
+
+      await env.data.sessions.create("tenantId", {
+        id: "screenHintSessionId",
+        user_id: "email|userId",
+        clients: ["clientId"],
+        idle_expires_at: new Date(Date.now() + 1000).toISOString(),
+        login_session_id: loginSession.id,
+        device: {
+          last_ip: "",
+          initial_ip: "",
+          last_user_agent: "",
+          initial_user_agent: "",
+          initial_asn: "",
+          last_asn: "",
+        },
+      });
+
+      const response = await oauthClient.authorize.$get(
+        {
+          query: {
+            client_id: "clientId",
+            redirect_uri: "https://example.com/callback",
+            state: "state",
+            nonce: "nonce",
+            scope: "openid email profile",
+            response_type: AuthorizationResponseType.CODE,
+            screen_hint: "login",
+          },
+        },
+        {
+          headers: {
+            origin: "https://example.com",
+            cookie: "tenantId-auth-token=screenHintSessionId",
+          },
+        },
+      );
+
+      expect(response.status).toEqual(302);
+      const location = response.headers.get("location");
+      expect(location).toContain("/u/login/identifier");
+      expect(location).not.toContain("/check-account");
+    });
+
+    it("should still redirect to check-account when a session exists and no screen_hint is provided", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const oauthClient = testClient(oauthApp, env);
+
+      const loginSession = await env.data.loginSessions.create("tenantId", {
+        expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+        csrf_token: "csrfToken",
+        authParams: {
+          client_id: "clientId",
+          username: "foo@example.com",
+          redirect_uri: "https://example.com/callback",
+        },
+      });
+
+      await env.data.sessions.create("tenantId", {
+        id: "checkAccountSessionId",
+        user_id: "email|userId",
+        clients: ["clientId"],
+        idle_expires_at: new Date(Date.now() + 1000).toISOString(),
+        login_session_id: loginSession.id,
+        device: {
+          last_ip: "",
+          initial_ip: "",
+          last_user_agent: "",
+          initial_user_agent: "",
+          initial_asn: "",
+          last_asn: "",
+        },
+      });
+
+      const response = await oauthClient.authorize.$get(
+        {
+          query: {
+            client_id: "clientId",
+            redirect_uri: "https://example.com/callback",
+            state: "state",
+            nonce: "nonce",
+            scope: "openid email profile",
+            response_type: AuthorizationResponseType.CODE,
+          },
+        },
+        {
+          headers: {
+            origin: "https://example.com",
+            cookie: "tenantId-auth-token=checkAccountSessionId",
+          },
+        },
+      );
+
+      expect(response.status).toEqual(302);
+      const location = response.headers.get("location");
+      expect(location).toContain("/u/check-account");
     });
   });
 });

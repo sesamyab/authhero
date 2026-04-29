@@ -121,7 +121,8 @@
       "usernamePlaceholder": "Nazwa użytkownika lub adres e-mail",
       "usernameTooLong": "Nazwa użytkownika musi mieć maksymalnie ${max} znaków",
       "usernameTooShort": "Nazwa użytkownika musi mieć co najmniej ${min} znaków",
-      "wrongCredentials": "Nieprawidłowa nazwa użytkownika lub hasło"
+      "wrongCredentials": "Nieprawidłowa nazwa użytkownika lub hasło",
+      "passkeyButtonText": "Zaloguj się za pomocą passkey"
     }
   },
   "login-id": {
@@ -197,7 +198,8 @@
       "wrong-email-username-credentials": "Nieprawidłowy adres e-mail, nazwa użytkownika lub hasło",
       "wrong-phone-credentials": "Nieprawidłowy numer telefonu lub hasło",
       "wrong-phone-username-credentials": "Nieprawidłowy numer telefonu, nazwa użytkownika lub hasło. Numery telefonów muszą zawierać kod kraju.",
-      "wrong-username-credentials": "Nieprawidłowa nazwa użytkownika lub hasło"
+      "wrong-username-credentials": "Nieprawidłowa nazwa użytkownika lub hasło",
+      "passkeyButtonText": "Zaloguj się za pomocą passkey"
     }
   },
   "login-password": {
@@ -416,6 +418,14 @@
       "retryButtonText": "Spróbuj ponownie",
       "enrollmentComplete": "Twój klucz dostępu został pomyślnie skonfigurowany. Możesz zamknąć tę stronę.",
       "pageTitle": "Tworzenie Klucza Dostępu | ${clientName}"
+    },
+    "passkey-challenge": {
+      "title": "Zaloguj się za pomocą passkey",
+      "description": "Postępuj zgodnie z instrukcjami przeglądarki, aby zweryfikować swoją tożsamość.",
+      "errorMessage": "Uwierzytelnianie za pomocą passkey nie powiodło się. Spróbuj ponownie.",
+      "cancelLinkText": "Powrót do logowania",
+      "retryButtonText": "Spróbuj ponownie",
+      "pageTitle": "Logowanie za pomocą passkey | ${clientName}"
     }
   },
   "organizations": {
@@ -447,6 +457,29 @@
       "successTitle": "Sprawdź swoją pocztę",
       "title": "Zapomniałeś hasła?",
       "user-not-found": "Nie znaleziono użytkownika"
+    },
+    "reset-password-code": {
+      "backToLoginText": "Wróć do logowania",
+      "buttonText": "Zresetuj hasło",
+      "codeLabel": "Kod resetowania",
+      "codePlaceholder": "Wprowadź 6-cyfrowy kod",
+      "confirmPasswordLabel": "Potwierdź hasło",
+      "confirmPasswordPlaceholder": "Potwierdź hasło",
+      "defaultDescription": "Wprowadź kod wysłany na Twój e-mail i wybierz nowe hasło",
+      "description": "Wysłaliśmy kod na ${email}",
+      "failed": "Reset hasła nie powiódł się. Spróbuj ponownie.",
+      "invalidCode": "Wprowadzony kod jest nieprawidłowy lub wygasł",
+      "noCode": "Wprowadź kod resetowania",
+      "pageTitle": "Wprowadź kod resetowania | ${clientName}",
+      "passwordLabel": "Nowe hasło",
+      "passwordPlaceholder": "Nowe hasło",
+      "passwordTooWeak": "Hasło jest zbyt słabe",
+      "passwordsDidntMatch": "Hasła nie są zgodne",
+      "resendFailed": "Nie udało się ponownie wysłać kodu. Spróbuj ponownie.",
+      "resendSuccess": "Nowy kod został wysłany na Twój e-mail",
+      "resendText": "Wyślij kod ponownie",
+      "sessionExpired": "Twoja sesja wygasła. Spróbuj ponownie.",
+      "title": "Wprowadź kod resetowania"
     }
   },
   "signup": {

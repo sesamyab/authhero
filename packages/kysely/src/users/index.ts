@@ -5,15 +5,14 @@ import { list } from "./list";
 import { remove } from "./remove";
 import { update } from "./update";
 import { unlink } from "./unlink";
-import { Database, databaseOptions } from "../db";
+import { Database } from "../db";
 import { UserDataAdapter } from "@authhero/adapter-interfaces";
 
-export function createUsersAdapter(
-  db: Kysely<Database>,
-  databaseOptions: databaseOptions,
-): UserDataAdapter {
+export function createUsersAdapter(db: Kysely<Database>): UserDataAdapter {
+  const createFn = create(db);
   return {
-    create: create(db, databaseOptions),
+    create: createFn,
+    rawCreate: createFn,
     remove: remove(db),
     get: get(db),
     list: list(db),

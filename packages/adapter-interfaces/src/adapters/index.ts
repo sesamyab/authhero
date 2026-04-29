@@ -1,8 +1,10 @@
+import { ActionsAdapter } from "./Actions";
 import { FlowsAdapter } from "./Flows";
 import { CacheAdapter } from "./Cache";
 import { ClientsAdapter } from "./Clients";
 import { ClientConnectionsAdapter } from "./ClientConnections";
 import { ClientGrantsAdapter } from "./ClientGrants";
+import { ClientRegistrationTokensAdapter } from "./ClientRegistrationTokens";
 import { CodesAdapter } from "./Codes";
 import { PasswordsAdapter } from "./Passwords";
 import { SessionsAdapter } from "./Sessions";
@@ -14,6 +16,7 @@ import { CustomDomainsAdapter } from "./CustomDomains";
 import { KeysAdapter } from "./Keys";
 import { BrandingAdapter } from "./Branding";
 import { HooksAdapter } from "./Hooks";
+import { HookCodeAdapter } from "./HookCode";
 import { ThemesAdapter } from "./Themes";
 import { LoginSessionsAdapter } from "./LoginSessions";
 import { PromptSettingsAdapter } from "./PromptSettings";
@@ -48,11 +51,13 @@ export interface SessionCleanupParams {
 }
 
 export interface DataAdapters {
+  actions: ActionsAdapter;
   branding: BrandingAdapter;
   cache?: CacheAdapter;
   clients: ClientsAdapter;
   clientConnections: ClientConnectionsAdapter;
   clientGrants: ClientGrantsAdapter;
+  clientRegistrationTokens?: ClientRegistrationTokensAdapter;
   codes: CodesAdapter;
   connections: ConnectionsAdapter;
   customDomains: CustomDomainsAdapter;
@@ -60,6 +65,7 @@ export interface DataAdapters {
   flows: FlowsAdapter;
   forms: FormsAdapter;
   geo?: GeoAdapter;
+  hookCode: HookCodeAdapter;
   hooks: HooksAdapter;
   invites: InvitesAdapter;
   keys: KeysAdapter;
@@ -109,11 +115,13 @@ export interface DataAdapters {
   };
 }
 
+export * from "./Actions";
 export * from "./Flows";
 export * from "./Cache";
 export * from "./Clients";
 export * from "./ClientConnections";
 export * from "./ClientGrants";
+export * from "./ClientRegistrationTokens";
 export * from "./Keys";
 export * from "./RolePermissions";
 export * from "./UserPermissions";
@@ -129,3 +137,6 @@ export * from "./AuthenticationMethods";
 export * from "./EmailService";
 export * from "./SmsService";
 export * from "./Outbox";
+export * from "./HookCode";
+export * from "./CodeExecutor";
+export * from "./RefreshTokens";

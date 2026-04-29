@@ -121,7 +121,8 @@
       "usernamePlaceholder": "Nome utente o indirizzo email",
       "usernameTooLong": "Il nome utente deve avere al massimo ${max} caratteri",
       "usernameTooShort": "Il nome utente deve avere almeno ${min} caratteri",
-      "wrongCredentials": "Nome utente o password errati"
+      "wrongCredentials": "Nome utente o password errati",
+      "passkeyButtonText": "Accedi con una passkey"
     }
   },
   "login-id": {
@@ -197,7 +198,8 @@
       "wrong-email-username-credentials": "Indirizzo email, nome utente o password errati",
       "wrong-phone-credentials": "Numero di telefono o password errati",
       "wrong-phone-username-credentials": "Numero di telefono, nome utente o password errati. I numeri di telefono devono includere il prefisso internazionale.",
-      "wrong-username-credentials": "Nome utente o password errati"
+      "wrong-username-credentials": "Nome utente o password errati",
+      "passkeyButtonText": "Accedi con una passkey"
     }
   },
   "login-password": {
@@ -416,6 +418,14 @@
       "retryButtonText": "Riprova",
       "enrollmentComplete": "La tua passkey è stata configurata con successo. Puoi chiudere questa pagina.",
       "pageTitle": "Crea Passkey | ${clientName}"
+    },
+    "passkey-challenge": {
+      "title": "Accedi con passkey",
+      "description": "Segui le istruzioni del browser per verificare la tua identità.",
+      "errorMessage": "Autenticazione con passkey non riuscita. Riprova.",
+      "cancelLinkText": "Torna al login",
+      "retryButtonText": "Riprova",
+      "pageTitle": "Accedi con passkey | ${clientName}"
     }
   },
   "organizations": {
@@ -447,6 +457,29 @@
       "successTitle": "Controlla la tua email",
       "title": "Hai dimenticato la password?",
       "user-not-found": "Utente non trovato"
+    },
+    "reset-password-code": {
+      "backToLoginText": "Torna al login",
+      "buttonText": "Reimposta password",
+      "codeLabel": "Codice di reimpostazione",
+      "codePlaceholder": "Inserisci il codice a 6 cifre",
+      "confirmPasswordLabel": "Conferma password",
+      "confirmPasswordPlaceholder": "Conferma password",
+      "defaultDescription": "Inserisci il codice inviato alla tua email e scegli una nuova password",
+      "description": "Abbiamo inviato un codice a ${email}",
+      "failed": "Reimpostazione della password non riuscita. Riprova.",
+      "invalidCode": "Il codice inserito non è valido o è scaduto",
+      "noCode": "Inserisci il codice di reimpostazione",
+      "pageTitle": "Inserisci il codice di reimpostazione | ${clientName}",
+      "passwordLabel": "Nuova password",
+      "passwordPlaceholder": "Nuova password",
+      "passwordTooWeak": "La password è troppo debole",
+      "passwordsDidntMatch": "Le password non corrispondono",
+      "resendFailed": "Impossibile reinviare il codice. Riprova.",
+      "resendSuccess": "Un nuovo codice è stato inviato alla tua email",
+      "resendText": "Reinvia codice",
+      "sessionExpired": "La sessione è scaduta. Riprova.",
+      "title": "Inserisci il codice di reimpostazione"
     }
   },
   "signup": {

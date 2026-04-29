@@ -1,5 +1,130 @@
 # @authhero/react-admin
 
+## 0.65.0
+
+### Minor Changes
+
+- b324f77: Add sync resource server toggle
+
+### Patch Changes
+
+- Updated dependencies [ba03e14]
+  - @authhero/adapter-interfaces@1.10.0
+  - @authhero/widget@0.32.7
+
+## 0.64.2
+
+### Patch Changes
+
+- 931f598: Add `GET /api/v2/users/{user_id}/logs` endpoint that returns log rows for the user and all of its linked secondary identities. Calling it with a secondary user_id returns 404, matching the convention used by the user PATCH endpoint.
+
+  The react-admin user **Logs** tab now hits this endpoint, so it surfaces login activity from linked accounts (which the previous `q=user_id:…` query against `/logs` silently missed, since linked accounts are stored as separate user rows and each retains its own `user_id` on log entries).
+
+- Updated dependencies [931f598]
+  - @authhero/adapter-interfaces@1.5.0
+  - @authhero/widget@0.32.2
+
+## 0.64.1
+
+### Patch Changes
+
+- 6503423: Fix and extend log filtering on the admin logs page.
+  - The `IP Address` filter on the logs list was sent as `?ip=<value>`, but the management API only accepts filters through the Lucene `q` parameter, so the filter was silently dropped. Non-`q` filter fields are now merged into `q` as `key:value` pairs (e.g. `q=ip:89.10.186.153`).
+  - Added `Type` and `Status` (success/failure) select filters to the logs list.
+  - The Cloudflare Analytics Engine adapter now understands the pseudo-filter `success:true|false` and translates it to a `blob3 LIKE 's%' | 'f%'` prefix match on the log type.
+
+## 0.64.0
+
+### Minor Changes
+
+- d288b62: Add support for dynamic workers
+
+### Patch Changes
+
+- Updated dependencies [d288b62]
+  - @authhero/widget@0.32.0
+
+## 0.63.0
+
+### Minor Changes
+
+- 2f6354d: Make session lifetime cofigurable
+
+### Patch Changes
+
+- Updated dependencies [2f6354d]
+  - @authhero/adapter-interfaces@1.3.0
+  - @authhero/widget@0.31.3
+
+## 0.62.0
+
+### Minor Changes
+
+- f662c3b: Add source maps
+
+### Patch Changes
+
+- f662c3b: Fix `Cannot read properties of undefined (reading 'mount')` crash on the Clients edit page.
+  - Collapsed the dual-registered `client_metadata` path: `email_validation` and `disable_sign_ups` are now rendered inside `ClientMetadataInput` instead of as separate `SelectInput` / `BooleanInput` at `client_metadata.*`, so react-hook-form no longer sees the same path as both a leaf and a parent.
+  - Added a `normalizeClient` `queryOptions.select` on the Edit view that defaults `client_metadata`, `addons`, and `addons.samlp` to empty objects when the stored record omits them or returns a non-object, keeping nested inputs (`addons.samlp.*`) safe.
+
+## 0.61.0
+
+### Minor Changes
+
+- 20d5140: Add support for dynamic code
+
+  BREAKING CHANGE: `DataAdapters` now requires a `hookCode: HookCodeAdapter` property. Adapters implementing `DataAdapters` must provide a `hookCode` adapter with `create`, `get`, `update`, and `remove` methods for managing hook code storage. See `packages/kysely/src/hook-code/` for a reference implementation.
+
+### Patch Changes
+
+- Updated dependencies [20d5140]
+  - @authhero/adapter-interfaces@1.0.0
+  - @authhero/widget@0.31.0
+
+## 0.60.0
+
+### Minor Changes
+
+- a59a49b: Implement disable-sso
+
+### Patch Changes
+
+- Updated dependencies [a59a49b]
+- Updated dependencies [4176937]
+  - @authhero/adapter-interfaces@0.155.0
+  - @authhero/widget@0.30.0
+
+## 0.59.0
+
+### Minor Changes
+
+- af80757: Switch to use refresh-tokens
+
+### Patch Changes
+
+- Updated dependencies [884e950]
+  - @authhero/adapter-interfaces@0.153.0
+  - @authhero/widget@0.29.1
+
+## 0.58.0
+
+### Minor Changes
+
+- 2f65572: Fix nested transactions
+- 76f2b7f: Fix paging of clients in react-admin
+
+## 0.57.0
+
+### Minor Changes
+
+- 885eeeb: Fix passkeys
+
+### Patch Changes
+
+- Updated dependencies [885eeeb]
+  - @authhero/widget@0.29.0
+
 ## 0.56.0
 
 ### Minor Changes

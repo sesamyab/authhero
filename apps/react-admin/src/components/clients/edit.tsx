@@ -2,14 +2,11 @@ import {
   DateField,
   Edit,
   Labeled,
-  SelectInput,
   TextInput,
   BooleanInput,
   SimpleShowLayout,
   TextField,
   TabbedForm,
-  SimpleFormIterator,
-  ArrayInput,
   FunctionField,
   ReferenceManyField,
   Datagrid,
@@ -19,6 +16,7 @@ import {
   useRecordContext,
   useRefresh,
   useInput,
+  type RaRecord,
 } from "react-admin";
 // @ts-ignore - React Admin components compatibility with React 19
 const PaginationComponent = Pagination as any;
@@ -47,6 +45,10 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   Paper,
+  Card,
+  CardContent,
+  CardHeader,
+  MenuItem,
 } from "@mui/material";
 import { useState, useEffect, useCallback } from "react";
 import AddIcon from "@mui/icons-material/Add";
@@ -695,6 +697,73 @@ const GrantTypesInput = ({ source }: { source: string }) => {
   );
 };
 
+const StringArrayInput = ({
+  source,
+  label,
+}: {
+  source: string;
+  label?: string;
+}) => {
+  const { field } = useInput({ source });
+  const { value, onChange } = field;
+
+  const items: string[] = Array.isArray(value) ? value : [];
+
+  const handleAdd = () => {
+    onChange([...items, ""]);
+  };
+
+  const handleRemove = (index: number) => {
+    onChange(items.filter((_, i) => i !== index));
+  };
+
+  const handleChange = (index: number, newValue: string) => {
+    const updated = [...items];
+    updated[index] = newValue;
+    onChange(updated);
+  };
+
+  return (
+    <Box sx={{ mt: 1, mb: 2 }}>
+      {label && (
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+          {label}
+        </Typography>
+      )}
+      {items.map((item, index) => (
+        <Box
+          key={index}
+          sx={{ display: "flex", alignItems: "center", mb: 0.5 }}
+        >
+          <MuiTextField
+            value={item}
+            onChange={(e) => handleChange(index, e.target.value)}
+            size="small"
+            fullWidth
+            sx={{ mr: 1 }}
+          />
+          <IconButton
+            onClick={() => handleRemove(index)}
+            size="small"
+            color="error"
+          >
+            <DeleteIcon />
+          </IconButton>
+        </Box>
+      ))}
+      <Button
+        variant="outlined"
+        size="small"
+        startIcon={<AddIcon />}
+        onClick={handleAdd}
+        sx={{ mt: 0.5 }}
+      >
+        Add
+      </Button>
+    </Box>
+  );
+};
+
 const ClientMetadataInput = ({ source }: { source: string }) => {
   const { field } = useInput({ source });
   const { value, onChange } = field;
@@ -705,7 +774,8 @@ const ClientMetadataInput = ({ source }: { source: string }) => {
   // Initialize metadata array from the current value
   useEffect(() => {
     if (value && typeof value === "object") {
-      // Fields managed by other inputs (BooleanInput, SelectInput, etc.)
+      // Reserved keys with dedicated controls above; keep them out of the
+      // free-form key/value list.
       const preservedFields = ["disable_sign_ups", "email_validation"];
 
       const array = Object.entries(value)
@@ -770,8 +840,52 @@ const ClientMetadataInput = ({ source }: { source: string }) => {
     onChange(newObject);
   };
 
+  const currentValue: Record<string, any> =
+    value && typeof value === "object" ? value : {};
+  const emailValidation =
+    typeof currentValue.email_validation === "string"
+      ? currentValue.email_validation
+      : "disabled";
+  const disableSignUps =
+    currentValue.disable_sign_ups === "true" ||
+    currentValue.disable_sign_ups === true;
+
+  const updatePreservedField = (key: string, newValue: unknown) => {
+    onChange({ ...currentValue, [key]: newValue });
+  };
+
   return (
     <Box sx={{ mt: 2 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mb: 3 }}>
+        <MuiTextField
+          select
+          label="Email validation"
+          value={emailValidation}
+          onChange={(e) =>
+            updatePreservedField("email_validation", e.target.value)
+          }
+          size="small"
+          sx={{ maxWidth: 320 }}
+        >
+          <MenuItem value="disabled">Disabled</MenuItem>
+          <MenuItem value="enabled">Enabled</MenuItem>
+          <MenuItem value="enforced">Enforced</MenuItem>
+        </MuiTextField>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={disableSignUps}
+              onChange={(e) =>
+                updatePreservedField(
+                  "disable_sign_ups",
+                  e.target.checked ? "true" : "false",
+                )
+              }
+            />
+          }
+          label="Disable sign ups"
+        />
+      </Box>
       <Typography variant="h6" sx={{ mb: 1 }}>
         Application Metadata
       </Typography>
@@ -1175,6 +1289,25 @@ const ConnectionsTab = () => {
   );
 };
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+// Default structured containers so react-hook-form never sees a non-object at
+// a path used by nested inputs (e.g. addons.samlp.audience). Stored records
+// sometimes omit these or return null, which trips RHF's nested register().
+const normalizeClient = (record: RaRecord): RaRecord => {
+  const client_metadata = isPlainObject(record.client_metadata)
+    ? record.client_metadata
+    : {};
+  const addons = isPlainObject(record.addons) ? record.addons : {};
+  const samlp = isPlainObject(addons.samlp) ? addons.samlp : {};
+  return {
+    ...record,
+    client_metadata,
+    addons: { ...addons, samlp },
+  };
+};
+
 export function ClientEdit() {
   // Transform data before submission to ensure client_metadata values are strings
   const transformClientData = (data: Record<string, unknown>) => {
@@ -1203,7 +1336,10 @@ export function ClientEdit() {
   };
 
   return (
-    <Edit transform={transformClientData}>
+    <Edit
+      transform={transformClientData}
+      queryOptions={{ select: normalizeClient }}
+    >
       <SimpleShowLayout>
         <TextField source="name" />
         <TextField source="id" />
@@ -1213,19 +1349,6 @@ export function ClientEdit() {
           <TextInput source="id" />
           <TextInput source="name" />
           <SecretInput source="client_secret" />
-          <SelectInput
-            source="client_metadata.email_validation"
-            choices={[
-              { id: "disabled", name: "Disabled" },
-              { id: "enabled", name: "Enabled" },
-              { id: "enforced", name: "Enforced" },
-            ]}
-          />
-          <BooleanInput
-            source="client_metadata.disable_sign_ups"
-            format={(value) => value === "true" || value === true}
-            parse={(value) => (value ? "true" : "false")}
-          />
           <BooleanInput
             source="auth0_conformant"
             label="Auth0 Conformant Mode"
@@ -1234,26 +1357,13 @@ export function ClientEdit() {
           />
           <ClientMetadataInput source="client_metadata" />
           <GrantTypesInput source="grant_types" />
-          <ArrayInput source="callbacks">
-            <SimpleFormIterator inline>
-              <TextInput source="" defaultValue="" />
-            </SimpleFormIterator>
-          </ArrayInput>
-          <ArrayInput source="allowed_logout_urls">
-            <SimpleFormIterator inline>
-              <TextInput source="" defaultValue="" />
-            </SimpleFormIterator>
-          </ArrayInput>
-          <ArrayInput source="web_origins">
-            <SimpleFormIterator inline>
-              <TextInput source="" defaultValue="" />
-            </SimpleFormIterator>
-          </ArrayInput>
-          <ArrayInput source="allowed_clients">
-            <SimpleFormIterator inline>
-              <TextInput source="" defaultValue="" />
-            </SimpleFormIterator>
-          </ArrayInput>
+          <StringArrayInput source="callbacks" label="Callbacks" />
+          <StringArrayInput
+            source="allowed_logout_urls"
+            label="Allowed Logout URLs"
+          />
+          <StringArrayInput source="web_origins" label="Web Origins" />
+          <StringArrayInput source="allowed_clients" label="Allowed Clients" />
           <Labeled label="Created At">
             <DateField source="created_at" showTime={true} />
           </Labeled>
@@ -1262,20 +1372,43 @@ export function ClientEdit() {
           </Labeled>
         </TabbedForm.Tab>
         <TabbedForm.Tab label="SSO">
-          <TextInput source="addons.samlp.audience" label="audience" />
-          <TextInput source="addons.samlp.destination" label="destination" />
-          <TextInput
-            multiline
-            source="addons.samlp.mappings"
-            format={(value) => (value ? JSON.stringify(value, null, 2) : "")}
-            parse={(value) => {
-              try {
-                return value ? JSON.parse(value) : {};
-              } catch {
-                throw new Error("Invalid JSON");
-              }
-            }}
-          />
+          <Card variant="outlined" sx={{ width: "100%", mb: 2 }}>
+            <CardHeader
+              title="SAML2 Web App"
+              subheader="Configure this client as a SAML 2.0 Service Provider. These settings control how SAML assertions are generated when this client initiates a SAML login flow."
+            />
+            <CardContent>
+              <TextInput
+                source="addons.samlp.audience"
+                label="Audience (Entity ID)"
+                helperText="The intended recipient of the SAML assertion. Typically the Service Provider's Entity ID or Issuer URI. Defaults to the client_id if not set."
+                fullWidth
+              />
+              <TextInput
+                source="addons.samlp.destination"
+                label="Destination (ACS URL)"
+                helperText="The Service Provider's Assertion Consumer Service URL where the SAML response will be POSTed."
+                fullWidth
+              />
+              <TextInput
+                multiline
+                source="addons.samlp.mappings"
+                label="Attribute Mappings"
+                helperText='JSON object mapping user profile fields to SAML attribute names. Example: {"email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"}'
+                fullWidth
+                format={(value) =>
+                  value ? JSON.stringify(value, null, 2) : ""
+                }
+                parse={(value) => {
+                  try {
+                    return value ? JSON.parse(value) : {};
+                  } catch {
+                    throw new Error("Invalid JSON");
+                  }
+                }}
+              />
+            </CardContent>
+          </Card>
         </TabbedForm.Tab>
         <TabbedForm.Tab label="Client Grants">
           <AddClientGrantButton />
@@ -1337,6 +1470,11 @@ export function ClientEdit() {
             source="is_first_party"
             label="First Party Application"
             helperText="First party applications are trusted applications that don't require user consent for standard scopes."
+          />
+          <BooleanInput
+            source="sso_disabled"
+            label="SSO Disabled"
+            helperText="When enabled, this client will not reuse existing SSO sessions. Users must authenticate every time, even if they have an active session from another client."
           />
         </TabbedForm.Tab>
         <TabbedForm.Tab label="Raw JSON">

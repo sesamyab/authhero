@@ -121,7 +121,8 @@
       "usernamePlaceholder": "Brugernavn eller e-mailadresse",
       "usernameTooLong": "Brugernavnet må højst være ${max} tegn",
       "usernameTooShort": "Brugernavnet skal være mindst ${min} tegn",
-      "wrongCredentials": "Forkert brugernavn eller adgangskode"
+      "wrongCredentials": "Forkert brugernavn eller adgangskode",
+      "passkeyButtonText": "Log ind med passkey"
     }
   },
   "login-id": {
@@ -197,7 +198,8 @@
       "wrong-email-username-credentials": "Forkert e-mailadresse, brugernavn eller adgangskode",
       "wrong-phone-credentials": "Forkert telefonnummer eller adgangskode",
       "wrong-phone-username-credentials": "Forkert telefonnummer, brugernavn eller adgangskode. Telefonnumre skal inkludere landekoden.",
-      "wrong-username-credentials": "Forkert brugernavn eller adgangskode"
+      "wrong-username-credentials": "Forkert brugernavn eller adgangskode",
+      "passkeyButtonText": "Log ind med passkey"
     }
   },
   "login-password": {
@@ -416,6 +418,14 @@
       "retryButtonText": "Prøv igen",
       "enrollmentComplete": "Din adgangsnøgle er konfigureret. Du kan lukke denne side.",
       "pageTitle": "Opret Adgangsnøgle | ${clientName}"
+    },
+    "passkey-challenge": {
+      "title": "Log ind med passkey",
+      "description": "Følg anvisningerne fra din browser for at bekræfte din identitet.",
+      "errorMessage": "Godkendelse med passkey mislykkedes. Prøv venligst igen.",
+      "cancelLinkText": "Tilbage til login",
+      "retryButtonText": "Prøv igen",
+      "pageTitle": "Log ind med passkey | ${clientName}"
     }
   },
   "organizations": {
@@ -447,6 +457,29 @@
       "successTitle": "E-mail til nulstilling af adgangskode sendt",
       "title": "Har du glemt din adgangskode?",
       "user-not-found": "Bruger ikke fundet"
+    },
+    "reset-password-code": {
+      "backToLoginText": "Tilbage til login",
+      "buttonText": "Nulstil adgangskode",
+      "codeLabel": "Nulstillingskode",
+      "codePlaceholder": "Indtast 6-cifret kode",
+      "confirmPasswordLabel": "Bekræft adgangskode",
+      "confirmPasswordPlaceholder": "Bekræft adgangskode",
+      "defaultDescription": "Indtast koden sendt til din e-mail og vælg en ny adgangskode",
+      "description": "Vi sendte en kode til ${email}",
+      "failed": "Nulstilling af adgangskode mislykkedes. Prøv venligst igen.",
+      "invalidCode": "Den indtastede kode er ugyldig eller udløbet",
+      "noCode": "Indtast venligst nulstillingskoden",
+      "pageTitle": "Indtast nulstillingskode | ${clientName}",
+      "passwordLabel": "Ny adgangskode",
+      "passwordPlaceholder": "Ny adgangskode",
+      "passwordTooWeak": "Adgangskoden er for svag",
+      "passwordsDidntMatch": "Adgangskoderne matcher ikke",
+      "resendFailed": "Kunne ikke sende koden igen. Prøv igen.",
+      "resendSuccess": "En ny kode er blevet sendt til din e-mail",
+      "resendText": "Send kode igen",
+      "sessionExpired": "Din session er udløbet. Prøv venligst igen.",
+      "title": "Indtast nulstillingskode"
     }
   },
   "signup": {

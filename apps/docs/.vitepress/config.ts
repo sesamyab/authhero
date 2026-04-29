@@ -145,7 +145,9 @@ gtag('config', 'G-DNZWG3PF2L');`,
         { text: "Home", link: "/" },
         { text: "Getting Started", link: "/getting-started" },
         { text: "Architecture", link: "/architecture/" },
+        { text: "Standards", link: "/standards/" },
         { text: "API Reference", link: "/api/overview" },
+        { text: "Roadmap", link: "/roadmap" },
       ],
 
       sidebar: [
@@ -154,6 +156,7 @@ gtag('config', 'G-DNZWG3PF2L');`,
           items: [
             { text: "What is AuthHero?", link: "/" },
             { text: "Installation", link: "/getting-started" },
+            { text: "Roadmap", link: "/roadmap" },
           ],
         },
         {
@@ -173,8 +176,16 @@ gtag('config', 'G-DNZWG3PF2L');`,
               text: "Universal Login",
               link: "/architecture/universal-login",
             },
+            {
+              text: "Login Flow (endpoints)",
+              link: "/architecture/login-flow",
+            },
             { text: "Adapters", link: "/architecture/adapters" },
             { text: "Audit Events", link: "/architecture/audit-events" },
+            {
+              text: "Hooks & Outbox Pipeline",
+              link: "/architecture/hooks-pipeline",
+            },
             { text: "Multi-Tenancy", link: "/architecture/multi-tenancy" },
           ],
         },
@@ -268,6 +279,77 @@ gtag('config', 'G-DNZWG3PF2L');`,
           ],
         },
         {
+          text: "Standards",
+          collapsed: false,
+          items: [
+            { text: "Overview", link: "/standards/" },
+            {
+              text: "OAuth 2.0",
+              collapsed: false,
+              items: [
+                {
+                  text: "RFC 6749 — Authorization Framework",
+                  link: "/standards/rfc-6749",
+                },
+                {
+                  text: "RFC 6750 — Bearer Tokens",
+                  link: "/standards/rfc-6750",
+                },
+                { text: "RFC 7636 — PKCE", link: "/standards/rfc-7636" },
+                {
+                  text: "RFC 7591 — Dynamic Client Registration",
+                  link: "/standards/rfc-7591",
+                },
+                {
+                  text: "RFC 7592 — DCR Management",
+                  link: "/standards/rfc-7592",
+                },
+                {
+                  text: "Connect Start (consent flow)",
+                  link: "/standards/connect-start",
+                },
+              ],
+            },
+            {
+              text: "Tokens & Keys",
+              collapsed: false,
+              items: [
+                { text: "RFC 7517 — JWK", link: "/standards/rfc-7517" },
+                { text: "RFC 7519 — JWT", link: "/standards/rfc-7519" },
+                {
+                  text: "RFC 7638 — JWK Thumbprint",
+                  link: "/standards/rfc-7638",
+                },
+              ],
+            },
+            {
+              text: "OpenID Connect",
+              collapsed: false,
+              items: [
+                {
+                  text: "OIDC Core 1.0",
+                  link: "/standards/openid-connect-core",
+                },
+                {
+                  text: "OIDC Discovery 1.0",
+                  link: "/standards/openid-connect-discovery",
+                },
+                {
+                  text: "Form Post Response Mode",
+                  link: "/standards/oauth2-form-post",
+                },
+              ],
+            },
+            {
+              text: "Federation",
+              collapsed: false,
+              items: [
+                { text: "SAML 2.0", link: "/standards/saml-2" },
+              ],
+            },
+          ],
+        },
+        {
           text: "Security Model",
           collapsed: false,
           items: [
@@ -313,6 +395,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               text: "Custom Domain Setup",
               link: "/deployment/custom-domain-setup",
             },
+            {
+              text: "Outbox Relay (Cron)",
+              link: "/deployment/outbox-cron",
+            },
             { text: "Widget Assets", link: "/deployment/widget-assets" },
           ],
         },
@@ -328,6 +414,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
             {
               text: "Outbox Adapter",
               link: "/customization/adapter-interfaces/outbox",
+            },
+            {
+              text: "Failed Events (Dead-letter)",
+              link: "/customization/failed-events",
             },
             {
               text: "Built-in Adapters",

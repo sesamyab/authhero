@@ -19,7 +19,6 @@ import { pemToBuffer } from "../utils/crypto";
 import { Bindings, Variables } from "../types";
 import {
   AUTHORIZATION_CODE_EXPIRES_IN_SECONDS,
-  SILENT_AUTH_MAX_AGE_IN_SECONDS,
   TICKET_EXPIRATION_TIME,
   UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS,
 } from "../constants";
@@ -31,6 +30,7 @@ import {
   isTemplateHook,
   handleCredentialsExchangeTemplateHook,
 } from "../hooks/templatehooks";
+import { handleCredentialsExchangeCodeHooks } from "../hooks/codehooks";
 import renderAuthIframe from "../utils/authIframe";
 import { calculateScopesAndPermissions } from "../helpers/scopes-permissions";
 import { JSONHTTPException } from "../errors/json-http-exception";
@@ -52,6 +52,7 @@ export interface AuthTokenClient {
   client_id: string;
   tenant: {
     audience: string;
+    default_audience?: string;
     allow_organization_name_in_authentication_api?: boolean;
   };
   auth0_conformant?: boolean;
@@ -77,6 +78,8 @@ export interface CreateAuthTokensParams {
   auth_time?: number; // Unix timestamp of when the user was authenticated
   /** Custom claims to add to the access token payload (cannot override reserved claims) */
   customClaims?: Record<string, unknown>;
+  /** Access token lifetime in seconds, from resource server config */
+  token_lifetime?: number;
 }
 
 const RESERVED_CLAIMS = ["sub", "iss", "aud", "exp", "nbf", "iat", "jti"];
@@ -148,11 +151,11 @@ export async function createAuthTokens(
 
   const { signingKeys } = await ctx.env.data.keys.list({
     q: "type:jwt_signing",
+    sort: { sort_by: "created_at", sort_order: "desc" },
   });
-  const validKeys = signingKeys.filter(
+  const signingKey = signingKeys.find(
     (key: any) => !key.revoked_at || new Date(key.revoked_at) > new Date(),
   );
-  const signingKey = validKeys[validKeys.length - 1];
 
   if (!signingKey?.pkcs7) {
     throw new JSONHTTPException(500, { message: "No signing key available" });
@@ -161,8 +164,11 @@ export async function createAuthTokens(
   const keyBuffer = pemToBuffer(signingKey.pkcs7);
   const iss = getIssuer(ctx.env, ctx.var.custom_domain);
 
-  // Determine audience with fallback to tenant default
-  const audience = authParams.audience || client.tenant.audience;
+  // Audience is normally stamped onto authParams at /authorize (or
+  // /oauth/token for client_credentials). Fall back to the tenant's
+  // default_audience here as a safety net for callers that create login
+  // sessions without going through /authorize.
+  const audience = authParams.audience ?? client.tenant.default_audience;
 
   if (!audience) {
     throw new JSONHTTPException(400, {
@@ -379,11 +385,51 @@ export async function createAuthTokens(
         }
       }
     }
+
+    // Execute credentials-exchange code hooks
+    const codeHookApi = buildCredentialsExchangeApi(
+      ctx,
+      accessTokenPayload,
+      idTokenPayload,
+    );
+
+    await handleCredentialsExchangeCodeHooks(
+      ctx,
+      hooks,
+      {
+        ctx,
+        client: client as EnrichedClient,
+        user,
+        request: {
+          ip: ctx.var.ip || "",
+          user_agent: ctx.var.useragent || "",
+          method: ctx.req?.method || "",
+          url: ctx.req?.url || "",
+        },
+        scope: authParams.scope || "",
+        grant_type: "",
+        connection:
+          connectionInfo ||
+          (connectionName
+            ? {
+                id: connectionName,
+                name: connectionName,
+                strategy: user?.provider || "auth0",
+              }
+            : undefined),
+      },
+      codeHookApi,
+    );
   }
+
+  // Default: 86400s (24h), overridden by resource server config, 3600s (1h) for impersonation
+  const effectiveTokenLifetime = impersonatingUser
+    ? 3600
+    : (params.token_lifetime ?? 86400);
 
   const header = {
     includeIssuedTimestamp: true,
-    expiresIn: impersonatingUser ? new TimeSpan(1, "h") : new TimeSpan(1, "d"),
+    expiresIn: new TimeSpan(effectiveTokenLifetime, "s"),
     headers: {
       kid: signingKey.kid,
     },
@@ -405,7 +451,7 @@ export async function createAuthTokens(
     refresh_token: params.refresh_token,
     id_token,
     token_type: "Bearer",
-    expires_in: impersonatingUser ? 3600 : 86400, // 1 hour for impersonation, 24 hours for regular sessions
+    expires_in: effectiveTokenLifetime,
   };
 }
 
@@ -449,17 +495,28 @@ export interface CreateRefreshTokenParams {
   audience?: string;
 }
 
+function lifetimeToIso(lifetimeHours?: number): string | undefined {
+  if (!lifetimeHours) return undefined;
+  return new Date(Date.now() + lifetimeHours * 60 * 60 * 1000).toISOString();
+}
+
 export async function createRefreshToken(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   params: CreateRefreshTokenParams,
 ) {
-  const {
-    client,
-    scope,
-    // fallback to the default audience on the client
-    audience = client.tenant.audience,
-    login_id,
-  } = params;
+  const { client, scope, login_id } = params;
+  const audience = params.audience ?? client.tenant.default_audience;
+
+  if (!audience) {
+    throw new JSONHTTPException(400, {
+      error: "invalid_request",
+      error_description:
+        "An audience must be specified in the request or configured as the tenant default_audience",
+    });
+  }
+
+  const idleExpiresAt = lifetimeToIso(client.tenant.idle_session_lifetime);
+  const absoluteExpiresAt = lifetimeToIso(client.tenant.session_lifetime);
 
   const refreshToken = await ctx.env.data.refreshTokens.create(
     client.tenant.id,
@@ -467,9 +524,8 @@ export async function createRefreshToken(
       id: ulid(),
       login_id,
       client_id: client.client_id,
-      idle_expires_at: new Date(
-        Date.now() + SILENT_AUTH_MAX_AGE_IN_SECONDS * 1000,
-      ).toISOString(),
+      idle_expires_at: idleExpiresAt,
+      expires_at: absoluteExpiresAt,
       user_id: params.user.user_id,
       device: {
         last_ip: ctx.var.ip,
@@ -507,14 +563,16 @@ async function createNewSession(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   { user, client, loginSession }: CreateSessionParams,
 ) {
-  // Create a new session
+  // Create a new session with tenant-configured lifetimes
+  const idleExpiresAt = lifetimeToIso(client.tenant.idle_session_lifetime);
+  const absoluteExpiresAt = lifetimeToIso(client.tenant.session_lifetime);
+
   const session = await ctx.env.data.sessions.create(client.tenant.id, {
     id: ulid(),
     user_id: user.user_id,
     login_session_id: loginSession.id,
-    idle_expires_at: new Date(
-      Date.now() + SILENT_AUTH_MAX_AGE_IN_SECONDS * 1000,
-    ).toISOString(),
+    idle_expires_at: idleExpiresAt,
+    expires_at: absoluteExpiresAt,
     device: {
       last_ip: ctx.var.ip || "",
       initial_ip: ctx.var.ip || "",
@@ -576,13 +634,18 @@ export async function authenticateLoginSession(
   const currentState = currentLoginSession.state || LoginSessionState.PENDING;
 
   // Guard against terminal states (EXPIRED is allowed — see createFrontChannelAuthResponse)
-  if (
-    currentState === LoginSessionState.FAILED ||
-    currentState === LoginSessionState.COMPLETED
-  ) {
+  if (currentState === LoginSessionState.FAILED) {
     throw new JSONHTTPException(400, {
       error: "access_denied",
-      error_description: `Cannot authenticate login session in ${currentState} state`,
+      error_description:
+        currentLoginSession.failure_reason ||
+        "Cannot authenticate login session in failed state",
+    });
+  }
+  if (currentState === LoginSessionState.COMPLETED) {
+    throw new JSONHTTPException(400, {
+      error: "access_denied",
+      error_description: "Login session has already been completed",
     });
   }
 
@@ -673,6 +736,69 @@ export async function authenticateLoginSession(
   });
 
   return session_id;
+}
+
+export interface FinalizeAuthenticatedSessionParams
+  extends AuthenticateLoginSessionParams {
+  /** Strategy metadata persisted so /authorize/resume can rehydrate it */
+  authStrategy?: { strategy: string; strategy_type: string };
+}
+
+/**
+ * Persist an authenticated identity onto the login session and 302 the browser
+ * to `/authorize/resume?state=…`. This is the terminal step for sub-flows
+ * (social callback, UL password/OTP/signup, SAML SP-ACS, etc.) — instead of
+ * issuing tokens and setting the session cookie inline, they persist enough
+ * state for the resume endpoint to do it on the correct domain.
+ *
+ * Mirrors Auth0's pattern where /u/login/{password,…} 302s to /authorize/resume.
+ */
+export async function finalizeAuthenticatedSession(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  params: FinalizeAuthenticatedSessionParams,
+): Promise<Response> {
+  const { user, client, loginSession, authStrategy, authConnection } = params;
+
+  await authenticateLoginSession(ctx, {
+    user,
+    client,
+    loginSession,
+    existingSessionId: params.existingSessionId,
+    authConnection,
+  });
+
+  // Persist strategy + timestamp so /authorize/resume can reconstruct the call
+  // to createFrontChannelAuthResponse without the sub-flow having to keep
+  // authStrategy in memory across the redirect.
+  await ctx.env.data.loginSessions.update(client.tenant.id, loginSession.id, {
+    ...(authStrategy ? { auth_strategy: authStrategy } : {}),
+    authenticated_at: new Date().toISOString(),
+  });
+
+  // If the authorize request came in on a different host (e.g. a tenant
+  // custom domain), send the browser to /authorize/resume on THAT host so the
+  // session cookie lands under the right wildcard. Falls back to a relative
+  // redirect otherwise.
+  const resumePath = `/authorize/resume?state=${encodeURIComponent(loginSession.id)}`;
+  let location = resumePath;
+  if (loginSession.authorization_url) {
+    try {
+      const authzUrl = new URL(loginSession.authorization_url);
+      const currentHost = ctx.var.host || "";
+      if (authzUrl.host && authzUrl.host !== currentHost) {
+        location = `${authzUrl.origin}${resumePath}`;
+      }
+    } catch {
+      // Malformed authorization_url — just use the relative path.
+    }
+  }
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location,
+    },
+  });
 }
 
 /**
@@ -1223,6 +1349,13 @@ export async function createFrontChannelAuthResponse(
             targetPath = "/u2/mfa/phone-challenge";
           } else if (enrollment?.confirmed && enrollment.type === "totp") {
             targetPath = "/u2/mfa/totp-challenge";
+          } else if (
+            enrollment?.confirmed &&
+            (enrollment.type === "passkey" ||
+              enrollment.type === "webauthn-roaming" ||
+              enrollment.type === "webauthn-platform")
+          ) {
+            targetPath = "/u2/passkey/challenge";
           } else if (enrollment?.type === "totp") {
             targetPath = "/u2/mfa/totp-enrollment";
           } else if (enrollment?.type === "phone") {
@@ -1261,6 +1394,9 @@ export async function createFrontChannelAuthResponse(
             const tenant = client.tenant;
             const hasOtp = tenant.mfa?.factors?.otp === true;
             const hasSms = tenant.mfa?.factors?.sms === true;
+            const hasWebauthn =
+              tenant.mfa?.factors?.webauthn_roaming === true ||
+              tenant.mfa?.factors?.webauthn_platform === true;
 
             await ctx.env.data.loginSessions.update(
               client.tenant.id,
@@ -1270,8 +1406,10 @@ export async function createFrontChannelAuthResponse(
               },
             );
 
-            // If both factors available, show selection screen
-            if (hasOtp && hasSms) {
+            // If multiple factors available, show selection screen
+            const enabledFactorCount =
+              (hasOtp ? 1 : 0) + (hasSms ? 1 : 0) + (hasWebauthn ? 1 : 0);
+            if (enabledFactorCount > 1) {
               return new Response(null, {
                 status: 302,
                 headers: {
@@ -1286,6 +1424,16 @@ export async function createFrontChannelAuthResponse(
                 status: 302,
                 headers: {
                   location: `/u2/mfa/totp-enrollment?state=${encodeURIComponent(params.loginSession.id)}`,
+                },
+              });
+            }
+
+            if (hasWebauthn) {
+              // Redirect to passkey enrollment
+              return new Response(null, {
+                status: 302,
+                headers: {
+                  location: `/u2/passkey/enrollment?state=${encodeURIComponent(params.loginSession.id)}`,
                 },
               });
             }
@@ -1336,6 +1484,19 @@ export async function createFrontChannelAuthResponse(
                 status: 302,
                 headers: {
                   location: `/u2/mfa/totp-challenge?state=${encodeURIComponent(params.loginSession.id)}`,
+                },
+              });
+            }
+
+            if (
+              mfaCheck.enrollment.type === "passkey" ||
+              mfaCheck.enrollment.type === "webauthn-roaming" ||
+              mfaCheck.enrollment.type === "webauthn-platform"
+            ) {
+              return new Response(null, {
+                status: 302,
+                headers: {
+                  location: `/u2/passkey/challenge?state=${encodeURIComponent(params.loginSession.id)}`,
                 },
               });
             }
@@ -1614,8 +1775,12 @@ export async function completeLogin(
   // This will throw a 403 error if user is not a member of the required organization
   let calculatedScopes = params.authParams.scope || "";
   let calculatedPermissions: string[] = [];
+  let calculatedTokenLifetime: number | undefined;
 
-  if (params.authParams.audience) {
+  const resolvedAudience =
+    params.authParams.audience ?? params.client.tenant.default_audience;
+
+  if (resolvedAudience) {
     try {
       let scopesAndPermissions;
 
@@ -1628,7 +1793,7 @@ export async function completeLogin(
           grantType: GrantType.ClientCredential,
           tenantId: params.client.tenant.id,
           clientId: params.client.client_id,
-          audience: params.authParams.audience,
+          audience: resolvedAudience,
           requestedScopes: params.authParams.scope?.split(" ") || [],
           organizationId: params.organization?.id,
         });
@@ -1653,7 +1818,7 @@ export async function completeLogin(
           tenantId: params.client.tenant.id,
           userId: userId,
           clientId: params.client.client_id,
-          audience: params.authParams.audience,
+          audience: resolvedAudience,
           requestedScopes: params.authParams.scope?.split(" ") || [],
           organizationId: params.organization?.id,
         });
@@ -1661,6 +1826,13 @@ export async function completeLogin(
 
       calculatedScopes = scopesAndPermissions.scopes.join(" ");
       calculatedPermissions = scopesAndPermissions.permissions;
+
+      // Use token_lifetime_for_web for SPA clients, token_lifetime for all others
+      calculatedTokenLifetime =
+        params.client.app_type === "spa" &&
+        scopesAndPermissions.token_lifetime_for_web
+          ? scopesAndPermissions.token_lifetime_for_web
+          : scopesAndPermissions.token_lifetime;
     } catch (error) {
       // Re-throw HTTPExceptions (like 403 for organization membership)
       if (error instanceof HTTPException) {
@@ -1756,6 +1928,7 @@ export async function completeLogin(
       user,
       authParams: updatedAuthParams,
       permissions: calculatedPermissions,
+      token_lifetime: calculatedTokenLifetime,
     });
 
     // Mark login session as completed after successful token creation

@@ -61,6 +61,38 @@ export const tenantInsertSchema = z.object({
       enable_client_connections: z.boolean().optional(),
       enable_custom_domain_in_emails: z.boolean().optional(),
       enable_dynamic_client_registration: z.boolean().optional(),
+      // AuthHero extensions — not part of Auth0. Auth0 only supports Open DCR
+      // and relies on tenant ACLs/rate limits; we implement RFC 7591 initial
+      // access tokens and a per-tenant grant-type allowlist.
+      dcr_require_initial_access_token: z.boolean().optional(),
+      dcr_allowed_grant_types: z.array(z.string()).optional(),
+      // Per-tenant allowlist of fully-qualified http origins (scheme + host
+      // + port, no path) that may be used as `return_to` / `domain` on
+      // `/connect/start` despite not being loopback. Off by default.
+      allow_http_return_to: z
+        .array(
+          z.string().refine(
+            (s) => {
+              try {
+                const u = new URL(s);
+                return (
+                  u.protocol === "http:" &&
+                  (u.pathname === "" || u.pathname === "/") &&
+                  !u.search &&
+                  !u.hash &&
+                  s === u.origin
+                );
+              } catch {
+                return false;
+              }
+            },
+            {
+              message:
+                "must be a fully-qualified http origin (scheme + host + port, no path)",
+            },
+          ),
+        )
+        .optional(),
       enable_idtoken_api2: z.boolean().optional(),
       enable_legacy_logs_search_v2: z.boolean().optional(),
       enable_legacy_profile: z.boolean().optional(),

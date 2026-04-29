@@ -1,11 +1,15 @@
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { Context } from "hono";
 import { Bindings, Variables, GrantFlowUserResult } from "../types";
-import { AuthorizationResponseMode } from "@authhero/adapter-interfaces";
+import {
+  AuthorizationResponseMode,
+  LogTypes,
+} from "@authhero/adapter-interfaces";
 import { z } from "@hono/zod-openapi";
 import { safeCompare } from "../utils/safe-compare";
 import { appendLog } from "../utils/append-log";
 import { getEnrichedClient } from "../helpers/client";
+import { logMessage } from "../helpers/logging";
 
 export const refreshTokenParamsSchema = z.object({
   grant_type: z.literal("refresh_token"),
@@ -32,6 +36,10 @@ export async function refreshTokenGrant(
       client.client_secret &&
       !safeCompare(client.client_secret, params.client_secret)
     ) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
+        description: "Client authentication failed",
+      });
       throw new JSONHTTPException(403, {
         error: "invalid_client",
         error_description: "Client authentication failed",
@@ -46,9 +54,24 @@ export async function refreshTokenGrant(
 
   if (!refreshToken) {
     appendLog(ctx, `Invalid refresh token: ${params.refresh_token}`);
+    logMessage(ctx, client.tenant.id, {
+      type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
+      description: "Invalid refresh token",
+    });
     throw new JSONHTTPException(400, {
       error: "invalid_grant",
       error_description: "Invalid refresh token",
+    });
+  } else if (refreshToken.revoked_at) {
+    appendLog(ctx, `Refresh token has been revoked: ${refreshToken.id}`);
+    logMessage(ctx, client.tenant.id, {
+      type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
+      description: "Refresh token has been revoked",
+      userId: refreshToken.user_id,
+    });
+    throw new JSONHTTPException(400, {
+      error: "invalid_grant",
+      error_description: "Refresh token has been revoked",
     });
   } else if (
     (refreshToken.expires_at &&
@@ -57,16 +80,28 @@ export async function refreshTokenGrant(
       new Date(refreshToken.idle_expires_at) < new Date())
   ) {
     appendLog(ctx, `Refresh token has expired: ${params.refresh_token}`);
+    logMessage(ctx, client.tenant.id, {
+      type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
+      description: "Refresh token has expired",
+      userId: refreshToken.user_id,
+    });
     throw new JSONHTTPException(400, {
       error: "invalid_grant",
       error_description: "Refresh token has expired",
     });
   }
 
-  const user = await ctx.env.data.users.get(
+  const tokenUser = await ctx.env.data.users.get(
     client.tenant.id,
     refreshToken.user_id,
   );
+  if (!tokenUser) {
+    throw new JSONHTTPException(403, { message: "User not found" });
+  }
+
+  const user = tokenUser.linked_to
+    ? await ctx.env.data.users.get(client.tenant.id, tokenUser.linked_to)
+    : tokenUser;
   if (!user) {
     throw new JSONHTTPException(403, { message: "User not found" });
   }
@@ -105,52 +140,129 @@ export async function refreshTokenGrant(
       });
     }
 
-    // Verify the user is a member of the organization
-    const userOrgs = await ctx.env.data.userOrganizations.list(
-      client.tenant.id,
-      {
-        q: `user_id:${user.user_id}`,
-        per_page: 1000,
-      },
-    );
+    // Check if user has global admin:organizations permission (bypasses membership check)
+    let hasGlobalOrgAdminPermission = false;
+    const currentTenant = await ctx.env.data.tenants.get(client.tenant.id);
 
-    const isMember = userOrgs.userOrganizations.some(
-      (uo) => uo.organization_id === organization!.id,
-    );
+    if (
+      currentTenant?.flags?.inherit_global_permissions_in_organizations &&
+      resourceServer?.audience
+    ) {
+      // Check direct user permissions at tenant level
+      const globalUserPermissions = await ctx.env.data.userPermissions.list(
+        client.tenant.id,
+        user.user_id,
+        undefined,
+        "", // Empty string for tenant-level (global) permissions
+      );
 
-    if (!isMember) {
-      throw new JSONHTTPException(403, {
-        error: "access_denied",
-        error_description: "User is not a member of the specified organization",
-      });
+      hasGlobalOrgAdminPermission = globalUserPermissions.some(
+        (permission) =>
+          permission.permission_name === "admin:organizations" &&
+          permission.resource_server_identifier === resourceServer.audience,
+      );
+
+      // Check role-derived permissions at tenant level
+      if (!hasGlobalOrgAdminPermission) {
+        const globalRoles = await ctx.env.data.userRoles.list(
+          client.tenant.id,
+          user.user_id,
+          undefined,
+          "", // Empty string for tenant-level (global) roles
+        );
+
+        for (const role of globalRoles) {
+          const rolePermissions = await ctx.env.data.rolePermissions.list(
+            client.tenant.id,
+            role.id,
+            { per_page: 1000 },
+          );
+
+          const hasAdminOrg = rolePermissions.some(
+            (permission) =>
+              permission.permission_name === "admin:organizations" &&
+              permission.resource_server_identifier === resourceServer.audience,
+          );
+
+          if (hasAdminOrg) {
+            hasGlobalOrgAdminPermission = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Verify the user is a member of the organization (unless they have global admin permission)
+    if (!hasGlobalOrgAdminPermission) {
+      const userOrgs = await ctx.env.data.userOrganizations.list(
+        client.tenant.id,
+        {
+          q: `user_id:${user.user_id}`,
+          per_page: 1000,
+        },
+      );
+
+      const isMember = userOrgs.userOrganizations.some(
+        (uo) => uo.organization_id === organization!.id,
+      );
+
+      if (!isMember) {
+        throw new JSONHTTPException(403, {
+          error: "access_denied",
+          error_description:
+            "User is not a member of the specified organization",
+        });
+      }
     }
   }
 
-  // Update the idle_expires_at
-  if (refreshToken.idle_expires_at) {
+  // Update the idle_expires_at using tenant settings
+  if (refreshToken.idle_expires_at && client.tenant.idle_session_lifetime) {
     const idleExpiresAt = new Date(
-      Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
+      Date.now() + client.tenant.idle_session_lifetime * 60 * 60 * 1000,
     );
-    await ctx.env.data.refreshTokens.update(client.tenant.id, refreshToken.id, {
-      idle_expires_at: idleExpiresAt.toISOString(),
-      last_exchanged_at: new Date().toISOString(),
-      device: {
-        ...refreshToken.device,
-        last_ip: ctx.req.header["x-real-ip"] || "",
-        last_user_agent: ctx.req.header["user-agent"] || "",
-      },
-    });
 
-    // Keep the login_session alive as long as its refresh tokens are active
-    if (refreshToken.login_id) {
-      await ctx.env.data.loginSessions.update(
-        client.tenant.id,
-        refreshToken.login_id,
-        {
-          expires_at: idleExpiresAt.toISOString(),
-        },
-      );
-    }
+    const nextLastIp = ctx.req.header("x-real-ip") || "";
+    const nextLastUa = ctx.req.header("user-agent") || "";
+    const deviceChanged =
+      nextLastIp !== refreshToken.device?.last_ip ||
+      nextLastUa !== refreshToken.device?.last_user_agent;
+
+    // The adapter extends the parent login_session's expires_at in parallel
+    // when loginSessionBump is provided. newLoginSessionExpiry is the larger
+    // of the token's absolute expiry and the just-bumped idle expiry, since
+    // the session needs to outlive whichever is further out.
+    const absoluteExpiryMs = refreshToken.expires_at
+      ? new Date(refreshToken.expires_at).getTime()
+      : 0;
+    const newLoginSessionExpiryMs = Math.max(
+      absoluteExpiryMs,
+      idleExpiresAt.getTime(),
+    );
+
+    await ctx.env.data.refreshTokens.update(
+      client.tenant.id,
+      refreshToken.id,
+      {
+        idle_expires_at: idleExpiresAt.toISOString(),
+        last_exchanged_at: new Date().toISOString(),
+        ...(deviceChanged && {
+          device: {
+            ...refreshToken.device,
+            last_ip: nextLastIp,
+            last_user_agent: nextLastUa,
+          },
+        }),
+      },
+      refreshToken.login_id && newLoginSessionExpiryMs > 0
+        ? {
+            loginSessionBump: {
+              login_id: refreshToken.login_id,
+              expires_at: new Date(newLoginSessionExpiryMs).toISOString(),
+            },
+          }
+        : undefined,
+    );
   }
 
   return {

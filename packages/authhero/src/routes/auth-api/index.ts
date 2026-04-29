@@ -13,18 +13,50 @@ import { passwordlessRoutes } from "./passwordless";
 import { authenticateRoutes } from "./authenticate";
 import { authorizeRoutes } from "./authorize";
 import { accountRoutes } from "./account";
+import { registerRoutes } from "./register";
+import { connectStartRoutes } from "./connect-start";
 import { addDataHooks } from "../../hooks";
 import { addTimingLogs } from "../../helpers/server-timing";
 import { addCaching } from "../../helpers/cache-wrapper";
 import { createInMemoryCache } from "../../adapters/cache/in-memory";
+import { applyConfigMiddleware } from "../../middlewares/apply-config";
 import { tenantMiddleware } from "../../middlewares/tenant";
 import { clientInfoMiddleware } from "../../middlewares/client-info";
+import { outboxMiddleware } from "../../middlewares/outbox";
+import { LogsDestination } from "../../helpers/outbox-destinations/logs";
+import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
+import { RegistrationFinalizerDestination } from "../../helpers/outbox-destinations/registration-finalizer";
+import { makeOutboxServiceTokenFactory } from "../../helpers/service-token";
+import { getIssuer } from "../../variables";
 
 export default function create(config: AuthHeroConfig) {
   const app = new OpenAPIHono<{
     Bindings: Bindings;
     Variables: Variables;
   }>();
+
+  app.use(applyConfigMiddleware(config));
+
+  app.use(
+    outboxMiddleware({
+      getOutbox: () => config.dataAdapter.outbox,
+      getDestinations: (ctx) => [
+        new LogsDestination(config.dataAdapter.logs),
+        new WebhookDestination(
+          config.dataAdapter.hooks,
+          makeOutboxServiceTokenFactory({
+            tenants: ctx.env.data.tenants,
+            keys: ctx.env.data.keys,
+            issuer: getIssuer(ctx.env, ctx.var.custom_domain),
+          }),
+          { webhookInvoker: ctx.env.webhookInvoker },
+        ),
+        // Must come after delivery destinations so the flag only flips when
+        // the upstream hook destinations actually succeeded.
+        new RegistrationFinalizerDestination(config.dataAdapter.users),
+      ],
+    }),
+  );
 
   app.use(async (ctx, next) => {
     // First add data hooks
@@ -61,6 +93,7 @@ export default function create(config: AuthHeroConfig) {
         "userRoles",
         "userPermissions",
         "hooks",
+        "keys",
       ],
       cache: cacheAdapter,
     });
@@ -102,6 +135,8 @@ export default function create(config: AuthHeroConfig) {
     .route("/co/authenticate", authenticateRoutes)
     .route("/authorize", authorizeRoutes)
     .route("/account", accountRoutes)
+    .route("/oidc/register", registerRoutes)
+    .route("/connect/start", connectStartRoutes)
     .route("/callback", callbackRoutes);
 
   oauthApp.doc("/spec", {

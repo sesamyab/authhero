@@ -42,6 +42,7 @@ export {
   createProtectSyncedMiddleware,
   createRuntimeFallbackAdapter,
   withRuntimeFallback,
+  withSystemResourceServerInheritance,
 } from "./middleware";
 export type { RuntimeFallbackConfig } from "./middleware";
 
@@ -165,7 +166,7 @@ export function createMultiTenancy(config: MultiTenancyConfig) {
  *
  * // Wrap your adapters with runtime fallback (uses same controlPlaneTenantId)
  * const dataAdapter = multiTenancy.wrapAdapters(baseAdapters, {
- *   controlPlaneClientId: "default_client", // optional additional config
+ *   controlPlaneClientId: "default", // optional additional config
  * });
  *
  * // Use the middleware

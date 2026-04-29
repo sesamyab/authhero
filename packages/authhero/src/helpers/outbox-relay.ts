@@ -3,9 +3,15 @@ import { OutboxAdapter, AuditEvent } from "@authhero/adapter-interfaces";
 /**
  * Interface for outbox event destinations.
  * Each destination transforms audit events into its own format and delivers them.
+ *
+ * Destinations may implement `accepts(event)` to filter which events they
+ * handle (e.g. the logs destination only accepts log-shaped events, while a
+ * webhook destination only accepts `hook.*` events). If `accepts` is absent,
+ * the destination receives every event.
  */
 export interface EventDestination {
   name: string;
+  accepts?(event: AuditEvent): boolean;
   transform(event: AuditEvent): unknown;
   deliver(events: unknown[]): Promise<void>;
 }
@@ -17,6 +23,19 @@ const DEFAULT_MAX_RETRIES = 5;
 const DEFAULT_RETENTION_DAYS = 7;
 const DEFAULT_LEASE_MS = 30_000; // 30 seconds
 
+async function tryDeadLetter(
+  outbox: OutboxAdapter,
+  eventId: string,
+  error: string,
+): Promise<void> {
+  console.warn(`Outbox event ${eventId} dead-lettering: ${error}`);
+  try {
+    await outbox.deadLetter(eventId, error);
+  } catch {
+    // Best effort — event stays in outbox if dead-letter write fails
+  }
+}
+
 function computeNextRetryAt(retryCount: number): string {
   const delayMs = Math.min(
     BASE_DELAY_MS * Math.pow(2, retryCount),
@@ -26,8 +45,93 @@ function computeNextRetryAt(retryCount: number): string {
 }
 
 /**
+ * Process specific outbox events by their IDs.
+ * Used by per-request processing where each request handles only its own events.
+ * Claims events first to prevent concurrent processing by drain workers.
+ */
+export async function processOutboxEvents(
+  outbox: OutboxAdapter,
+  ids: string[],
+  destinations: EventDestination[],
+  options?: { maxRetries?: number },
+): Promise<void> {
+  if (ids.length === 0) return;
+
+  const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
+
+  // Claim events to prevent concurrent processing by drain workers
+  const workerId = crypto.randomUUID();
+  const claimedIds = await outbox.claimEvents(ids, workerId, DEFAULT_LEASE_MS);
+  if (claimedIds.length === 0) return;
+
+  const events = await outbox.getByIds(claimedIds);
+  if (events.length === 0) return;
+
+  const processedIds: string[] = [];
+
+  for (const event of events) {
+    if (event.retry_count >= maxRetries) {
+      await tryDeadLetter(
+        outbox,
+        event.id,
+        event.error || `Exceeded max retries (${maxRetries})`,
+      );
+      continue;
+    }
+
+    let allSucceeded = true;
+    let anyDestinationAccepted = false;
+
+    for (const destination of destinations) {
+      if (destination.accepts && !destination.accepts(event)) continue;
+      anyDestinationAccepted = true;
+      try {
+        const transformed = destination.transform(event);
+        await destination.deliver([transformed]);
+      } catch (error) {
+        allSucceeded = false;
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        try {
+          await outbox.markRetry(
+            event.id,
+            `${destination.name}: ${errorMessage}`,
+            computeNextRetryAt(event.retry_count),
+          );
+        } catch {
+          // Best effort
+        }
+        break;
+      }
+    }
+
+    if (!anyDestinationAccepted) {
+      await tryDeadLetter(
+        outbox,
+        event.id,
+        `No destination accepts event_type=${event.event_type}`,
+      );
+      continue;
+    }
+
+    if (allSucceeded) {
+      processedIds.push(event.id);
+    }
+  }
+
+  if (processedIds.length > 0) {
+    try {
+      await outbox.markProcessed(processedIds);
+    } catch {
+      // Best effort
+    }
+  }
+}
+
+/**
  * Drain unprocessed events from the outbox and deliver to all destinations.
- * Each destination is processed independently — a failure in one does not block others.
+ * Intended for cron/scheduled use to sweep up events that failed per-request processing.
+ * Uses claim mechanism for safe multi-worker execution.
  */
 export async function drainOutbox(
   outbox: OutboxAdapter,
@@ -54,18 +158,23 @@ export async function drainOutbox(
   const failedIds: string[] = [];
 
   for (const event of claimedEvents) {
-    // Mark exhausted events as processed so they don't block the queue
+    // Move exhausted events to dead-letter so they don't block the queue and
+    // are still visible via the failed-events management endpoints.
     if (event.retry_count >= maxRetries) {
-      console.warn(
-        `Outbox event ${event.id} exceeded max retries (${maxRetries}), marking as processed. Last error: ${event.error}`,
+      await tryDeadLetter(
+        outbox,
+        event.id,
+        event.error || `Exceeded max retries (${maxRetries})`,
       );
-      processedIds.push(event.id);
       continue;
     }
 
     let allSucceeded = true;
+    let anyDestinationAccepted = false;
 
     for (const destination of destinations) {
+      if (destination.accepts && !destination.accepts(event)) continue;
+      anyDestinationAccepted = true;
       try {
         const transformed = destination.transform(event);
         await destination.deliver([transformed]);
@@ -84,6 +193,15 @@ export async function drainOutbox(
         }
         break; // Don't try other destinations for this event
       }
+    }
+
+    if (!anyDestinationAccepted) {
+      await tryDeadLetter(
+        outbox,
+        event.id,
+        `No destination accepts event_type=${event.event_type}`,
+      );
+      continue;
     }
 
     if (allSucceeded) {

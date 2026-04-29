@@ -286,11 +286,20 @@ describe("callback", () => {
     });
 
     expect(response.status).toEqual(302);
-    const location = response.headers.get("location");
-    if (!location) {
+    expect(response.headers.get("location")).toEqual(
+      `/authorize/resume?state=${loginSession.id}`,
+    );
+
+    // Follow the /authorize/resume hop to the client's redirect_uri.
+    const resumeResponse = await oauthClient.authorize.resume.$get({
+      query: { state: loginSession.id },
+    });
+    expect(resumeResponse.status).toEqual(302);
+    const finalLocation = resumeResponse.headers.get("location");
+    if (!finalLocation) {
       throw new Error("No location header");
     }
-    const redirectUri = new URL(location);
+    const redirectUri = new URL(finalLocation);
     expect(redirectUri.pathname).toEqual("/callback");
 
     const { logs } = await env.data.logs.list("tenantId");
@@ -664,8 +673,17 @@ describe("callback", () => {
     expect(socialUser).toBeTruthy();
     expect(socialUser!.linked_to).toEqual("auth2|primary-user");
 
+    // Callback hops via /authorize/resume — follow it to get the client redirect.
+    expect(location).toEqual(`/authorize/resume?state=${loginSession.id}`);
+    const resumeResponse = await oauthClient.authorize.resume.$get({
+      query: { state: loginSession.id },
+    });
+    expect(resumeResponse.status).toEqual(302);
+    const finalLocation = resumeResponse.headers.get("location");
+    expect(finalLocation).toBeTruthy();
+
     // The authorization code should reference the primary user, not the social user
-    const redirectUri = new URL(location!);
+    const redirectUri = new URL(finalLocation!);
     const authCode = redirectUri.searchParams.get("code");
     expect(authCode).toBeTruthy();
     const codeRecord = await env.data.codes.get(
@@ -677,7 +695,118 @@ describe("callback", () => {
     expect(codeRecord!.user_id).toEqual("auth2|primary-user");
   });
 
-  it("should redirect to the callback endpoint on the original domain when domain doesn't match the current request", async () => {
+  it("fires onExecutePreUserRegistration on social callback for a new user with the correct event payload", async () => {
+    const hook = vi.fn(async () => {});
+    const { oauthApp, env } = await getTestServer({
+      hooks: {
+        onExecutePreUserRegistration: hook,
+      },
+    });
+    const oauthClient = testClient(oauthApp, env);
+
+    await env.data.connections.create("tenantId", {
+      id: "connectionId",
+      name: "mock-strategy",
+      strategy: "mock-strategy",
+      options: { client_id: "clientId", client_secret: "clientSecret" },
+    });
+
+    const loginSession = await env.data.loginSessions.create("tenantId", {
+      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+      csrf_token: "csrfToken",
+      authParams: {
+        client_id: "clientId",
+        redirect_uri: "https://example.com/callback",
+      },
+    });
+
+    const state = await env.data.codes.create("tenantId", {
+      code_id: nanoid(),
+      code_type: "oauth2_state",
+      login_id: loginSession.id,
+      connection_id: "connectionId",
+      code_verifier: "verifier",
+      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+    });
+
+    const response = await oauthClient.callback.$get({
+      query: { state: state.code_id, code: "vipps-user@example.com" },
+    });
+
+    expect(response.status).toEqual(302);
+    expect(hook).toHaveBeenCalledTimes(1);
+
+    const [event] = hook.mock.calls[0] as unknown as [
+      { user: any; ctx: unknown; request: { method: string; url: string } },
+    ];
+    expect(event.user.email).toEqual("vipps-user@example.com");
+    expect(event.user.provider).toEqual("mock-strategy");
+    expect(event.user.connection).toEqual("mock-strategy");
+    expect(event.user.is_social).toEqual(true);
+    expect(event.user.user_id).toEqual("mock-strategy|vipps-456");
+    expect(event.ctx).toBeTruthy();
+    expect(event.request.method).toEqual("GET");
+  });
+
+  it("access.deny in onExecutePreUserRegistration rejects a social-callback sign-up and persists no user row", async () => {
+    const { oauthApp, env } = await getTestServer({
+      hooks: {
+        onExecutePreUserRegistration: async (_event, api) => {
+          api.access.deny("unauthorized", "Registration not allowed");
+        },
+      },
+    });
+    const oauthClient = testClient(oauthApp, env);
+
+    await env.data.connections.create("tenantId", {
+      id: "connectionId",
+      name: "mock-strategy",
+      strategy: "mock-strategy",
+      options: { client_id: "clientId", client_secret: "clientSecret" },
+    });
+
+    const loginSession = await env.data.loginSessions.create("tenantId", {
+      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+      csrf_token: "csrfToken",
+      authParams: {
+        client_id: "clientId",
+        redirect_uri: "https://example.com/callback",
+      },
+    });
+
+    const state = await env.data.codes.create("tenantId", {
+      code_id: nanoid(),
+      code_type: "oauth2_state",
+      login_id: loginSession.id,
+      connection_id: "connectionId",
+      code_verifier: "verifier",
+      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+    });
+
+    const response = await oauthClient.callback.$get({
+      query: { state: state.code_id, code: "code" },
+    });
+
+    // callback.ts maps JSONHTTPException(400) from access.deny to a redirect
+    // back to the login page with error params — verify observable behavior.
+    expect(response.status).toEqual(302);
+    const location = response.headers.get("location");
+    expect(location).toBeTruthy();
+    const redirectUri = new URL(location!);
+    expect(redirectUri.searchParams.get("error")).toBeTruthy();
+    expect(redirectUri.searchParams.get("error_description")).toContain(
+      "Registration denied",
+    );
+
+    // No user row should have been persisted.
+    const blockedUser = await env.data.users.get(
+      "tenantId",
+      "mock-strategy|123",
+    );
+    expect(blockedUser).toBeNull();
+  });
+
+  it("should finalize on any host and 302 to /authorize/resume on the original domain when domain doesn't match", async () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
 
@@ -735,21 +864,31 @@ describe("callback", () => {
       },
     );
 
-    // Verify it's a 307 Temporary Redirect to preserve the HTTP method
-    expect(response.status).toEqual(307);
+    // Cross-domain handling is now owned by /authorize/resume — the callback
+    // finalizes the login session and hands off via a plain 302.
+    expect(response.status).toEqual(302);
     const location = response.headers.get("location");
     if (!location) {
       throw new Error("No location header");
     }
 
-    // Verify it redirects to the callback on the original domain
-    expect(location).toEqual(
-      `https://auth.example.com/callback?state=${state.code_id}&code=foo%40example.com`,
-    );
+    // The hop targets /authorize/resume on the ORIGINAL authorization host.
+    const redirect = new URL(location);
+    expect(redirect.origin).toEqual("https://auth.example.com");
+    expect(redirect.pathname).toEqual("/authorize/resume");
+    expect(redirect.searchParams.get("state")).toEqual(loginSession.id);
 
-    // Verify no user operations were performed yet (since we're redirecting)
-    const logs = await env.data.logs.list("tenantId");
-    expect(logs).toHaveLength(0);
+    // The login session should now carry the authenticated identity so the
+    // resume endpoint can complete without re-running the OAuth exchange.
+    const persisted = await env.data.loginSessions.get(
+      "tenantId",
+      loginSession.id,
+    );
+    expect(persisted?.state).toEqual(LoginSessionState.AUTHENTICATED);
+    expect(persisted?.user_id).toBeTruthy();
+    expect(persisted?.auth_strategy?.strategy).toEqual("mock-strategy");
+    expect(persisted?.auth_connection).toEqual("mock-strategy");
+    expect(persisted?.authenticated_at).toBeTruthy();
   });
 
   it("should complete callback successfully when login session has expired during processing", async () => {
@@ -796,11 +935,20 @@ describe("callback", () => {
       },
     });
 
-    // Should still succeed with a redirect containing an authorization code
+    // Should succeed with a hop to /authorize/resume, which then redirects to
+    // the client's redirect_uri with an authorization code.
     expect(response.status).toEqual(302);
-    const location = response.headers.get("location");
-    expect(location).toBeTruthy();
-    const redirectUri = new URL(location!);
+    expect(response.headers.get("location")).toEqual(
+      `/authorize/resume?state=${loginSession.id}`,
+    );
+
+    const resumeResponse = await oauthClient.authorize.resume.$get({
+      query: { state: loginSession.id },
+    });
+    expect(resumeResponse.status).toEqual(302);
+    const finalLocation = resumeResponse.headers.get("location");
+    expect(finalLocation).toBeTruthy();
+    const redirectUri = new URL(finalLocation!);
     expect(redirectUri.pathname).toEqual("/callback");
     expect(redirectUri.searchParams.get("code")).toBeTruthy();
   });

@@ -45,6 +45,7 @@ describe("common", () => {
         authParams: {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN,
+          audience: "https://example.com",
         },
         client,
         user,
@@ -57,6 +58,104 @@ describe("common", () => {
         token_type: "Bearer",
         expires_in: 86400,
       });
+    });
+
+    it("should fall back to tenant default_audience when authParams.audience is not set", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "tenantId",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.TOKEN,
+          // audience deliberately omitted — should fall back to tenant.default_audience
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      const parsed = parseJWT(tokens.access_token);
+      const payload = parsed?.payload as Record<string, unknown>;
+      expect(payload.aud).toBe("https://example.com");
+    });
+
+    it("should throw when neither authParams.audience nor tenant default_audience is set", async () => {
+      const { env } = await getTestServer();
+
+      // Create a separate tenant without default_audience — the kysely adapter
+      // strips undefined/null on update, so we can't clear it from the fixture.
+      await env.data.tenants.create({
+        id: "noAudienceTenant",
+        friendly_name: "No Audience Tenant",
+      });
+      await env.data.clients.create("noAudienceTenant", {
+        client_id: "noAudienceClient",
+        client_secret: "clientSecret",
+        name: "No Audience Client",
+        callbacks: ["https://example.com/callback"],
+        allowed_logout_urls: ["https://example.com/callback"],
+        web_origins: ["https://example.com"],
+      });
+
+      const ctx = {
+        env,
+        var: {
+          tenant_id: "noAudienceTenant",
+        },
+      } as Context<{
+        Bindings: Bindings;
+        Variables: Variables;
+      }>;
+
+      const client = await getEnrichedClient(
+        env,
+        "noAudienceClient",
+        "noAudienceTenant",
+      );
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+
+      if (!client || !user) {
+        throw new Error("Client or user not found");
+      }
+
+      // Sanity-check the fixture: no default_audience on this tenant
+      expect(client.tenant.default_audience).toBeUndefined();
+
+      await expect(
+        createAuthTokens(ctx, {
+          authParams: {
+            client_id: "noAudienceClient",
+            response_type: AuthorizationResponseType.TOKEN,
+          },
+          client,
+          user,
+          session_id: "session_id",
+        }),
+      ).rejects.toThrow(/audience/i);
     });
 
     it("should create an access token and an id token when the response type is token id_token and the openid scope is requested", async () => {
@@ -87,6 +186,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
           scope: "openid",
+          audience: "https://example.com",
         },
         client,
         user,
@@ -129,6 +229,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
           scope: "openid", // Only openid scope, no email scope
+          audience: "https://example.com",
         },
         client,
         user,
@@ -186,6 +287,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.ID_TOKEN,
           scope: "openid email", // Request email scope
+          audience: "https://example.com",
         },
         client,
         user,
@@ -235,6 +337,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
           scope: "openid email", // Request email scope
+          audience: "https://example.com",
         },
         client,
         user,
@@ -283,6 +386,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.ID_TOKEN,
           scope: "openid profile", // Request profile scope
+          audience: "https://example.com",
         },
         client,
         user,
@@ -332,6 +436,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
           scope: "openid profile", // Request profile scope
+          audience: "https://example.com",
         },
         client,
         user,
@@ -380,6 +485,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.ID_TOKEN,
           scope: "openid profile email", // Request both scopes
+          audience: "https://example.com",
         },
         client,
         user,
@@ -427,6 +533,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
           scope: "openid profile email", // Request both scopes
+          audience: "https://example.com",
         },
         client,
         user,
@@ -480,6 +587,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
           scope: "openid profile email",
+          audience: "https://example.com",
         },
         client,
         user,
@@ -538,6 +646,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.ID_TOKEN,
           scope: "openid profile email",
+          audience: "https://example.com",
         },
         client,
         user,
@@ -600,6 +709,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
           scope: "openid",
+          audience: "https://example.com",
         },
         client,
         user,
@@ -655,6 +765,7 @@ describe("common", () => {
           client_id: "clientId",
           response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
           scope: "openid",
+          audience: "https://example.com",
         },
         client,
         user,
@@ -1023,6 +1134,7 @@ describe("common", () => {
         client_id: "clientId",
         response_type: AuthorizationResponseType.TOKEN,
         scope: "openid offline_access",
+        audience: "http://example.com",
         redirect_uri: "http://example.com/callback",
         response_mode: AuthorizationResponseMode.WEB_MESSAGE,
       },
@@ -1096,6 +1208,7 @@ describe("common", () => {
         client_id: "clientId",
         response_type: AuthorizationResponseType.TOKEN, // Implicit flow
         scope: "openid offline_access", // offline_access is requested
+        audience: "http://example.com",
         redirect_uri: "http://example.com/callback",
         // No response_mode: AuthorizationResponseMode.WEB_MESSAGE ensures implicit flow behavior (fragment)
       },
@@ -1721,6 +1834,7 @@ describe("common", () => {
         authParams: {
           client_id: "clientId",
           scope: "openid profile",
+          audience: "https://example.com",
         },
         client,
         user,

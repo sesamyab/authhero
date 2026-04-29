@@ -1,5 +1,403 @@
 # authhero
 
+## 4.106.0
+
+### Minor Changes
+
+- ba03e14: Drop `dcr_allowed_integration_types` tenant flag and per-tenant allowlist check on `/connect/start`. `integration_type` is now an optional free-form label — `enable_dynamic_client_registration` alone gates the connect flow. Existing callers that pass `integration_type` continue to work; the value still flows into the IAT constraints and consent screen when supplied.
+
+### Patch Changes
+
+- Updated dependencies [ba03e14]
+  - @authhero/adapter-interfaces@1.10.0
+  - @authhero/widget@0.32.7
+
+## 4.105.0
+
+### Minor Changes
+
+- 078f2c6: Add control-plane mode to `/connect/start` so it can be used from a multi-tenancy control plane.
+
+  Previously the consent flow always minted the IAT on whichever tenant the request resolved to. That meant integrators had to point `/connect/start` at each child tenant's host directly — there was no way to start the flow on a shared control-plane host (e.g. `auth2.sesamy.com`) and have the IAT land on the user's chosen workspace.
+
+  The flow now branches based on the resolved tenant:
+  - **Direct-to-child (unchanged):** request resolves to a child tenant → mint the IAT there. No new behavior.
+  - **Control plane:** request resolves to the multi-tenancy control plane (detected via `data.multiTenancyConfig.controlPlaneTenantId`, set by `@authhero/multi-tenancy`'s `withRuntimeFallback`) → after login, the user is shown a new `/u2/connect/select-tenant` picker listing every organization they belong to on the control plane. Each organization name maps 1:1 to a child tenant id (the convention enforced by the provisioning hooks). The chosen child tenant is persisted on the login session and the IAT is minted against that tenant.
+
+  Membership is re-validated when consent is submitted, so a stale or tampered `target_tenant_id` cannot be used to mint on a workspace the user has lost access to.
+
+  When the IAT lives on a different tenant than the request resolved against, the success redirect adds `authhero_tenant=<child_tenant_id>` alongside `authhero_iat`. Pass it as the `tenant-id` header on `POST /oidc/register` so registration hits the correct tenant. Direct-to-child callers don't get this parameter.
+
+- 2578652: Allow http `return_to` on `/connect/start` for loopback hosts and tenant-allowlisted dev origins.
+
+  `GET /connect/start` previously required `return_to` to be `https://<domain>` and rejected all `http://` schemes. That broke local-dev integrators (e.g. WordPress under `wp-env` at `http://127.0.0.1:8888`).
+
+  The new rule:
+  - HTTPS is always permitted (no behavior change).
+  - HTTP is permitted iff:
+    1. The host is loopback — `localhost`, `127.0.0.1`, or `[::1]` (any port). Aligned with RFC 8252 §7.3.
+    2. The exact origin (scheme + host + port) appears in the new tenant flag `allow_http_return_to`.
+  - `0.0.0.0` is always rejected; `localhost.<anything>` is not pattern-matched; trailing dots and case variations are normalized.
+  - `domain` and `return_to` still must agree on scheme + host + port. `domain` may now be passed as a fully-qualified origin (`http://127.0.0.1:8888`); bare host[:port] continues to mean implicit `https://`.
+
+  The consent screen at `/u2/connect/start` shows a "Local development" badge when `domain` is loopback or matches the tenant allowlist, so a user can spot a phishing attempt that claims a `localhost` callback they didn't initiate.
+
+  A new `flags.allow_http_return_to: string[]` field is added to the tenant schema. Default `[]`. Each entry must be a fully-qualified `http://` origin with no path/query/fragment; malformed entries are rejected on write.
+
+### Patch Changes
+
+- Updated dependencies [2578652]
+  - @authhero/adapter-interfaces@1.9.0
+  - @authhero/widget@0.32.6
+
+## 4.104.0
+
+### Minor Changes
+
+- 48eab09: Add Phases 4 and 5 of RFC 7591/7592 Dynamic Client Registration.
+
+  **Phase 4 — consent-mediated DCR**
+  - New top-level `GET /connect/start?integration_type=...&domain=...&return_to=...&state=...&scope=...` route validates the request, creates a login session, and 302s to `/u2/connect/start`. The Stencil widget renders a consent screen there; on confirm AuthHero mints an IAT bound to the consenting user (with `domain`, `integration_type`, `scope`, and `grant_types: ["client_credentials"]` as pre-bound constraints) and redirects to `return_to?authhero_iat=<token>&state=<state>`. Cancel returns `authhero_error=cancelled`.
+  - New `POST /api/v2/client-registration-tokens` (scope `create:client_registration_tokens` or `auth:write`) for non-browser IAT issuance. Body: `{ sub?, constraints?, expires_in_seconds?, single_use? }` — defaults to 5-minute TTL and single-use.
+  - New tenant flag `dcr_allowed_integration_types: string[]` allowlists the `integration_type` values accepted by `/connect/start`.
+  - New management scope `create:client_registration_tokens` added to `MANAGEMENT_API_SCOPES`.
+
+  **Phase 5 — owner scoping & soft-delete enforcement**
+  - New `GET /api/v2/users/{user_id}/connected-clients` Management API endpoint returns clients owned by a user (created via IAT-gated DCR). Response is a slim projection — no secrets, no internal config — and excludes soft-deleted clients.
+  - `getEnrichedClient` now treats clients with `client_metadata.status === "deleted"` as not found. After RFC 7592 `DELETE /oidc/register/{client_id}`, subsequent `/oauth/token`, `/authorize`, and resume requests for that `client_id` are rejected.
+  - The kysely `clients.list` adapter now supports lucene-style `field:"value"` exact-match filtering on `owner_user_id` and `registration_type`.
+
+- e595b83: Add rfc 7638 support
+- 02cebf4: Add RFC 7591 Dynamic Client Registration and RFC 7592 Client Configuration endpoints with Initial Access Token support.
+  - `POST /oidc/register` (RFC 7591 §3): create a client, optionally gated by an Initial Access Token (IAT). Open DCR can be enabled by setting `tenant.flags.dcr_require_initial_access_token = false`.
+  - `GET/PUT/DELETE /oidc/register/:client_id` (RFC 7592): self-service client configuration using the registration access token returned at registration time.
+  - New `client_registration_tokens` table (kysely + drizzle) holding both IATs and RATs with SHA-256 hashed storage.
+  - New `clients` columns: `owner_user_id`, `registration_type`, `registration_metadata`.
+  - New tenant flags: `dcr_require_initial_access_token`, `dcr_allowed_grant_types`.
+  - Discovery (`.well-known/openid-configuration`) now only emits `registration_endpoint` when `flags.enable_dynamic_client_registration = true`.
+  - RFC 7591 `redirect_uris` is mapped to/from AuthHero's internal `callbacks` field at the wire boundary — the Management API continues to use `callbacks` unchanged.
+
+- e595b83: Derive signing-key `kid` from the RFC 7638 JWK Thumbprint.
+
+  `createX509Certificate` now sets the `kid` (and the existing `fingerprint` field) to the SHA-256 base64url thumbprint of the public JWK, computed per RFC 7638 (only the required members for the kty, in lexicographic order, no whitespace). This produces a deterministic, self-verifying key identifier that any client can recompute from the published JWKS.
+
+  Existing keys keep their original `kid` (a hex-encoded certificate serial number) — `kid` is stored on each row, so previously issued tokens continue to verify. Only newly created keys use the thumbprint format. Operators can normalise via `POST /api/v2/keys/signing/rotate`.
+
+  A new exported `computeJWKThumbprint(jwk)` helper is available for any caller that needs to compute the thumbprint of an arbitrary JWK.
+
+### Patch Changes
+
+- ee8f683: Scope passkey authentication to the current tenant when the user is known. The "Log in with passkey" link on the login screen is hidden when the session's user has no passkey registered under the current tenant, and `allowCredentials` is populated on the passkey challenge and conditional-mediation flows so the browser/OS picker only offers credentials belonging to this tenant. This prevents cross-tenant passkey confusion when multiple tenants share the same auth host (same WebAuthn `rpId`).
+- Updated dependencies [48eab09]
+- Updated dependencies [02cebf4]
+  - @authhero/adapter-interfaces@1.8.0
+  - @authhero/widget@0.32.5
+
+## 4.103.2
+
+### Patch Changes
+
+- 9145dbd: Preserve `user_id`, `audience`, and `scope` on outbox-delivered log entries. Previously, when `logMessage` was routed through the outbox (e.g., successful login via `post-user-login` hook), the `AuditEvent` → `LogInsert` transform dropped these fields: `actor.id` ignored `params.userId` in favor of only `ctx.var.user_id`, and `audience` was hardcoded to `""` because the `AuditEvent` schema lacked those fields.
+  - Add optional `audience` and `scope` to `AuditEventInsert`.
+  - `buildAuditEvent` now falls back `actor.id` to `params.userId`, sets `actor.type = "user"` for user-initiated events, and categorizes them as `"user_action"`.
+  - `toLogInsert` maps `event.audience` and `event.scope` through to the log row.
+
+- 9145dbd: Drop the multi-statement transaction from `refreshTokens.update`. The previous implementation ran UPDATE + SELECT + UPDATE inside `db.transaction()` to extend the parent `login_session` expiry, which on async HTTP drivers (PlanetScale, D1) meant three sequential round-trips plus BEGIN/COMMIT and held a row lock on `login_sessions` across the whole transaction — creating a hot-row hotspot when multiple refresh tokens shared a `login_id`.
+  - Add optional `UpdateRefreshTokenOptions.loginSessionBump` to the adapter interface. The caller now provides `login_id` and the pre-computed new `expires_at`, so the adapter avoids a read-before-write.
+  - `refreshTokens.update` issues the refresh-token and login-session UPDATEs concurrently via `Promise.all`, collapsing wall-clock latency to roughly one round-trip on async drivers. The bump is idempotent (`WHERE expires_at_ts < new`) and self-healing (next refresh re-bumps on a transient failure), so strict atomicity is not required.
+  - Fix `ctx.req.header["x-real-ip"]` / `["user-agent"]` — Hono exposes `header` as a function, so bracket access has been silently writing empty strings to `device.last_ip` / `device.last_user_agent` since the grant landed. Use `ctx.req.header("x-real-ip")` and skip the `device` write entirely when IP and UA are unchanged.
+
+- Updated dependencies [9145dbd]
+- Updated dependencies [9145dbd]
+  - @authhero/adapter-interfaces@1.7.0
+  - @authhero/widget@0.32.4
+
+## 4.103.1
+
+### Patch Changes
+
+- 6fecd2d: Fill gaps in audit/log emission across auth flows:
+  - `/oauth/token` now emits success logs (`seacft`, `sertft`, `seccft`, `seotpft`) after tokens are minted, and failure logs (`fertft`, `feccft`, `feotpft`) on refresh-token, client-credentials, and passwordless-OTP exchange errors.
+  - Universal-login passwordless flow emits `seotpft` after OTP validation.
+  - `/u/validate-email` emits `sv` on success and `fv` on failure paths.
+  - Account email-change verification emits `sce` after the new email is set.
+  - Management API user deletion emits `sdu` alongside the existing `sapi` log.
+  - Logout emits `srrt` when refresh tokens are revoked and `flo` on invalid redirect_uri.
+
+- 2c3b543: Commit the `SUCCESS_REVOCATION` outbox event atomically with refresh-token removal and session revocation in the logout route. Adds a `logMessageInTx` helper for use inside `data.transaction()` callbacks so future auth flows can do the same.
+- 7d9f138: Soft-revoke refresh tokens instead of hard-deleting them. Adds a `revoked_at` field to the `RefreshToken` schema, a `revokeByLoginSession(tenant_id, login_session_id, revoked_at)` adapter method, and a `refresh_tokens.revoked_at_ts` column. The logout route now issues a single bulk UPDATE (fixing a pagination bug where sessions with >100 refresh tokens were not fully revoked), and the refresh-token grant rejects revoked tokens with an `invalid_grant` error.
+- 2c3b543: Fix regression where "no audience" errors were thrown when completing authentication. The authparams-refactor release removed the tenant-level audience fallback from token minting, but some loginSession creation paths (`/co/authenticate`, `/dbconnections`, passwordless error path) don't stamp audience upstream. Restore the `tenant.default_audience` fallback in `createAuthTokens` and `createRefreshToken`, and stamp `audience` at the remaining session creation sites.
+- Updated dependencies [7d9f138]
+  - @authhero/adapter-interfaces@1.6.0
+  - @authhero/widget@0.32.3
+
+## 4.103.0
+
+### Minor Changes
+
+- 0b3419b: Add `runOutboxRelay` — a one-call helper for draining the outbox from a cron / scheduled handler. Internally it builds the same destination array the inline dispatcher uses, mints per-tenant `auth-service` tokens via the same in-process path (`createServiceTokenCore`), and then runs `drainOutbox` followed by `cleanupOutbox`. Consumers no longer need to plumb `getServiceToken` themselves to sweep up `hook.*` events on a schedule.
+
+  `createDefaultDestinations` now accepts an optional `webhookInvoker` of the same shape as the `init()` option. The inline per-request outbox dispatcher now honors `config.webhookInvoker` too, so cron-drained and per-request deliveries no longer diverge silently when a consumer supplies a custom invoker. All existing exports (`drainOutbox`, `cleanupOutbox`, `createDefaultDestinations`) keep their prior signatures; the new `webhookInvoker` field and `runOutboxRelay` export are additive.
+
+- b4f4f15: Resolve the tenant `default_audience` at `/authorize` time and stamp it onto the `login_session` authParams, matching Auth0's behavior ("setting the Default Audience is equivalent to appending this audience to every authorization request"). Previously the fallback was applied at token issuance and incorrectly referenced `tenant.audience` (the tenant's own identifier) instead of `tenant.default_audience`. Downstream runtime fallbacks in `createFrontChannelAuthResponse`, `silentAuth`, and `createRefreshToken` have been removed — the audience flows through on the login session.
+
+  Behavior change: tenants that were relying on the undocumented fallback to `tenant.audience` will now need `default_audience` set (or to pass `audience` explicitly) to mint access tokens without an audience. Changing the tenant `default_audience` no longer retroactively affects in-flight login sessions; it only applies to new `/authorize` requests.
+
+## 4.102.0
+
+### Minor Changes
+
+- 31b0b62: Update the adapters
+
+## 4.101.1
+
+### Patch Changes
+
+- 011928c: Fix: `hook.post-user-registration` (and other `hook.*`) outbox events enqueued from the universal-login apps (`/u/*` and `/u2/*`) were dead-lettering immediately with `No destination accepts event_type=hook.post-user-registration` — the two universal-login apps' `outboxMiddleware` was only wired with `LogsDestination`, which rejects `hook.*` events. Registration webhooks never fired for users created through the OTP / identifier screens.
+
+  The universal-login apps now register the same destination list as auth-api and management-api (`LogsDestination` + `WebhookDestination` + `RegistrationFinalizerDestination`), so `hook.*` events enqueued on these routes are delivered and `registration_completed_at` is flipped on success.
+
+## 4.101.0
+
+### Minor Changes
+
+- 931f598: Add `GET /authorize/resume` endpoint mirroring Auth0's terminal login-session resumption point.
+
+  Sub-flows now persist the authenticated identity onto the login session (new `auth_strategy` and `authenticated_at` columns on `login_sessions`) and 302 the browser to `/authorize/resume?state=…`. The resume endpoint owns (a) hopping back to the original authorization host when the browser is on the wrong custom domain so the session cookie lands under the right wildcard, and (b) dispatching based on the login-session state machine to the final token/code issuance or to the next MFA/continuation screen.
+
+  The social OAuth callback is migrated as the first consumer: the old 307-POST cross-domain re-dispatch in `connectionCallback` is replaced by a plain 302 to `/authorize/resume`, and the OAuth code exchange now always runs once on whichever host the provider called back to. Subsequent PRs will migrate the password / OTP / signup / SAML sub-flows to the same pattern, after which the ad-hoc `Set-Cookie` forwarding layers in Universal Login can be removed.
+
+- 931f598: Export `createDefaultDestinations` so consumers can call `drainOutbox` from a cron / scheduled handler with the same destination set the in-request middleware uses.
+
+  Previously the built-in `LogsDestination`, `WebhookDestination`, and `RegistrationFinalizerDestination` classes were private, so a consumer wanting to wire a cron-based outbox drain as a safety net would have had to reimplement all three to match the canonical hook.\* filtering, retry semantics, and post-registration finalization — and would drift any time authhero's internals changed. `createDefaultDestinations({ dataAdapter, getServiceToken })` returns the same array the per-request `outboxMiddleware` constructs, keeping the cron drain and the inline dispatcher in lock-step.
+
+  The destination classes themselves (`LogsDestination`, `WebhookDestination`, `RegistrationFinalizerDestination`) and the `EventDestination` interface are also exported now for consumers who want to customize the set.
+
+- 931f598: Add `GET /api/v2/users/{user_id}/logs` endpoint that returns log rows for the user and all of its linked secondary identities. Calling it with a secondary user_id returns 404, matching the convention used by the user PATCH endpoint.
+
+  The react-admin user **Logs** tab now hits this endpoint, so it surfaces login activity from linked accounts (which the previous `q=user_id:…` query against `/logs` silently missed, since linked accounts are stored as separate user rows and each retains its own `user_id` on log entries).
+
+### Patch Changes
+
+- Updated dependencies [931f598]
+  - @authhero/adapter-interfaces@1.5.0
+  - @authhero/widget@0.32.2
+
+## 4.100.0
+
+### Minor Changes
+
+- 5d350ff: Fix duplicate `post-user-registration` outbox events on a user's first login.
+
+  `postUserLoginHook` previously re-enqueued a `post-user-registration` event on every successful login whose `registration_completed_at` was still null, as a "self-healing" recovery for dead-lettered events. The check couldn't distinguish "event is still pending in the outbox" from "event was lost" — so every first-time login produced a second duplicate event while the original was still waiting to drain. In tenants with a pre-user-registration hook that mutates the user (e.g. setting `app_metadata.strategy`), the two enqueues even captured different user payloads, confirming the same bug.
+
+  Self-healing is removed from the login path. Delivery reliability for `post-user-registration` now belongs solely to the outbox (retry + dead-letter). Recovery of dead-lettered events is an explicit admin/cron responsibility and should no longer be tangled into the login path.
+
+  Also fixes the race-loser branch in `linkUsersHook`: `instanceof HTTPException` silently fails when the adapter is bundled (class identity differs across module boundaries), so the existing race-catch never actually fired in production. Switched to a duck-typed `status === 409` check and surfaced the race-loser as a 409 from `createUserHooks`, which `getOrCreateUserByProvider` now catches and recovers so the losing login still completes without re-firing post-registration hooks.
+
+- 5d350ff: Fix link user race
+
+## 4.99.1
+
+### Patch Changes
+
+- 6503423: Fix `onExecutePreUserRegistration` (and all other `config.hooks`) not firing when a sub-app (`oauthApp`, `managementApp`, `universalApp`, `u2App`, `samlApp`) is mounted or served directly. `config.hooks` — along with `samlSigner`, `poweredByLogo`, `codeExecutor`, `webhookInvoker`, and `outbox` — was previously merged into `ctx.env` only by the outer `init()` app's middleware, so consumers who routed requests straight to a sub-app saw `ctx.env.hooks` stay `undefined` and the hook silently no-op. This surfaced most visibly as social-provider callbacks (Vipps, Google, etc.) creating a user row without invoking `onExecutePreUserRegistration` — no `api.access.deny`, no `api.user.setLinkedTo`, no consumer log — while email/password worked in setups that did go through the outer app.
+
+  The fix extracts the config-merge logic into a reusable `applyConfigMiddleware(config)` and wires it into each sub-app's own middleware chain, so hooks and other config values are available regardless of how the app is mounted. Merging is idempotent when the outer app is also used.
+
+- 6503423: Resolve `linked_to` in the refresh-token and authorization-code grants so tokens minted from a secondary (linked) user's credentials carry the primary user's `sub`. Previously only the password grant did this, leaving refresh tokens and session-resume flows issuing tokens in the secondary's name post-link.
+- 6503423: Fix cleanup deleting `login_sessions` while child `refresh_tokens` are still valid.
+
+  `refreshTokens.create` and `refreshTokens.update` now extend the parent
+  `login_sessions.expires_at_ts` to match the refresh token's longest expiry, in
+  the same DB transaction. Previously the initial token exchange never bumped
+  the login_session, so cleanup could delete the parent while its refresh tokens
+  were still valid.
+
+## 4.99.0
+
+### Minor Changes
+
+- b5f73bb: Expose cron-style helpers for scheduled handlers: `drainOutbox`, `cleanupOutbox`, and a context-free `cleanupSessions`. These can be wired directly into a Cloudflare Worker `scheduled()` handler (or any cron) to process pending outbox events and delete events past the retention window.
+- b5f73bb: Add drain outbox
+
+### Patch Changes
+
+- 1d15292: Hide `registration_completed_at` from management API responses and hook payloads. The field is internal — used only by the self-healing post-user-registration re-enqueue logic — and is now stripped from `auth0UserResponseSchema`, the `GET/PATCH /users/:user_id` responses, all webhook bodies (via `invokeHooks`), the outbox `target.after` payload, and the `onExecutePostLogin` / `onExecutePreUserUpdate` / `onExecutePre|PostUserDeletion` event objects.
+- Updated dependencies [1d15292]
+  - @authhero/adapter-interfaces@1.4.1
+  - @authhero/widget@0.32.1
+
+## 4.98.0
+
+### Minor Changes
+
+- d288b62: Add support for dynamic workers
+
+### Patch Changes
+
+- Updated dependencies [d288b62]
+  - @authhero/widget@0.32.0
+
+## 4.97.0
+
+### Minor Changes
+
+- d84cb2f: Complete the transaction fixes
+
+### Patch Changes
+
+- Updated dependencies [d84cb2f]
+  - @authhero/adapter-interfaces@1.4.0
+  - @authhero/widget@0.31.4
+
+## 4.96.0
+
+### Minor Changes
+
+- 2f6354d: Make session lifetime cofigurable
+- 2f6354d: Fix mfa view for phone numbers
+
+### Patch Changes
+
+- Updated dependencies [2f6354d]
+  - @authhero/adapter-interfaces@1.3.0
+  - @authhero/widget@0.31.3
+
+## 4.95.0
+
+### Minor Changes
+
+- d9415a0: Fix screen hint and passkeys mfa
+
+### Patch Changes
+
+- d9415a0: Honor `screen_hint=login` on `/authorize` to skip the check-account screen when an existing session is present, sending the user directly to the login/identifier page instead.
+
+## 4.94.0
+
+### Minor Changes
+
+- b2aff48: Durable post-hooks with self-healing and dead-letter support.
+  - Moved post-user-registration and post-user-deletion webhook delivery from inline invocation to the outbox, with `Idempotency-Key: {event.id}` headers and retry-with-backoff.
+  - `EventDestination` gained an optional `accepts(event)` filter so `LogsDestination`, `WebhookDestination`, and `RegistrationFinalizerDestination` can share the same event stream without cross-writing.
+  - Added `outbox.deadLetter`, `listFailed`, and `replay` to `OutboxAdapter`; the relay now moves exhausted events to dead-letter instead of silently marking them processed.
+  - New `GET /api/v2/failed-events` and `POST /api/v2/failed-events/:id/retry` management endpoints for operating the dead-letter queue.
+  - Self-healing: added `registration_completed_at` to the user; set by `RegistrationFinalizerDestination` (outbox path) or inline after successful synchronous webhook dispatch. `postUserLoginHook` re-enqueues the post-user-registration event on the next login when the flag is still null, so transient delivery failures recover automatically.
+  - Removed the global management-api transaction middleware: pre-registration webhooks and user-authored action code no longer execute inside a held DB transaction. Individual write paths own their own atomicity (see `linkUsersHook`, `createUserUpdateHooks`, `createUserDeletionHooks`).
+  - Added `users.rawCreate` to the adapter interface so the registration commit path can write without re-entering decorator hooks.
+  - New `account-linking` pre-defined post-login hook (`preDefinedHooks.accountLinking`) and corresponding template, matching Auth0's marketplace linking action. Idempotent: re-running on every login is safe.
+  - Non-Workers runtimes (Node, tests) now flush background promises via the outbox middleware so `waitUntil`-scheduled work completes before the response returns.
+
+### Patch Changes
+
+- Updated dependencies [b2aff48]
+  - @authhero/adapter-interfaces@1.2.0
+  - @authhero/widget@0.31.2
+
+## 4.93.0
+
+### Minor Changes
+
+- 3da602c: Trim transactions
+
+### Patch Changes
+
+- Updated dependencies [3da602c]
+  - @authhero/adapter-interfaces@1.1.0
+  - @authhero/widget@0.31.1
+
+## 4.92.0
+
+### Minor Changes
+
+- 7e0b2cb: Fix mfa security issues
+
+## 4.91.0
+
+### Minor Changes
+
+- 20d5140: Add support for dynamic code
+
+  BREAKING CHANGE: `DataAdapters` now requires a `hookCode: HookCodeAdapter` property. Adapters implementing `DataAdapters` must provide a `hookCode` adapter with `create`, `get`, `update`, and `remove` methods for managing hook code storage. See `packages/kysely/src/hook-code/` for a reference implementation.
+
+### Patch Changes
+
+- Updated dependencies [20d5140]
+  - @authhero/adapter-interfaces@1.0.0
+  - @authhero/widget@0.31.0
+
+## 4.90.0
+
+### Minor Changes
+
+- 9b0da44: Add transaction for linking of users
+- 18b50b9: Send reset password code
+- 71b17f7: Fix enroll passkey
+
+## 4.89.0
+
+### Minor Changes
+
+- 37eee72: Add support for screen_hint signup
+- a59a49b: Implement disable-sso
+- 4176937: Handle outbox messages and update universal auth
+
+### Patch Changes
+
+- Updated dependencies [a59a49b]
+- Updated dependencies [4176937]
+  - @authhero/adapter-interfaces@0.155.0
+  - @authhero/widget@0.30.0
+
+## 4.88.0
+
+### Minor Changes
+
+- fa7ce07: Updates for passkeys login
+
+### Patch Changes
+
+- Updated dependencies [fa7ce07]
+  - @authhero/adapter-interfaces@0.154.0
+  - @authhero/widget@0.29.2
+
+## 4.87.0
+
+### Minor Changes
+
+- 77b7c76: Add outbox middleware
+
+## 4.86.0
+
+### Minor Changes
+
+- 884e950: Update outbox
+
+### Patch Changes
+
+- Updated dependencies [884e950]
+  - @authhero/adapter-interfaces@0.153.0
+  - @authhero/widget@0.29.1
+
+## 4.85.0
+
+### Minor Changes
+
+- 2f65572: Fix nested transactions
+- 76f2b7f: Fix paging of clients in react-admin
+
+## 4.84.0
+
+### Minor Changes
+
+- 885eeeb: Fix passkeys
+
+### Patch Changes
+
+- Updated dependencies [885eeeb]
+  - @authhero/widget@0.29.0
+
 ## 4.83.0
 
 ### Minor Changes

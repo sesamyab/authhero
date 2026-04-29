@@ -1,5 +1,159 @@
 # @authhero/aws-adapter
 
+## 0.32.2
+
+### Patch Changes
+
+- Updated dependencies [ba03e14]
+  - @authhero/adapter-interfaces@1.10.0
+
+## 0.32.1
+
+### Patch Changes
+
+- Updated dependencies [2578652]
+  - @authhero/adapter-interfaces@1.9.0
+
+## 0.32.0
+
+### Minor Changes
+
+- 02cebf4: Add RFC 7591 Dynamic Client Registration and RFC 7592 Client Configuration endpoints with Initial Access Token support.
+  - `POST /oidc/register` (RFC 7591 §3): create a client, optionally gated by an Initial Access Token (IAT). Open DCR can be enabled by setting `tenant.flags.dcr_require_initial_access_token = false`.
+  - `GET/PUT/DELETE /oidc/register/:client_id` (RFC 7592): self-service client configuration using the registration access token returned at registration time.
+  - New `client_registration_tokens` table (kysely + drizzle) holding both IATs and RATs with SHA-256 hashed storage.
+  - New `clients` columns: `owner_user_id`, `registration_type`, `registration_metadata`.
+  - New tenant flags: `dcr_require_initial_access_token`, `dcr_allowed_grant_types`.
+  - Discovery (`.well-known/openid-configuration`) now only emits `registration_endpoint` when `flags.enable_dynamic_client_registration = true`.
+  - RFC 7591 `redirect_uris` is mapped to/from AuthHero's internal `callbacks` field at the wire boundary — the Management API continues to use `callbacks` unchanged.
+
+### Patch Changes
+
+- Updated dependencies [48eab09]
+- Updated dependencies [02cebf4]
+  - @authhero/adapter-interfaces@1.8.0
+
+## 0.31.0
+
+### Minor Changes
+
+- 9145dbd: Drop the multi-statement transaction from `refreshTokens.update`. The previous implementation ran UPDATE + SELECT + UPDATE inside `db.transaction()` to extend the parent `login_session` expiry, which on async HTTP drivers (PlanetScale, D1) meant three sequential round-trips plus BEGIN/COMMIT and held a row lock on `login_sessions` across the whole transaction — creating a hot-row hotspot when multiple refresh tokens shared a `login_id`.
+  - Add optional `UpdateRefreshTokenOptions.loginSessionBump` to the adapter interface. The caller now provides `login_id` and the pre-computed new `expires_at`, so the adapter avoids a read-before-write.
+  - `refreshTokens.update` issues the refresh-token and login-session UPDATEs concurrently via `Promise.all`, collapsing wall-clock latency to roughly one round-trip on async drivers. The bump is idempotent (`WHERE expires_at_ts < new`) and self-healing (next refresh re-bumps on a transient failure), so strict atomicity is not required.
+  - Fix `ctx.req.header["x-real-ip"]` / `["user-agent"]` — Hono exposes `header` as a function, so bracket access has been silently writing empty strings to `device.last_ip` / `device.last_user_agent` since the grant landed. Use `ctx.req.header("x-real-ip")` and skip the `device` write entirely when IP and UA are unchanged.
+
+### Patch Changes
+
+- Updated dependencies [9145dbd]
+- Updated dependencies [9145dbd]
+  - @authhero/adapter-interfaces@1.7.0
+
+## 0.30.0
+
+### Minor Changes
+
+- 7d9f138: Soft-revoke refresh tokens instead of hard-deleting them. Adds a `revoked_at` field to the `RefreshToken` schema, a `revokeByLoginSession(tenant_id, login_session_id, revoked_at)` adapter method, and a `refresh_tokens.revoked_at_ts` column. The logout route now issues a single bulk UPDATE (fixing a pagination bug where sessions with >100 refresh tokens were not fully revoked), and the refresh-token grant rejects revoked tokens with an `invalid_grant` error.
+
+### Patch Changes
+
+- Updated dependencies [7d9f138]
+  - @authhero/adapter-interfaces@1.6.0
+
+## 0.29.2
+
+### Patch Changes
+
+- Updated dependencies [931f598]
+  - @authhero/adapter-interfaces@1.5.0
+
+## 0.29.1
+
+### Patch Changes
+
+- Updated dependencies [1d15292]
+  - @authhero/adapter-interfaces@1.4.1
+
+## 0.29.0
+
+### Minor Changes
+
+- d84cb2f: Complete the transaction fixes
+
+### Patch Changes
+
+- Updated dependencies [d84cb2f]
+  - @authhero/adapter-interfaces@1.4.0
+
+## 0.28.3
+
+### Patch Changes
+
+- Updated dependencies [2f6354d]
+  - @authhero/adapter-interfaces@1.3.0
+
+## 0.28.2
+
+### Patch Changes
+
+- b2aff48: Durable post-hooks with self-healing and dead-letter support.
+  - Moved post-user-registration and post-user-deletion webhook delivery from inline invocation to the outbox, with `Idempotency-Key: {event.id}` headers and retry-with-backoff.
+  - `EventDestination` gained an optional `accepts(event)` filter so `LogsDestination`, `WebhookDestination`, and `RegistrationFinalizerDestination` can share the same event stream without cross-writing.
+  - Added `outbox.deadLetter`, `listFailed`, and `replay` to `OutboxAdapter`; the relay now moves exhausted events to dead-letter instead of silently marking them processed.
+  - New `GET /api/v2/failed-events` and `POST /api/v2/failed-events/:id/retry` management endpoints for operating the dead-letter queue.
+  - Self-healing: added `registration_completed_at` to the user; set by `RegistrationFinalizerDestination` (outbox path) or inline after successful synchronous webhook dispatch. `postUserLoginHook` re-enqueues the post-user-registration event on the next login when the flag is still null, so transient delivery failures recover automatically.
+  - Removed the global management-api transaction middleware: pre-registration webhooks and user-authored action code no longer execute inside a held DB transaction. Individual write paths own their own atomicity (see `linkUsersHook`, `createUserUpdateHooks`, `createUserDeletionHooks`).
+  - Added `users.rawCreate` to the adapter interface so the registration commit path can write without re-entering decorator hooks.
+  - New `account-linking` pre-defined post-login hook (`preDefinedHooks.accountLinking`) and corresponding template, matching Auth0's marketplace linking action. Idempotent: re-running on every login is safe.
+  - Non-Workers runtimes (Node, tests) now flush background promises via the outbox middleware so `waitUntil`-scheduled work completes before the response returns.
+
+- Updated dependencies [b2aff48]
+  - @authhero/adapter-interfaces@1.2.0
+
+## 0.28.1
+
+### Patch Changes
+
+- Updated dependencies [3da602c]
+  - @authhero/adapter-interfaces@1.1.0
+
+## 0.28.0
+
+### Minor Changes
+
+- 20d5140: Add support for dynamic code
+
+  BREAKING CHANGE: `DataAdapters` now requires a `hookCode: HookCodeAdapter` property. Adapters implementing `DataAdapters` must provide a `hookCode` adapter with `create`, `get`, `update`, and `remove` methods for managing hook code storage. See `packages/kysely/src/hook-code/` for a reference implementation.
+
+### Patch Changes
+
+- Updated dependencies [20d5140]
+  - @authhero/adapter-interfaces@1.0.0
+
+## 0.27.1
+
+### Patch Changes
+
+- Updated dependencies [a59a49b]
+  - @authhero/adapter-interfaces@0.155.0
+
+## 0.27.0
+
+### Minor Changes
+
+- fa7ce07: Updates for passkeys login
+
+### Patch Changes
+
+- Updated dependencies [fa7ce07]
+  - @authhero/adapter-interfaces@0.154.0
+
+## 0.26.1
+
+### Patch Changes
+
+- Updated dependencies [884e950]
+  - @authhero/adapter-interfaces@0.153.0
+
 ## 0.26.0
 
 ### Minor Changes

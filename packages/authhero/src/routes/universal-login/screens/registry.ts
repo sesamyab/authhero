@@ -22,11 +22,17 @@ import { mfaLoginOptionsScreenDefinition } from "./mfa-login-options";
 import { accountScreenDefinition } from "./account";
 import { accountProfileScreenDefinition } from "./account-profile";
 import { accountSecurityScreenDefinition } from "./account-security";
+import { accountMfaTotpEnrollmentScreenDefinition } from "./account-mfa-totp-enrollment";
+import { accountMfaPhoneEnrollmentScreenDefinition } from "./account-mfa-phone-enrollment";
 import { accountLinkedScreenDefinition } from "./account-linked";
 import { accountDeleteScreenDefinition } from "./account-delete";
 import { accountPasskeysScreenDefinition } from "./account-passkeys";
 import { passkeyEnrollmentNudgeScreenDefinition } from "./passkey-enrollment-nudge";
 import { passkeyEnrollmentScreenDefinition } from "./passkey-enrollment";
+import { passkeyChallengeScreenDefinition } from "./passkey-challenge";
+import { resetPasswordCodeScreenDefinition } from "./reset-password-code";
+import { connectConsentScreenDefinition } from "./connect-consent";
+import { connectTenantSelectScreenDefinition } from "./connect-tenant-select";
 
 /**
  * Registry of all built-in screens
@@ -54,11 +60,17 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["account", accountScreenDefinition],
   ["account-profile", accountProfileScreenDefinition],
   ["account-security", accountSecurityScreenDefinition],
+  ["account-mfa-totp-enrollment", accountMfaTotpEnrollmentScreenDefinition],
+  ["account-mfa-phone-enrollment", accountMfaPhoneEnrollmentScreenDefinition],
   ["account-linked", accountLinkedScreenDefinition],
   ["account-delete", accountDeleteScreenDefinition],
   ["account-passkeys", accountPasskeysScreenDefinition],
   ["passkey-enrollment-nudge", passkeyEnrollmentNudgeScreenDefinition],
   ["passkey-enrollment", passkeyEnrollmentScreenDefinition],
+  ["passkey-challenge", passkeyChallengeScreenDefinition],
+  ["reset-password-code", resetPasswordCodeScreenDefinition],
+  ["connect-consent", connectConsentScreenDefinition],
+  ["connect-tenant-select", connectTenantSelectScreenDefinition],
 ]);
 
 /**

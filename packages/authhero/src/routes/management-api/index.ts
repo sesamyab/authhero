@@ -1,6 +1,8 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Context } from "hono";
 import { Bindings, Variables, AuthHeroConfig } from "../../types";
+import { actionsRoutes } from "./actions";
+import { actionTriggersRoutes } from "./action-triggers";
 import { brandingRoutes } from "./branding";
 import { userRoutes } from "./users";
 import { keyRoutes } from "./keys";
@@ -8,7 +10,9 @@ import { usersByEmailRoutes } from "./users-by-email";
 import { clientRoutes } from "./clients";
 import { tenantRoutes } from "./tenants";
 import { logRoutes } from "./logs";
+import { failedEventsRoutes } from "./failed-events";
 import { hooksRoutes } from "./hooks";
+import { hookCodeRoutes } from "./hook-code";
 import { connectionRoutes } from "./connections";
 import { promptsRoutes } from "./prompts";
 import { registerComponent } from "../../middlewares/register-component";
@@ -19,6 +23,7 @@ import { refreshTokensRoutes } from "./refresh_tokens";
 import { customDomainRoutes } from "./custom-domains";
 import { addDataHooks } from "../../hooks";
 import { addTimingLogs } from "../../helpers/server-timing";
+import { applyConfigMiddleware } from "../../middlewares/apply-config";
 import { tenantMiddleware } from "../../middlewares/tenant";
 import { clientInfoMiddleware } from "../../middlewares/client-info";
 import { addCaching } from "../../helpers/cache-wrapper";
@@ -29,14 +34,17 @@ import { flowsRoutes } from "./flows";
 import { roleRoutes } from "./roles";
 import { resourceServerRoutes } from "./resource-servers";
 import { clientGrantRoutes } from "./client-grants";
+import { clientRegistrationTokenRoutes } from "./client-registration-tokens";
 import { organizationRoutes } from "./organizations";
 import { statsRoutes } from "./stats";
 import { guardianRoutes } from "./guardian";
 import { authenticationMethodsRoutes } from "./authentication-methods";
 import { DataAdapters } from "@authhero/adapter-interfaces";
-import { waitUntil } from "../../helpers/wait-until";
-import { drainOutbox } from "../../helpers/outbox-relay";
+import { outboxMiddleware } from "../../middlewares/outbox";
 import { LogsDestination } from "../../helpers/outbox-destinations/logs";
+import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
+import { RegistrationFinalizerDestination } from "../../helpers/outbox-destinations/registration-finalizer";
+import { createServiceToken } from "../../helpers/service-token";
 
 export default function create(config: AuthHeroConfig) {
   const app = new OpenAPIHono<{
@@ -46,6 +54,8 @@ export default function create(config: AuthHeroConfig) {
 
   // Use managementDataAdapter if provided, otherwise fall back to dataAdapter
   const managementAdapter = config.managementDataAdapter ?? config.dataAdapter;
+
+  app.use(applyConfigMiddleware(config));
 
   // Dynamic CORS middleware that fetches allowed origins from clients
   app.use(async (ctx, next) => {
@@ -181,39 +191,30 @@ export default function create(config: AuthHeroConfig) {
     return addTimingLogs(ctx, cachedData);
   };
 
-  const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+  app.use(
+    outboxMiddleware({
+      getOutbox: () => managementAdapter.outbox,
+      getDestinations: (ctx) => [
+        new LogsDestination(managementAdapter.logs),
+        new WebhookDestination(managementAdapter.hooks, async (tenantId) => {
+          const token = await createServiceToken(ctx, tenantId, "webhook");
+          return token.access_token;
+        }),
+        // Must come after delivery destinations so the flag only flips when
+        // the upstream hook destinations actually succeeded.
+        new RegistrationFinalizerDestination(managementAdapter.users),
+      ],
+    }),
+  );
 
   app.use(async (ctx, next) => {
-    const outboxEnabled = ctx.env.outbox?.enabled;
-    const isMutating = MUTATING_METHODS.has(ctx.req.method);
-
-    if (outboxEnabled && isMutating) {
-      // Wrap the entire request in a transaction so entity writes
-      // and outbox event writes are atomic
-      await managementAdapter.transaction(async (trxAdapters) => {
-        ctx.env.data = applyDecorators(ctx, trxAdapters);
-        ctx.env.entityHooks = config.entityHooks;
-        await next();
-      });
-      // Transaction committed — drain outbox in background
-      if (managementAdapter.outbox) {
-        waitUntil(
-          ctx,
-          drainOutbox(
-            managementAdapter.outbox,
-            [new LogsDestination(managementAdapter.logs)],
-            {
-              maxRetries: ctx.env.outbox?.maxRetries,
-              retentionDays: ctx.env.outbox?.retentionDays,
-            },
-          ),
-        );
-      }
-    } else {
-      ctx.env.data = applyDecorators(ctx, managementAdapter);
-      ctx.env.entityHooks = config.entityHooks;
-      await next();
-    }
+    // Write routes own their own transactional boundaries (see linkUsersHook,
+    // createUserUpdateHooks, createUserDeletionHooks). Holding a transaction
+    // across the full request would enclose external I/O — pre-registration
+    // webhooks and user-authored action code — which is unsafe on hosted DBs.
+    ctx.env.data = applyDecorators(ctx, managementAdapter);
+    ctx.env.entityHooks = config.entityHooks;
+    await next();
   });
 
   app
@@ -237,6 +238,8 @@ export default function create(config: AuthHeroConfig) {
   );
 
   const managementApp = app
+    .route("/actions/actions", actionsRoutes)
+    .route("/actions/triggers", actionTriggersRoutes)
     .route("/branding", brandingRoutes)
     .route("/custom-domains", customDomainRoutes)
     .route("/email/providers", emailProviderRoutes)
@@ -245,8 +248,11 @@ export default function create(config: AuthHeroConfig) {
     .route("/users-by-email", usersByEmailRoutes)
     .route("/clients", clientRoutes)
     .route("/client-grants", clientGrantRoutes)
+    .route("/client-registration-tokens", clientRegistrationTokenRoutes)
     .route("/logs", logRoutes)
+    .route("/failed-events", failedEventsRoutes)
     .route("/hooks", hooksRoutes)
+    .route("/hook-code", hookCodeRoutes)
     .route("/connections", connectionRoutes)
     .route("/prompts", promptsRoutes)
     .route("/sessions", sessionsRoutes)

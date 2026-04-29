@@ -21,7 +21,8 @@ export function get(db: Kysely<Database>) {
 
     if (!login) return null;
 
-    const { created_at_ts, updated_at_ts, expires_at_ts, ...rest } = login;
+    const { created_at_ts, updated_at_ts, expires_at_ts, auth_params, ...rest } =
+      login as typeof login & { auth_params?: string | null };
 
     // Convert dates from DB format (bigint) to ISO strings
     const dates = convertDatesToAdapter(
@@ -29,17 +30,25 @@ export function get(db: Kysely<Database>) {
       ["created_at_ts", "updated_at_ts", "expires_at_ts"],
     );
 
-    return loginSessionSchema.parse(
-      unflattenObject(
-        removeNullProperties({
-          ...rest,
-          ...dates,
-          state: login.state || LoginSessionState.PENDING,
-          state_data: login.state_data,
-          failure_reason: login.failure_reason,
-        }),
-        ["authParams"],
-      ),
+    // Unflatten only the nested groups still stored as hoisted columns.
+    // authParams is now sourced from the `auth_params` JSON blob below; any
+    // leftover `authParams_*` columns on `rest` are dropped by zod on parse.
+    const unflattened = unflattenObject(
+      removeNullProperties({
+        ...rest,
+        ...dates,
+        state: login.state || LoginSessionState.PENDING,
+        state_data: login.state_data,
+        failure_reason: login.failure_reason,
+      }),
+      ["auth_strategy"],
     );
+
+    unflattened.authParams =
+      typeof auth_params === "string" && auth_params.length > 0
+        ? JSON.parse(auth_params)
+        : {};
+
+    return loginSessionSchema.parse(unflattened);
   };
 }

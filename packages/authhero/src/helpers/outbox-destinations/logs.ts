@@ -13,6 +13,7 @@ import { EventDestination } from "../outbox-relay";
  */
 function toLogInsert(event: AuditEvent): LogInsert {
   return {
+    log_id: event.id,
     type: event.log_type as LogType,
     date: event.timestamp,
     description: event.description || "",
@@ -25,8 +26,8 @@ function toLogInsert(event: AuditEvent): LogInsert {
     connection: event.connection,
     strategy: event.strategy,
     strategy_type: event.strategy_type,
-    audience: "",
-    scope: event.actor.scopes?.join(" "),
+    audience: event.audience || "",
+    scope: event.scope || event.actor.scopes?.join(" "),
     hostname: event.hostname,
     auth0_client: event.auth0_client,
     isMobile: event.is_mobile || false,
@@ -56,6 +57,14 @@ export class LogsDestination implements EventDestination {
     this.logs = logs;
   }
 
+  /**
+   * Only accept log-shaped events. `hook.*` events are dispatch tasks for
+   * webhook / code-hook destinations and are not audit log entries.
+   */
+  accepts(event: AuditEvent): boolean {
+    return !event.event_type.startsWith("hook.");
+  }
+
   transform(event: AuditEvent): { tenantId: string; log: LogInsert } {
     return {
       tenantId: event.tenant_id,
@@ -65,7 +74,20 @@ export class LogsDestination implements EventDestination {
 
   async deliver(events: { tenantId: string; log: LogInsert }[]): Promise<void> {
     for (const { tenantId, log } of events) {
-      await this.logs.create(tenantId, log);
+      try {
+        await this.logs.create(tenantId, log);
+      } catch (error) {
+        // Idempotent: if this event was already delivered (e.g., cron retry after
+        // per-request delivery succeeded but markProcessed failed), skip it.
+        const message = error instanceof Error ? error.message : String(error);
+        if (
+          message.includes("UNIQUE constraint failed") ||
+          message.includes("Duplicate entry")
+        ) {
+          continue;
+        }
+        throw error;
+      }
     }
   }
 }

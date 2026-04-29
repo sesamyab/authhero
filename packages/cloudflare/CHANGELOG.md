@@ -1,5 +1,205 @@
 # @authhero/cloudflare-adapter
 
+## 2.25.5
+
+### Patch Changes
+
+- Updated dependencies [ba03e14]
+  - @authhero/adapter-interfaces@1.10.0
+  - @authhero/kysely-adapter@10.131.2
+
+## 2.25.4
+
+### Patch Changes
+
+- Updated dependencies [2578652]
+  - @authhero/adapter-interfaces@1.9.0
+  - @authhero/kysely-adapter@10.131.1
+
+## 2.25.3
+
+### Patch Changes
+
+- ee8f683: Harden `CloudflareCache.get` against empty or malformed cache bodies. Cloudflare's Cache API can occasionally return a matched entry with an empty body (edge races, evictions mid-stream), which caused `response.json()` to throw `SyntaxError: Unexpected end of JSON input`. The adapter now reads the body as text, treats empty or unparseable bodies as a cache miss, and evicts the bad entry so the next read refills it.
+- Updated dependencies [48eab09]
+- Updated dependencies [ee8f683]
+- Updated dependencies [02cebf4]
+  - @authhero/adapter-interfaces@1.8.0
+  - @authhero/kysely-adapter@10.131.0
+
+## 2.25.2
+
+### Patch Changes
+
+- Updated dependencies [9145dbd]
+- Updated dependencies [9145dbd]
+  - @authhero/adapter-interfaces@1.7.0
+  - @authhero/kysely-adapter@10.130.0
+
+## 2.25.1
+
+### Patch Changes
+
+- Updated dependencies [7d9f138]
+  - @authhero/adapter-interfaces@1.6.0
+  - @authhero/kysely-adapter@10.129.0
+
+## 2.25.0
+
+### Minor Changes
+
+- b4f4f15: Fix the logs endpoint
+
+### Patch Changes
+
+- Updated dependencies [0b3419b]
+  - @authhero/kysely-adapter@10.128.1
+
+## 2.24.4
+
+### Patch Changes
+
+- Updated dependencies [f27884d]
+- Updated dependencies [31b0b62]
+  - @authhero/kysely-adapter@10.128.0
+
+## 2.24.3
+
+### Patch Changes
+
+- Updated dependencies [a833d42]
+  - @authhero/kysely-adapter@10.127.1
+
+## 2.24.2
+
+### Patch Changes
+
+- Updated dependencies [931f598]
+  - @authhero/adapter-interfaces@1.5.0
+  - @authhero/kysely-adapter@10.127.0
+
+## 2.24.1
+
+### Patch Changes
+
+- 6503423: Fix and extend log filtering on the admin logs page.
+  - The `IP Address` filter on the logs list was sent as `?ip=<value>`, but the management API only accepts filters through the Lucene `q` parameter, so the filter was silently dropped. Non-`q` filter fields are now merged into `q` as `key:value` pairs (e.g. `q=ip:89.10.186.153`).
+  - Added `Type` and `Status` (success/failure) select filters to the logs list.
+  - The Cloudflare Analytics Engine adapter now understands the pseudo-filter `success:true|false` and translates it to a `blob3 LIKE 's%' | 'f%'` prefix match on the log type.
+
+- Updated dependencies [6503423]
+  - @authhero/kysely-adapter@10.126.1
+
+## 2.24.0
+
+### Minor Changes
+
+- b5f73bb: Add drain outbox
+
+### Patch Changes
+
+- Updated dependencies [1d15292]
+- Updated dependencies [b5f73bb]
+  - @authhero/adapter-interfaces@1.4.1
+  - @authhero/kysely-adapter@10.126.0
+
+## 2.23.0
+
+### Minor Changes
+
+- d288b62: Add support for dynamic workers
+
+### Patch Changes
+
+- Updated dependencies [d288b62]
+  - @authhero/kysely-adapter@10.125.0
+
+## 2.22.4
+
+### Patch Changes
+
+- Updated dependencies [d84cb2f]
+  - @authhero/adapter-interfaces@1.4.0
+  - @authhero/kysely-adapter@10.124.0
+
+## 2.22.3
+
+### Patch Changes
+
+- Updated dependencies [2f6354d]
+  - @authhero/adapter-interfaces@1.3.0
+  - @authhero/kysely-adapter@10.123.0
+
+## 2.22.2
+
+### Patch Changes
+
+- Updated dependencies [b2aff48]
+  - @authhero/adapter-interfaces@1.2.0
+  - @authhero/kysely-adapter@10.122.0
+
+## 2.22.1
+
+### Patch Changes
+
+- Updated dependencies [3da602c]
+  - @authhero/adapter-interfaces@1.1.0
+  - @authhero/kysely-adapter@10.121.1
+
+## 2.22.0
+
+### Minor Changes
+
+- 20d5140: Add support for dynamic code
+
+  BREAKING CHANGE: `DataAdapters` now requires a `hookCode: HookCodeAdapter` property. Adapters implementing `DataAdapters` must provide a `hookCode` adapter with `create`, `get`, `update`, and `remove` methods for managing hook code storage. See `packages/kysely/src/hook-code/` for a reference implementation.
+
+### Patch Changes
+
+- Updated dependencies [20d5140]
+  - @authhero/adapter-interfaces@1.0.0
+  - @authhero/kysely-adapter@10.121.0
+
+## 2.21.19
+
+### Patch Changes
+
+- Updated dependencies [a59a49b]
+  - @authhero/adapter-interfaces@0.155.0
+  - @authhero/kysely-adapter@10.120.0
+
+## 2.21.18
+
+### Patch Changes
+
+- Updated dependencies [fa7ce07]
+  - @authhero/adapter-interfaces@0.154.0
+  - @authhero/kysely-adapter@10.119.0
+
+## 2.21.17
+
+### Patch Changes
+
+- Updated dependencies [77b7c76]
+  - @authhero/kysely-adapter@10.118.0
+
+## 2.21.16
+
+### Patch Changes
+
+- Updated dependencies [884e950]
+- Updated dependencies [884e950]
+  - @authhero/kysely-adapter@10.117.0
+  - @authhero/adapter-interfaces@0.153.0
+
+## 2.21.15
+
+### Patch Changes
+
+- Updated dependencies [2f65572]
+- Updated dependencies [76f2b7f]
+  - @authhero/kysely-adapter@10.116.0
+
 ## 2.21.14
 
 ### Patch Changes

@@ -3,6 +3,7 @@ import { DataAdapters } from "@authhero/adapter-interfaces";
 import { DynamoDBConfig, DynamoDBContext } from "./types";
 
 // Import adapters
+import { createActionsAdapter } from "./adapters/actions";
 import { createFlowsAdapter } from "./adapters/flows";
 import { createTenantsAdapter } from "./adapters/tenants";
 import { createUsersAdapter } from "./adapters/users";
@@ -12,10 +13,12 @@ import { createCodesAdapter } from "./adapters/codes";
 import { createClientsAdapter } from "./adapters/clients";
 import { createClientGrantsAdapter } from "./adapters/clientGrants";
 import { createClientConnectionsAdapter } from "./adapters/clientConnections";
+import { createClientRegistrationTokensAdapter } from "./adapters/clientRegistrationTokens";
 import { createConnectionsAdapter } from "./adapters/connections";
 import { createLoginSessionsAdapter } from "./adapters/loginSessions";
 import { createBrandingAdapter } from "./adapters/branding";
 import { createUniversalLoginTemplatesAdapter } from "./adapters/universalLoginTemplates";
+import { createHookCodeAdapter } from "./adapters/hookCode";
 import { createHooksAdapter } from "./adapters/hooks";
 import { createKeysAdapter } from "./adapters/keys";
 import { createCustomDomainsAdapter } from "./adapters/customDomains";
@@ -69,16 +72,19 @@ export default function createAdapters(
   };
 
   const adapters: DataAdapters = {
+    actions: createActionsAdapter(),
     branding: createBrandingAdapter(ctx),
     clients: createClientsAdapter(ctx),
     clientConnections: createClientConnectionsAdapter(ctx),
     clientGrants: createClientGrantsAdapter(ctx),
+    clientRegistrationTokens: createClientRegistrationTokensAdapter(ctx),
     codes: createCodesAdapter(ctx),
     connections: createConnectionsAdapter(ctx),
     customDomains: createCustomDomainsAdapter(ctx),
     emailProviders: createEmailProvidersAdapter(ctx),
     flows: createFlowsAdapter(ctx),
     forms: createFormsAdapter(ctx),
+    hookCode: createHookCodeAdapter(ctx),
     hooks: createHooksAdapter(ctx),
     invites: createInvitesAdapter(ctx),
     keys: createKeysAdapter(ctx),

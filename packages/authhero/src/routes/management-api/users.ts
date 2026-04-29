@@ -13,6 +13,7 @@ import {
   Strategy,
   auth0UserResponseSchema,
   identitySchema,
+  logSchema,
   sessionSchema,
   totalsSchema,
   userInsertSchema,
@@ -21,6 +22,7 @@ import {
   organizationSchema,
 } from "@authhero/adapter-interfaces";
 import { getProviderFromConnection } from "../../strategies";
+import { USERNAME_PASSWORD_PROVIDER } from "../../constants";
 
 const IDENTITY_PICK_KEYS = [
   "email",
@@ -55,8 +57,29 @@ const sessionsWithTotalsSchema = totalsSchema.extend({
   sessions: z.array(sessionSchema),
 });
 
+const logsWithTotalsSchema = totalsSchema.extend({
+  logs: z.array(logSchema),
+});
+
 const userOrganizationsWithTotalsSchema = totalsSchema.extend({
   organizations: z.array(organizationSchema),
+});
+
+// Slim projection of a Client suitable for end-user "connected apps" UIs.
+// Excludes secrets and internal config; surfaces enough for revocation
+// and display.
+const connectedClientSchema = z.object({
+  client_id: z.string(),
+  name: z.string(),
+  logo_uri: z.string().optional(),
+  registration_type: z.enum(["manual", "open_dcr", "iat_dcr"]).optional(),
+  registration_metadata: z.record(z.any()).optional(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+});
+
+const connectedClientsWithTotalsSchema = totalsSchema.extend({
+  connected_clients: z.array(connectedClientSchema),
 });
 
 export const userRoutes = new OpenAPIHono<{
@@ -216,7 +239,7 @@ export const userRoutes = new OpenAPIHono<{
         });
       }
 
-      return ctx.json(user);
+      return ctx.json(auth0UserResponseSchema.parse(user));
     },
   )
   // --------------------------------
@@ -482,8 +505,19 @@ export const userRoutes = new OpenAPIHono<{
       let targetUser = userToPatch;
 
       if (connection) {
-        // Check if the primary user has this connection
-        if (userToPatch.connection === connection) {
+        // Passwords are only stored against users created by the native
+        // username-password provider (auth2). When an Auth0-imported user
+        // shares the Username-Password-Authentication connection with a
+        // linked auth2 user, we must target the auth2 one so the password
+        // row is readable by the login flow (which looks up by provider).
+        const isPasswordConnection = connection === Strategy.USERNAME_PASSWORD;
+
+        const matchesTarget = (u: { connection?: string; provider?: string }) =>
+          isPasswordConnection
+            ? u.provider === USERNAME_PASSWORD_PROVIDER
+            : u.connection === connection;
+
+        if (matchesTarget(userToPatch)) {
           // Target is the primary user
           targetUserId = user_id;
           targetUser = userToPatch;
@@ -496,9 +530,8 @@ export const userRoutes = new OpenAPIHono<{
             q: `linked_to:${user_id}`,
           });
 
-          const linkedUserWithConnection = linkedUsers.users.find(
-            (u) => u.connection === connection,
-          );
+          const linkedUserWithConnection =
+            linkedUsers.users.find(matchesTarget);
 
           if (!linkedUserWithConnection) {
             throw new HTTPException(404, {
@@ -576,10 +609,17 @@ export const userRoutes = new OpenAPIHono<{
             });
           }
         } else {
-          // Original behavior: find password identity in the primary user
-          passwordIdentity = userToPatch.identities?.find(
-            (i) => i.connection === Strategy.USERNAME_PASSWORD,
-          );
+          // Find the identity that actually owns the password row — login
+          // looks up passwords by the auth2 (USERNAME_PASSWORD_PROVIDER) user,
+          // so prefer that. Fall back to any Username-Password-Authentication
+          // identity for older rows where the provider wasn't auth2.
+          passwordIdentity =
+            userToPatch.identities?.find(
+              (i) => i.provider === USERNAME_PASSWORD_PROVIDER,
+            ) ??
+            userToPatch.identities?.find(
+              (i) => i.connection === Strategy.USERNAME_PASSWORD,
+            );
 
           if (!passwordIdentity) {
             throw new HTTPException(400, {
@@ -641,7 +681,7 @@ export const userRoutes = new OpenAPIHono<{
         },
       });
 
-      return ctx.json(patchedUser);
+      return ctx.json(auth0UserResponseSchema.parse(patchedUser));
     },
   )
   // --------------------------------
@@ -786,6 +826,78 @@ export const userRoutes = new OpenAPIHono<{
 
       return ctx.json([auth0UserResponseSchema.parse(user)]);
     },
+  )
+  // --------------------------------
+  // GET /users/:user_id/connected-clients
+  //
+  // Returns clients that this user owns — i.e. clients created via the
+  // RFC 7591 IAT-gated Dynamic Client Registration flow where the IAT was
+  // bound to this user (`owner_user_id = user_id`). Excludes soft-deleted
+  // clients (DELETE /oidc/register/:id), so this is a live "connected apps"
+  // listing safe for end-user UIs.
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["users"],
+      method: "get",
+      path: "/{user_id}/connected-clients",
+      request: {
+        query: querySchema,
+        headers: z.object({
+          "tenant-id": z.string().optional(),
+        }),
+        params: z.object({
+          user_id: z.string(),
+        }),
+      },
+      security: [
+        {
+          Bearer: ["read:clients", "read:users", "auth:read"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.union([
+                z.array(connectedClientSchema),
+                connectedClientsWithTotalsSchema,
+              ]),
+            },
+          },
+          description:
+            "List of clients connected to this user (created via IAT-gated DCR).",
+        },
+      },
+    }),
+    async (ctx) => {
+      const { user_id } = ctx.req.valid("param");
+      const { include_totals, page, per_page } = ctx.req.valid("query");
+
+      const result = await ctx.env.data.clients.list(ctx.var.tenant_id, {
+        page,
+        per_page,
+        include_totals,
+        q: `owner_user_id:"${user_id}"`,
+      });
+
+      // Filter out soft-deleted clients and project to the slim shape so
+      // we never leak secrets or internal config to the connected-apps UI.
+      const connectedClients = result.clients
+        .filter((client) => client.client_metadata?.status !== "deleted")
+        .map((client) => connectedClientSchema.parse(client));
+
+      if (!include_totals) {
+        return ctx.json(connectedClients);
+      }
+
+      return ctx.json({
+        connected_clients: connectedClients,
+        start: result.totals?.start ?? 0,
+        limit: result.totals?.limit ?? 0,
+        length: connectedClients.length,
+      });
+    },
   ) // --------------------------------
   // GET /users/:user_id/sessions
   // --------------------------------
@@ -839,6 +951,73 @@ export const userRoutes = new OpenAPIHono<{
       }
 
       return ctx.json(sessions);
+    },
+  )
+  // --------------------------------
+  // GET /users/:user_id/logs
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["users"],
+      method: "get",
+      path: "/{user_id}/logs",
+      request: {
+        query: querySchema,
+        headers: z.object({
+          "tenant-id": z.string().optional(),
+        }),
+        params: z.object({
+          user_id: z.string(),
+        }),
+      },
+      security: [
+        {
+          Bearer: ["read:logs", "auth:read"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.union([z.array(logSchema), logsWithTotalsSchema]),
+            },
+          },
+          description: "List of logs across the user and any linked accounts",
+        },
+      },
+    }),
+    async (ctx) => {
+      const { user_id } = ctx.req.valid("param");
+      const { include_totals, page, per_page, sort } = ctx.req.valid("query");
+
+      const user = await ctx.env.data.users.get(ctx.var.tenant_id, user_id);
+      if (!user || user.linked_to) {
+        throw new HTTPException(404);
+      }
+
+      const linked = await ctx.env.data.users.list(ctx.var.tenant_id, {
+        page: 0,
+        per_page: 100,
+        include_totals: false,
+        q: `linked_to:${user_id}`,
+      });
+
+      const userIds = [user_id, ...linked.users.map((u) => u.user_id)];
+      const q = userIds.map((id) => `user_id:"${id}"`).join(" OR ");
+
+      const result = await ctx.env.data.logs.list(ctx.var.tenant_id, {
+        page,
+        per_page,
+        include_totals,
+        sort: parseSort(sort),
+        q,
+      });
+
+      if (!include_totals) {
+        return ctx.json(result.logs);
+      }
+
+      return ctx.json(result);
     },
   )
   // --------------------------------

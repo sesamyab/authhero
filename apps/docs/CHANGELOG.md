@@ -1,5 +1,17 @@
 # @authhero/docs
 
+## 1.58.0
+
+### Minor Changes
+
+- b324f77: Add sync resource server toggle
+
+## 1.57.0
+
+### Minor Changes
+
+- d288b62: Add support for dynamic workers
+
 ## 1.56.0
 
 ### Minor Changes

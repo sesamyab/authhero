@@ -61,6 +61,15 @@ function parseResource(resourcePath: string) {
   return resourcePath.split("/").pop() || resourcePath;
 }
 
+// Maps react-admin resource names to Auth0 API paths when they differ
+const API_PATH_MAP: Record<string, string> = {
+  actions: "actions/actions",
+};
+
+function getApiPath(resource: string): string {
+  return API_PATH_MAP[resource] || resource;
+}
+
 // Helper to normalize SDK response format variations
 function normalizeSDKResponse(
   result: any,
@@ -242,16 +251,7 @@ export default (
           resourceKey: "users",
           idKey: "user_id",
         },
-        clients: {
-          fetch: (client) =>
-            client.clients.list({
-              page: page - 1,
-              per_page: perPage,
-              include_totals: true,
-            }),
-          resourceKey: "clients",
-          idKey: "client_id",
-        },
+        // clients handled separately with client-side paging/search
         connections: {
           fetch: (client) => client.connections.list(),
           resourceKey: "connections",
@@ -294,11 +294,6 @@ export default (
           fetch: (client) => client.forms.list(),
           resourceKey: "forms",
           idKey: "id",
-        },
-        "custom-domains": {
-          fetch: (client: any) => client.customDomains.list(),
-          resourceKey: "custom_domains",
-          idKey: "custom_domain_id",
         },
         hooks: {
           fetch: (client: any) => client.hooks.list(),
@@ -409,6 +404,27 @@ export default (
         }
       }
 
+      // Handle clients with client-side paging and search (fetch all, filter locally)
+      if (resource === "clients" && !resourcePath.includes("/")) {
+        const result = await managementClient.clients.list({
+          page: 0,
+          per_page: 500,
+          include_totals: false,
+        });
+        const { data: allClients } = normalizeSDKResponse(result, "clients");
+
+        return clientSideListHandler({
+          data: allClients,
+          page,
+          perPage: perPage || 10,
+          sortField: field,
+          sortOrder: order,
+          searchQuery: params.filter?.q,
+          searchFields: ["name", "client_id"],
+          idKey: "client_id",
+        });
+      }
+
       // Handle organizations with client-side paging and search (fetch 500, filter locally)
       if (resource === "organizations" && !resourcePath.includes("/")) {
         const result = await managementClient.organizations.list({
@@ -429,9 +445,35 @@ export default (
         });
       }
 
+      // Handle custom-domains with client-side paging and search
+      if (resource === "custom-domains" && !resourcePath.includes("/")) {
+        const result = await (managementClient as any).customDomains.list();
+        const { data: allDomains } = normalizeSDKResponse(
+          result,
+          "custom_domains",
+        );
+
+        return clientSideListHandler({
+          data: allDomains,
+          page,
+          perPage: perPage || 10,
+          sortField: field,
+          sortOrder: order,
+          searchQuery: params.filter?.q,
+          searchFields: ["domain", "custom_domain_id"],
+          idKey: "custom_domain_id",
+        });
+      }
+
       // Handle logs with direct HTTP for full control over query params
       if (resource === "logs") {
         const headers = createHeaders(tenantId);
+        const { q: rawQ, from, to, ...filterPairs } = params.filter || {};
+        const extraLucene = Object.entries(filterPairs)
+          .filter(([, v]) => v !== undefined && v !== null && v !== "")
+          .map(([k, v]) => `${k}:${v}`)
+          .join(" ");
+        const mergedQ = [rawQ, extraLucene].filter(Boolean).join(" ") || undefined;
         const query: any = {
           include_totals: true,
           page: page - 1,
@@ -440,7 +482,9 @@ export default (
             field && order
               ? `${field}:${order === "DESC" ? "-1" : "1"}`
               : undefined,
-          ...params.filter, // Pass all filter params directly (q, from, etc.)
+          q: mergedQ,
+          from,
+          to,
         };
         const url = `${apiUrl}/api/v2/logs?${stringify(query)}`;
 
@@ -537,7 +581,7 @@ export default (
         q: params.filter?.q,
       };
 
-      const url = `${apiUrl}/api/v2/${resourcePath}?${stringify(query)}`;
+      const url = `${apiUrl}/api/v2/${getApiPath(resourcePath)}?${stringify(query)}`;
 
       try {
         const res = await httpClient(url, { headers });
@@ -779,9 +823,12 @@ export default (
 
       // HTTP for other resources
       const headers = createHeaders(tenantId);
-      return httpClient(`${apiUrl}/api/v2/${resource}/${params.id}`, {
-        headers,
-      }).then(({ json }) => ({
+      return httpClient(
+        `${apiUrl}/api/v2/${getApiPath(resource)}/${params.id}`,
+        {
+          headers,
+        },
+      ).then(({ json }) => ({
         data: {
           id: json.id,
           ...json,
@@ -792,8 +839,9 @@ export default (
     getMany: (resourcePath, params) => {
       const query = `id:(${params.ids.join(" ")})`;
 
-      const url = `${apiUrl}/api/v2/${resourcePath}?q=${query}`;
-      return httpClient(url).then(({ json }) => ({
+      const headers = createHeaders(tenantId);
+      const url = `${apiUrl}/api/v2/${getApiPath(resourcePath)}?q=${query}`;
+      return httpClient(url, { headers }).then(({ json }) => ({
         data: {
           id: json.id,
           ...json,
@@ -1006,21 +1054,22 @@ export default (
         };
       }
 
-      // Logs filtered by user_id - use direct HTTP for full control
+      // Logs filtered by user_id - includes logs from linked accounts
       if (resource === "logs" && params.target === "user_id") {
         const headers = createHeaders(tenantId);
         const query = {
           page: page - 1,
           per_page: perPage,
-          q: `user_id:${params.id}`,
           sort:
             field && order
               ? `${field}:${order === "DESC" ? "-1" : "1"}`
               : undefined,
           include_totals: true,
-          ...params.filter, // Allow additional filters to be passed through
+          ...params.filter,
         };
-        const url = `${apiUrl}/api/v2/logs?${stringify(query)}`;
+        const url = `${apiUrl}/api/v2/users/${encodeURIComponent(
+          String(params.id),
+        )}/logs?${stringify(query)}`;
 
         const res = await httpClient(url, { headers });
         const response = res.json;
@@ -1032,14 +1081,14 @@ export default (
             id: log.log_id || log.id,
             ...log,
           })),
-          total: response.total || logsArray.length,
+          total: response.length || logsArray.length,
         };
       }
 
       // Default implementation for other resources - use HTTP fallback
       const headers = createHeaders(tenantId);
       const res = await httpClient(
-        `${apiUrl}/api/v2/${resource}?${stringify({
+        `${apiUrl}/api/v2/${getApiPath(resource)}?${stringify({
           include_totals: true,
           ...buildPaginationParams(),
           sort: `${field}:${order === "DESC" ? "-1" : "1"}`,
@@ -1260,11 +1309,14 @@ export default (
       }
 
       // HTTP fallback for other resources
-      return httpClient(`${apiUrl}/api/v2/${resource}/${params.id}`, {
-        headers,
-        method: "PATCH",
-        body: JSON.stringify(cleanParams.data),
-      }).then(({ json }) => {
+      return httpClient(
+        `${apiUrl}/api/v2/${getApiPath(resource)}/${params.id}`,
+        {
+          headers,
+          method: "PATCH",
+          body: JSON.stringify(cleanParams.data),
+        },
+      ).then(({ json }) => {
         if (!json.id) {
           // Try singular form of resource name (e.g., hooks -> hook_id)
           const singularResource = resource.endsWith("s")
@@ -1439,7 +1491,7 @@ export default (
       // Default create (for endpoints not in SDK)
       // Clean up null values from form data
       const cleanedData = removeNullValues(params.data);
-      const res = await post(resource, cleanedData);
+      const res = await post(getApiPath(resource), cleanedData);
       // Try singular form of resource name (e.g., hooks -> hook_id)
       const singularResource = resource.endsWith("s")
         ? resource.slice(0, -1)
@@ -1583,8 +1635,8 @@ export default (
         );
 
       const resourceUrl = shouldAppendId
-        ? `${resource}/${encodeURIComponent(String(params.id))}`
-        : resource;
+        ? `${getApiPath(resource)}/${encodeURIComponent(String(params.id))}`
+        : getApiPath(resource);
 
       let body: any = undefined;
 
@@ -1652,7 +1704,7 @@ export default (
       const deletedIds: typeof params.ids = [];
 
       for (const id of params.ids) {
-        const resourceUrl = `${resource}/${encodeURIComponent(String(id))}`;
+        const resourceUrl = `${getApiPath(resource)}/${encodeURIComponent(String(id))}`;
         await httpClient(`${apiUrl}/api/v2/${resourceUrl}`, {
           method: "DELETE",
           headers,

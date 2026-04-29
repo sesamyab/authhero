@@ -6,8 +6,11 @@ import { addDataHooks } from "../../hooks";
 import { addTimingLogs } from "../../helpers/server-timing";
 import { addCaching } from "../../helpers/cache-wrapper";
 import { createInMemoryCache } from "../../adapters/cache/in-memory";
+import { applyConfigMiddleware } from "../../middlewares/apply-config";
 import { tenantMiddleware } from "../../middlewares/tenant";
 import { clientInfoMiddleware } from "../../middlewares/client-info";
+import { outboxMiddleware } from "../../middlewares/outbox";
+import { LogsDestination } from "../../helpers/outbox-destinations/logs";
 import { samlpRoutes } from "./samlp";
 
 export default function create(config: AuthHeroConfig) {
@@ -15,6 +18,15 @@ export default function create(config: AuthHeroConfig) {
     Bindings: Bindings;
     Variables: Variables;
   }>();
+
+  app.use(applyConfigMiddleware(config));
+
+  app.use(
+    outboxMiddleware({
+      getOutbox: () => config.dataAdapter.outbox,
+      getDestinations: () => [new LogsDestination(config.dataAdapter.logs)],
+    }),
+  );
 
   app.use(async (ctx, next) => {
     // First add data hooks

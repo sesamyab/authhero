@@ -12,7 +12,7 @@ import { Bindings, Variables } from "../types";
 import { serializeAuthCookie, clearAuthCookie } from "../utils/cookies";
 import renderAuthIframe from "../utils/authIframe";
 import { createAuthTokens, createCodeData } from "./common";
-import { SILENT_AUTH_MAX_AGE_IN_SECONDS } from "../constants";
+
 import { nanoid } from "nanoid";
 import { calculateScopesAndPermissions } from "../helpers/scopes-permissions";
 
@@ -140,14 +140,26 @@ export async function silentAuth({
     return handleLoginRequired();
   }
 
-  ctx.set("user_id", session.user_id);
+  const sessionUser = await env.data.users.get(
+    client.tenant.id,
+    session.user_id,
+  );
 
-  const user = await env.data.users.get(client.tenant.id, session.user_id);
-
-  if (!user) {
+  if (!sessionUser) {
     console.error("User not found", session.user_id);
     return handleLoginRequired("User not found");
   }
+
+  const user = sessionUser.linked_to
+    ? await env.data.users.get(client.tenant.id, sessionUser.linked_to)
+    : sessionUser;
+
+  if (!user) {
+    console.error("Linked primary user not found", sessionUser.linked_to);
+    return handleLoginRequired("User not found");
+  }
+
+  ctx.set("user_id", user.user_id);
 
   ctx.set("username", user.email);
   ctx.set("connection", user.connection);
@@ -165,10 +177,12 @@ export async function silentAuth({
     }
   }
 
-  // Calculate scopes and permissions - also validates org membership
-  const effectiveAudience = audience || client.tenant.audience;
+  // Audience is pre-stamped on the /authorize request (tenant default_audience
+  // applied there, not here), so this is already the effective value.
+  const effectiveAudience = audience;
   let calculatedScopes = scope || "";
   let calculatedPermissions: string[] = [];
+  let calculatedTokenLifetime: number | undefined;
 
   if (effectiveAudience) {
     try {
@@ -183,6 +197,12 @@ export async function silentAuth({
       });
       calculatedScopes = scopesAndPermissions.scopes.join(" ");
       calculatedPermissions = scopesAndPermissions.permissions;
+
+      // Use token_lifetime_for_web for SPA clients, token_lifetime for all others
+      calculatedTokenLifetime =
+        client.app_type === "spa" && scopesAndPermissions.token_lifetime_for_web
+          ? scopesAndPermissions.token_lifetime_for_web
+          : scopesAndPermissions.token_lifetime;
     } catch (error: any) {
       // Check for 403 errors from org membership validation or scope validation
       if (error?.statusCode === 403 || error?.status === 403) {
@@ -255,6 +275,7 @@ export async function silentAuth({
     auth_time,
     permissions: calculatedPermissions,
     organization: organizationEntity,
+    token_lifetime: calculatedTokenLifetime,
   };
 
   // Create authentication tokens or code
@@ -268,9 +289,11 @@ export async function silentAuth({
         })
       : await createAuthTokens(ctx, tokenResponseOptions);
 
-  // Update session
-  const newIdleExpiresAt = session.idle_expires_at
-    ? new Date(Date.now() + SILENT_AUTH_MAX_AGE_IN_SECONDS * 1000).toISOString()
+  // Update session idle timeout using tenant settings
+  const newIdleExpiresAt = client.tenant.idle_session_lifetime
+    ? new Date(
+        Date.now() + client.tenant.idle_session_lifetime * 60 * 60 * 1000,
+      ).toISOString()
     : undefined;
 
   await env.data.sessions.update(client.tenant.id, session.id, {

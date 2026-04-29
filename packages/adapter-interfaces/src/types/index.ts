@@ -1,8 +1,10 @@
+export * from "./Action";
 export * from "./AuditEvent";
 export * from "./Flow";
 export * from "./auth0";
 export * from "./Client";
 export * from "./ClientGrant";
+export * from "./ClientRegistrationToken";
 // Export Flows.ts with renamed types to avoid conflict with Forms.ts
 export {
   // Enums
@@ -57,6 +59,7 @@ export * from "./CustomDomain";
 // Forms.ts takes precedence for conflicting names (FieldComponent, FlowNode, StepNode, fieldComponentSchema)
 export * from "./Forms";
 export * from "./Hook";
+export * from "./HookCode";
 export * from "./Identity";
 export * from "./Invite";
 export * from "./JWKS";

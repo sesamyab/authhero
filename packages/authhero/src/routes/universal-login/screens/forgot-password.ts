@@ -5,9 +5,12 @@
  */
 
 import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
+import { Strategy } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import { getLoginPath } from "./types";
 import { createTranslation } from "../../../i18n";
+import { requestPasswordReset } from "../../../authentication-flows/password";
+import { resetPasswordCodeScreen } from "./reset-password-code";
 
 /**
  * Create the forgot-password screen
@@ -112,15 +115,124 @@ export async function forgotPasswordScreen(
 /**
  * Screen definition for the forgot-password screen
  */
+/**
+ * Create the forgot-password success screen (email sent confirmation)
+ */
+async function forgotPasswordSentScreen(
+  context: ScreenContext,
+): Promise<ScreenResult> {
+  const { branding, state, customText } = context;
+
+  const locale = context.language || "en";
+  const { m } = createTranslation(
+    "reset-password",
+    "reset-password",
+    locale,
+    customText,
+  );
+  const { m: loginM } = createTranslation("login", "login", locale, customText);
+
+  const components: FormNodeComponent[] = [
+    {
+      id: "info",
+      type: "RICH_TEXT",
+      category: "BLOCK",
+      visible: true,
+      config: {
+        content: m.successDescription(),
+      },
+      order: 0,
+    },
+  ];
+
+  const screen: UiScreen = {
+    name: "forgot-password",
+    action: "",
+    method: "GET",
+    title: m.successTitle(),
+    components,
+    links: [
+      {
+        id: "back",
+        text: m.backToLoginText(),
+        linkText: loginM.buttonText(),
+        href: `${await getLoginPath(context)}?state=${encodeURIComponent(state)}`,
+      },
+    ],
+  };
+
+  return {
+    screen,
+    branding,
+  };
+}
+
 export const forgotPasswordScreenDefinition: ScreenDefinition = {
   id: "forgot-password",
   name: "Forgot Password",
   description: "Password reset request screen",
   handler: {
     get: forgotPasswordScreen,
-    // POST handler would:
-    // 1. Validate email exists
-    // 2. Send password reset email
-    // 3. Show confirmation message
+    post: async (context, data) => {
+      const { ctx, client, state, customText } = context;
+
+      const locale = context.language || "en";
+      const { m } = createTranslation(
+        "reset-password",
+        "reset-password",
+        locale,
+        customText,
+      );
+
+      const email = (data.email as string)?.trim();
+
+      if (!email) {
+        const errorMsg = m["no-email"]();
+        return {
+          error: errorMsg,
+          screen: await forgotPasswordScreen({
+            ...context,
+            errors: { email: errorMsg },
+          }),
+        };
+      }
+
+      // Update the login session with the email for subsequent screens
+      const loginSession = await ctx.env.data.loginSessions.get(
+        client.tenant.id,
+        state,
+      );
+
+      if (loginSession) {
+        await ctx.env.data.loginSessions.update(client.tenant.id, state, {
+          authParams: {
+            ...loginSession.authParams,
+            username: email,
+          },
+        });
+      }
+
+      // Check the connection's verification_method
+      const passwordConnection = context.client.connections.find(
+        (c) => c.strategy === Strategy.USERNAME_PASSWORD,
+      );
+      const verificationMethod =
+        passwordConnection?.options?.attributes?.email?.verification_method;
+
+      await requestPasswordReset(ctx, client, email, state, verificationMethod);
+
+      if (verificationMethod === "code") {
+        return {
+          screen: await resetPasswordCodeScreen({
+            ...context,
+            data: { ...context.data, email },
+          }),
+        };
+      }
+
+      return {
+        screen: await forgotPasswordSentScreen(context),
+      };
+    },
   },
 };

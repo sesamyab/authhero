@@ -121,7 +121,8 @@
       "usernamePlaceholder": "Käyttäjänimi tai sähköpostiosoite",
       "usernameTooLong": "Käyttäjänimen on oltava enintään ${max} merkkiä",
       "usernameTooShort": "Käyttäjänimen on oltava vähintään ${min} merkkiä",
-      "wrongCredentials": "Väärä käyttäjänimi tai salasana"
+      "wrongCredentials": "Väärä käyttäjänimi tai salasana",
+      "passkeyButtonText": "Kirjaudu sisään passkey:llä"
     }
   },
   "login-id": {
@@ -197,7 +198,8 @@
       "wrong-email-username-credentials": "Virheellinen sähköpostiosoite, käyttäjänimi tai salasana",
       "wrong-phone-credentials": "Virheellinen puhelinnumero tai salasana",
       "wrong-phone-username-credentials": "Virheellinen puhelinnumero, käyttäjänimi tai salasana. Puhelinnumeron tulee sisältää maatunnus.",
-      "wrong-username-credentials": "Virheellinen käyttäjänimi tai salasana"
+      "wrong-username-credentials": "Virheellinen käyttäjänimi tai salasana",
+      "passkeyButtonText": "Kirjaudu sisään passkey:llä"
     }
   },
   "login-password": {
@@ -416,6 +418,14 @@
       "retryButtonText": "Yritä uudelleen",
       "enrollmentComplete": "Tunnistautumisavaimesi on määritetty onnistuneesti. Voit sulkea tämän sivun.",
       "pageTitle": "Luo Tunnistautumisavain | ${clientName}"
+    },
+    "passkey-challenge": {
+      "title": "Kirjaudu sisään passkey:llä",
+      "description": "Noudata selaimesi ohjeita henkilöllisyytesi vahvistamiseksi.",
+      "errorMessage": "Passkey-todennus epäonnistui. Yritä uudelleen.",
+      "cancelLinkText": "Takaisin kirjautumiseen",
+      "retryButtonText": "Yritä uudelleen",
+      "pageTitle": "Kirjaudu sisään passkey:llä | ${clientName}"
     }
   },
   "organizations": {
@@ -447,6 +457,29 @@
       "successTitle": "Salasanan palautussähköposti lähetetty",
       "title": "Unohditko salasanan?",
       "user-not-found": "Käyttäjää ei löytynyt"
+    },
+    "reset-password-code": {
+      "backToLoginText": "Takaisin kirjautumiseen",
+      "buttonText": "Vaihda salasana",
+      "codeLabel": "Palautuskoodi",
+      "codePlaceholder": "Syötä 6-numeroinen koodi",
+      "confirmPasswordLabel": "Vahvista salasana",
+      "confirmPasswordPlaceholder": "Vahvista salasana",
+      "defaultDescription": "Syötä sähköpostiisi lähetetty koodi ja valitse uusi salasana",
+      "description": "Lähetimme koodin osoitteeseen ${email}",
+      "failed": "Salasanan vaihto epäonnistui. Yritä uudelleen.",
+      "invalidCode": "Syöttämäsi koodi on virheellinen tai vanhentunut",
+      "noCode": "Syötä palautuskoodi",
+      "pageTitle": "Syötä palautuskoodi | ${clientName}",
+      "passwordLabel": "Uusi salasana",
+      "passwordPlaceholder": "Uusi salasana",
+      "passwordTooWeak": "Salasana on liian heikko",
+      "passwordsDidntMatch": "Salasanat eivät täsmää",
+      "resendFailed": "Koodin uudelleenlähetys epäonnistui. Yritä uudelleen.",
+      "resendSuccess": "Uusi koodi on lähetetty sähköpostiisi",
+      "resendText": "Lähetä koodi uudelleen",
+      "sessionExpired": "Istuntosi on vanhentunut. Yritä uudelleen.",
+      "title": "Syötä palautuskoodi"
     }
   },
   "signup": {

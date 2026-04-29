@@ -2,7 +2,8 @@ import {
   Edit,
   TextInput,
   BooleanInput,
-  TextField,
+  DateField,
+  Labeled,
   TabbedForm,
   required,
   NumberInput,
@@ -40,9 +41,9 @@ function SystemEntityAlert() {
 
   return (
     <Alert severity="info" sx={{ mb: 2 }}>
-      This Resource Server represents a system entity and cannot be modified or
-      deleted. You can still authorize applications to consume this resource
-      server.
+      This Resource Server represents a system entity. Most fields cannot be
+      modified or deleted, but you can still configure token lifetime and
+      authorize applications to consume this resource server.
     </Alert>
   );
 }
@@ -350,6 +351,17 @@ function ResourceServerForm() {
           />
         </Stack>
 
+        <Stack spacing={2} sx={{ mt: 2 }}>
+          <BooleanInput
+            source="metadata.sync"
+            label="Sync to child tenants"
+            helperText="When disabled, this resource server stays on the control plane and is not propagated to child tenants."
+            format={(value) => value !== false}
+            parse={(checked) => checked}
+            disabled={isSystem}
+          />
+        </Stack>
+
         <Stack spacing={2} direction="row" sx={{ mt: 2 }}>
           <TextInput
             source="signing_alg"
@@ -362,21 +374,23 @@ function ResourceServerForm() {
         <Stack spacing={2} direction="row" sx={{ mt: 2 }}>
           <NumberInput
             source="token_lifetime"
-            defaultValue={1209600}
-            helperText="Token lifetime in seconds (default: 14 days)"
-            disabled={isSystem}
+            defaultValue={86400}
+            helperText="Access token lifetime in seconds (default: 86400 = 24 hours)"
           />
           <NumberInput
             source="token_lifetime_for_web"
             defaultValue={7200}
-            helperText="Web token lifetime in seconds (default: 2 hours)"
-            disabled={isSystem}
+            helperText="Access token lifetime in seconds for browser-based (SPA) clients (default: 7200 = 2 hours)"
           />
         </Stack>
 
         <Stack spacing={2} direction="row" sx={{ mt: 4 }}>
-          <TextField source="created_at" />
-          <TextField source="updated_at" />
+          <Labeled label="Created At">
+            <DateField source="created_at" showTime={true} />
+          </Labeled>
+          <Labeled label="Updated At">
+            <DateField source="updated_at" showTime={true} />
+          </Labeled>
         </Stack>
       </TabbedForm.Tab>
 

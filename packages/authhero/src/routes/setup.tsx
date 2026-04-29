@@ -63,20 +63,10 @@ export default function createSetupApp(config: AuthHeroConfig) {
           },
         },
         {
-          id: "name",
-          category: "FIELD",
-          type: "TEXT",
-          order: 3,
-          label: "Tenant name",
-          config: {
-            placeholder: isMultiTenant ? "Control Plane" : "My App",
-          },
-        },
-        {
           id: "submit",
           category: "BLOCK",
           type: "NEXT_BUTTON",
-          order: 4,
+          order: 3,
           config: {
             text: "Set up AuthHero",
           },
@@ -252,16 +242,16 @@ export default function createSetupApp(config: AuthHeroConfig) {
         "https://manage.authhero.net/auth-callback",
         "https://local.authhero.net/auth-callback",
         "https://localhost:5173/auth-callback",
-        "https://localhost:3000/auth-callback",
-        "https://localhost:3000/admin/auth-callback",
+        "http://localhost:3000/auth-callback",
+        "http://localhost:3000/admin/auth-callback",
       ];
       const allowedLogoutUrls = [
         origin,
         `${origin}/admin`,
         "https://manage.authhero.net",
         "https://local.authhero.net",
-        "https://localhost:5173",
-        "https://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:3000",
       ];
 
       await seed(ctx.env.data, {

@@ -28,6 +28,7 @@ type getEnvParams = {
   testTenantLanguage?: string;
   emailValidation?: "enabled" | "enforced" | "disabled";
   mockEmail?: boolean;
+  outbox?: boolean;
   hooks?: {
     onExecuteCredentialsExchange?: OnExecuteCredentialsExchange;
     onExecutePreUserRegistration?: OnExecutePreUserRegistration;
@@ -73,6 +74,7 @@ export async function getTestServer(
     id: "tenantId",
     friendly_name: "Test Tenant",
     audience: "https://example.com",
+    default_audience: "https://example.com",
     sender_email: "login@example.com",
     sender_name: "SenderName",
   });
@@ -166,7 +168,6 @@ export async function getTestServer(
 
   const env: Bindings = {
     data: dataWithServices,
-    hooks: args.hooks,
     JWKS_SERVICE: {
       fetch: async () =>
         new Response(
@@ -190,9 +191,15 @@ export async function getTestServer(
     SAML_SIGN_URL: "http://localhost:3000/saml/sign",
   };
 
+  if (args.outbox) {
+    env.outbox = { enabled: true, maxRetries: 1 };
+  }
+
   const apps = init({
     dataAdapter: dataWithServices,
+    hooks: args.hooks,
     entityHooks: args.entityHooks,
+    ...(args.outbox ? { outbox: { enabled: true, maxRetries: 1 } } : {}),
   });
   return {
     ...apps,

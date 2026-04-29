@@ -1,5 +1,268 @@
 # @authhero/kysely-adapter
 
+## 10.131.2
+
+### Patch Changes
+
+- Updated dependencies [ba03e14]
+  - @authhero/adapter-interfaces@1.10.0
+
+## 10.131.1
+
+### Patch Changes
+
+- Updated dependencies [2578652]
+  - @authhero/adapter-interfaces@1.9.0
+
+## 10.131.0
+
+### Minor Changes
+
+- 02cebf4: Add RFC 7591 Dynamic Client Registration and RFC 7592 Client Configuration endpoints with Initial Access Token support.
+  - `POST /oidc/register` (RFC 7591 §3): create a client, optionally gated by an Initial Access Token (IAT). Open DCR can be enabled by setting `tenant.flags.dcr_require_initial_access_token = false`.
+  - `GET/PUT/DELETE /oidc/register/:client_id` (RFC 7592): self-service client configuration using the registration access token returned at registration time.
+  - New `client_registration_tokens` table (kysely + drizzle) holding both IATs and RATs with SHA-256 hashed storage.
+  - New `clients` columns: `owner_user_id`, `registration_type`, `registration_metadata`.
+  - New tenant flags: `dcr_require_initial_access_token`, `dcr_allowed_grant_types`.
+  - Discovery (`.well-known/openid-configuration`) now only emits `registration_endpoint` when `flags.enable_dynamic_client_registration = true`.
+  - RFC 7591 `redirect_uris` is mapped to/from AuthHero's internal `callbacks` field at the wire boundary — the Management API continues to use `callbacks` unchanged.
+
+### Patch Changes
+
+- 48eab09: Add Phases 4 and 5 of RFC 7591/7592 Dynamic Client Registration.
+
+  **Phase 4 — consent-mediated DCR**
+  - New top-level `GET /connect/start?integration_type=...&domain=...&return_to=...&state=...&scope=...` route validates the request, creates a login session, and 302s to `/u2/connect/start`. The Stencil widget renders a consent screen there; on confirm AuthHero mints an IAT bound to the consenting user (with `domain`, `integration_type`, `scope`, and `grant_types: ["client_credentials"]` as pre-bound constraints) and redirects to `return_to?authhero_iat=<token>&state=<state>`. Cancel returns `authhero_error=cancelled`.
+  - New `POST /api/v2/client-registration-tokens` (scope `create:client_registration_tokens` or `auth:write`) for non-browser IAT issuance. Body: `{ sub?, constraints?, expires_in_seconds?, single_use? }` — defaults to 5-minute TTL and single-use.
+  - New tenant flag `dcr_allowed_integration_types: string[]` allowlists the `integration_type` values accepted by `/connect/start`.
+  - New management scope `create:client_registration_tokens` added to `MANAGEMENT_API_SCOPES`.
+
+  **Phase 5 — owner scoping & soft-delete enforcement**
+  - New `GET /api/v2/users/{user_id}/connected-clients` Management API endpoint returns clients owned by a user (created via IAT-gated DCR). Response is a slim projection — no secrets, no internal config — and excludes soft-deleted clients.
+  - `getEnrichedClient` now treats clients with `client_metadata.status === "deleted"` as not found. After RFC 7592 `DELETE /oidc/register/{client_id}`, subsequent `/oauth/token`, `/authorize`, and resume requests for that `client_id` are rejected.
+  - The kysely `clients.list` adapter now supports lucene-style `field:"value"` exact-match filtering on `owner_user_id` and `registration_type`.
+
+- ee8f683: Drop redundant tenant_id indexes flagged by PlanetScale (connections, invites, organizations, role_permissions, themes) and remove the unused `members` table. Each drop uses ifExists() so it is safe against already-cleaned environments.
+- Updated dependencies [48eab09]
+- Updated dependencies [02cebf4]
+  - @authhero/adapter-interfaces@1.8.0
+
+## 10.130.0
+
+### Minor Changes
+
+- 9145dbd: Drop the multi-statement transaction from `refreshTokens.update`. The previous implementation ran UPDATE + SELECT + UPDATE inside `db.transaction()` to extend the parent `login_session` expiry, which on async HTTP drivers (PlanetScale, D1) meant three sequential round-trips plus BEGIN/COMMIT and held a row lock on `login_sessions` across the whole transaction — creating a hot-row hotspot when multiple refresh tokens shared a `login_id`.
+  - Add optional `UpdateRefreshTokenOptions.loginSessionBump` to the adapter interface. The caller now provides `login_id` and the pre-computed new `expires_at`, so the adapter avoids a read-before-write.
+  - `refreshTokens.update` issues the refresh-token and login-session UPDATEs concurrently via `Promise.all`, collapsing wall-clock latency to roughly one round-trip on async drivers. The bump is idempotent (`WHERE expires_at_ts < new`) and self-healing (next refresh re-bumps on a transient failure), so strict atomicity is not required.
+  - Fix `ctx.req.header["x-real-ip"]` / `["user-agent"]` — Hono exposes `header` as a function, so bracket access has been silently writing empty strings to `device.last_ip` / `device.last_user_agent` since the grant landed. Use `ctx.req.header("x-real-ip")` and skip the `device` write entirely when IP and UA are unchanged.
+
+### Patch Changes
+
+- Updated dependencies [9145dbd]
+- Updated dependencies [9145dbd]
+  - @authhero/adapter-interfaces@1.7.0
+
+## 10.129.0
+
+### Minor Changes
+
+- 7d9f138: Soft-revoke refresh tokens instead of hard-deleting them. Adds a `revoked_at` field to the `RefreshToken` schema, a `revokeByLoginSession(tenant_id, login_session_id, revoked_at)` adapter method, and a `refresh_tokens.revoked_at_ts` column. The logout route now issues a single bulk UPDATE (fixing a pagination bug where sessions with >100 refresh tokens were not fully revoked), and the refresh-token grant rejects revoked tokens with an `invalid_grant` error.
+
+### Patch Changes
+
+- Updated dependencies [7d9f138]
+  - @authhero/adapter-interfaces@1.6.0
+
+## 10.128.1
+
+### Patch Changes
+
+- 0b3419b: Split the `login_sessions` authParams column cleanup into two migrations so the blob-only adapter code can be deployed ahead of the heavier column drop.
+
+  `2026-04-20T12:00:00_drop_login_sessions_hoisted_authparams` is renamed to `2026-04-20T12:00:00_relax_login_sessions_authparams` and now only drops the `login_sessions_client_fk` foreign key and relaxes `NOT NULL` on `authParams_client_id` — two cheap `ALTER TABLE`s on MySQL. The actual column drop moves to a new `2026-04-21T10:00:00_drop_login_sessions_hoisted_authparams` migration, which can be scheduled independently.
+
+  Run order is unchanged on a fresh database. For existing deployments, the split lets you roll out the previous authhero release (which stopped writing hoisted columns) even when the heavier drop hasn't run yet, as long as the relax migration has been applied.
+
+## 10.128.0
+
+### Minor Changes
+
+- 31b0b62: Update the adapters
+
+### Patch Changes
+
+- f27884d: Move `login_sessions.authParams` entirely into the JSON blob column `auth_params` and drop the 18 legacy hoisted `authParams_*` columns.
+
+  The backfill migration (`2026-04-20T11:00:00`) reconstructs `auth_params` from the hoisted columns for any row where it is still NULL, guaranteeing the blob is populated before the columns are removed. The follow-up migration (`2026-04-20T12:00:00`) then drops all 18 hoisted columns from `login_sessions` and removes the `login_sessions_client_fk` foreign key that referenced `authParams_client_id`. On MySQL this is a straightforward `DROP FOREIGN KEY` + `DROP COLUMN` sequence; on SQLite the table is recreated because SQLite rejects `DROP COLUMN` on FK-referenced columns.
+
+  The adapter now writes and reads authParams exclusively via the JSON blob. DB-level referential integrity between `login_sessions` and `clients` is no longer enforced — the client_id lives inside the blob, which cannot be foreign-keyed. Adding a new field to `AuthParams` no longer requires a schema migration.
+
+  The Drizzle/D1 adapter has been updated to match: `src/schema/sqlite/sessions.ts` now declares `auth_params` and drops the hoisted `authParams_*` columns, the login-sessions adapter reads/writes via the blob, and a new `drizzle/0004_login_sessions_auth_params_blob.sql` migration backfills and drops the hoisted columns. The AWS (DynamoDB) adapter already stored authParams as a JSON string, so no change was required there.
+
+## 10.127.1
+
+### Patch Changes
+
+- a833d42: Store `login_sessions.authParams` as a JSON blob in a new `auth_params` column. The existing hoisted `authParams_*` columns are still populated on create (dual-write) and still read on get when the blob is NULL, so upgrade is backwards compatible and rows created before this release continue to read correctly via the fallback. Adding future AuthParams fields no longer requires a schema migration.
+
+  Also widens `login_sessions.authorization_url` from `varchar(1024)` to `text` (MySQL only; SQLite ignores varchar constraints) so real authorize URLs with long scopes / PAR / id_token_hint fit.
+
+  `loginSessions.update({ authParams })` now merges the incoming authParams into the stored blob (and the hoisted columns via the existing flatten path), so partial and full-object call patterns both keep the two representations in sync.
+
+  Follow-up releases: a data-migration release will backfill `auth_params` for pre-existing rows, and a cleanup release will drop the redundant hoisted `authParams_*` columns and the adapter's fallback branch.
+
+## 10.127.0
+
+### Minor Changes
+
+- 931f598: Add `GET /authorize/resume` endpoint mirroring Auth0's terminal login-session resumption point.
+
+  Sub-flows now persist the authenticated identity onto the login session (new `auth_strategy` and `authenticated_at` columns on `login_sessions`) and 302 the browser to `/authorize/resume?state=…`. The resume endpoint owns (a) hopping back to the original authorization host when the browser is on the wrong custom domain so the session cookie lands under the right wildcard, and (b) dispatching based on the login-session state machine to the final token/code issuance or to the next MFA/continuation screen.
+
+  The social OAuth callback is migrated as the first consumer: the old 307-POST cross-domain re-dispatch in `connectionCallback` is replaced by a plain 302 to `/authorize/resume`, and the OAuth code exchange now always runs once on whichever host the provider called back to. Subsequent PRs will migrate the password / OTP / signup / SAML sub-flows to the same pattern, after which the ad-hoc `Set-Cookie` forwarding layers in Universal Login can be removed.
+
+### Patch Changes
+
+- Updated dependencies [931f598]
+  - @authhero/adapter-interfaces@1.5.0
+
+## 10.126.1
+
+### Patch Changes
+
+- 6503423: Fix cleanup deleting `login_sessions` while child `refresh_tokens` are still valid.
+
+  `refreshTokens.create` and `refreshTokens.update` now extend the parent
+  `login_sessions.expires_at_ts` to match the refresh token's longest expiry, in
+  the same DB transaction. Previously the initial token exchange never bumped
+  the login_session, so cleanup could delete the parent while its refresh tokens
+  were still valid.
+
+## 10.126.0
+
+### Minor Changes
+
+- b5f73bb: Add drain outbox
+
+### Patch Changes
+
+- Updated dependencies [1d15292]
+  - @authhero/adapter-interfaces@1.4.1
+
+## 10.125.0
+
+### Minor Changes
+
+- d288b62: Add support for dynamic workers
+
+## 10.124.0
+
+### Minor Changes
+
+- d84cb2f: Complete the transaction fixes
+
+### Patch Changes
+
+- Updated dependencies [d84cb2f]
+  - @authhero/adapter-interfaces@1.4.0
+
+## 10.123.0
+
+### Minor Changes
+
+- 2f6354d: Make session lifetime cofigurable
+
+### Patch Changes
+
+- Updated dependencies [2f6354d]
+  - @authhero/adapter-interfaces@1.3.0
+
+## 10.122.0
+
+### Minor Changes
+
+- b2aff48: Durable post-hooks with self-healing and dead-letter support.
+  - Moved post-user-registration and post-user-deletion webhook delivery from inline invocation to the outbox, with `Idempotency-Key: {event.id}` headers and retry-with-backoff.
+  - `EventDestination` gained an optional `accepts(event)` filter so `LogsDestination`, `WebhookDestination`, and `RegistrationFinalizerDestination` can share the same event stream without cross-writing.
+  - Added `outbox.deadLetter`, `listFailed`, and `replay` to `OutboxAdapter`; the relay now moves exhausted events to dead-letter instead of silently marking them processed.
+  - New `GET /api/v2/failed-events` and `POST /api/v2/failed-events/:id/retry` management endpoints for operating the dead-letter queue.
+  - Self-healing: added `registration_completed_at` to the user; set by `RegistrationFinalizerDestination` (outbox path) or inline after successful synchronous webhook dispatch. `postUserLoginHook` re-enqueues the post-user-registration event on the next login when the flag is still null, so transient delivery failures recover automatically.
+  - Removed the global management-api transaction middleware: pre-registration webhooks and user-authored action code no longer execute inside a held DB transaction. Individual write paths own their own atomicity (see `linkUsersHook`, `createUserUpdateHooks`, `createUserDeletionHooks`).
+  - Added `users.rawCreate` to the adapter interface so the registration commit path can write without re-entering decorator hooks.
+  - New `account-linking` pre-defined post-login hook (`preDefinedHooks.accountLinking`) and corresponding template, matching Auth0's marketplace linking action. Idempotent: re-running on every login is safe.
+  - Non-Workers runtimes (Node, tests) now flush background promises via the outbox middleware so `waitUntil`-scheduled work completes before the response returns.
+
+### Patch Changes
+
+- Updated dependencies [b2aff48]
+  - @authhero/adapter-interfaces@1.2.0
+
+## 10.121.1
+
+### Patch Changes
+
+- Updated dependencies [3da602c]
+  - @authhero/adapter-interfaces@1.1.0
+
+## 10.121.0
+
+### Minor Changes
+
+- 20d5140: Add support for dynamic code
+
+  BREAKING CHANGE: `DataAdapters` now requires a `hookCode: HookCodeAdapter` property. Adapters implementing `DataAdapters` must provide a `hookCode` adapter with `create`, `get`, `update`, and `remove` methods for managing hook code storage. See `packages/kysely/src/hook-code/` for a reference implementation.
+
+### Patch Changes
+
+- Updated dependencies [20d5140]
+  - @authhero/adapter-interfaces@1.0.0
+
+## 10.120.0
+
+### Minor Changes
+
+- a59a49b: Implement disable-sso
+
+### Patch Changes
+
+- Updated dependencies [a59a49b]
+  - @authhero/adapter-interfaces@0.155.0
+
+## 10.119.0
+
+### Minor Changes
+
+- fa7ce07: Updates for passkeys login
+
+### Patch Changes
+
+- Updated dependencies [fa7ce07]
+  - @authhero/adapter-interfaces@0.154.0
+
+## 10.118.0
+
+### Minor Changes
+
+- 77b7c76: Add outbox middleware
+
+## 10.117.0
+
+### Minor Changes
+
+- 884e950: Update outbox
+
+### Patch Changes
+
+- Updated dependencies [884e950]
+  - @authhero/adapter-interfaces@0.153.0
+
+## 10.116.0
+
+### Minor Changes
+
+- 2f65572: Fix nested transactions
+- 76f2b7f: Fix paging of clients in react-admin
+
 ## 10.115.0
 
 ### Minor Changes

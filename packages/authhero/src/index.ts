@@ -10,6 +10,7 @@ import createU2App from "./routes/universal-login/u2-index";
 import createSamlpApi from "./routes/saml";
 import createSetupApp from "./routes/setup";
 import { createX509Certificate } from "./utils/encryption";
+import { applyConfigMiddleware } from "./middlewares/apply-config";
 import { en, it, nb, sv, pl, cs, fi, da } from "./locales";
 
 export * from "@authhero/adapter-interfaces";
@@ -19,8 +20,26 @@ export * from "./components";
 export * from "./styles";
 export * from "./adapters";
 export { waitUntil } from "./helpers/wait-until";
-export { cleanupUserSessions } from "./helpers/user-session-cleanup";
+export {
+  cleanupUserSessions,
+  cleanupSessions,
+} from "./helpers/user-session-cleanup";
 export type { UserSessionCleanupParams } from "./helpers/user-session-cleanup";
+export { drainOutbox } from "./helpers/outbox-relay";
+export type { EventDestination } from "./helpers/outbox-relay";
+export { cleanupOutbox } from "./helpers/outbox-cleanup";
+export type { OutboxCleanupParams } from "./helpers/outbox-cleanup";
+export { createDefaultDestinations } from "./helpers/default-destinations";
+export type { CreateDefaultDestinationsConfig } from "./helpers/default-destinations";
+export { runOutboxRelay } from "./helpers/run-outbox-relay";
+export type { RunOutboxRelayConfig } from "./helpers/run-outbox-relay";
+export { LogsDestination } from "./helpers/outbox-destinations/logs";
+export {
+  WebhookDestination,
+  type WebhookDestinationOptions,
+  type GetServiceToken,
+} from "./helpers/outbox-destinations/webhooks";
+export { RegistrationFinalizerDestination } from "./helpers/outbox-destinations/registration-finalizer";
 export { addEntityHooks } from "./helpers/entity-hooks-wrapper";
 export { seed, MANAGEMENT_API_SCOPES } from "./seed";
 export type { SeedOptions, SeedResult } from "./seed";
@@ -49,6 +68,10 @@ export { USERNAME_PASSWORD_PROVIDER } from "./constants";
 // Export pre-defined hooks library
 export * as preDefinedHooks from "./hooks/pre-defined";
 export type { EnsureUsernameOptions } from "./hooks/pre-defined";
+
+// Export code executor implementations
+export { LocalCodeExecutor } from "./hooks/code-executor/local";
+export { CloudflareCodeExecutor } from "./hooks/code-executor/cloudflare";
 
 i18next.init({
   supportedLngs: ["en", "it", "nb", "sv", "pl", "cs", "fi", "da"],
@@ -79,48 +102,7 @@ export function init(config: AuthHeroConfig) {
     return ctx.json({ message: "Internal Server Error" }, 500);
   });
 
-  // Add middleware to merge config into env bindings
-  app.use("*", async (ctx, next) => {
-    // Ensure ctx.env exists (it can be undefined when using app.request() without env)
-    if (!ctx.env) {
-      ctx.env = {} as Bindings;
-    }
-
-    // Set data adapter from config if not already provided via env bindings
-    if (!ctx.env.data && config.dataAdapter) {
-      ctx.env.data = config.dataAdapter;
-    }
-
-    // Merge config hooks with env hooks, giving precedence to env hooks for backwards compatibility
-    if (config.hooks) {
-      ctx.env.hooks = {
-        ...config.hooks,
-        ...(ctx.env.hooks || {}), // env hooks take precedence
-      };
-    }
-
-    // Add samlSigner from config if provided
-    if (config.samlSigner) {
-      ctx.env.samlSigner = config.samlSigner;
-    }
-
-    // Add poweredByLogo from config if provided
-    if (config.poweredByLogo) {
-      ctx.env.poweredByLogo = config.poweredByLogo;
-    }
-
-    // Add webhookInvoker from config if provided
-    if (config.webhookInvoker) {
-      ctx.env.webhookInvoker = config.webhookInvoker;
-    }
-
-    // Add outbox config if provided
-    if (config.outbox) {
-      ctx.env.outbox = config.outbox;
-    }
-
-    await next();
-  });
+  app.use("*", applyConfigMiddleware(config));
 
   // Setup wizard — must be mounted before auth middleware and other routes
   const setupApp = createSetupApp(config);

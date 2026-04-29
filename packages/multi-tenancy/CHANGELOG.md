@@ -1,5 +1,36 @@
 # @authhero/multi-tenancy
 
+## 14.20.0
+
+### Minor Changes
+
+- d288b62: Add support for dynamic workers
+
+### Patch Changes
+
+- Updated dependencies [d288b62]
+  - authhero@4.98.0
+
+## 14.19.1
+
+### Patch Changes
+
+- 0a3d5d3: Gate resource server scope inheritance on is_system flag and match by id instead of identifier. Apply scope inheritance to the management API adapter so is_system resource servers show their effective scopes from the control plane.
+
+## 14.19.0
+
+### Minor Changes
+
+- 20d5140: Add support for dynamic code
+
+  BREAKING CHANGE: `DataAdapters` now requires a `hookCode: HookCodeAdapter` property. Adapters implementing `DataAdapters` must provide a `hookCode` adapter with `create`, `get`, `update`, and `remove` methods for managing hook code storage. See `packages/kysely/src/hook-code/` for a reference implementation.
+
+### Patch Changes
+
+- Updated dependencies [20d5140]
+  - @authhero/adapter-interfaces@1.0.0
+  - authhero@4.91.0
+
 ## 14.18.0
 
 ### Minor Changes

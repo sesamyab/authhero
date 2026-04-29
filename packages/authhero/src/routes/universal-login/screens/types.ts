@@ -80,6 +80,42 @@ export interface ScreenContext {
 }
 
 /**
+ * Structured WebAuthn ceremony data sent to the widget instead of raw script.
+ * The widget validates the shape and performs the ceremony natively.
+ */
+export interface WebAuthnCeremony {
+  type:
+    | "webauthn-registration"
+    | "webauthn-authentication"
+    | "webauthn-authentication-conditional";
+  options: {
+    challenge: string;
+    rp?: { id: string; name: string };
+    rpId?: string;
+    user?: { id: string; name: string; displayName: string };
+    pubKeyCredParams?: Array<{ alg: number; type: string }>;
+    timeout?: number;
+    attestation?: string;
+    authenticatorSelection?: {
+      residentKey?: string;
+      userVerification?: string;
+    };
+    excludeCredentials?: Array<{
+      id: string;
+      type: string;
+      transports?: string[];
+    }>;
+    userVerification?: string;
+    allowCredentials?: Array<{
+      id: string;
+      type: string;
+      transports?: string[];
+    }>;
+  };
+  successAction: string;
+}
+
+/**
  * Result from a screen factory
  */
 export interface ScreenResult {
@@ -89,6 +125,8 @@ export interface ScreenResult {
   branding?: ScreenBranding;
   /** Optional inline script to inject at page level (e.g. WebAuthn ceremony) */
   extraScript?: string;
+  /** Structured WebAuthn ceremony data for widget-based flows */
+  ceremony?: WebAuthnCeremony;
 }
 
 /**

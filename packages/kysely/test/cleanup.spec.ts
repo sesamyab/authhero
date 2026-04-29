@@ -185,10 +185,12 @@ describe("cleanup", () => {
         tenant_id: "tenantId",
         csrf_token: "csrfToken",
         session_id: "sessionId",
-        authParams_client_id: "clientId",
-        authParams_scope: "",
-        authParams_audience: "http://example.com",
-        authParams_redirect_uri: "http://example.com/callback",
+        auth_params: JSON.stringify({
+          client_id: "clientId",
+          scope: "",
+          audience: "http://example.com",
+          redirect_uri: "http://example.com/callback",
+        }),
         created_at_ts: fourMonthsAgoTs,
         updated_at_ts: fourMonthsAgoTs,
         expires_at_ts: fourMonthsAgoTs,
@@ -269,11 +271,12 @@ describe("cleanup", () => {
       },
     });
 
-    // Create the login session
+    // Create the login session (not linked to the expired session, to avoid
+    // the SQLite FK cascade from sessions.id → login_sessions.session_id which
+    // PlanetScale doesn't enforce).
     const loginSession = await data.loginSessions.create("tenantId", {
       expires_at: fourMonthsAgo,
       csrf_token: "csrfToken",
-      session_id: "sessionId",
       authParams: {
         client_id: "clientId",
         username: "foo@exampl.com",
@@ -281,11 +284,6 @@ describe("cleanup", () => {
         audience: "http://example.com",
         redirect_uri: "http://example.com/callback",
       },
-    });
-
-    // Link the session back to the login session
-    await data.sessions.update("tenantId", "sessionId", {
-      login_session_id: loginSession.id,
     });
 
     // Create a refresh token that expires in the future
@@ -313,17 +311,27 @@ describe("cleanup", () => {
       rotating: false,
     });
 
+    // Creating the refresh token should have extended the login_session's
+    // expires_at_ts to match the refresh token — that's the invariant the
+    // cleanup relies on.
+    const loginSessionAfterCreate = await data.loginSessions.get(
+      "tenantId",
+      loginSession.id,
+    );
+    expect(loginSessionAfterCreate?.expires_at).toEqual(oneHourFromNow);
+
     // Do the cleanup
     await data.sessionCleanup!();
 
-    // Expired login session and session are deleted (in the new model,
-    // their expires_at would have been extended on renewal if still active)
+    // The login_session is no longer expired — it got bumped alongside the
+    // refresh token — so it must survive cleanup.
     const loginSessions = await db
       .selectFrom("login_sessions")
       .selectAll()
       .execute();
-    expect(loginSessions.length).toEqual(0);
+    expect(loginSessions.length).toEqual(1);
 
+    // The expired session is still deleted (it's not tied to the refresh token).
     const sessions = await db.selectFrom("sessions").selectAll().execute();
     expect(sessions.length).toEqual(0);
 
@@ -507,10 +515,12 @@ describe("sessionCleanup", () => {
         tenant_id: "tenantId",
         csrf_token: "csrfToken",
         user_id: "email|user1",
-        authParams_client_id: "clientId",
-        authParams_scope: "",
-        authParams_audience: "http://example.com",
-        authParams_redirect_uri: "http://example.com/callback",
+        auth_params: JSON.stringify({
+          client_id: "clientId",
+          scope: "",
+          audience: "http://example.com",
+          redirect_uri: "http://example.com/callback",
+        }),
         created_at_ts: twoWeeksAgoTs,
         updated_at_ts: twoWeeksAgoTs,
         expires_at_ts: twoWeeksAgoTs,
@@ -580,10 +590,12 @@ describe("sessionCleanup", () => {
         tenant_id: "tenantId",
         csrf_token: "csrfToken",
         user_id: "email|user1",
-        authParams_client_id: "clientId",
-        authParams_scope: "",
-        authParams_audience: "http://example.com",
-        authParams_redirect_uri: "http://example.com/callback",
+        auth_params: JSON.stringify({
+          client_id: "clientId",
+          scope: "",
+          audience: "http://example.com",
+          redirect_uri: "http://example.com/callback",
+        }),
         created_at_ts: twoWeeksAgoTs,
         updated_at_ts: twoWeeksAgoTs,
         expires_at_ts: twoWeeksAgoTs,

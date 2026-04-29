@@ -136,6 +136,21 @@ import * as o037_mfa_enrollments from "./2026-03-21T10:00:00_mfa_enrollments";
 import * as o038_add_otp_to_codes from "./2026-03-22T10:00:00_add_otp_to_codes";
 import * as o039_rename_mfa_enrollments_to_authentication_methods from "./2026-03-28T10:00:00_rename_mfa_enrollments_to_authentication_methods";
 import * as o040_create_outbox_events from "./2026-04-03T10:00:00_create_outbox_events";
+import * as o041_add_outbox_claim_columns from "./2026-04-03T11:00:00_add_outbox_claim_columns";
+import * as o042_add_outbox_claim_index from "./2026-04-08T10:00:00_add_outbox_claim_index";
+import * as o043_add_code_hooks from "./2026-04-12T10:00:00_add_code_hooks";
+import * as o044_create_actions from "./2026-04-13T10:00:00_create_actions";
+import * as o045_outbox_dead_letter from "./2026-04-14T10:00:00_outbox_dead_letter";
+import * as o046_user_registration_completed_at from "./2026-04-14T11:00:00_user_registration_completed_at";
+import * as o047_outbox_dead_lettered_tenant_index from "./2026-04-14T12:00:00_outbox_dead_lettered_tenant_index";
+import * as o048_add_auth_strategy_to_login_sessions from "./2026-04-18T10:00:00_add_auth_strategy_to_login_sessions";
+import * as o049_login_sessions_auth_params from "./2026-04-20T10:00:00_login_sessions_auth_params";
+import * as o050_login_sessions_auth_params_backfill from "./2026-04-20T11:00:00_login_sessions_auth_params_backfill";
+import * as o051_relax_login_sessions_authparams from "./2026-04-20T12:00:00_relax_login_sessions_authparams";
+import * as o052_drop_login_sessions_hoisted_authparams from "./2026-04-21T10:00:00_drop_login_sessions_hoisted_authparams";
+import * as o053_refresh_tokens_revoked_at from "./2026-04-22T10:00:00_refresh_tokens_revoked_at";
+import * as o054_client_registration_tokens from "./2026-04-24T10:00:00_client_registration_tokens";
+import * as o055_planetscale_redundant_indexes_cleanup from "./2026-04-24T10:00:00_planetscale_redundant_indexes_cleanup";
 
 // These need to be in alphabetic order
 export default {
@@ -277,4 +292,19 @@ export default {
   o038_add_otp_to_codes,
   o039_rename_mfa_enrollments_to_authentication_methods,
   o040_create_outbox_events,
+  o041_add_outbox_claim_columns,
+  o042_add_outbox_claim_index,
+  o043_add_code_hooks,
+  o044_create_actions,
+  o045_outbox_dead_letter,
+  o046_user_registration_completed_at,
+  o047_outbox_dead_lettered_tenant_index,
+  o048_add_auth_strategy_to_login_sessions,
+  o049_login_sessions_auth_params,
+  o050_login_sessions_auth_params_backfill,
+  o051_relax_login_sessions_authparams,
+  o052_drop_login_sessions_hoisted_authparams,
+  o053_refresh_tokens_revoked_at,
+  o054_client_registration_tokens,
+  o055_planetscale_redundant_indexes_cleanup,
 };

@@ -17,6 +17,10 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
+import { renderWidgetPageResponse } from "./u2-widget-page";
+import type { DarkModePreference } from "./u2-widget-page";
+import { sanitizeUrl } from "./sanitization-utils";
+import { getCookie } from "hono/cookie";
 import {
   getScreen,
   getScreenDefinition,
@@ -54,6 +58,7 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
   signup: "signup",
   "forgot-password": "reset-password",
   "reset-password": "reset-password",
+  "reset-password-code": "reset-password",
   impersonate: "login",
   "pre-signup": "signup-id",
   "pre-signup-sent": "signup",
@@ -212,12 +217,78 @@ const uiScreenSchema = z.object({
     .optional(),
 });
 
+const webAuthnRegistrationCeremonySchema = z.object({
+  type: z.literal("webauthn-registration"),
+  options: z.object({
+    challenge: z.string(),
+    rp: z.object({ id: z.string(), name: z.string() }),
+    user: z.object({
+      id: z.string(),
+      name: z.string(),
+      displayName: z.string(),
+    }),
+    pubKeyCredParams: z.array(z.object({ alg: z.number(), type: z.string() })),
+    timeout: z.number().optional(),
+    attestation: z.string().optional(),
+    authenticatorSelection: z
+      .object({
+        residentKey: z.string().optional(),
+        userVerification: z.string().optional(),
+      })
+      .optional(),
+    excludeCredentials: z
+      .array(
+        z.object({
+          id: z.string(),
+          type: z.string(),
+          transports: z.array(z.string()).optional(),
+        }),
+      )
+      .optional(),
+  }),
+  successAction: z.string(),
+});
+
+const webAuthnAuthenticationCeremonySchema = z.object({
+  type: z.enum([
+    "webauthn-authentication",
+    "webauthn-authentication-conditional",
+  ]),
+  options: z.object({
+    challenge: z.string(),
+    rpId: z.string().optional(),
+    timeout: z.number().optional(),
+    userVerification: z.string().optional(),
+    allowCredentials: z
+      .array(
+        z.object({
+          id: z.string(),
+          type: z.string(),
+          transports: z.array(z.string()).optional(),
+        }),
+      )
+      .optional(),
+  }),
+  successAction: z.string(),
+});
+
+const webAuthnCeremonySchema = z.union([
+  webAuthnRegistrationCeremonySchema,
+  webAuthnAuthenticationCeremonySchema,
+]);
+
 /**
  * Screen API response schema
  */
 const screenResponseSchema = z.object({
   screen: uiScreenSchema,
   branding: brandingResponseSchema.optional(),
+  ceremony: webAuthnCeremonySchema.optional(),
+});
+
+const screenPostResponseSchema = screenResponseSchema.extend({
+  screenId: z.string().optional(),
+  navigateUrl: z.string().optional(),
 });
 
 /**
@@ -244,7 +315,12 @@ async function buildScreenContext(
   prefill?: Record<string, string>,
   errors?: Record<string, string>,
   uiLocalesOverride?: string,
-): Promise<ScreenContext> {
+): Promise<{
+  screenContext: ScreenContext;
+  branding: any;
+  theme: any;
+  loginSession: any;
+}> {
   const {
     client,
     branding,
@@ -294,7 +370,10 @@ async function buildScreenContext(
   const data: Record<string, unknown> = {};
   const username = loginSession?.authParams?.username;
   if (username) {
-    if (screenId === "email-otp-challenge") {
+    if (
+      screenId === "email-otp-challenge" ||
+      screenId === "reset-password-code"
+    ) {
       data.email = username;
     } else if (screenId === "sms-otp-challenge") {
       data.phone = username;
@@ -327,24 +406,29 @@ async function buildScreenContext(
   }
 
   return {
-    ctx,
-    tenant: client.tenant,
-    client,
-    theme: themeResult ?? undefined,
-    branding: toScreenBranding(branding),
-    connections,
-    state,
-    prefill: {
-      ...prefill,
-      username: loginSession?.authParams?.username,
-      email: loginSession?.authParams?.username,
+    screenContext: {
+      ctx,
+      tenant: client.tenant,
+      client,
+      theme: themeResult ?? undefined,
+      branding: toScreenBranding(branding),
+      connections,
+      state,
+      prefill: {
+        ...prefill,
+        username: loginSession?.authParams?.username,
+        email: loginSession?.authParams?.username,
+      },
+      data: Object.keys(data).length > 0 ? data : undefined,
+      errors,
+      customText,
+      language,
+      promptScreen,
+      routePrefix,
     },
-    data: Object.keys(data).length > 0 ? data : undefined,
-    errors,
-    customText,
-    language,
-    promptScreen,
-    routePrefix,
+    branding,
+    theme: themeResult ?? undefined,
+    loginSession,
   };
 }
 
@@ -440,467 +524,599 @@ async function getDatabaseScreen(
 export const screenApiRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>()
-  // --------------------------------
-  // GET /u2/screen/:screenId - Get screen configuration
-  // --------------------------------
-  .openapi(
-    createRoute({
-      tags: ["screen-api"],
-      method: "get",
-      path: "/:screenId",
-      request: {
-        params: z.object({
-          screenId: z.string().openapi({
-            description: `Screen ID. Built-in screens: ${listScreenIds().join(", ")}. Or a database form ID.`,
-          }),
+}>();
+
+// --------------------------------
+// Handle form-urlencoded POST submissions (SSR form-submit fallback)
+// The inline WebAuthn script calls form.submit() which sends
+// application/x-www-form-urlencoded. This middleware intercepts those
+// requests before the OpenAPI JSON handler runs.
+// --------------------------------
+screenApiRoutes.use("/:screenId", async (ctx, next) => {
+  if (ctx.req.method !== "POST") return next();
+  const contentType = ctx.req.header("content-type") || "";
+  if (!contentType.includes("application/x-www-form-urlencoded")) return next();
+
+  const screenId = ctx.req.param("screenId");
+  const url = new URL(ctx.req.url);
+  const state = url.searchParams.get("state") || "";
+
+  // Parse form data
+  const formData = await ctx.req.parseBody();
+  const data: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(formData)) {
+    data[key] = value;
+  }
+
+  // 1. Try built-in screen POST handler
+  const definition = getScreenDefinition(screenId);
+  if (definition?.handler.post) {
+    const { screenContext, branding, theme, loginSession } =
+      await buildScreenContext(ctx, state, screenId);
+    const result = await definition.handler.post(screenContext, data);
+
+    // Redirect result → 302 redirect with cookies
+    if ("redirect" in result) {
+      const headers = new Headers();
+      headers.set("Location", result.redirect);
+      if (result.cookies?.length) {
+        for (const cookie of result.cookies) {
+          headers.append("Set-Cookie", cookie);
+        }
+      }
+      return new Response(null, { status: 302, headers });
+    }
+
+    // Response passthrough (e.g. web_message mode)
+    if ("response" in result) {
+      return result.response;
+    }
+
+    // Screen result (error/validation case) → redirect back to Referer (PRG pattern)
+    // Browser form submissions should redirect so the user doesn't get
+    // a "resubmit form?" dialog on refresh.
+    const referer = ctx.req.header("referer");
+    if (referer) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: referer },
+      });
+    }
+
+    // Fallback when no Referer: render the screen HTML directly
+    const screenResult = result.screen;
+    const resultScreenId = screenResult.screen.name || screenId;
+    const screenJson = JSON.stringify(screenResult.screen);
+    const brandingJson = screenResult.branding
+      ? JSON.stringify(screenResult.branding)
+      : undefined;
+    const themeJson = theme ? JSON.stringify(theme) : undefined;
+    const authParamsJson = JSON.stringify({
+      client_id: loginSession.authParams.client_id,
+      ...(loginSession.authParams.redirect_uri && {
+        redirect_uri: loginSession.authParams.redirect_uri,
+      }),
+      ...(loginSession.authParams.scope && {
+        scope: loginSession.authParams.scope,
+      }),
+      ...(loginSession.authParams.audience && {
+        audience: loginSession.authParams.audience,
+      }),
+      ...(loginSession.authParams.nonce && {
+        nonce: loginSession.authParams.nonce,
+      }),
+      ...(loginSession.authParams.response_type && {
+        response_type: loginSession.authParams.response_type,
+      }),
+    });
+
+    const darkModeCookie = getCookie(ctx, "ah-dark-mode");
+    const darkMode: DarkModePreference =
+      darkModeCookie === "dark" || darkModeCookie === "light"
+        ? darkModeCookie
+        : "auto";
+
+    return renderWidgetPageResponse(ctx, {
+      screenId: resultScreenId,
+      screenJson,
+      brandingJson,
+      themeJson,
+      state,
+      authParamsJson,
+      branding,
+      theme,
+      clientName: screenContext.client.name || "AuthHero",
+      poweredByLogo: ctx.env.poweredByLogo,
+      language: screenContext.language,
+      termsAndConditionsUrl: sanitizeUrl(
+        screenContext.client.client_metadata?.termsAndConditionsUrl,
+      ),
+      darkMode,
+    });
+  }
+
+  // 2. For built-in screens without POST handler, return error
+  if (isValidScreenId(screenId)) {
+    throw new HTTPException(400, {
+      message: `Screen ${screenId} does not support POST submissions`,
+    });
+  }
+
+  // 3. Not a built-in screen — let subsequent handlers (e.g. database
+  //    form POST) deal with it
+  return next();
+});
+
+// --------------------------------
+// GET /u2/screen/:screenId - Get screen configuration
+// --------------------------------
+screenApiRoutes.openapi(
+  createRoute({
+    tags: ["screen-api"],
+    method: "get",
+    path: "/:screenId",
+    request: {
+      params: z.object({
+        screenId: z.string().openapi({
+          description: `Screen ID. Built-in screens: ${listScreenIds().join(", ")}. Or a database form ID.`,
         }),
-        query: z.object({
-          state: z.string().openapi({
-            description: "The login session state",
-          }),
-          nodeId: z.string().optional().openapi({
-            description: "Node ID for database forms (optional)",
-          }),
-          ui_locales: z.string().optional().openapi({
-            description:
-              "Language override from the language picker (e.g. 'en', 'sv')",
-          }),
+      }),
+      query: z.object({
+        state: z.string().openapi({
+          description: "The login session state",
         }),
-      },
-      responses: {
-        200: {
-          description: "Screen configuration",
-          content: {
-            "application/json": {
-              schema: screenResponseSchema,
-            },
+        nodeId: z.string().optional().openapi({
+          description: "Node ID for database forms (optional)",
+        }),
+        ui_locales: z.string().optional().openapi({
+          description:
+            "Language override from the language picker (e.g. 'en', 'sv')",
+        }),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Screen configuration",
+        content: {
+          "application/json": {
+            schema: screenResponseSchema,
           },
         },
-        404: {
-          description: "Screen not found",
+      },
+      404: {
+        description: "Screen not found",
+      },
+    },
+  }),
+  async (ctx) => {
+    const { screenId } = ctx.req.valid("param");
+    const { state, nodeId, ui_locales } = ctx.req.valid("query");
+
+    const { screenContext } = await buildScreenContext(
+      ctx,
+      state,
+      screenId,
+      undefined,
+      undefined,
+      ui_locales,
+    );
+
+    // 1. Try built-in screens first
+    const builtInResult = await getBuiltInScreen(screenId, screenContext);
+    if (builtInResult) {
+      // Override the action URL and links to use the u2 routes
+      // Use relative URLs - browser will resolve against current origin
+      const screen = {
+        ...builtInResult.screen,
+        action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}`,
+        // Update links to use u2 routes
+        links: builtInResult.screen.links?.map((link) => ({
+          ...link,
+          href: link.href
+            .replace("/u/widget/", "/u2/")
+            .replace("/u/signup", "/u2/signup")
+            .replace("/u/enter-", "/u2/enter-")
+            .replace("/u/login/", "/u2/login/"),
+        })),
+      };
+      return ctx.json({
+        screen,
+        branding: builtInResult.branding,
+        ceremony: builtInResult.ceremony,
+      });
+    }
+
+    // 2. Fallback to database forms
+    const dbResult = await getDatabaseScreen(
+      ctx,
+      screenContext.tenant.id,
+      screenId,
+      state,
+      nodeId,
+    );
+    if (dbResult) {
+      return ctx.json({
+        screen: dbResult.screen,
+        branding: screenContext.branding,
+      });
+    }
+
+    throw new HTTPException(404, {
+      message: `Screen not found: ${screenId}. Available built-in screens: ${listScreenIds().join(", ")}`,
+    });
+  },
+);
+
+// --------------------------------
+// POST /u2/screen/:screenId - Submit form and get next screen
+// --------------------------------
+screenApiRoutes.openapi(
+  createRoute({
+    tags: ["screen-api"],
+    method: "post",
+    path: "/:screenId",
+    request: {
+      params: z.object({
+        screenId: z.string(),
+      }),
+      query: z.object({
+        state: z.string(),
+        nodeId: z.string().optional(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              data: z.record(z.string(), z.any()),
+            }),
+          },
         },
       },
-    }),
-    async (ctx) => {
-      const { screenId } = ctx.req.valid("param");
-      const { state, nodeId, ui_locales } = ctx.req.valid("query");
+    },
+    responses: {
+      200: {
+        description: "Next screen or redirect",
+        content: {
+          "application/json": {
+            schema: z.union([
+              screenPostResponseSchema,
+              z.object({ redirect: z.string() }),
+              z.object({ complete: z.boolean() }),
+            ]),
+          },
+        },
+      },
+      400: {
+        description: "Validation error",
+      },
+      404: {
+        description: "Screen not found",
+      },
+    },
+  }),
+  async (ctx) => {
+    const { screenId } = ctx.req.valid("param");
+    const { state, nodeId } = ctx.req.valid("query");
+    const { data } = ctx.req.valid("json");
 
-      const screenContext = await buildScreenContext(
-        ctx,
-        state,
-        screenId,
-        undefined,
-        undefined,
-        ui_locales,
+    // 1. Try built-in screen POST handler
+    const definition = getScreenDefinition(screenId);
+    if (definition?.handler.post) {
+      const { screenContext } = await buildScreenContext(ctx, state, screenId);
+      const result = await definition.handler.post(screenContext, data);
+
+      // Handler returns { response } for direct Response passthrough (e.g., web_message mode)
+      if ("response" in result) {
+        return result.response;
+      }
+
+      // Handler returns { redirect } for external URLs (OAuth, final redirect)
+      if ("redirect" in result) {
+        // Build response with cookies if present
+        const headers = new Headers();
+        headers.set("Content-Type", "application/json");
+        if (result.cookies && result.cookies.length > 0) {
+          for (const cookie of result.cookies) {
+            headers.append("Set-Cookie", cookie);
+          }
+        }
+        return new Response(JSON.stringify({ redirect: result.redirect }), {
+          status: 200,
+          headers,
+        });
+      }
+
+      // Handler returns { screen } for internal navigation
+      // Override action URL to use the screen-api endpoint for JSON submissions
+      // Use relative URLs - browser will resolve against current origin
+      const screenData = result.screen;
+      const nextScreenId = screenData.screen.name || screenId;
+
+      // Build navigateUrl for client-side routing (updates browser URL without page reload)
+      // Login-family screens are routed under /u2/login/ (e.g., /u2/login/identifier)
+      const loginScreenIds = [
+        "identifier",
+        "email-otp-challenge",
+        "sms-otp-challenge",
+        "login-passwordless-identifier",
+      ];
+      // Screen IDs that map to non-standard URL paths
+      const screenIdToPath: Record<string, string> = {
+        "forgot-password": "reset-password/request",
+        "reset-password-code": "reset-password/code",
+      };
+      const navigatePrefix = loginScreenIds.includes(nextScreenId)
+        ? "/u2/login"
+        : "/u2";
+      const screenPath = screenIdToPath[nextScreenId] || nextScreenId;
+      const navigateUrl =
+        nextScreenId !== screenId
+          ? `${navigatePrefix}/${screenPath}?state=${encodeURIComponent(state)}`
+          : undefined;
+
+      return ctx.json(
+        {
+          screen: {
+            ...screenData.screen,
+            // Widget will POST JSON here when JS is enabled
+            action: `/u2/screen/${nextScreenId}?state=${encodeURIComponent(state)}`,
+            links: screenData.screen.links?.map((link) => ({
+              ...link,
+              href: link.href
+                .replace("/u/widget/", "/u2/")
+                .replace("/u/signup", "/u2/signup")
+                .replace("/u/enter-", "/u2/enter-")
+                .replace("/u/login/", "/u2/login/"),
+            })),
+          },
+          branding: screenData.branding,
+          screenId: nextScreenId,
+          navigateUrl,
+          ceremony: screenData.ceremony,
+        },
+        "error" in result ? 400 : 200,
       );
+    }
 
-      // 1. Try built-in screens first
-      const builtInResult = await getBuiltInScreen(screenId, screenContext);
-      if (builtInResult) {
-        // Override the action URL and links to use the u2 routes
-        // Use relative URLs - browser will resolve against current origin
-        const screen = {
-          ...builtInResult.screen,
-          action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}`,
-          // Update links to use u2 routes
-          links: builtInResult.screen.links?.map((link) => ({
-            ...link,
-            href: link.href
-              .replace("/u/widget/", "/u2/")
-              .replace("/u/signup", "/u2/signup")
-              .replace("/u/enter-", "/u2/enter-")
-              .replace("/u/login/", "/u2/login/"),
+    // 2. For built-in screens without POST handler, return error
+    if (isValidScreenId(screenId)) {
+      throw new HTTPException(400, {
+        message: `Screen ${screenId} does not support POST submissions yet`,
+      });
+    }
+
+    // 3. Fallback to database form handling
+    const { screenContext } = await buildScreenContext(ctx, state, screenId);
+    const dbResult = await getDatabaseScreen(
+      ctx,
+      screenContext.tenant.id,
+      screenId,
+      state,
+      nodeId,
+    );
+
+    if (!dbResult) {
+      throw new HTTPException(404, {
+        message: `Screen not found: ${screenId}`,
+      });
+    }
+
+    const { form, stepNode } = dbResult;
+
+    // Validate required fields
+    const fieldErrors: Record<string, string> = {};
+    const components = stepNode.config.components;
+
+    for (const comp of components) {
+      if ("required" in comp && comp.required) {
+        const value = data[comp.id];
+        if (value === undefined || value === null || value === "") {
+          fieldErrors[comp.id] = "This field is required";
+        }
+      }
+
+      if (comp.type === "EMAIL" && data[comp.id]) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(String(data[comp.id]))) {
+          fieldErrors[comp.id] = "Please enter a valid email address";
+        }
+      }
+    }
+
+    // Return validation errors
+    if (Object.keys(fieldErrors).length > 0) {
+      const errorResult = await getDatabaseScreen(
+        ctx,
+        screenContext.tenant.id,
+        screenId,
+        state,
+        dbResult.nodeId,
+        {
+          fieldErrors,
+          messages: [
+            { text: "Please correct the errors below", type: "error" },
+          ],
+        },
+      );
+      if (!errorResult) {
+        console.error(
+          `getDatabaseScreen returned null for screenId=${screenId}, state=[REDACTED], nodeId=${dbResult.nodeId}`,
+        );
+        return ctx.json({ error: "Failed to render error screen" }, 400);
+      }
+      return ctx.json(
+        { screen: errorResult.screen, branding: screenContext.branding },
+        400,
+      );
+    }
+
+    // Get session
+    const { client } = await initJSXRoute(ctx, state, true);
+    const loginSession = await ctx.env.data.loginSessions.get(
+      client.tenant.id,
+      state,
+    );
+
+    if (!loginSession || !loginSession.authParams) {
+      throw new HTTPException(400, { message: "Session expired" });
+    }
+
+    // Check for next_node
+    const nextNodeId = stepNode.config?.next_node;
+
+    if (nextNodeId && form.nodes) {
+      const flowFetcher: FlowFetcher = async (flowId: string) => {
+        const flow = await ctx.env.data.flows.get(client.tenant.id, flowId);
+        if (!flow) return null;
+        return {
+          actions: flow.actions?.map((action: any) => ({
+            type: action.type,
+            action: action.action,
+            params:
+              "params" in action && action.params
+                ? (action.params as Record<string, unknown>)
+                : undefined,
           })),
         };
-        return ctx.json({
-          screen,
-          branding: builtInResult.branding,
-        });
-      }
+      };
 
-      // 2. Fallback to database forms
-      const dbResult = await getDatabaseScreen(
-        ctx,
-        screenContext.tenant.id,
-        screenId,
-        state,
-        nodeId,
-      );
-      if (dbResult) {
-        return ctx.json({
-          screen: dbResult.screen,
-          branding: screenContext.branding,
-        });
-      }
-
-      throw new HTTPException(404, {
-        message: `Screen not found: ${screenId}. Available built-in screens: ${listScreenIds().join(", ")}`,
-      });
-    },
-  )
-  // --------------------------------
-  // POST /u2/screen/:screenId - Submit form and get next screen
-  // --------------------------------
-  .openapi(
-    createRoute({
-      tags: ["screen-api"],
-      method: "post",
-      path: "/:screenId",
-      request: {
-        params: z.object({
-          screenId: z.string(),
-        }),
-        query: z.object({
-          state: z.string(),
-          nodeId: z.string().optional(),
-        }),
-        body: {
-          content: {
-            "application/json": {
-              schema: z.object({
-                data: z.record(z.string(), z.any()),
-              }),
-            },
-          },
-        },
-      },
-      responses: {
-        200: {
-          description: "Next screen or redirect",
-          content: {
-            "application/json": {
-              schema: z.union([
-                screenResponseSchema,
-                z.object({ redirect: z.string() }),
-                z.object({ complete: z.boolean() }),
-              ]),
-            },
-          },
-        },
-        400: {
-          description: "Validation error",
-        },
-        404: {
-          description: "Screen not found",
-        },
-      },
-    }),
-    async (ctx) => {
-      const { screenId } = ctx.req.valid("param");
-      const { state, nodeId } = ctx.req.valid("query");
-      const { data } = ctx.req.valid("json");
-
-      // 1. Try built-in screen POST handler
-      const definition = getScreenDefinition(screenId);
-      if (definition?.handler.post) {
-        const screenContext = await buildScreenContext(ctx, state, screenId);
-        const result = await definition.handler.post(screenContext, data);
-
-        // Handler returns { response } for direct Response passthrough (e.g., web_message mode)
-        if ("response" in result) {
-          return result.response;
-        }
-
-        // Handler returns { redirect } for external URLs (OAuth, final redirect)
-        if ("redirect" in result) {
-          // Build response with cookies if present
-          const headers = new Headers();
-          headers.set("Content-Type", "application/json");
-          if (result.cookies && result.cookies.length > 0) {
-            for (const cookie of result.cookies) {
-              headers.append("Set-Cookie", cookie);
-            }
-          }
-          return new Response(JSON.stringify({ redirect: result.redirect }), {
-            status: 200,
-            headers,
-          });
-        }
-
-        // Handler returns { screen } for internal navigation
-        // Override action URL to use the screen-api endpoint for JSON submissions
-        // Use relative URLs - browser will resolve against current origin
-        const screenData = result.screen;
-        const nextScreenId = screenData.screen.name || screenId;
-
-        // Build navigateUrl for client-side routing (updates browser URL without page reload)
-        // Login-family screens are routed under /u2/login/ (e.g., /u2/login/identifier)
-        const loginScreenIds = [
-          "identifier",
-          "email-otp-challenge",
-          "sms-otp-challenge",
-          "login-passwordless-identifier",
-        ];
-        // Screen IDs that map to non-standard URL paths
-        const screenIdToPath: Record<string, string> = {
-          "forgot-password": "reset-password/request",
-        };
-        const navigatePrefix = loginScreenIds.includes(nextScreenId)
-          ? "/u2/login"
-          : "/u2";
-        const screenPath = screenIdToPath[nextScreenId] || nextScreenId;
-        const navigateUrl =
-          nextScreenId !== screenId
-            ? `${navigatePrefix}/${screenPath}?state=${encodeURIComponent(state)}`
-            : undefined;
-
-        return ctx.json(
-          {
-            screen: {
-              ...screenData.screen,
-              // Widget will POST JSON here when JS is enabled
-              action: `/u2/screen/${nextScreenId}?state=${encodeURIComponent(state)}`,
-              links: screenData.screen.links?.map((link) => ({
-                ...link,
-                href: link.href
-                  .replace("/u/widget/", "/u2/")
-                  .replace("/u/signup", "/u2/signup")
-                  .replace("/u/enter-", "/u2/enter-")
-                  .replace("/u/login/", "/u2/login/"),
-              })),
-            },
-            branding: screenData.branding,
-            screenId: nextScreenId,
-            navigateUrl,
-          },
-          "error" in result ? 400 : 200,
-        );
-      }
-
-      // 2. For built-in screens without POST handler, return error
-      if (isValidScreenId(screenId)) {
-        throw new HTTPException(400, {
-          message: `Screen ${screenId} does not support POST submissions yet`,
-        });
-      }
-
-      // 3. Fallback to database form handling
-      const screenContext = await buildScreenContext(ctx, state, screenId);
-      const dbResult = await getDatabaseScreen(
-        ctx,
-        screenContext.tenant.id,
-        screenId,
-        state,
-        nodeId,
-      );
-
-      if (!dbResult) {
-        throw new HTTPException(404, {
-          message: `Screen not found: ${screenId}`,
-        });
-      }
-
-      const { form, stepNode } = dbResult;
-
-      // Validate required fields
-      const fieldErrors: Record<string, string> = {};
-      const components = stepNode.config.components;
-
-      for (const comp of components) {
-        if ("required" in comp && comp.required) {
-          const value = data[comp.id];
-          if (value === undefined || value === null || value === "") {
-            fieldErrors[comp.id] = "This field is required";
-          }
-        }
-
-        if (comp.type === "EMAIL" && data[comp.id]) {
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (!emailRegex.test(String(data[comp.id]))) {
-            fieldErrors[comp.id] = "Please enter a valid email address";
-          }
-        }
-      }
-
-      // Return validation errors
-      if (Object.keys(fieldErrors).length > 0) {
-        const errorResult = await getDatabaseScreen(
-          ctx,
-          screenContext.tenant.id,
-          screenId,
-          state,
-          dbResult.nodeId,
-          {
-            fieldErrors,
-            messages: [
-              { text: "Please correct the errors below", type: "error" },
-            ],
-          },
-        );
-        return ctx.json(
-          { screen: errorResult!.screen, branding: screenContext.branding },
-          400,
-        );
-      }
-
-      // Get session
-      const { client } = await initJSXRoute(ctx, state, true);
-      const loginSession = await ctx.env.data.loginSessions.get(
-        client.tenant.id,
-        state,
-      );
-
-      if (!loginSession || !loginSession.authParams) {
-        throw new HTTPException(400, { message: "Session expired" });
-      }
-
-      // Check for next_node
-      const nextNodeId = stepNode.config?.next_node;
-
-      if (nextNodeId && form.nodes) {
-        const flowFetcher: FlowFetcher = async (flowId: string) => {
-          const flow = await ctx.env.data.flows.get(client.tenant.id, flowId);
-          if (!flow) return null;
-          return {
-            actions: flow.actions?.map((action: any) => ({
-              type: action.type,
-              action: action.action,
-              params:
-                "params" in action && action.params
-                  ? (action.params as Record<string, unknown>)
-                  : undefined,
-            })),
-          };
-        };
-
-        let user: any = null;
-        if (loginSession.session_id) {
-          const session = await ctx.env.data.sessions.get(
-            client.tenant.id,
-            loginSession.session_id,
-          );
-          if (session?.user_id) {
-            user = await ctx.env.data.users.get(
-              ctx.var.tenant_id,
-              session.user_id,
-            );
-          }
-        }
-
-        // Collect submitted field values
-        const submittedFields: Record<string, string> = {};
-        for (const comp of stepNode.config.components) {
-          if (
-            data[comp.id] !== undefined &&
-            data[comp.id] !== null &&
-            data[comp.id] !== ""
-          ) {
-            submittedFields[comp.id] = String(data[comp.id]);
-          }
-        }
-
-        const resolveResult = await resolveNode(
-          form.nodes,
-          nextNodeId,
-          { user, submittedFields },
-          flowFetcher,
-        );
-
-        if (resolveResult) {
-          // Execute any pending user updates from AUTH0 UPDATE_USER actions
-          if (
-            resolveResult.userUpdates &&
-            resolveResult.userUpdates.length > 0 &&
-            user
-          ) {
-            const merged = mergeUserUpdates(resolveResult.userUpdates);
-            for (const update of merged) {
-              const userUpdates = buildUserUpdates(update.changes, user);
-              await ctx.env.data.users.update(
-                client.tenant.id,
-                update.user_id,
-                userUpdates,
-              );
-            }
-          }
-
-          if (resolveResult.type === "redirect") {
-            const target = resolveResult.target as
-              | "change-email"
-              | "account"
-              | "custom";
-            const redirectUrl = getRedirectUrl(
-              target,
-              resolveResult.customUrl,
-              state,
-            );
-
-            // For account pages (change-email, account), use continuation state
-            // This allows the user to access the page without full auth, but with scope validation
-            if (target === "change-email" || target === "account") {
-              // Return URL is /u/continue which will resume the login flow
-              const returnUrl = `/u/continue?state=${encodeURIComponent(state)}`;
-              await startLoginSessionContinuation(
-                ctx,
-                client.tenant.id,
-                loginSession,
-                [target], // Scope limited to the specific target
-                returnUrl,
-              );
-            }
-
-            return ctx.json({ redirect: redirectUrl });
-          }
-
-          if (resolveResult.type === "step") {
-            const nextResult = await getDatabaseScreen(
-              ctx,
-              screenContext.tenant.id,
-              screenId,
-              state,
-              resolveResult.nodeId,
-            );
-            if (nextResult) {
-              return ctx.json({
-                screen: nextResult.screen,
-                branding: screenContext.branding,
-              });
-            }
-          }
-        }
-      }
-
-      // Complete auth flow
+      let user: any = null;
       if (loginSession.session_id) {
         const session = await ctx.env.data.sessions.get(
           client.tenant.id,
           loginSession.session_id,
         );
-
         if (session?.user_id) {
-          const user = await ctx.env.data.users.get(
+          user = await ctx.env.data.users.get(
             ctx.var.tenant_id,
             session.user_id,
           );
+        }
+      }
 
-          if (user) {
-            // Complete any pending hook (idempotent - no-ops if not in AWAITING_HOOK state)
-            await completeLoginSessionHook(ctx, client.tenant.id, loginSession);
+      // Collect submitted field values
+      const submittedFields: Record<string, string> = {};
+      for (const comp of stepNode.config.components) {
+        if (
+          data[comp.id] !== undefined &&
+          data[comp.id] !== null &&
+          data[comp.id] !== ""
+        ) {
+          submittedFields[comp.id] = String(data[comp.id]);
+        }
+      }
 
-            const result = await createFrontChannelAuthResponse(ctx, {
-              authParams: loginSession.authParams,
-              client,
-              user,
+      const resolveResult = await resolveNode(
+        form.nodes,
+        nextNodeId,
+        { user, submittedFields },
+        flowFetcher,
+      );
+
+      if (resolveResult) {
+        // Execute any pending user updates from AUTH0 UPDATE_USER actions
+        if (
+          resolveResult.userUpdates &&
+          resolveResult.userUpdates.length > 0 &&
+          user
+        ) {
+          const merged = mergeUserUpdates(resolveResult.userUpdates);
+          for (const update of merged) {
+            const userUpdates = buildUserUpdates(update.changes, user);
+            await ctx.env.data.users.update(
+              client.tenant.id,
+              update.user_id,
+              userUpdates,
+            );
+          }
+        }
+
+        if (resolveResult.type === "redirect") {
+          const target = resolveResult.target as
+            | "change-email"
+            | "account"
+            | "custom";
+          const redirectUrl = getRedirectUrl(
+            target,
+            resolveResult.customUrl,
+            state,
+          );
+
+          // For account pages (change-email, account), use continuation state
+          // This allows the user to access the page without full auth, but with scope validation
+          if (target === "change-email" || target === "account") {
+            // Return URL is /u/continue which will resume the login flow
+            const returnUrl = `/u/continue?state=${encodeURIComponent(state)}`;
+            await startLoginSessionContinuation(
+              ctx,
+              client.tenant.id,
               loginSession,
-              skipHooks: true,
-            });
+              [target], // Scope limited to the specific target
+              returnUrl,
+            );
+          }
 
-            if (result.status === 302) {
-              const location = result.headers.get("location");
-              if (location) {
-                const cookies = result.headers.getSetCookie?.() || [];
-                const response = ctx.json({ redirect: location });
-                cookies.forEach((cookie) => {
-                  response.headers.append("set-cookie", cookie);
-                });
-                return response;
-              }
+          return ctx.json({ redirect: redirectUrl });
+        }
+
+        if (resolveResult.type === "step") {
+          const nextResult = await getDatabaseScreen(
+            ctx,
+            screenContext.tenant.id,
+            screenId,
+            state,
+            resolveResult.nodeId,
+          );
+          if (nextResult) {
+            return ctx.json({
+              screen: nextResult.screen,
+              branding: screenContext.branding,
+            });
+          }
+        }
+      }
+    }
+
+    // Complete auth flow
+    if (loginSession.session_id) {
+      const session = await ctx.env.data.sessions.get(
+        client.tenant.id,
+        loginSession.session_id,
+      );
+
+      if (session?.user_id) {
+        const user = await ctx.env.data.users.get(
+          ctx.var.tenant_id,
+          session.user_id,
+        );
+
+        if (user) {
+          // Complete any pending hook (idempotent - no-ops if not in AWAITING_HOOK state)
+          await completeLoginSessionHook(ctx, client.tenant.id, loginSession);
+
+          const result = await createFrontChannelAuthResponse(ctx, {
+            authParams: loginSession.authParams,
+            client,
+            user,
+            loginSession,
+            skipHooks: true,
+          });
+
+          if (result.status === 302) {
+            const location = result.headers.get("location");
+            if (location) {
+              const cookies = result.headers.getSetCookie?.() || [];
+              const response = ctx.json({ redirect: location });
+              cookies.forEach((cookie) => {
+                response.headers.append("set-cookie", cookie);
+              });
+              return response;
             }
           }
         }
       }
+    }
 
-      return ctx.json({ complete: true });
-    },
-  );
+    return ctx.json({ complete: true });
+  },
+);

@@ -61,6 +61,7 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
   signup: "signup",
   "forgot-password": "reset-password",
   "reset-password": "reset-password",
+  "reset-password-code": "reset-password",
   impersonate: "login",
   "pre-signup": "signup-id",
   "pre-signup-sent": "signup",
@@ -76,6 +77,7 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
   "mfa-webauthn": "mfa-webauthn",
   "passkey-enrollment-nudge": "passkeys",
   "passkey-enrollment": "passkeys",
+  "passkey-challenge": "passkeys",
   "mfa-voice": "mfa-voice",
   "mfa-phone-enrollment": "mfa-phone",
   "mfa-login-options": "mfa-login-options",
@@ -88,6 +90,8 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
   "account-passkeys": "common",
   status: "status",
   "device-flow": "device-flow",
+  "connect-consent": "consent",
+  "connect-tenant-select": "consent",
   "email-verification": "email-verification",
   organizations: "organizations",
   invitation: "invitation",
@@ -1458,6 +1462,17 @@ export const u2Routes = new OpenAPIHono<{
     createScreenRouteHandler("reset-password"),
   )
   // --------------------------------
+  // GET /u2/reset-password/code - Enter reset code + new password
+  // --------------------------------
+  .openapi(
+    createScreenRoute(
+      "reset-password-code",
+      "/reset-password/code",
+      "Reset password code entry screen",
+    ),
+    createScreenRouteHandler("reset-password-code"),
+  )
+  // --------------------------------
   // GET /u2/impersonate - User impersonation
   // --------------------------------
   .openapi(
@@ -1542,6 +1557,14 @@ export const u2Routes = new OpenAPIHono<{
       "Process reset-password form submission (no-JS fallback)",
     ),
     createScreenPostHandler("reset-password"),
+  )
+  .openapi(
+    createScreenPostRoute(
+      "reset-password-code",
+      "/reset-password/code",
+      "Process reset-password-code form submission (no-JS fallback)",
+    ),
+    createScreenPostHandler("reset-password-code"),
   )
   .openapi(
     createScreenPostRoute(
@@ -1728,6 +1751,28 @@ export const u2Routes = new OpenAPIHono<{
     createScreenPostHandler("passkey-enrollment"),
   )
   // --------------------------------
+  // GET /u2/passkey/challenge - Passkey authentication challenge
+  // --------------------------------
+  .openapi(
+    createScreenRoute(
+      "passkey-challenge",
+      "/passkey/challenge",
+      "Passkey authentication challenge - sign in with a passkey",
+    ),
+    createScreenRouteHandler("passkey-challenge"),
+  )
+  // --------------------------------
+  // POST /u2/passkey/challenge
+  // --------------------------------
+  .openapi(
+    createScreenPostRoute(
+      "passkey-challenge",
+      "/passkey/challenge",
+      "Process passkey authentication response",
+    ),
+    createScreenPostHandler("passkey-challenge"),
+  )
+  // --------------------------------
   // GET /u2/account - Account management hub
   // --------------------------------
   .openapi(
@@ -1781,6 +1826,50 @@ export const u2Routes = new OpenAPIHono<{
       "Process security settings form submission",
     ),
     createScreenPostHandler("account-security"),
+  )
+  // --------------------------------
+  // GET /u2/account/security/totp-enrollment - TOTP enrollment from account
+  // --------------------------------
+  .openapi(
+    createScreenRoute(
+      "account-mfa-totp-enrollment",
+      "/account/security/totp-enrollment",
+      "Set up authenticator app MFA from account settings",
+    ),
+    createScreenRouteHandler("account-mfa-totp-enrollment"),
+  )
+  // --------------------------------
+  // POST /u2/account/security/totp-enrollment
+  // --------------------------------
+  .openapi(
+    createScreenPostRoute(
+      "account-mfa-totp-enrollment",
+      "/account/security/totp-enrollment",
+      "Process authenticator app enrollment form submission",
+    ),
+    createScreenPostHandler("account-mfa-totp-enrollment"),
+  )
+  // --------------------------------
+  // GET /u2/account/security/phone-enrollment - Phone enrollment from account
+  // --------------------------------
+  .openapi(
+    createScreenRoute(
+      "account-mfa-phone-enrollment",
+      "/account/security/phone-enrollment",
+      "Set up SMS MFA from account settings",
+    ),
+    createScreenRouteHandler("account-mfa-phone-enrollment"),
+  )
+  // --------------------------------
+  // POST /u2/account/security/phone-enrollment
+  // --------------------------------
+  .openapi(
+    createScreenPostRoute(
+      "account-mfa-phone-enrollment",
+      "/account/security/phone-enrollment",
+      "Process phone enrollment form submission",
+    ),
+    createScreenPostHandler("account-mfa-phone-enrollment"),
   )
   // --------------------------------
   // GET /u2/account/linked - Linked accounts
@@ -1847,6 +1936,50 @@ export const u2Routes = new OpenAPIHono<{
       "Process passkey management form submission",
     ),
     createScreenPostHandler("account-passkeys"),
+  )
+  // --------------------------------
+  // GET /u2/connect/start - Consent-mediated DCR Initial Access Token issuance
+  // --------------------------------
+  .openapi(
+    createScreenRoute(
+      "connect-consent",
+      "/connect/start",
+      "Connect consent screen - mints an IAT bound to user consent",
+    ),
+    createScreenRouteHandler("connect-consent"),
+  )
+  // --------------------------------
+  // POST /u2/connect/start
+  // --------------------------------
+  .openapi(
+    createScreenPostRoute(
+      "connect-consent",
+      "/connect/start",
+      "Process connect-consent confirmation and mint IAT",
+    ),
+    createScreenPostHandler("connect-consent"),
+  )
+  // --------------------------------
+  // GET /u2/connect/select-tenant - Multi-tenancy control-plane workspace picker
+  // --------------------------------
+  .openapi(
+    createScreenRoute(
+      "connect-tenant-select",
+      "/connect/select-tenant",
+      "Pick the child tenant the consent-mediated IAT will be minted on",
+    ),
+    createScreenRouteHandler("connect-tenant-select"),
+  )
+  // --------------------------------
+  // POST /u2/connect/select-tenant
+  // --------------------------------
+  .openapi(
+    createScreenPostRoute(
+      "connect-tenant-select",
+      "/connect/select-tenant",
+      "Persist the chosen tenant id and continue to consent",
+    ),
+    createScreenPostHandler("connect-tenant-select"),
   )
   // --------------------------------
   // GET /u2/guardian/enroll - Guardian enrollment ticket redemption

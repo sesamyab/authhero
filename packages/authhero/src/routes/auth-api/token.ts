@@ -1,4 +1,10 @@
-import { GrantType, tokenResponseSchema } from "@authhero/adapter-interfaces";
+import {
+  GrantType,
+  LogType,
+  LogTypes,
+  tokenResponseSchema,
+} from "@authhero/adapter-interfaces";
+import { logMessage } from "../../helpers/logging";
 import { Bindings, Variables } from "../../types";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
@@ -69,6 +75,21 @@ const CreateRequestSchema = z.union([
     realm: z.enum(["email", "sms"]),
   }),
 ]);
+
+function successLogTypeForGrant(grantType: string): LogType | undefined {
+  switch (grantType) {
+    case GrantType.AuthorizationCode:
+      return LogTypes.SUCCESS_EXCHANGE_AUTHORIZATION_CODE_FOR_ACCESS_TOKEN;
+    case GrantType.ClientCredential:
+      return LogTypes.SUCCESS_EXCHANGE_ACCESS_TOKEN_FOR_CLIENT_CREDENTIALS;
+    case GrantType.RefreshToken:
+      return LogTypes.SUCCESS_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN;
+    case GrantType.OTP:
+      return LogTypes.SUCCESS_EXCHANGE_PASSWORD_OTP_FOR_ACCESS_TOKEN;
+    default:
+      return undefined;
+  }
+}
 
 function parseBasicAuthHeader(authHeader?: string) {
   if (!authHeader) {
@@ -228,6 +249,7 @@ export const tokenRoutes = new OpenAPIHono<{
       // Calculate scopes and permissions before creating tokens
       // This will throw a 403 error if user is not a member of the required organization
       let calculatedPermissions: string[] = [];
+      let tokenLifetime: number | undefined;
 
       if (grantResult.authParams.audience) {
         try {
@@ -270,6 +292,13 @@ export const tokenRoutes = new OpenAPIHono<{
           // Update the authParams with calculated scopes and store permissions
           grantResult.authParams.scope = scopesAndPermissions.scopes.join(" ");
           calculatedPermissions = scopesAndPermissions.permissions;
+
+          // Use token_lifetime_for_web for SPA clients, token_lifetime for all others
+          tokenLifetime =
+            grantResult.client.app_type === "spa"
+              ? (scopesAndPermissions.token_lifetime_for_web ??
+                scopesAndPermissions.token_lifetime)
+              : scopesAndPermissions.token_lifetime;
         } catch (error) {
           // Re-throw HTTPExceptions (like 403 for organization membership)
           if (error instanceof HTTPException) {
@@ -285,7 +314,19 @@ export const tokenRoutes = new OpenAPIHono<{
         grantType: body.grant_type as GrantType,
         permissions:
           calculatedPermissions.length > 0 ? calculatedPermissions : undefined,
+        token_lifetime: tokenLifetime,
       });
+
+      const successLogType = successLogTypeForGrant(body.grant_type);
+      if (successLogType) {
+        logMessage(ctx, grantResult.client.tenant.id, {
+          type: successLogType,
+          userId: grantResult.user?.user_id,
+          scope: grantResult.authParams.scope,
+          audience: grantResult.authParams.audience,
+        });
+      }
+
       return ctx.json(tokens, {
         headers: passwordlessHeaders,
       });

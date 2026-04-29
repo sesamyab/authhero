@@ -121,6 +121,7 @@
       "usernamePlaceholder": "Username or email address",
       "usernameTooLong": "Username must be ${max} characters or less",
       "usernameTooShort": "Username must be at least ${min} characters",
+      "passkeyButtonText": "Sign in with a passkey",
       "wrongCredentials": "Wrong username or password"
     }
   },
@@ -197,6 +198,7 @@
       "wrong-email-username-credentials": "Incorrect email address, username, or password",
       "wrong-phone-credentials": "Incorrect phone number or password",
       "wrong-phone-username-credentials": "Incorrect phone number, username or password. Phone numbers must include the country code.",
+      "passkeyButtonText": "Sign in with a passkey",
       "wrong-username-credentials": "Incorrect username or password"
     }
   },
@@ -416,6 +418,14 @@
       "retryButtonText": "Try again",
       "enrollmentComplete": "Your passkey has been set up successfully. You can close this page.",
       "pageTitle": "Create Passkey | ${clientName}"
+    },
+    "passkey-challenge": {
+      "title": "Sign in with a passkey",
+      "description": "Follow the prompts from your browser to verify your identity.",
+      "errorMessage": "Passkey authentication failed. Please try again.",
+      "cancelLinkText": "Back to login",
+      "retryButtonText": "Try again",
+      "pageTitle": "Sign In with Passkey | ${clientName}"
     }
   },
   "organizations": {
@@ -447,6 +457,29 @@
       "successTitle": "Check your email",
       "title": "Forgot your password?",
       "user-not-found": "User not found"
+    },
+    "reset-password-code": {
+      "backToLoginText": "Back to login",
+      "buttonText": "Reset Password",
+      "codeLabel": "Reset Code",
+      "codePlaceholder": "Enter 6-digit code",
+      "confirmPasswordLabel": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm password",
+      "defaultDescription": "Enter the code sent to your email and choose a new password",
+      "description": "We sent a code to ${email}",
+      "failed": "Password reset failed. Please try again.",
+      "invalidCode": "The code you entered is invalid or has expired",
+      "noCode": "Please enter the reset code",
+      "pageTitle": "Enter Reset Code | ${clientName}",
+      "passwordLabel": "New Password",
+      "passwordPlaceholder": "New password",
+      "passwordTooWeak": "Password is too weak",
+      "passwordsDidntMatch": "Passwords don't match",
+      "resendFailed": "Failed to resend the code. Please try again.",
+      "resendSuccess": "A new code has been sent to your email",
+      "resendText": "Resend code",
+      "sessionExpired": "Your session has expired. Please try again.",
+      "title": "Enter reset code"
     }
   },
   "signup": {

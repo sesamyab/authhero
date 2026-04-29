@@ -44,7 +44,7 @@ export async function handler(event: APIGatewayProxyEventV2, context: Context) {
         // WARNING: These localhost origins are for development only
         // Remove or override via ALLOWED_ORIGINS env var in production
         "http://localhost:5173",
-        "https://localhost:3000",
+        "http://localhost:3000",
         origin,
       ].filter(Boolean);
 

@@ -224,8 +224,8 @@ function generateLocalSeedFileContent(
     "https://manage.authhero.net/auth-callback",
     "https://local.authhero.net/auth-callback",
     "http://localhost:5173/auth-callback",
-    "https://localhost:3000/auth-callback",
-    ...(adminUi ? ["https://localhost:3000/admin/auth-callback"] : []),
+    "http://localhost:3000/auth-callback",
+    ...(adminUi ? ["http://localhost:3000/admin/auth-callback"] : []),
   ];
   const conformanceCallbacks = conformance
     ? [
@@ -239,7 +239,7 @@ function generateLocalSeedFileContent(
     "https://manage.authhero.net",
     "https://local.authhero.net",
     "http://localhost:5173",
-    "https://localhost:3000",
+    "http://localhost:3000",
   ];
   const conformanceLogoutUrls = conformance
     ? ["https://localhost:8443/", "https://localhost.emobix.co.uk:8443/"]
@@ -376,7 +376,8 @@ async function main() {
     adminPassword,
     tenantId: "${tenantId}",
     tenantName: "${tenantName}",
-    isControlPlane: ${!!multiTenant},${multiTenant ? `\n    clientId: "default_client",` : ""}
+    isControlPlane: ${!!multiTenant},
+    clientId: "default",
     callbacks: ${JSON.stringify(callbacks)},
     allowedLogoutUrls: ${JSON.stringify(allowedLogoutUrls)},
   });
@@ -409,12 +410,13 @@ const adminIndexPath = path.join(adminDistPath, "index.html");
   // Add admin UI handler if the package is installed
   if (fs.existsSync(adminIndexPath)) {
     const issuer =
-      process.env.ISSUER || \`https://localhost:\${process.env.PORT || 3000}/\`;
+      process.env.ISSUER || \`http://localhost:\${process.env.PORT || 3000}/\`;
     const rawHtml = fs.readFileSync(adminIndexPath, "utf-8")
       .replace(/src="\\.\\//g, 'src="/admin/')
       .replace(/href="\\.\\//g, 'href="/admin/');
     const configJson = JSON.stringify({
-      domain: issuer.replace(/\\/$/, ""),${multiTenant ? `\n      clientId: CONTROL_PLANE_CLIENT_ID,` : ""}
+      domain: issuer.replace(/\\/$/, ""),
+      clientId: ${multiTenant ? "CONTROL_PLANE_CLIENT_ID," : `"default",`}
       basePath: "/admin",
     }).replace(/</g, "\\\\u003c");
     configWithHandlers.adminIndexHtml = rawHtml.replace(
@@ -447,7 +449,7 @@ const widgetPath = path.resolve(
 ${adminPaths}
 // Control plane configuration
 const CONTROL_PLANE_TENANT_ID = "control_plane";
-const CONTROL_PLANE_CLIENT_ID = "default_client";
+const CONTROL_PLANE_CLIENT_ID = "default";
 
 export default function createApp(config: AuthHeroConfig & { dataAdapter: DataAdapters }) {
   const configWithHandlers: AuthHeroConfig & { dataAdapter: DataAdapters } = {
@@ -574,6 +576,7 @@ export default {
         tenantId: "${tenantId}",
         tenantName: "${tenantName}",
         isControlPlane: ${!!multiTenant},
+        clientId: "default",
       });
 
       return new Response(
@@ -622,7 +625,7 @@ import { initMultiTenant } from "@authhero/multi-tenancy";
 ${adminImport}
 // Control plane configuration
 const CONTROL_PLANE_TENANT_ID = "control_plane";
-const CONTROL_PLANE_CLIENT_ID = "default_client";
+const CONTROL_PLANE_CLIENT_ID = "default";
 
 export default function createApp(config: AuthHeroConfig & { dataAdapter: DataAdapters }) {
   // Initialize multi-tenant AuthHero - syncs resource servers, roles, and connections by default
@@ -711,7 +714,7 @@ import { initMultiTenant } from "@authhero/multi-tenancy";
 
 // Control plane configuration
 const CONTROL_PLANE_TENANT_ID = "control_plane";
-const CONTROL_PLANE_CLIENT_ID = "default_client";
+const CONTROL_PLANE_CLIENT_ID = "default";
 
 interface AppConfig extends AuthHeroConfig {
   dataAdapter: DataAdapters;
@@ -1076,9 +1079,7 @@ function generateCloudflareFiles(
 function printCloudflareSuccessMessage(): void {
   console.log("\n" + "─".repeat(50));
   console.log("🔐 AuthHero server running at https://localhost:3000");
-  console.log("📚 API documentation available at https://localhost:3000/docs");
   console.log("🚀 Open https://localhost:3000/setup to complete initial setup");
-  console.log("🌐 Portal available at https://local.authhero.net");
   console.log("─".repeat(50) + "\n");
 }
 
@@ -1089,10 +1090,9 @@ function printLocalSuccessMessage(): void {
   console.log("\n" + "─".repeat(50));
   console.log("✅ Self-signed certificates generated with openssl");
   console.log("⚠️  You may need to trust the certificate in your browser");
-  console.log("🔐 AuthHero server running at https://localhost:3000");
-  console.log("📚 API documentation available at https://localhost:3000/docs");
-  console.log("🚀 Open https://localhost:3000/setup to complete initial setup");
-  console.log("🌐 Portal available at https://local.authhero.net");
+  console.log("🔐 AuthHero server running at http://localhost:3000");
+  console.log("📚 API documentation available at http://localhost:3000/docs");
+  console.log("🚀 Open http://localhost:3000/setup to complete initial setup");
   console.log("─".repeat(50) + "\n");
 }
 
@@ -1550,7 +1550,7 @@ program
         console.log("  npm run migrate");
         console.log("  npm run dev");
         console.log(
-          "\nOpen https://localhost:3000/setup to complete initial setup",
+          "\nOpen http://localhost:3000/setup to complete initial setup",
         );
       } else if (setupType === "cloudflare") {
         console.log("  npm install");
@@ -1567,8 +1567,7 @@ program
         console.log("\nOpen your server URL /setup to complete initial setup");
       }
 
-      console.log("\nServer will be available at: https://localhost:3000");
-      console.log("Portal available at: https://local.authhero.net");
+      console.log("\nServer will be available at: http://localhost:3000");
 
       if (conformance) {
         console.log("\n🧪 OpenID Conformance Suite Testing:");

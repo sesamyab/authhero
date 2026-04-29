@@ -38,6 +38,8 @@ export type CalculateScopesAndPermissionsParams =
 export interface ScopesAndPermissionsResult {
   scopes: string[];
   permissions: string[];
+  token_lifetime: number;
+  token_lifetime_for_web: number;
 }
 
 // Standard OIDC scopes that are available by default
@@ -150,12 +152,22 @@ async function calculateClientCredentialsScopes(
 
   if (matchingResourceServers.length === 0) {
     // No matching resource servers found - return only default OIDC scopes
-    return { scopes: defaultOidcScopes, permissions: [] };
+    return {
+      scopes: defaultOidcScopes,
+      permissions: [],
+      token_lifetime: 86400,
+      token_lifetime_for_web: 7200,
+    };
   }
 
   const resourceServer = matchingResourceServers[0];
   if (!resourceServer) {
-    return { scopes: defaultOidcScopes, permissions: [] };
+    return {
+      scopes: defaultOidcScopes,
+      permissions: [],
+      token_lifetime: 86400,
+      token_lifetime_for_web: 7200,
+    };
   }
 
   const rbacEnabled = resourceServer.options?.enforce_policies === true;
@@ -173,7 +185,12 @@ async function calculateClientCredentialsScopes(
 
   if (!clientGrant) {
     // No client grant found for this client and audience
-    return { scopes: defaultOidcScopes, permissions: [] };
+    return {
+      scopes: defaultOidcScopes,
+      permissions: [],
+      token_lifetime: resourceServer.token_lifetime,
+      token_lifetime_for_web: resourceServer.token_lifetime_for_web,
+    };
   }
 
   const grantedScopes = clientGrant.scope || [];
@@ -211,12 +228,21 @@ async function calculateClientCredentialsScopes(
           allGrantedScopes.includes(scope),
         ); // Intersection
 
+  const tokenLifetimeFields = {
+    token_lifetime: resourceServer.token_lifetime,
+    token_lifetime_for_web: resourceServer.token_lifetime_for_web,
+  };
+
   // If RBAC is not enabled, return scopes (no permissions claim)
   if (!rbacEnabled) {
     const allAllowedScopes = [
       ...new Set([...defaultOidcScopes, ...resultScopes]),
     ];
-    return { scopes: allAllowedScopes, permissions: [] };
+    return {
+      scopes: allAllowedScopes,
+      permissions: [],
+      ...tokenLifetimeFields,
+    };
   }
 
   // RBAC is enabled - permissions are added to the token when token_dialect is access_token_authz
@@ -228,7 +254,11 @@ async function calculateClientCredentialsScopes(
     const allAllowedScopes = [
       ...new Set([...defaultOidcScopes, ...resultScopes]),
     ];
-    return { scopes: allAllowedScopes, permissions: allowedPermissions };
+    return {
+      scopes: allAllowedScopes,
+      permissions: allowedPermissions,
+      ...tokenLifetimeFields,
+    };
   }
 
   // For access_token dialect (default): scopes in scope claim, NO permissions claim
@@ -237,7 +267,7 @@ async function calculateClientCredentialsScopes(
     ...new Set([...defaultOidcScopes, ...resultScopes]),
   ];
 
-  return { scopes: allAllowedScopes, permissions: [] };
+  return { scopes: allAllowedScopes, permissions: [], ...tokenLifetimeFields };
 }
 
 /**
@@ -344,12 +374,22 @@ export async function calculateScopesAndPermissions(
   if (matchingResourceServers.length === 0) {
     // No matching resource servers found - return all requested scopes
     // When there's no resource server defined, we don't restrict scopes
-    return { scopes: requestedScopes, permissions: [] };
+    return {
+      scopes: requestedScopes,
+      permissions: [],
+      token_lifetime: 86400,
+      token_lifetime_for_web: 7200,
+    };
   }
 
   const resourceServer = matchingResourceServers[0];
   if (!resourceServer) {
-    return { scopes: requestedScopes, permissions: [] };
+    return {
+      scopes: requestedScopes,
+      permissions: [],
+      token_lifetime: 86400,
+      token_lifetime_for_web: 7200,
+    };
   }
 
   const definedScopes = (resourceServer.scopes || []).map(
@@ -358,11 +398,16 @@ export async function calculateScopesAndPermissions(
   const rbacEnabled = resourceServer.options?.enforce_policies === true;
   const tokenDialect = resourceServer.options?.token_dialect || "access_token";
 
+  const tokenLifetimeFields = {
+    token_lifetime: resourceServer.token_lifetime,
+    token_lifetime_for_web: resourceServer.token_lifetime_for_web,
+  };
+
   // If RBAC is not enabled, return all requested scopes
   // Per Auth0: "When RBAC is disabled, an application can request any permission
   // defined for the API, and the scope claim includes all requested permissions."
   if (!rbacEnabled) {
-    return { scopes: requestedScopes, permissions: [] };
+    return { scopes: requestedScopes, permissions: [], ...tokenLifetimeFields };
   }
 
   // RBAC is enabled - get user's permissions
@@ -451,7 +496,11 @@ export async function calculateScopesAndPermissions(
   // If token_dialect is access_token_authz, return permissions directly plus default OIDC scopes and undefined scopes
   if (tokenDialect === "access_token_authz") {
     const allScopes = [...new Set([...defaultOidcScopes, ...undefinedScopes])];
-    return { scopes: allScopes, permissions: allowedPermissions };
+    return {
+      scopes: allScopes,
+      permissions: allowedPermissions,
+      ...tokenLifetimeFields,
+    };
   }
 
   // For access_token dialect (default):
@@ -471,5 +520,5 @@ export async function calculateScopesAndPermissions(
     ]),
   ];
 
-  return { scopes: allAllowedScopes, permissions: [] };
+  return { scopes: allAllowedScopes, permissions: [], ...tokenLifetimeFields };
 }

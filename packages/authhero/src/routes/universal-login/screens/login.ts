@@ -11,6 +11,7 @@ import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
 import {
   getConnectionIdentifierConfig,
   Strategy,
+  StrategyType,
 } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import {
@@ -24,6 +25,15 @@ import type { LoginScreen } from "../../../generated/locale-types";
 import { getConnectionIconUrl } from "../../../strategies";
 import { loginWithPassword } from "../../../authentication-flows/password";
 import { AuthError } from "../../../types/AuthError";
+import { generateAuthenticationOptions } from "@simplewebauthn/server";
+import { createFrontChannelAuthResponse } from "../../../authentication-flows/common";
+import {
+  getRpId,
+  listTenantPasskeys,
+  buildConditionalMediationScript,
+  buildWebAuthnConditionalMediationCeremony,
+  verifyPasskeyAuthentication,
+} from "./passkey-utils";
 
 /**
  * Build social login buttons from available connections
@@ -230,11 +240,67 @@ export async function loginScreen(
     });
   }
 
-  // Check if signups are disabled via client metadata
+  // Check if passkeys are enabled for conditional mediation
+  const hasPasskeysEnabled = context.connections.some(
+    (c) => c.options?.authentication_methods?.passkey?.enabled,
+  );
+
+  // When the tenant has passkeys enabled AND the session already has a resolved
+  // user_id (e.g. came from the identifier-first flow), fetch that user's
+  // tenant-scoped passkeys once. Used below to (a) gate the "Log in with
+  // passkey" link, and (b) scope conditional mediation via allowCredentials so
+  // passkeys registered under other tenants on the same rpId aren't offered.
+  const loginSessionForPasskeys = hasPasskeysEnabled
+    ? await context.ctx.env.data.loginSessions.get(client.tenant.id, state)
+    : null;
+  const tenantPasskeys =
+    hasPasskeysEnabled && loginSessionForPasskeys?.user_id
+      ? await listTenantPasskeys(
+          context.ctx,
+          client.tenant.id,
+          loginSessionForPasskeys.user_id,
+        )
+      : [];
+  const sessionUserKnown = !!loginSessionForPasskeys?.user_id;
+
+  if (hasPasskeysEnabled) {
+    // Add hidden fields for passkey credential submission
+    components.push(
+      {
+        id: "credential-field",
+        type: "TEXT" as const,
+        category: "FIELD" as const,
+        visible: false,
+        config: {},
+        order: components.length + 1,
+      },
+      {
+        id: "action-field",
+        type: "TEXT" as const,
+        category: "FIELD" as const,
+        visible: false,
+        config: {},
+        order: components.length + 2,
+      },
+    );
+
+    // Add autocomplete="username webauthn" to the username field
+    const usernameComponent = components.find((c) => c.id === "username");
+    if (usernameComponent && "config" in usernameComponent) {
+      (usernameComponent.config as Record<string, unknown>).autocomplete =
+        "username webauthn";
+    }
+  }
+
+  // Check if signups are disabled via client metadata or screen_hint=login
   const signupsDisabled = client.client_metadata?.disable_sign_ups === "true";
+  const authorizeUrl = context.ctx.var.loginSession?.authorization_url;
+  const screenHintLogin =
+    authorizeUrl &&
+    new URL(authorizeUrl).searchParams.get("screen_hint") === "login";
 
   // Add signup link as a component inside the form (not as a separate links section)
-  if (hasPasswordConnection && !signupsDisabled) {
+  if (hasPasswordConnection && !signupsDisabled && !screenHintLogin) {
     const signupUrl = `${routePrefix}/signup?state=${encodeURIComponent(state)}`;
     components.push({
       id: "signup-link",
@@ -248,6 +314,33 @@ export async function loginScreen(
     });
   }
 
+  // Build links (e.g., passkey challenge link)
+  const links: UiScreen["links"] = [];
+
+  if (hasPasskeysEnabled) {
+    const passkeyConnection = context.connections.find(
+      (c) => c.options?.authentication_methods?.passkey?.enabled,
+    );
+    const challengeUi =
+      passkeyConnection?.options?.passkey_options?.challenge_ui;
+
+    // Show passkey link unless challenge_ui is explicitly "autofill" only.
+    // When the session's user is already known, also require at least one
+    // tenant-scoped passkey for that user — otherwise the browser picker
+    // would only offer credentials from other tenants sharing this rpId.
+    const hasMatchingPasskey = sessionUserKnown
+      ? tenantPasskeys.length > 0
+      : true;
+    if (challengeUi !== "autofill" && hasMatchingPasskey) {
+      links.push({
+        id: "passkey-link",
+        text: "",
+        linkText: m.passkeyButtonText(),
+        href: `${routePrefix}/passkey/challenge?state=${encodeURIComponent(state)}`,
+      });
+    }
+  }
+
   const screen: UiScreen = {
     name: "login",
     // Action points to HTML endpoint for no-JS fallback
@@ -259,6 +352,7 @@ export async function loginScreen(
     }),
     components,
     messages,
+    ...(links.length > 0 ? { links } : {}),
   };
 
   // Pre-fill username if provided
@@ -272,9 +366,58 @@ export async function loginScreen(
     }
   }
 
+  // Generate conditional mediation WebAuthn options if passkeys enabled
+  let extraScript: string | undefined;
+  let ceremony:
+    | ReturnType<typeof buildWebAuthnConditionalMediationCeremony>
+    | undefined;
+
+  if (hasPasskeysEnabled) {
+    const rpId = getRpId(context.ctx);
+
+    // Scope the picker to this tenant's credentials when the user is known.
+    const allowCredentials = sessionUserKnown
+      ? tenantPasskeys.map((e) => ({
+          id: e.credential_id!,
+          transports: (e.transports || []) as AuthenticatorTransport[],
+          type: "public-key" as const,
+        }))
+      : undefined;
+
+    const options = await generateAuthenticationOptions({
+      rpID: rpId,
+      userVerification: "preferred",
+      timeout: 60000,
+      ...(allowCredentials ? { allowCredentials } : {}),
+    });
+
+    // Store the challenge in the login session (reuse the earlier fetch).
+    if (loginSessionForPasskeys) {
+      const stateData = loginSessionForPasskeys.state_data
+        ? JSON.parse(loginSessionForPasskeys.state_data)
+        : {};
+      await context.ctx.env.data.loginSessions.update(
+        context.client.tenant.id,
+        state,
+        {
+          state_data: JSON.stringify({
+            ...stateData,
+            webauthn_challenge: options.challenge,
+          }),
+        },
+      );
+    }
+
+    const optionsJSON = JSON.stringify(options);
+    extraScript = buildConditionalMediationScript(optionsJSON);
+    ceremony = buildWebAuthnConditionalMediationCeremony(optionsJSON);
+  }
+
   return {
     screen,
     branding,
+    extraScript,
+    ceremony,
   };
 }
 
@@ -289,6 +432,48 @@ export const loginScreenDefinition: ScreenDefinition = {
     get: loginScreen,
     post: async (context, data) => {
       const { ctx, client, state } = context;
+
+      // Handle passkey authentication from conditional mediation
+      const action = data["action-field"] as string;
+      if (action === "passkey-authenticate") {
+        const credentialJson = data["credential-field"] as string;
+        const result = await verifyPasskeyAuthentication(
+          context,
+          credentialJson,
+        );
+
+        if (result.success) {
+          const authResult = await createFrontChannelAuthResponse(ctx, {
+            authParams: result.loginSession.authParams,
+            user: result.primaryUser,
+            client,
+            loginSession: {
+              ...result.loginSession,
+              user_id: result.primaryUser.user_id,
+            },
+            authConnection: result.authConnection,
+            authStrategy: {
+              strategy: "passkey",
+              strategy_type: StrategyType.DATABASE,
+            },
+          });
+
+          const location = authResult.headers.get("location");
+          const cookies = authResult.headers.getSetCookie?.() || [];
+          if (location) return { redirect: location, cookies };
+          return { response: authResult };
+        }
+
+        // On passkey failure, re-render login with error
+        return {
+          error: result.error,
+          screen: await loginScreen({
+            ...context,
+            messages: [{ text: result.error, type: "error" as const }],
+          }),
+        };
+      }
+
       const username = (data.username as string)?.toLowerCase()?.trim();
       const password = (data.password as string)?.trim();
 

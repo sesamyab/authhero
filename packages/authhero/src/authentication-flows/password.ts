@@ -14,7 +14,11 @@ import { EnrichedClient } from "../helpers/client";
 import { Bindings, GrantFlowUserResult, Variables } from "../types";
 import { getOrCreateUserByProvider, getUserByProvider } from "../helpers/users";
 import { AuthError } from "../types/AuthError";
-import { sendResetPassword, sendValidateEmailAddress } from "../emails";
+import {
+  sendResetPassword,
+  sendResetPasswordCode,
+  sendValidateEmailAddress,
+} from "../emails";
 import { stringifyAuth0Client } from "../utils/client-info";
 import { createFrontChannelAuthResponse, failLoginSession } from "./common";
 import {
@@ -283,6 +287,7 @@ export async function requestPasswordReset(
   client: EnrichedClient,
   email: string,
   state: string,
+  verification_method?: "link" | "code",
 ) {
   // Create the user if if doesn't exist. We probably want to wait with this until the user resets the password?
   await getOrCreateUserByProvider(ctx, {
@@ -311,38 +316,54 @@ export async function requestPasswordReset(
     );
   }
 
-  const ip = ctx.get("ip");
-  const useragent = ctx.get("useragent");
-  const auth0_client = ctx.get("auth0_client");
-
-  // Convert structured auth0_client back to string for storage
-  const auth0Client = stringifyAuth0Client(auth0_client);
-
-  const loginSession = await ctx.env.data.loginSessions.create(
+  // Reuse existing login session if one exists for the given state,
+  // otherwise create a new one. This ensures the email link's state
+  // always references a valid session that the reset-password screen can find.
+  let loginSessionId = state;
+  const existingSession = await ctx.env.data.loginSessions.get(
     client.tenant.id,
-    {
-      expires_at: new Date(
-        Date.now() + LOGIN_SESSION_EXPIRATION_TIME,
-      ).toISOString(),
-      authParams: {
-        client_id: client.client_id,
-        username: email,
-      },
-      csrf_token: nanoid(),
-      ip,
-      useragent,
-      auth0Client,
-    },
+    state,
   );
+
+  if (!existingSession) {
+    const ip = ctx.get("ip");
+    const useragent = ctx.get("useragent");
+    const auth0_client = ctx.get("auth0_client");
+
+    // Convert structured auth0_client back to string for storage
+    const auth0Client = stringifyAuth0Client(auth0_client);
+
+    const newSession = await ctx.env.data.loginSessions.create(
+      client.tenant.id,
+      {
+        expires_at: new Date(
+          Date.now() + LOGIN_SESSION_EXPIRATION_TIME,
+        ).toISOString(),
+        authParams: {
+          client_id: client.client_id,
+          username: email,
+        },
+        csrf_token: nanoid(),
+        ip,
+        useragent,
+        auth0Client,
+      },
+    );
+    loginSessionId = newSession.id;
+  }
 
   const createdCode = await ctx.env.data.codes.create(client.tenant.id, {
     code_id,
     code_type: "password_reset",
-    login_id: loginSession.id,
+    login_id: loginSessionId,
     expires_at: new Date(
       Date.now() + PASSWORD_RESET_EXPIRATION_TIME,
     ).toISOString(),
   });
 
-  await sendResetPassword(ctx, email, createdCode.code_id, state);
+  if (verification_method === "code") {
+    await sendResetPasswordCode(ctx, email, createdCode.code_id);
+  } else {
+    await sendResetPassword(ctx, email, createdCode.code_id, loginSessionId);
+  }
 }

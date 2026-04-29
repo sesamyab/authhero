@@ -21,12 +21,14 @@ import {
   completeLoginSessionContinuation,
   hasValidContinuationScope,
 } from "../../../authentication-flows/common";
+import { HTTPException } from "hono/http-exception";
 import { logMessage } from "../../../helpers/logging";
 import {
   PASSKEY_TYPES,
   getRpId,
   getExpectedOrigin,
   buildWebAuthnRegistrationScript,
+  buildWebAuthnCeremony,
 } from "./passkey-utils";
 
 /**
@@ -120,13 +122,15 @@ async function passkeyEnrollmentScreen(
     ...(links.length > 0 && { links }),
   };
 
-  // Build WebAuthn script to run at page level
+  // Build WebAuthn script to run at page level (SSR) and structured ceremony data (widget SPA)
   let extraScript: string | undefined;
+  let ceremony: ReturnType<typeof buildWebAuthnCeremony> | undefined;
   if (extra?.optionsJSON) {
     extraScript = buildWebAuthnRegistrationScript(extra.optionsJSON);
+    ceremony = buildWebAuthnCeremony(extra.optionsJSON);
   }
 
-  return { screen, branding, extraScript };
+  return { screen, branding, extraScript, ceremony };
 }
 
 /**
@@ -156,7 +160,9 @@ async function generateFreshOptionsJSON(
   );
   const excludeCredentials = enrollments
     .filter(
-      (e) => PASSKEY_TYPES.includes(e.type as (typeof PASSKEY_TYPES)[number]) && e.credential_id,
+      (e) =>
+        PASSKEY_TYPES.includes(e.type as (typeof PASSKEY_TYPES)[number]) &&
+        e.credential_id,
     )
     .map((e) => ({
       id: e.credential_id!,
@@ -243,9 +249,33 @@ export const passkeyEnrollmentScreenDefinition: ScreenDefinition = {
         client.tenant.id,
         user.user_id,
       );
+
+      // Block enrollment if user already has confirmed MFA methods
+      // Only consider factors that are enabled in the tenant's MFA config
+      const enabledFactors = client.tenant.mfa?.factors;
+      const hasWebauthn =
+        enabledFactors?.webauthn_roaming === true ||
+        enabledFactors?.webauthn_platform === true;
+      const passkeyTypes = ["passkey", "webauthn-roaming", "webauthn-platform"];
+      const hasConfirmedEnabledFactor = enrollments.some(
+        (e) =>
+          e.confirmed &&
+          ((e.type === "phone" && enabledFactors?.sms === true) ||
+            (e.type === "totp" && enabledFactors?.otp === true) ||
+            (passkeyTypes.includes(e.type) && hasWebauthn)),
+      );
+      if (hasConfirmedEnabledFactor) {
+        throw new HTTPException(403, {
+          message:
+            "Cannot enroll new MFA factor while existing factors are active",
+        });
+      }
+
       const excludeCredentials = enrollments
         .filter(
-          (e) => PASSKEY_TYPES.includes(e.type as (typeof PASSKEY_TYPES)[number]) && e.credential_id,
+          (e) =>
+            PASSKEY_TYPES.includes(e.type as (typeof PASSKEY_TYPES)[number]) &&
+            e.credential_id,
         )
         .map((e) => ({
           id: e.credential_id!,
@@ -295,7 +325,8 @@ export const passkeyEnrollmentScreenDefinition: ScreenDefinition = {
 
     post: async (context, data) => {
       const { ctx, client, state } = context;
-      const action = data.action as string;
+      const action =
+        (data.action as string) || (data["action-field"] as string) || "";
       const credentialJson = data["credential-field"] as string;
 
       const locale = context.language || "en";
@@ -333,6 +364,35 @@ export const passkeyEnrollmentScreenDefinition: ScreenDefinition = {
         !isContinuation
       ) {
         return { screen: await passkeyEnrollmentScreen(context) };
+      }
+
+      // Block enrollment if user already has confirmed MFA methods
+      // Only consider factors that are enabled in the tenant's MFA config
+      const existingMethods = await ctx.env.data.authenticationMethods.list(
+        client.tenant.id,
+        loginSession.user_id,
+      );
+      const enabledFactorsPost = client.tenant.mfa?.factors;
+      const hasWebauthnPost =
+        enabledFactorsPost?.webauthn_roaming === true ||
+        enabledFactorsPost?.webauthn_platform === true;
+      const passkeyTypesPost = [
+        "passkey",
+        "webauthn-roaming",
+        "webauthn-platform",
+      ];
+      const hasConfirmedEnabledFactorPost = existingMethods.some(
+        (e) =>
+          e.confirmed &&
+          ((e.type === "phone" && enabledFactorsPost?.sms === true) ||
+            (e.type === "totp" && enabledFactorsPost?.otp === true) ||
+            (passkeyTypesPost.includes(e.type) && hasWebauthnPost)),
+      );
+      if (hasConfirmedEnabledFactorPost) {
+        throw new HTTPException(403, {
+          message:
+            "Cannot enroll new MFA factor while existing factors are active",
+        });
       }
 
       // Handle skip action — resume auth flow without enrolling

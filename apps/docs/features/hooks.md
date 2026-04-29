@@ -7,6 +7,10 @@ description: Comprehensive guide to AuthHero hooks including lifecycle, configur
 
 This guide explains how hooks work in AuthHero, including their lifecycle, configuration options, and usage patterns.
 
+::: tip Looking for the design details?
+The [Hooks & Outbox Pipeline](../architecture/hooks-pipeline.md) architecture doc explains the **why**: the three-phase execution model (prepare / commit / publish), transaction boundaries, outbox-based post-hook delivery, dead-letter, and self-healing. Start there if you are adding a new trigger or debugging a webhook that "never fired."
+:::
+
 ## Overview
 
 AuthHero provides a flexible hooks system that allows you to execute custom logic at key points in the authentication lifecycle. Hooks can be implemented as:
@@ -57,7 +61,9 @@ When a user signs up, the following hooks are triggered in order:
 
 7. **Post-User Registration Webhook** (`postUserRegistrationWebhook`)
    - HTTP webhook invoked after user creation
-   - **Asynchronous**: Errors are logged but don't block the flow
+   - **Delivered via the outbox** — retried with exponential backoff, dead-lettered after `maxRetries` (see [Failed events](/customization/failed-events))
+   - **Idempotent by contract**: each POST carries `Idempotency-Key: {event.id}` so retries dedupe on the receiving side
+   - **Self-heals**: if delivery dead-letters, the user's next login re-enqueues the event until it succeeds
    - **Can modify**: Cannot modify user (already created)
 
 ### User Login Flow
@@ -1096,6 +1102,103 @@ api.deny(reason?: string): void  // Denies the operation with optional reason
 | `onExecutePreUserDeletion`              | Before deletion            | Sync       | No                 |
 | User Deleted                            | -                          | -          | -                  |
 | `onExecutePostUserDeletion`             | After deletion             | Async      | No                 |
+
+## Code Executors
+
+In addition to code-based hooks defined at initialization time, AuthHero supports **user-authored code hooks** — code stored in the database and executed at runtime via the Management API. These are managed through the Actions and Hook Code APIs.
+
+To execute user-authored code safely, AuthHero uses a **Code Executor** — a pluggable runtime that sandboxes untrusted code. The executor uses a **recording proxy pattern**: user code calls API methods (e.g., `api.accessToken.setCustomClaim()`), those calls are recorded, and then replayed against the real API objects on the server side.
+
+### Available Executors
+
+#### `LocalCodeExecutor`
+
+Uses `new Function()` to run code inline. No isolation or sandboxing — suitable for **local development only**.
+
+```typescript
+import { init, LocalCodeExecutor } from "authhero";
+
+const { app } = init({
+  dataAdapter,
+  codeExecutor: new LocalCodeExecutor(),
+});
+```
+
+#### `CloudflareCodeExecutor`
+
+Uses [Cloudflare Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) to spin up isolated Workers on demand. Each hook execution runs in its own sandboxed Worker with **no network access** (`globalOutbound: null`).
+
+Workers are cached by `hookCodeId` + code hash via `env.LOADER.get()`, so the same code stays warm across requests while code updates automatically get a fresh Worker.
+
+**Wrangler configuration:**
+
+```toml
+[[worker_loaders]]
+binding = "LOADER"
+```
+
+**Usage:**
+
+```typescript
+import { init, CloudflareCodeExecutor } from "authhero";
+
+const { app } = init({
+  dataAdapter,
+  codeExecutor: new CloudflareCodeExecutor({
+    loader: env.LOADER,
+  }),
+});
+```
+
+### User Code Format
+
+User-authored code hooks use `exports.onExecuteXxx` functions:
+
+```javascript
+exports.onExecutePostLogin = async (event, api) => {
+  if (event.user.email.endsWith("@vip.com")) {
+    api.accessToken.setCustomClaim("vip", true);
+  }
+};
+```
+
+Supported triggers and their export names:
+
+| Trigger | Export Function |
+|---------|----------------|
+| `post-user-login` | `exports.onExecutePostLogin` |
+| `credentials-exchange` | `exports.onExecuteCredentialsExchange` |
+| `pre-user-registration` | `exports.onExecutePreUserRegistration` |
+| `post-user-registration` | `exports.onExecutePostUserRegistration` |
+
+### Management API
+
+Code hooks are managed through two API endpoints:
+
+**Hook Code** — stores the code itself:
+
+```bash
+# Create hook code
+POST /api/v2/hook-code
+{ "code": "exports.onExecutePostLogin = async (event, api) => { ... }" }
+
+# Update hook code (triggers re-deploy if executor supports it)
+PUT /api/v2/hook-code/{id}
+{ "code": "exports.onExecutePostLogin = async (event, api) => { ... }" }
+```
+
+**Hooks** — binds code to a trigger:
+
+```bash
+# Create a code hook bound to a trigger
+POST /api/v2/hooks
+{
+  "name": "VIP Claims",
+  "trigger_id": "post-user-login",
+  "code_id": "hc_abc123",
+  "enabled": true
+}
+```
 
 ## Best Practices
 

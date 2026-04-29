@@ -1,6 +1,9 @@
 import { Kysely } from "kysely";
 import { Database } from "../db";
-import { RefreshToken } from "@authhero/adapter-interfaces";
+import {
+  RefreshToken,
+  UpdateRefreshTokenOptions,
+} from "@authhero/adapter-interfaces";
 import { isoToDbDate } from "../utils/dateConversion";
 
 export function update(db: Kysely<Database>) {
@@ -8,6 +11,7 @@ export function update(db: Kysely<Database>) {
     tenant_id: string,
     id: string,
     refresh_token: Partial<RefreshToken>,
+    options?: UpdateRefreshTokenOptions,
   ) => {
     // Exclude old date fields from refresh token object
     const {
@@ -15,6 +19,7 @@ export function update(db: Kysely<Database>) {
       expires_at,
       idle_expires_at,
       last_exchanged_at,
+      revoked_at,
       device,
       resource_servers,
       rotating,
@@ -40,15 +45,37 @@ export function update(db: Kysely<Database>) {
         last_exchanged_at !== undefined
           ? isoToDbDate(last_exchanged_at)
           : undefined,
+      revoked_at_ts:
+        revoked_at !== undefined ? isoToDbDate(revoked_at) : undefined,
     };
 
-    const results = await db
+    const bump = options?.loginSessionBump;
+    const newLoginSessionExpiry = bump ? isoToDbDate(bump.expires_at) : null;
+
+    const tokenResult = await db
       .updateTable("refresh_tokens")
       .set(updateData)
       .where("tenant_id", "=", tenant_id)
       .where("refresh_tokens.id", "=", id)
-      .execute();
+      .executeTakeFirst();
 
-    return !!results.length;
+    // Best-effort login_session bump. Idempotent (only extends, never
+    // shortens, and the next refresh will re-bump on transient failure), so a
+    // failure here must not reject the refresh exchange.
+    if (bump?.login_id && newLoginSessionExpiry && newLoginSessionExpiry > 0) {
+      await db
+        .updateTable("login_sessions")
+        .set({
+          expires_at_ts: newLoginSessionExpiry,
+          updated_at_ts: Date.now(),
+        })
+        .where("tenant_id", "=", tenant_id)
+        .where("id", "=", bump.login_id)
+        .where("expires_at_ts", "<", newLoginSessionExpiry)
+        .execute()
+        .catch(() => {});
+    }
+
+    return (tokenResult?.numUpdatedRows ?? 0n) > 0n;
   };
 }
