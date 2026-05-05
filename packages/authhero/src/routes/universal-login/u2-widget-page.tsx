@@ -1,8 +1,33 @@
 /**
  * Shared widget page rendering for U2 routes.
  *
- * Contains the WidgetPage component, SSR rendering helper, and full-page
- * response builder used by both u2-routes and u2-form-node routes.
+ * v3 — Logo inside widget by default + adaptive chip chrome.
+ *
+ * Changes vs. v2:
+ *  - Logo now renders INSIDE the widget card by default (Auth0-style).
+ *    Set `logoPosition="chip"` to keep the previous floating-chip behavior.
+ *  - Chips adapt to dark/light page mode (translucent dark vs. translucent
+ *    white). Tokens are CSS variables flipped via a `data-mode` attribute,
+ *    so a single ruleset handles both directions.
+ *  - When there's no background image, chips drop their pill surface and
+ *    render as plain text (matches a clean solid-bg layout).
+ *  - Privacy/Terms is now a real chip in the with-image case so it doesn't
+ *    float as orphan text.
+ *
+ *   ┌─────────────────────────────────────┐
+ *   │ [logo*]                 [settings]  │   *only when logoPosition=chip
+ *   │                                     │
+ *   │            ┌──────────┐             │
+ *   │            │ [logo]   │             │   <- default position
+ *   │            │  widget  │             │
+ *   │            └──────────┘             │
+ *   │                                     │
+ *   │ [trust]                    [legal]  │
+ *   └─────────────────────────────────────┘
+ *
+ * Slot story (forward-looking): the chips carry `data-ah-slot` attrs so a
+ * future Liquid template can reposition any element via `{% slot %}` tags.
+ * `logoPosition` is the prop-level shortcut for the most common override.
  */
 
 import {
@@ -13,15 +38,14 @@ import {
 } from "./sanitization-utils";
 import type { Branding, Theme } from "@authhero/adapter-interfaces";
 import { buildHash } from "../../build-hash";
+import { LOCALE_DISPLAY_NAMES, createTranslation } from "../../i18n";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/**
- * Props for the WidgetPage component
- */
 export type DarkModePreference = "auto" | "light" | "dark";
+export type LogoPosition = "widget" | "chip";
 
 export type WidgetPageProps = {
   widgetHtml: string;
@@ -30,8 +54,8 @@ export type WidgetPageProps = {
     colors?: {
       primary?: string;
       page_background?:
-        | string
-        | { type?: string; start?: string; end?: string; angle_deg?: number };
+      | string
+      | { type?: string; start?: string; end?: string; angle_deg?: number };
     };
     logo_url?: string;
     favicon_url?: string;
@@ -55,45 +79,24 @@ export type WidgetPageProps = {
   availableLanguages?: string[];
   termsAndConditionsUrl?: string;
   darkMode?: DarkModePreference;
+  /**
+   * Where to render the tenant logo.
+   * - "widget" (default): inside the widget card, above the form. Matches
+   *   Auth0's Universal Login behavior — the logo is part of the branded
+   *   surface, not the page chrome.
+   * - "chip": floating pill in the top-left corner. Use when the logo
+   *   shouldn't compete with the form's primary action, or when the page
+   *   background is the brand canvas.
+   */
+  logoPosition?: LogoPosition;
   /** Optional inline script injected at page level (e.g. WebAuthn ceremony) */
   extraScript?: string;
 };
 
 // ---------------------------------------------------------------------------
-// WidgetPage JSX component
+// Constants
 // ---------------------------------------------------------------------------
 
-/**
- * Language display names in their native language
- */
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  nb: "Norsk",
-  sv: "Svenska",
-  da: "Dansk",
-  fi: "Suomi",
-  cs: "Čeština",
-  pl: "Polski",
-  it: "Italiano",
-};
-
-/**
- * Localized "Terms and Conditions" link text
- */
-export const TERMS_TRANSLATIONS: Record<string, string> = {
-  en: "Terms and Conditions",
-  nb: "Vilkår",
-  sv: "Villkor",
-  da: "Vilkår og betingelser",
-  fi: "Ehdot ja edellytykset",
-  cs: "Podmínky a pravidla",
-  pl: "Zasady i warunki",
-  it: "Termini e condizioni",
-};
-
-/**
- * Dark mode CSS custom property values used by the widget and page.
- */
 const DARK_MODE_CSS_VARS: Record<string, string> = {
   "--ah-color-text": "#f9fafb",
   "--ah-color-text-muted": "#9ca3af",
@@ -112,13 +115,15 @@ const DARK_MODE_CSS_VARS: Record<string, string> = {
   "--ah-color-link": "#60a5fa",
 };
 
-// Inline contrast helpers for dark mode CSS generation
+// ---------------------------------------------------------------------------
+// Color helpers
+// ---------------------------------------------------------------------------
+
 function parseDarkHex(hex: string): [number, number, number] {
   const c = hex.replace("#", "");
   const n = parseInt(c, 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
-
 function darkLuminance(hex: string): number {
   const [r, g, b] = parseDarkHex(hex).map((c) => {
     const s = c / 255;
@@ -126,13 +131,11 @@ function darkLuminance(hex: string): number {
   });
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
 }
-
 function darkContrastRatio(h1: string, h2: string): number {
   const l1 = darkLuminance(h1);
   const l2 = darkLuminance(h2);
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
-
 function lightenHexDark(hex: string, pct: number): string {
   const [r, g, b] = parseDarkHex(hex);
   const f = (v: number) =>
@@ -141,19 +144,10 @@ function lightenHexDark(hex: string, pct: number): string {
       .padStart(2, "0");
   return `#${f(r)}${f(g)}${f(b)}`;
 }
-
-/**
- * Generate CSS rules for dark mode variables on a selector.
- * When a primaryColor is provided, ensures the primary button has
- * adequate contrast against the dark widget background.
- */
 function darkModeCssVarRules(selector: string, primaryColor?: string): string {
   const vars: Record<string, string> = { ...DARK_MODE_CSS_VARS };
-
   if (primaryColor) {
     const darkBg = DARK_MODE_CSS_VARS["--ah-color-bg"] || "#1f2937";
-
-    // If primary button is too dark for the dark background, lighten it
     if (darkContrastRatio(primaryColor, darkBg) < 3) {
       let adjusted = primaryColor;
       for (let i = 1; i <= 10; i++) {
@@ -163,8 +157,6 @@ function darkModeCssVarRules(selector: string, primaryColor?: string): string {
       vars["--ah-color-primary"] = adjusted;
       vars["--ah-color-primary-hover"] = adjusted;
     }
-
-    // Auto-compute text-on-primary for dark mode (BIAS matches SSR block)
     const BIAS = 1.35;
     const btnBg = vars["--ah-color-primary"] || primaryColor;
     const whiteContrast = darkContrastRatio(btnBg, "#ffffff");
@@ -172,16 +164,238 @@ function darkModeCssVarRules(selector: string, primaryColor?: string): string {
     vars["--ah-color-text-on-primary"] =
       blackContrast > whiteContrast * BIAS ? "#000000" : "#ffffff";
   }
-
   const props = Object.entries(vars)
     .map(([k, v]) => `${k}: ${v} !important`)
     .join("; ");
   return `${selector} { ${props}; }`;
 }
 
-/**
- * Widget page component – renders the full HTML page with the SSR widget.
- */
+// ---------------------------------------------------------------------------
+// Page CSS
+// ---------------------------------------------------------------------------
+
+function buildPageCss(opts: {
+  primaryColor?: string;
+  themePrimary?: string;
+  widgetBackground: string;
+}): string {
+  const { primaryColor, themePrimary, widgetBackground } = opts;
+  return `
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ============= CHROME TOKENS =============
+       The chip surface tokens flip based on:
+         - data-mode (light/dark) — controls fg/bg pair
+         - data-bg (image/none)   — toggles whether chips have a surface
+       This keeps a single chip ruleset for all four combinations. */
+    :root {
+      --ah-chip-bg:        rgba(15,17,21,0.55);
+      --ah-chip-bg-hover:  rgba(15,17,21,0.75);
+      --ah-chip-border:    rgba(255,255,255,0.12);
+      --ah-chip-fg:        rgba(255,255,255,0.85);
+      --ah-chip-fg-dim:    rgba(255,255,255,0.6);
+      --ah-chip-fg-mid:    rgba(255,255,255,0.7);
+      --ah-chip-fg-strong: rgba(255,255,255,0.95);
+      --ah-chip-active-bg: rgba(255,255,255,0.14);
+      --ah-chip-logo-bg:   rgba(15,17,21,0.4);
+      --ah-legal-fg:       rgba(255,255,255,0.55);
+      --ah-legal-fg-hover: rgba(255,255,255,0.95);
+      --ah-legal-sep:      rgba(255,255,255,0.25);
+      --ah-bg-tint: radial-gradient(
+        ellipse at center,
+        rgba(15,23,48,0.30) 0%,
+        rgba(15,23,48,0.55) 70%,
+        rgba(10,15,30,0.78) 100%);
+    }
+
+    /* Light page mode — flip to dark text on translucent white chips */
+    html[data-mode="light"] {
+      --ah-chip-bg:        rgba(255,255,255,0.7);
+      --ah-chip-bg-hover:  rgba(255,255,255,0.92);
+      --ah-chip-border:    rgba(15,17,21,0.08);
+      --ah-chip-fg:        #0f1115;
+      --ah-chip-fg-dim:    rgba(15,17,21,0.55);
+      --ah-chip-fg-mid:    rgba(15,17,21,0.65);
+      --ah-chip-fg-strong: rgba(15,17,21,0.95);
+      --ah-chip-active-bg: rgba(15,17,21,0.08);
+      --ah-chip-logo-bg:   rgba(255,255,255,0.75);
+      --ah-legal-fg:       rgba(15,17,21,0.5);
+      --ah-legal-fg-hover: rgba(15,17,21,0.9);
+      --ah-legal-sep:      rgba(15,17,21,0.2);
+      --ah-bg-tint: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.15) 100%);
+    }
+
+    /* No background image — chips become text-only on a solid page color */
+    html[data-bg="none"] {
+      --ah-chip-bg:        transparent;
+      --ah-chip-bg-hover:  transparent;
+      --ah-chip-border:    transparent;
+      --ah-chip-logo-bg:   transparent;
+      --ah-bg-tint:        transparent;
+    }
+
+    /* ============= BACKGROUND TINT =============
+       Only renders when bg image is present. The token is transparent
+       in data-bg=none mode so the element stays in the DOM but invisible. */
+    .ah-bg-tint {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: var(--ah-bg-tint);
+      transition: background 300ms ease;
+    }
+    .widget-container { position: relative; z-index: 1; }
+
+    /* ============= IN-WIDGET LOGO =============
+       Default position. Renders above the form inside the widget card.
+       The widget's shadow DOM keeps its own --ah-color-* vars; we render
+       the logo OUTSIDE the widget but inside the .widget-container so it
+       sits above the widget chrome and inherits the page's color context. */
+    .ah-widget-logo {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px;
+      margin: 0 0 16px;
+      min-height: 32px;
+    }
+    .ah-widget-logo img {
+      display: block;
+      max-height: 40px;
+      max-width: 200px;
+      width: auto;
+      object-fit: contain;
+    }
+    .ah-widget-logo .ah-widget-logo-text {
+      font-family: 'Inter Tight', 'Inter', system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ah-color-header, #0f1115);
+    }
+    /* Position-driven visibility — only one logo renders at a time */
+    html[data-logo-position="chip"] .ah-widget-logo { display: none; }
+    html[data-logo-position="widget"] .ah-chip-logo { display: none; }
+
+    /* ============= FLOATING CHIPS =============
+       Self-contained pills positioned at page corners. Surface comes from
+       the chrome tokens above, so they adapt to mode + bg automatically. */
+    .ah-chip {
+      position: fixed;
+      z-index: 10;
+      background: var(--ah-chip-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--ah-chip-border);
+      color: var(--ah-chip-fg);
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 200ms ease, color 200ms ease, border-color 200ms ease;
+    }
+
+    .ah-chip-logo {
+      top: 24px; left: 24px;
+      padding: 6px 14px 6px 8px;
+      background: var(--ah-chip-logo-bg);
+    }
+    .ah-chip-logo img { display: block; max-height: 20px; width: auto; }
+    .ah-chip-logo .ah-logo-text {
+      font-family: 'Inter Tight', 'Inter', system-ui, sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
+    .ah-chip-settings {
+      top: 24px; right: 24px;
+      padding: 4px;
+      gap: 0;
+    }
+    .ah-chip-settings button,
+    .ah-chip-settings .ah-lang {
+      background: 0; border: 0; padding: 6px 10px; cursor: pointer;
+      color: var(--ah-chip-fg-dim);
+      font-size: 12px; font-weight: 500;
+      border-radius: 9999px;
+      display: inline-flex; align-items: center; gap: 5px;
+      transition: 140ms;
+    }
+    .ah-chip-settings button:hover,
+    .ah-chip-settings .ah-lang:hover { color: var(--ah-chip-fg-strong); }
+    .ah-chip-settings .ah-lang select {
+      appearance: none; -webkit-appearance: none;
+      background: transparent; color: inherit; border: 0;
+      font: inherit; cursor: pointer; padding: 0;
+      outline: 0;
+    }
+
+    .ah-chip-trust {
+      bottom: 24px; left: 24px;
+      padding: 7px 14px 7px 10px;
+      color: var(--ah-chip-fg-mid);
+    }
+    .ah-chip-trust img { display: block; max-height: 18px; width: auto; opacity: 0.85; }
+    .ah-chip-trust:hover { color: var(--ah-chip-fg-strong); }
+    .ah-chip-trust a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+
+    /* Legal — chip when there's a bg image, plain text on solid bg */
+    .ah-chip-legal {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      z-index: 10;
+      background: var(--ah-chip-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--ah-chip-border);
+      border-radius: 9999px;
+      padding: 7px 14px;
+      color: var(--ah-legal-fg);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      display: inline-flex; align-items: center; gap: 10px;
+      transition: background 200ms ease, color 200ms ease, border-color 200ms ease;
+    }
+    html[data-bg="none"] .ah-chip-legal { padding: 4px 0; bottom: 28px; right: 28px; }
+    .ah-chip-legal a {
+      color: inherit; text-decoration: none;
+      transition: color 140ms;
+    }
+    .ah-chip-legal a:hover { color: var(--ah-legal-fg-hover); }
+    .ah-chip-legal .ah-sep { color: var(--ah-legal-sep); }
+
+    /* ============= EXPLICIT DARK MODE FOR WIDGET =============
+       The page-level dark/light is controlled by data-mode (above).
+       The widget itself has its own --ah-color-* vars set via JS.
+       html.ah-dark-mode is the legacy class kept for the widget toggle. */
+    ${darkModeCssVarRules("html.ah-dark-mode authhero-widget", primaryColor || themePrimary)}
+    @media (prefers-color-scheme: dark) {
+      ${darkModeCssVarRules("html:not(.ah-light-mode) authhero-widget", primaryColor || themePrimary)}
+    }
+
+    /* ============= MOBILE =============
+       Widget fills the viewport, chrome chips minimize. */
+    @media (max-width: 560px) {
+      body { justify-content: center !important; padding: 20px !important; }
+    }
+    @media (max-width: 480px) {
+      body { background: ${widgetBackground} !important; padding: 0 !important; }
+      html.ah-dark-mode body { background: #111827 !important; }
+      .widget-container { width: 100%; }
+      .ah-bg-tint { display: none; }
+      .ah-chip-trust, .ah-chip-legal, .ah-chip-logo { display: none; }
+      .ah-chip-settings {
+        top: auto; bottom: 12px; right: 12px;
+      }
+    }
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// WidgetPage component
+// ---------------------------------------------------------------------------
+
 export function WidgetPage({
   widgetHtml,
   screenId,
@@ -194,18 +408,15 @@ export function WidgetPage({
   availableLanguages,
   termsAndConditionsUrl,
   darkMode = "auto",
+  logoPosition = "widget",
   extraScript,
 }: WidgetPageProps) {
-  // Build CSS variables from branding
+  // ---- Build CSS variables from branding (widget-internal) ----
   const cssVariables: string[] = [];
   const primaryColor = sanitizeCssColor(branding?.colors?.primary);
   if (primaryColor) {
     cssVariables.push(`--ah-color-primary: ${primaryColor}`);
   }
-
-  // Compute text-on-primary for SSR (the widget computes this client-side,
-  // but before hydration the CSS variable is missing and the button inherits
-  // the dark body text color instead of using the fallback).
   const effectivePrimaryBtn =
     sanitizeCssColor(theme?.colors?.primary_button) || primaryColor;
   if (effectivePrimaryBtn) {
@@ -221,14 +432,14 @@ export function WidgetPage({
     themePageBackground,
     branding?.colors?.page_background,
   );
+  const hasBgImage = !!themePageBackground?.background_image_url;
   const faviconUrl = sanitizeUrl(branding?.favicon_url);
   const fontUrl = sanitizeUrl(branding?.font?.url);
-
-  // Get widget background color for mobile view
   const widgetBackground =
     sanitizeCssColor(theme?.colors?.widget_background) || "#ffffff";
 
-  // Sanitize powered-by logo URLs
+  // ---- Sanitize logo / powered-by URLs ----
+  const safeLogoUrl = branding?.logo_url ? sanitizeUrl(branding.logo_url) : null;
   const safePoweredByUrl = poweredByLogo?.url
     ? sanitizeUrl(poweredByLogo.url)
     : null;
@@ -236,7 +447,7 @@ export function WidgetPage({
     ? sanitizeUrl(poweredByLogo.href)
     : null;
 
-  // Determine justify-content based on page_layout
+  // ---- Page layout (left/center/right) ----
   const pageLayout = themePageBackground?.page_layout || "center";
   const justifyContent =
     pageLayout === "left"
@@ -244,7 +455,6 @@ export function WidgetPage({
       : pageLayout === "right"
         ? "flex-end"
         : "center";
-  // Adjust padding based on page_layout
   const padding =
     pageLayout === "left"
       ? "20px 20px 20px 80px"
@@ -269,18 +479,20 @@ export function WidgetPage({
       ? cssVariables.join("; ") + "; width: clamp(320px, 100%, 400px);"
       : "width: clamp(320px, 100%, 400px);";
 
+  // ---- HTML element data attrs ----
+  // data-mode drives chip light/dark; data-bg drives chip surface on/off;
+  // data-logo-position drives which logo renders.
   const htmlClass =
     darkMode === "dark"
       ? "ah-dark-mode"
       : darkMode === "light"
         ? "ah-light-mode"
         : undefined;
+  const htmlDataMode =
+    darkMode === "dark" ? "dark" : darkMode === "light" ? "light" : undefined;
 
-  // Build dark mode CSS vars JSON for the client-side toggle script.
-  // This includes any primary color contrast adjustments.
-  const darkVarsForScript: Record<string, string> = {
-    ...DARK_MODE_CSS_VARS,
-  };
+  // ---- Dark-mode runtime vars (for client-side toggle) ----
+  const darkVarsForScript: Record<string, string> = { ...DARK_MODE_CSS_VARS };
   const effectivePrimary =
     sanitizeCssColor(theme?.colors?.primary_button) || primaryColor;
   if (effectivePrimary) {
@@ -303,214 +515,184 @@ export function WidgetPage({
   }
   const darkVarsJson = JSON.stringify(darkVarsForScript);
 
+  const pageCss = buildPageCss({
+    primaryColor,
+    themePrimary: sanitizeCssColor(theme?.colors?.primary_button),
+    widgetBackground,
+  });
+
+  // -------------------------------------------------------------------------
+  // Logo render helpers — same source of truth, two render targets.
+  // The CSS [data-logo-position] selectors hide whichever one isn't active,
+  // so SSR is deterministic and there's no flash on the client.
+  // -------------------------------------------------------------------------
+
+  const inWidgetLogo = safeLogoUrl ? (
+    <div class="ah-widget-logo" data-ah-slot="widget-header">
+      <img src={safeLogoUrl} alt={clientName} />
+    </div>
+  ) : (
+    <div class="ah-widget-logo" data-ah-slot="widget-header">
+      <span class="ah-widget-logo-text">{clientName}</span>
+    </div>
+  );
+
+  const logoChip = safeLogoUrl ? (
+    <div class="ah-chip ah-chip-logo" data-ah-slot="top-left">
+      <img src={safeLogoUrl} alt={clientName} />
+    </div>
+  ) : (
+    <div class="ah-chip ah-chip-logo" data-ah-slot="top-left">
+      <span class="ah-logo-text">{clientName}</span>
+    </div>
+  );
+
+  const settingsChip = (
+    <div class="ah-chip ah-chip-settings" data-ah-slot="top-right">
+      <button
+        type="button"
+        aria-label="Toggle dark mode"
+        onclick={`(function(btn){var h=document.documentElement;var cur=h.classList.contains('ah-dark-mode')?'dark':h.classList.contains('ah-light-mode')?'light':'auto';var next=cur==='auto'?'dark':cur==='dark'?'light':'auto';h.classList.remove('ah-dark-mode','ah-light-mode');if(next==='dark'){h.classList.add('ah-dark-mode');h.setAttribute('data-mode','dark')}else if(next==='light'){h.classList.add('ah-light-mode');h.setAttribute('data-mode','light')}else{h.removeAttribute('data-mode')}btn.querySelector('.icon-sun').style.display=next==='light'?'block':'none';btn.querySelector('.icon-moon').style.display=next==='dark'?'block':'none';btn.querySelector('.icon-auto').style.display=next==='auto'?'block':'none';document.cookie='ah-dark-mode='+next+';path=/;max-age=31536000;SameSite=Lax';if(window.__ahDarkMode){window.__ahDarkMode(next)}})(this)`}
+      >
+        <svg
+          class="icon-auto"
+          width="13" height="13" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round"
+          style={darkMode === "auto" ? undefined : "display:none"}
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" />
+        </svg>
+        <svg
+          class="icon-sun"
+          width="13" height="13" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round"
+          style={darkMode === "light" ? undefined : "display:none"}
+        >
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+        </svg>
+        <svg
+          class="icon-moon"
+          width="13" height="13" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round"
+          style={darkMode === "dark" ? undefined : "display:none"}
+        >
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      </button>
+      {availableLanguages && availableLanguages.length > 1 && (
+        <div class="ah-lang">
+          <svg
+            width="13" height="13" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+          <select
+            aria-label="Language"
+            onchange={`var p=new URLSearchParams(window.location.search);p.set('ui_locales',this.value);window.location.search=p.toString()`}
+          >
+            {availableLanguages.map((lang) => (
+              <option value={lang} selected={lang === language}>
+                {LOCALE_DISPLAY_NAMES[lang as keyof typeof LOCALE_DISPLAY_NAMES] || lang}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+    </div>
+  );
+
+  const trustChip = safePoweredByUrl ? (
+    <div class="ah-chip ah-chip-trust" data-ah-slot="bottom-left">
+      {safePoweredByHref ? (
+        <a href={safePoweredByHref} target="_blank" rel="noopener noreferrer">
+          <img
+            src={safePoweredByUrl}
+            alt={poweredByLogo?.alt || ""}
+            height={poweredByLogo?.height || 18}
+          />
+        </a>
+      ) : (
+        <img
+          src={safePoweredByUrl}
+          alt={poweredByLogo?.alt || ""}
+          height={poweredByLogo?.height || 18}
+        />
+      )}
+    </div>
+  ) : null;
+
+  const { m: commonT } = createTranslation("common", "common", language || "en");
+  const legalChip = termsAndConditionsUrl ? (
+    <div class="ah-chip-legal" data-ah-slot="bottom-right">
+      <a href={termsAndConditionsUrl} target="_blank" rel="noopener noreferrer">
+        {commonT.termsShortText()}
+      </a>
+    </div>
+  ) : null;
+
   return (
-    <html lang={language || "en"} class={htmlClass}>
+    <html
+      lang={language || "en"}
+      class={htmlClass}
+      data-mode={htmlDataMode}
+      data-bg={hasBgImage ? "image" : "none"}
+      data-logo-position={logoPosition}
+    >
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Sign in - {clientName}</title>
         {faviconUrl && <link rel="icon" href={faviconUrl} />}
         {fontUrl && <link rel="stylesheet" href={fontUrl} />}
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-              * { box-sizing: border-box; margin: 0; padding: 0; }
-              .page-footer-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 8px 20px; background: rgba(255,255,255,0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid rgba(0,0,0,0.08); color: #333; font-size: 13px; }
-              .footer-left, .footer-right { display: flex; align-items: center; gap: 12px; }
-              .powered-by { opacity: 0.7; transition: opacity 0.2s; line-height: 0; }
-              .powered-by:hover { opacity: 1; }
-              .powered-by img { display: block; }
-              .terms-link { font-size: 12px; color: inherit; opacity: 0.65; text-decoration: none; transition: opacity 0.2s; }
-              .terms-link:hover { opacity: 1; text-decoration: underline; }
-              .language-picker { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 0; font-size: 13px; color: inherit; cursor: pointer; opacity: 0.7; transition: opacity 0.2s; }
-              .language-picker:hover { opacity: 1; }
-              .language-icon { flex-shrink: 0; opacity: 0.6; }
-              .language-select { appearance: none; -webkit-appearance: none; background: none; border: none; font: inherit; color: inherit; cursor: pointer; padding-right: 2px; outline: none; }
-              .dark-mode-toggle { display: flex; align-items: center; justify-content: center; background: none; border: none; padding: 4px; color: inherit; cursor: pointer; opacity: 0.7; transition: opacity 0.2s; border-radius: 4px; }
-              .dark-mode-toggle:hover { opacity: 1; }
-
-              /* Explicit dark mode */
-              html.ah-dark-mode body { background: #111827 !important; }
-              html.ah-dark-mode .widget-container { position: relative; z-index: 1; }
-              html.ah-dark-mode .page-footer-bar { background: rgba(0,0,0,0.5); border-top-color: rgba(255,255,255,0.08); color: #eee; }
-              ${darkModeCssVarRules("html.ah-dark-mode authhero-widget", primaryColor || sanitizeCssColor(theme?.colors?.primary_button))}
-
-              /* Auto mode: follow system preference, unless explicitly set to light */
-              @media (prefers-color-scheme: dark) {
-                html:not(.ah-light-mode) body { background: #111827 !important; }
-                html:not(.ah-light-mode) .widget-container { position: relative; z-index: 1; }
-                html:not(.ah-light-mode) .page-footer-bar { background: rgba(0,0,0,0.5); border-top-color: rgba(255,255,255,0.08); color: #eee; }
-                ${darkModeCssVarRules("html:not(.ah-light-mode) authhero-widget", primaryColor || sanitizeCssColor(theme?.colors?.primary_button))}
-              }
-
-              @media (max-width: 560px) {
-                body { justify-content: center !important; padding: 20px 20px 52px !important; }
-              }
-              @media (max-width: 480px) {
-                body { background: ${widgetBackground} !important; padding: 0 0 44px !important; }
-                html.ah-dark-mode body { background: #111827 !important; }
-                .widget-container { width: 100%; }
-                .page-footer-bar { background: ${widgetBackground}; backdrop-filter: none; -webkit-backdrop-filter: none; border-top: 1px solid rgba(0,0,0,0.08); }
-                html.ah-dark-mode .page-footer-bar { background: #111827; border-top-color: rgba(255,255,255,0.08); }
-              }
-              @media (max-width: 480px) and (prefers-color-scheme: dark) {
-                html:not(.ah-light-mode) body { background: #111827 !important; }
-                html:not(.ah-light-mode) .page-footer-bar { background: #111827; border-top-color: rgba(255,255,255,0.08); }
-              }
-            `,
-          }}
-        />
+        <style dangerouslySetInnerHTML={{ __html: pageCss }} />
         <script
           type="module"
           src={`/u/widget/authhero-widget.esm.js?v=${buildHash}`}
         />
       </head>
       <body style={bodyStyle}>
-        {/* SSR widget - rendered server-side, hydrated on client */}
-        {/* data-screen attribute allows CSS targeting for specific screens */}
+        {hasBgImage && <div class="ah-bg-tint" aria-hidden="true" />}
+
+        {/* Widget container — wraps the in-widget logo + the widget itself.
+            CSS hides whichever logo isn't active for the chosen position. */}
         <div
           class="widget-container"
           data-authhero-widget-container
           data-screen={screenId}
           style={widgetContainerStyle}
-          dangerouslySetInnerHTML={{ __html: widgetHtml }}
-        />
+        >
+          {inWidgetLogo}
+          <div dangerouslySetInnerHTML={{ __html: widgetHtml }} />
+        </div>
+
         {extraScript && (
           <script dangerouslySetInnerHTML={{ __html: extraScript }} />
         )}
-        <footer class="page-footer-bar">
-          <div class="footer-left">
-            {safePoweredByUrl && (
-              <div class="powered-by">
-                {safePoweredByHref ? (
-                  <a
-                    href={safePoweredByHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <img
-                      src={safePoweredByUrl}
-                      alt={poweredByLogo?.alt || ""}
-                      height={poweredByLogo?.height || 20}
-                    />
-                  </a>
-                ) : (
-                  <img
-                    src={safePoweredByUrl}
-                    alt={poweredByLogo?.alt || ""}
-                    height={poweredByLogo?.height || 20}
-                  />
-                )}
-              </div>
-            )}
-            {termsAndConditionsUrl && (
-              <a
-                class="terms-link"
-                href={termsAndConditionsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {TERMS_TRANSLATIONS[language || "en"] || TERMS_TRANSLATIONS.en}
-              </a>
-            )}
-          </div>
-          <div class="footer-right">
-            <button
-              class="dark-mode-toggle"
-              type="button"
-              aria-label="Toggle dark mode"
-              onclick={`(function(btn){var h=document.documentElement;var cur=h.classList.contains('ah-dark-mode')?'dark':h.classList.contains('ah-light-mode')?'light':'auto';var next=cur==='auto'?'dark':cur==='dark'?'light':'auto';h.classList.remove('ah-dark-mode','ah-light-mode');if(next==='dark')h.classList.add('ah-dark-mode');else if(next==='light')h.classList.add('ah-light-mode');btn.querySelector('.icon-sun').style.display=next==='light'?'block':'none';btn.querySelector('.icon-moon').style.display=next==='dark'?'block':'none';btn.querySelector('.icon-auto').style.display=next==='auto'?'block':'none';document.cookie='ah-dark-mode='+next+';path=/;max-age=31536000;SameSite=Lax';if(window.__ahDarkMode){window.__ahDarkMode(next)}})(this)`}
-            >
-              {/* Auto icon (half circle - system preference) */}
-              <svg
-                class="icon-auto"
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                style={darkMode === "auto" ? undefined : "display:none"}
-              >
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" />
-              </svg>
-              {/* Sun icon (light mode) */}
-              <svg
-                class="icon-sun"
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                style={darkMode === "light" ? undefined : "display:none"}
-              >
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
-              {/* Moon icon (dark mode) */}
-              <svg
-                class="icon-moon"
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                style={darkMode === "dark" ? undefined : "display:none"}
-              >
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-            </button>
-            {availableLanguages && availableLanguages.length > 1 && (
-              <div class="language-picker">
-                <svg
-                  class="language-icon"
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M2 12h20" />
-                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                </svg>
-                <select
-                  class="language-select"
-                  onchange={`var p=new URLSearchParams(window.location.search);p.set('ui_locales',this.value);window.location.search=p.toString()`}
-                >
-                  {availableLanguages.map((lang) => (
-                    <option value={lang} selected={lang === language}>
-                      {LANGUAGE_NAMES[lang] || lang}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        </footer>
+
+        {/* Floating chips. logoChip is hidden by CSS when
+            data-logo-position="widget" (the default). */}
+        {logoChip}
+        {settingsChip}
+        {trustChip}
+        {legalChip}
+
+        {/* Dark-mode runtime — applies dark CSS vars to the widget's
+            shadow DOM since CSS variables don't pierce shadow boundaries
+            via inheritance for dynamically-created custom properties. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){
@@ -539,15 +721,9 @@ var h2=document.documentElement;if(!h2.classList.contains('ah-dark-mode')&&!h2.c
 }
 
 // ---------------------------------------------------------------------------
-// SSR rendering helper
+// SSR rendering helper (unchanged)
 // ---------------------------------------------------------------------------
 
-/**
- * Server-side render the authhero-widget and return the HTML string.
- *
- * Returns an empty string when SSR is not available (e.g. Cloudflare Workers)
- * so the widget falls back to client-side hydration.
- */
 export async function renderWidgetSSR(params: {
   screenId: string;
   screenJson: string;
@@ -566,11 +742,9 @@ export async function renderWidgetSSR(params: {
   } = params;
 
   try {
-    // Essential for some internal Stencil checks in edge runtimes
     if (typeof (globalThis as any).window === "undefined") {
       (globalThis as any).window = globalThis;
     }
-
     const { renderToString } = await import("@authhero/widget/hydrate");
     const result = await renderToString(
       `<authhero-widget
@@ -600,9 +774,6 @@ export async function renderWidgetSSR(params: {
 // Full-page response helper
 // ---------------------------------------------------------------------------
 
-/**
- * Extract the subset of Branding properties needed by WidgetPage.
- */
 export function extractBrandingProps(
   branding: Branding | null | undefined,
 ): WidgetPageProps["branding"] {
@@ -615,12 +786,6 @@ export function extractBrandingProps(
   };
 }
 
-/**
- * Render a full widget page response (SSR + WidgetPage).
- *
- * This is the common path used by both u2-routes and u2-form-node when
- * returning a complete HTML page (no custom Liquid template).
- */
 export async function renderWidgetPageResponse(
   ctx: any,
   opts: {
@@ -638,6 +803,7 @@ export async function renderWidgetPageResponse(
     availableLanguages?: string[];
     termsAndConditionsUrl?: string;
     darkMode?: DarkModePreference;
+    logoPosition?: LogoPosition;
   },
 ): Promise<Response> {
   const widgetHtml = await renderWidgetSSR({
@@ -662,6 +828,7 @@ export async function renderWidgetPageResponse(
       availableLanguages={opts.availableLanguages}
       termsAndConditionsUrl={opts.termsAndConditionsUrl}
       darkMode={opts.darkMode}
+      logoPosition={opts.logoPosition}
     />,
   );
 }

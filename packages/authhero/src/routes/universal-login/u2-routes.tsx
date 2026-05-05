@@ -47,6 +47,7 @@ import {
   type DarkModePreference,
 } from "./u2-widget-page";
 import { getCookie } from "hono/cookie";
+import { LOCALE_DISPLAY_NAMES, locales } from "../../i18n";
 
 /**
  * Mapping from screen IDs (used in routes) to prompt screen IDs (used for custom text)
@@ -619,20 +620,6 @@ function generateWidgetContent(options: WidgetContentProps): string {
 }
 
 /**
- * Language display names in their native language
- */
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  nb: "Norsk",
-  sv: "Svenska",
-  da: "Dansk",
-  fi: "Suomi",
-  cs: "Čeština",
-  pl: "Polski",
-  it: "Italiano",
-};
-
-/**
  * Props for footer content
  */
 type FooterContentProps = {
@@ -745,7 +732,7 @@ function FooterContent({
           >
             {langs.map((lang) => (
               <option value={lang} selected={lang === language}>
-                {LANGUAGE_NAMES[lang] || lang}
+                {LOCALE_DISPLAY_NAMES[lang as keyof typeof LOCALE_DISPLAY_NAMES] || lang}
               </option>
             ))}
           </select>
@@ -1015,7 +1002,7 @@ function createScreenRouteHandler(screenId: string) {
 
       const footerContent = generateFooterContent({
         language,
-        availableLanguages: Object.keys(LANGUAGE_NAMES),
+        availableLanguages: [...locales],
         darkMode,
       });
 
@@ -1040,7 +1027,7 @@ function createScreenRouteHandler(screenId: string) {
         clientName={client.name || "AuthHero"}
         poweredByLogo={ctx.env.poweredByLogo}
         language={language}
-        availableLanguages={Object.keys(LANGUAGE_NAMES)}
+        availableLanguages={[...locales]}
         termsAndConditionsUrl={sanitizeUrl(
           client.client_metadata?.termsAndConditionsUrl,
         )}
@@ -1328,7 +1315,7 @@ function createScreenPostHandler(screenId: string) {
         widgetContent,
         generateFooterContent({
           language,
-          availableLanguages: Object.keys(LANGUAGE_NAMES),
+          availableLanguages: [...locales],
           darkMode,
         }),
       );
@@ -1347,7 +1334,7 @@ function createScreenPostHandler(screenId: string) {
         clientName={client.name || "AuthHero"}
         poweredByLogo={ctx.env.poweredByLogo}
         language={language}
-        availableLanguages={Object.keys(LANGUAGE_NAMES)}
+        availableLanguages={[...locales]}
         termsAndConditionsUrl={sanitizeUrl(
           client.client_metadata?.termsAndConditionsUrl,
         )}
