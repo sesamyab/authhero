@@ -47,7 +47,10 @@ import {
   type DarkModePreference,
 } from "./u2-widget-page";
 import { getCookie } from "hono/cookie";
-import { LOCALE_DISPLAY_NAMES, locales } from "../../i18n";
+import { getLocaleDisplayName, locales } from "../../i18n";
+
+// Mutable copy of the readonly `locales` tuple — handlers expect string[].
+const availableLocales: string[] = [...locales];
 
 /**
  * Mapping from screen IDs (used in routes) to prompt screen IDs (used for custom text)
@@ -631,6 +634,12 @@ type FooterContentProps = {
 /**
  * Footer content component for liquid template substitution.
  * Renders a language picker and other page-level footer items.
+ *
+ * NOTE: this is the legacy footer chrome (`.page-footer`,
+ * `.dark-mode-toggle`, `.language-picker`) used only when a tenant has set
+ * a custom Liquid template. The default SSR path renders the new chip/pill
+ * chrome from `WidgetPage` (see `u2-widget-page.tsx`). Tenants on a custom
+ * template will not pick up the new UI until they migrate their template.
  */
 function FooterContent({
   language,
@@ -732,7 +741,7 @@ function FooterContent({
           >
             {langs.map((lang) => (
               <option value={lang} selected={lang === language}>
-                {LOCALE_DISPLAY_NAMES[lang as keyof typeof LOCALE_DISPLAY_NAMES] || lang}
+                {getLocaleDisplayName(lang)}
               </option>
             ))}
           </select>
@@ -1002,7 +1011,7 @@ function createScreenRouteHandler(screenId: string) {
 
       const footerContent = generateFooterContent({
         language,
-        availableLanguages: [...locales],
+        availableLanguages: availableLocales,
         darkMode,
       });
 
@@ -1027,7 +1036,7 @@ function createScreenRouteHandler(screenId: string) {
         clientName={client.name || "AuthHero"}
         poweredByLogo={ctx.env.poweredByLogo}
         language={language}
-        availableLanguages={[...locales]}
+        availableLanguages={availableLocales}
         termsAndConditionsUrl={sanitizeUrl(
           client.client_metadata?.termsAndConditionsUrl,
         )}
@@ -1315,7 +1324,7 @@ function createScreenPostHandler(screenId: string) {
         widgetContent,
         generateFooterContent({
           language,
-          availableLanguages: [...locales],
+          availableLanguages: availableLocales,
           darkMode,
         }),
       );
@@ -1334,7 +1343,7 @@ function createScreenPostHandler(screenId: string) {
         clientName={client.name || "AuthHero"}
         poweredByLogo={ctx.env.poweredByLogo}
         language={language}
-        availableLanguages={[...locales]}
+        availableLanguages={availableLocales}
         termsAndConditionsUrl={sanitizeUrl(
           client.client_metadata?.termsAndConditionsUrl,
         )}

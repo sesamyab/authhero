@@ -55,6 +55,16 @@ export const LOCALE_DISPLAY_NAMES: Record<(typeof locales)[number], string> = {
   sv: "Svenska",
 };
 
+const LOCALE_DISPLAY_NAMES_LOOKUP: Record<string, string> = LOCALE_DISPLAY_NAMES;
+
+/**
+ * Resolve a locale code to its native display name, falling back to the
+ * raw code when the locale is not recognised.
+ */
+export function getLocaleDisplayName(lang: string): string {
+  return LOCALE_DISPLAY_NAMES_LOOKUP[lang] ?? lang;
+}
+
 // Load Auth0-format locale files at build time via Vite's import.meta.glob
 const localeModules = import.meta.glob("../../locales/*.json", {
   eager: true,

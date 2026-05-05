@@ -38,7 +38,7 @@ import {
 } from "./sanitization-utils";
 import type { Branding, Theme } from "@authhero/adapter-interfaces";
 import { buildHash } from "../../build-hash";
-import { LOCALE_DISPLAY_NAMES, createTranslation } from "../../i18n";
+import { createTranslation, getLocaleDisplayName } from "../../i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -208,7 +208,10 @@ function buildPageCss(opts: {
         rgba(10,15,30,0.78) 100%);
     }
 
-    /* Light page mode — flip to dark text on translucent white chips */
+    /* Light page mode — flip to dark text on translucent white chips.
+       The :root block above seeds dark tokens; data-mode="light" overrides
+       them when the toggle is explicit, and the prefers-color-scheme block
+       below mirrors them when the user is in auto mode (no data-mode set). */
     html[data-mode="light"] {
       --ah-chip-bg:        rgba(255,255,255,0.7);
       --ah-chip-bg-hover:  rgba(255,255,255,0.92);
@@ -223,6 +226,24 @@ function buildPageCss(opts: {
       --ah-legal-fg-hover: rgba(15,17,21,0.9);
       --ah-legal-sep:      rgba(15,17,21,0.2);
       --ah-bg-tint: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.15) 100%);
+    }
+
+    @media (prefers-color-scheme: light) {
+      html:not([data-mode]) {
+        --ah-chip-bg:        rgba(255,255,255,0.7);
+        --ah-chip-bg-hover:  rgba(255,255,255,0.92);
+        --ah-chip-border:    rgba(15,17,21,0.08);
+        --ah-chip-fg:        #0f1115;
+        --ah-chip-fg-dim:    rgba(15,17,21,0.55);
+        --ah-chip-fg-mid:    rgba(15,17,21,0.65);
+        --ah-chip-fg-strong: rgba(15,17,21,0.95);
+        --ah-chip-active-bg: rgba(15,17,21,0.08);
+        --ah-chip-logo-bg:   rgba(255,255,255,0.75);
+        --ah-legal-fg:       rgba(15,17,21,0.5);
+        --ah-legal-fg-hover: rgba(15,17,21,0.9);
+        --ah-legal-sep:      rgba(15,17,21,0.2);
+        --ah-bg-tint: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.15) 100%);
+      }
     }
 
     /* No background image — chips become text-only on a solid page color */
@@ -606,7 +627,7 @@ export function WidgetPage({
           >
             {availableLanguages.map((lang) => (
               <option value={lang} selected={lang === language}>
-                {LOCALE_DISPLAY_NAMES[lang as keyof typeof LOCALE_DISPLAY_NAMES] || lang}
+                {getLocaleDisplayName(lang)}
               </option>
             ))}
           </select>
