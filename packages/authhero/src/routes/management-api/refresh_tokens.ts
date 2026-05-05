@@ -89,6 +89,30 @@ export const refreshTokensRoutes = new OpenAPIHono<{
     async (ctx) => {
       const { id } = ctx.req.valid("param");
 
+      // Resolve the row first so we know its family. Removing a refresh token
+      // via the admin API also revokes any sibling/descendant tokens in the
+      // same rotation chain — matches the user-stated expectation that
+      // "revoke" should torch the entire family.
+      //
+      // Run revokeFamily *before* the hard remove: revokeFamily is
+      // idempotent ("WHERE revoked_at_ts IS NULL"), so if the subsequent
+      // remove fails the family is already torched and a retry just
+      // re-runs remove. The reverse order would leave siblings active if
+      // the family-revoke step failed after the parent was already gone.
+      const target = await ctx.env.data.refreshTokens.get(
+        ctx.var.tenant_id,
+        id,
+      );
+
+      const familyId = target?.family_id ?? target?.id;
+      if (familyId) {
+        await ctx.env.data.refreshTokens.revokeFamily(
+          ctx.var.tenant_id,
+          familyId,
+          new Date().toISOString(),
+        );
+      }
+
       const result = await ctx.env.data.refreshTokens.remove(
         ctx.var.tenant_id,
         id,

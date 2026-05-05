@@ -3,15 +3,15 @@ import { Kysely } from "kysely";
 import { Database } from "../db";
 import { convertDatesToAdapter } from "../utils/dateConversion";
 
-export function get(db: Kysely<Database>) {
+export function getByLookup(db: Kysely<Database>) {
   return async (
     tenant_id: string,
-    id: string,
+    token_lookup: string,
   ): Promise<RefreshToken | null> => {
     const refreshToken = await db
       .selectFrom("refresh_tokens")
       .where("refresh_tokens.tenant_id", "=", tenant_id)
-      .where("refresh_tokens.id", "=", id)
+      .where("refresh_tokens.token_lookup", "=", token_lookup)
       .selectAll()
       .executeTakeFirst();
 
@@ -30,7 +30,6 @@ export function get(db: Kysely<Database>) {
       ...rest
     } = refreshToken;
 
-    // Convert dates from DB format (bigint) to ISO strings
     const dates = convertDatesToAdapter(
       {
         created_at_ts,

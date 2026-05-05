@@ -20,6 +20,7 @@ export function create(db: Kysely<Database>) {
       expires_at,
       idle_expires_at,
       last_exchanged_at,
+      rotated_at,
       device,
       resource_servers,
       rotating,
@@ -50,6 +51,7 @@ export function create(db: Kysely<Database>) {
           last_exchanged_at_ts: last_exchanged_at
             ? isoToDbDate(last_exchanged_at)
             : null,
+          rotated_at_ts: rotated_at ? isoToDbDate(rotated_at) : null,
         })
         .execute();
 

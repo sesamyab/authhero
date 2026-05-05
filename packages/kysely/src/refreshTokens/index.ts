@@ -1,9 +1,11 @@
 import { RefreshTokensAdapter } from "@authhero/adapter-interfaces";
 import { get } from "./get";
+import { getByLookup } from "./getByLookup";
 import { create } from "./create";
 import { Kysely } from "kysely";
 import { remove } from "./remove";
 import { revokeByLoginSession } from "./revokeByLoginSession";
+import { revokeFamily } from "./revokeFamily";
 import { update } from "./update";
 import { list } from "./list";
 import { Database } from "../db";
@@ -14,9 +16,11 @@ export function createRefreshTokensAdapter(
   return {
     create: create(db),
     get: get(db),
+    getByLookup: getByLookup(db),
     list: list(db),
     remove: remove(db),
     revokeByLoginSession: revokeByLoginSession(db),
+    revokeFamily: revokeFamily(db),
     update: update(db),
   };
 }

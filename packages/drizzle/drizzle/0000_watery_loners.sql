@@ -196,14 +196,19 @@ CREATE TABLE `otps` (
 CREATE INDEX `otps_email_index` ON `otps` (`email`);--> statement-breakpoint
 CREATE INDEX `otps_expires_at_index` ON `otps` (`expires_at`);--> statement-breakpoint
 CREATE TABLE `refresh_tokens` (
-	`id` text(21) NOT NULL,
+	`id` text(26) NOT NULL,
 	`tenant_id` text(191) NOT NULL,
 	`client_id` text(191) NOT NULL,
-	`login_id` text(21) NOT NULL,
+	`login_id` text(26) NOT NULL,
 	`user_id` text(255),
 	`resource_servers` text NOT NULL,
 	`device` text NOT NULL,
 	`rotating` integer NOT NULL,
+	`token_lookup` text(16),
+	`token_hash` text(64),
+	`family_id` text(26),
+	`rotated_to` text(26),
+	`rotated_at_ts` integer,
 	`created_at_ts` integer NOT NULL,
 	`expires_at_ts` integer,
 	`idle_expires_at_ts` integer,
@@ -216,6 +221,8 @@ CREATE TABLE `refresh_tokens` (
 CREATE INDEX `idx_refresh_tokens_user_id` ON `refresh_tokens` (`tenant_id`,`user_id`);--> statement-breakpoint
 CREATE INDEX `idx_refresh_tokens_login_id` ON `refresh_tokens` (`login_id`);--> statement-breakpoint
 CREATE INDEX `idx_refresh_tokens_expires_at_ts` ON `refresh_tokens` (`expires_at_ts`);--> statement-breakpoint
+CREATE INDEX `idx_refresh_tokens_token_lookup` ON `refresh_tokens` (`tenant_id`,`token_lookup`);--> statement-breakpoint
+CREATE INDEX `idx_refresh_tokens_family_id` ON `refresh_tokens` (`tenant_id`,`family_id`);--> statement-breakpoint
 CREATE TABLE `sessions` (
 	`id` text(21) NOT NULL,
 	`tenant_id` text(191) NOT NULL,

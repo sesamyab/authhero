@@ -4,12 +4,21 @@ import { Bindings, Variables, GrantFlowUserResult } from "../types";
 import {
   AuthorizationResponseMode,
   LogTypes,
+  RefreshToken,
 } from "@authhero/adapter-interfaces";
 import { z } from "@hono/zod-openapi";
 import { safeCompare } from "../utils/safe-compare";
 import { appendLog } from "../utils/append-log";
 import { getEnrichedClient } from "../helpers/client";
 import { logMessage } from "../helpers/logging";
+import {
+  formatRefreshToken,
+  generateRefreshTokenParts,
+  hashRefreshTokenSecret,
+  isLegacyRefreshTokenAccepted,
+  parseRefreshToken,
+} from "../utils/refresh-token-format";
+import { ulid } from "../utils/ulid";
 
 export const refreshTokenParamsSchema = z.object({
   grant_type: z.literal("refresh_token"),
@@ -47,17 +56,35 @@ export async function refreshTokenGrant(
     }
   }
 
-  const refreshToken = await ctx.env.data.refreshTokens.get(
-    client.tenant.id,
-    params.refresh_token,
-  );
-
   // Auth0 returns 403 for invalid_grant on the token endpoint; RFC 6749 §5.2
   // mandates 400. Gate on the client's auth0_conformant flag (default true).
   const invalidGrantStatus = client.auth0_conformant === false ? 400 : 403;
 
+  // Resolve the row from either the new `rt_<lookup>.<secret>` format or the
+  // legacy id-only format (back-compat window only).
+  const parsed = parseRefreshToken(params.refresh_token);
+  let refreshToken: RefreshToken | null = null;
+
+  if (parsed.kind === "new") {
+    const candidate = await ctx.env.data.refreshTokens.getByLookup(
+      client.tenant.id,
+      parsed.lookup,
+    );
+    if (candidate?.token_hash) {
+      const presentedHash = await hashRefreshTokenSecret(parsed.secret);
+      if (safeCompare(presentedHash, candidate.token_hash)) {
+        refreshToken = candidate;
+      }
+    }
+  } else if (isLegacyRefreshTokenAccepted()) {
+    refreshToken = await ctx.env.data.refreshTokens.get(
+      client.tenant.id,
+      parsed.id,
+    );
+  }
+
   if (!refreshToken) {
-    appendLog(ctx, `Invalid refresh token: ${params.refresh_token}`);
+    appendLog(ctx, "Invalid refresh token");
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
       description: "Invalid refresh token",
@@ -97,7 +124,7 @@ export async function refreshTokenGrant(
     (refreshToken.idle_expires_at &&
       new Date(refreshToken.idle_expires_at) < new Date())
   ) {
-    appendLog(ctx, `Refresh token has expired: ${params.refresh_token}`);
+    appendLog(ctx, "Refresh token has expired");
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
       description: "Refresh token has expired",
@@ -107,6 +134,35 @@ export async function refreshTokenGrant(
       error: "invalid_grant",
       error_description: "Refresh token has expired",
     });
+  }
+
+  // Reuse detection: if this row was previously rotated, decide whether the
+  // re-presentation falls inside the configured leeway window.
+  if (refreshToken.rotated_at) {
+    const leewaySeconds = client.refresh_token?.leeway ?? 30;
+    const rotatedAtMs = new Date(refreshToken.rotated_at).getTime();
+    if (Date.now() - rotatedAtMs > leewaySeconds * 1000) {
+      const familyId = refreshToken.family_id ?? refreshToken.id;
+      await ctx.env.data.refreshTokens.revokeFamily(
+        client.tenant.id,
+        familyId,
+        new Date().toISOString(),
+      );
+      appendLog(
+        ctx,
+        `Refresh token reuse detected; family ${familyId} revoked`,
+      );
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
+        description: "Refresh token reuse detected; family revoked",
+        userId: refreshToken.user_id,
+      });
+      throw new JSONHTTPException(invalidGrantStatus, {
+        error: "invalid_grant",
+        error_description: "Refresh token has been revoked",
+      });
+    }
+    // within leeway: fall through and mint another sibling child
   }
 
   const tokenUser = await ctx.env.data.users.get(
@@ -234,22 +290,87 @@ export async function refreshTokenGrant(
     }
   }
 
-  // Update the idle_expires_at using tenant settings
-  if (refreshToken.idle_expires_at && client.tenant.idle_session_lifetime) {
+  // Token rotation decision: rotate if either the stored row says so or, for
+  // legacy rows that pre-date the rotating column being honored, the client
+  // is configured to rotate.
+  const clientRotates =
+    client.refresh_token?.rotation_type === "rotating";
+  const shouldRotate = refreshToken.rotating || clientRotates;
+
+  const nextLastIp = ctx.req.header("x-real-ip") || "";
+  const nextLastUa = ctx.req.header("user-agent") || "";
+  const deviceChanged =
+    nextLastIp !== refreshToken.device?.last_ip ||
+    nextLastUa !== refreshToken.device?.last_user_agent;
+
+  let outgoingWireToken: string | undefined = params.refresh_token;
+
+  if (shouldRotate) {
+    // Mint a fresh child row that inherits the parent's identity but gets a
+    // new (lookup, secret) pair, refreshed sliding idle window, and the same
+    // family id (anchored to the parent for legacy upgrades).
+    const childId = ulid();
+    const { lookup: childLookup, secret: childSecret } =
+      generateRefreshTokenParts();
+    const childHash = await hashRefreshTokenSecret(childSecret);
+    const familyId = refreshToken.family_id ?? refreshToken.id;
+
+    const newIdleExpiresAt =
+      refreshToken.idle_expires_at && client.tenant.idle_session_lifetime
+        ? new Date(
+            Date.now() + client.tenant.idle_session_lifetime * 60 * 60 * 1000,
+          ).toISOString()
+        : refreshToken.idle_expires_at;
+
+    await ctx.env.data.refreshTokens.create(client.tenant.id, {
+      id: childId,
+      login_id: refreshToken.login_id,
+      user_id: refreshToken.user_id,
+      client_id: refreshToken.client_id,
+      // Absolute expiry never extends across rotation — the family stays
+      // bounded by the original session_lifetime.
+      expires_at: refreshToken.expires_at,
+      idle_expires_at: newIdleExpiresAt,
+      device: {
+        ...refreshToken.device,
+        last_ip: nextLastIp,
+        last_user_agent: nextLastUa,
+      },
+      resource_servers: refreshToken.resource_servers,
+      rotating: true,
+      token_lookup: childLookup,
+      token_hash: childHash,
+      family_id: familyId,
+    });
+
+    // Anchor `rotated_at` to the *first* rotation so leeway-window siblings
+    // don't extend the parent's exposure. Always overwrite `rotated_to` to
+    // the most recent child for traceability. Also stamp `family_id` on the
+    // parent — for legacy rows (created before the rotation columns
+    // existed) this is the first time `family_id` gets a value, and
+    // without it `revokeFamily` would skip the parent itself when reuse is
+    // detected later.
+    await ctx.env.data.refreshTokens.update(
+      client.tenant.id,
+      refreshToken.id,
+      {
+        rotated_to: childId,
+        rotated_at: refreshToken.rotated_at ?? new Date().toISOString(),
+        family_id: familyId,
+      },
+    );
+
+    outgoingWireToken = formatRefreshToken(childLookup, childSecret);
+  } else if (
+    refreshToken.idle_expires_at &&
+    client.tenant.idle_session_lifetime
+  ) {
+    // Non-rotating path: slide the parent's idle window forward and let the
+    // client keep using the same wire token they sent.
     const idleExpiresAt = new Date(
       Date.now() + client.tenant.idle_session_lifetime * 60 * 60 * 1000,
     );
 
-    const nextLastIp = ctx.req.header("x-real-ip") || "";
-    const nextLastUa = ctx.req.header("user-agent") || "";
-    const deviceChanged =
-      nextLastIp !== refreshToken.device?.last_ip ||
-      nextLastUa !== refreshToken.device?.last_user_agent;
-
-    // The adapter extends the parent login_session's expires_at in parallel
-    // when loginSessionBump is provided. newLoginSessionExpiry is the larger
-    // of the token's absolute expiry and the just-bumped idle expiry, since
-    // the session needs to outlive whichever is further out.
     const absoluteExpiryMs = refreshToken.expires_at
       ? new Date(refreshToken.expires_at).getTime()
       : 0;
@@ -286,7 +407,7 @@ export async function refreshTokenGrant(
   return {
     user,
     client,
-    refresh_token: refreshToken.id,
+    refresh_token: outgoingWireToken,
     session_id: sessionId,
     login_id: refreshToken.login_id,
     organization,

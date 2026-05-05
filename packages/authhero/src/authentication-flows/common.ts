@@ -4,9 +4,15 @@ import {
   AuthParams,
   LoginSession,
   LoginSessionState,
+  RefreshToken,
   User,
   TokenResponse,
 } from "@authhero/adapter-interfaces";
+import {
+  formatRefreshToken,
+  generateRefreshTokenParts,
+  hashRefreshTokenSecret,
+} from "../utils/refresh-token-format";
 import { EnrichedClient } from "../helpers/client";
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -496,6 +502,11 @@ export interface CreateRefreshTokenParams {
   audience?: string;
 }
 
+export interface CreatedRefreshToken {
+  row: RefreshToken;
+  wireToken: string;
+}
+
 function lifetimeToIso(lifetimeHours?: number): string | undefined {
   if (!lifetimeHours) return undefined;
   return new Date(Date.now() + lifetimeHours * 60 * 60 * 1000).toISOString();
@@ -504,7 +515,7 @@ function lifetimeToIso(lifetimeHours?: number): string | undefined {
 export async function createRefreshToken(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   params: CreateRefreshTokenParams,
-) {
+): Promise<CreatedRefreshToken> {
   const { client, scope, login_id } = params;
   const audience = params.audience ?? client.tenant.default_audience;
 
@@ -519,35 +530,40 @@ export async function createRefreshToken(
   const idleExpiresAt = lifetimeToIso(client.tenant.idle_session_lifetime);
   const absoluteExpiresAt = lifetimeToIso(client.tenant.session_lifetime);
 
-  const refreshToken = await ctx.env.data.refreshTokens.create(
-    client.tenant.id,
-    {
-      id: ulid(),
-      login_id,
-      client_id: client.client_id,
-      idle_expires_at: idleExpiresAt,
-      expires_at: absoluteExpiresAt,
-      user_id: params.user.user_id,
-      device: {
-        last_ip: ctx.var.ip,
-        initial_ip: ctx.var.ip,
-        last_user_agent: ctx.var.useragent || "",
-        initial_user_agent: ctx.var.useragent || "",
-        // TODO: add Authentication Strength Name
-        initial_asn: "",
-        last_asn: "",
-      },
-      resource_servers: [
-        {
-          audience,
-          scopes: scope,
-        },
-      ],
-      rotating: false,
-    },
-  );
+  const id = ulid();
+  const { lookup, secret } = generateRefreshTokenParts();
+  const token_hash = await hashRefreshTokenSecret(secret);
+  const rotating = client.refresh_token?.rotation_type === "rotating";
 
-  return refreshToken;
+  const row = await ctx.env.data.refreshTokens.create(client.tenant.id, {
+    id,
+    login_id,
+    client_id: client.client_id,
+    idle_expires_at: idleExpiresAt,
+    expires_at: absoluteExpiresAt,
+    user_id: params.user.user_id,
+    device: {
+      last_ip: ctx.var.ip,
+      initial_ip: ctx.var.ip,
+      last_user_agent: ctx.var.useragent || "",
+      initial_user_agent: ctx.var.useragent || "",
+      // TODO: add Authentication Strength Name
+      initial_asn: "",
+      last_asn: "",
+    },
+    resource_servers: [
+      {
+        audience,
+        scopes: scope,
+      },
+    ],
+    rotating,
+    token_lookup: lookup,
+    token_hash,
+    family_id: id,
+  });
+
+  return { row, wireToken: formatRefreshToken(lookup, secret) };
 }
 
 export interface CreateSessionParams {
@@ -1616,7 +1632,7 @@ export async function createFrontChannelAuthResponse(
       scope: authParams.scope,
       audience: authParams.audience,
     });
-    refresh_token = newRefreshToken.id;
+    refresh_token = newRefreshToken.wireToken;
   }
 
   if (responseMode === AuthorizationResponseMode.SAML_POST) {

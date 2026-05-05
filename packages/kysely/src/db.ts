@@ -204,6 +204,7 @@ const sqlRefreshTokensSchema = refreshTokenSchema
     idle_expires_at: true,
     last_exchanged_at: true,
     revoked_at: true,
+    rotated_at: true,
     device: true,
     resource_servers: true,
     rotating: true,
@@ -219,6 +220,7 @@ const sqlRefreshTokensSchema = refreshTokenSchema
     idle_expires_at_ts: z.number().nullable().optional(),
     last_exchanged_at_ts: z.number().nullable().optional(),
     revoked_at_ts: z.number().nullable().optional(),
+    rotated_at_ts: z.number().nullable().optional(),
   });
 
 const sqlCustomDomainSchema = z.object({

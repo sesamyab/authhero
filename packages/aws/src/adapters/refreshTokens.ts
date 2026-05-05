@@ -14,6 +14,7 @@ import {
   getItem,
   putItem,
   deleteItem,
+  queryItems,
   queryWithPagination,
   updateItem,
   stripDynamoDBFields,
@@ -32,6 +33,12 @@ interface RefreshTokenItem extends DynamoDBBaseItem {
   device: string; // JSON string
   resource_servers: string; // JSON array string
   rotating: boolean;
+  token_lookup?: string;
+  token_hash?: string;
+  family_id?: string;
+  rotated_to?: string;
+  rotated_at?: string;
+  revoked_at?: string;
 }
 
 function toRefreshToken(item: RefreshTokenItem): RefreshToken {
@@ -74,9 +81,25 @@ export function createRefreshTokensAdapter(
         device: JSON.stringify(refreshToken.device),
         resource_servers: JSON.stringify(refreshToken.resource_servers),
         rotating: refreshToken.rotating,
+        token_lookup: refreshToken.token_lookup,
+        token_hash: refreshToken.token_hash,
+        family_id: refreshToken.family_id,
+        rotated_to: refreshToken.rotated_to,
+        rotated_at: refreshToken.rotated_at,
         created_at: now,
         updated_at: now,
       };
+
+      // Wire up GSI2 for token_lookup → row resolution on the refresh-grant
+      // path. Only set when present; legacy rows without a lookup remain
+      // resolvable only via primary key.
+      if (refreshToken.token_lookup) {
+        item.GSI2PK = refreshTokenKeys.gsi2pk(
+          tenantId,
+          refreshToken.token_lookup,
+        );
+        item.GSI2SK = refreshTokenKeys.gsi2sk();
+      }
 
       // Set TTL for automatic expiration if expires_at is set
       if (refreshToken.expires_at) {
@@ -100,6 +123,22 @@ export function createRefreshTokensAdapter(
       if (!item) return null;
 
       return toRefreshToken(item);
+    },
+
+    async getByLookup(
+      tenantId: string,
+      tokenLookup: string,
+    ): Promise<RefreshToken | null> {
+      const result = await queryItems<RefreshTokenItem>(
+        ctx,
+        refreshTokenKeys.gsi2pk(tenantId, tokenLookup),
+        {
+          indexName: "GSI2",
+          skValue: refreshTokenKeys.gsi2sk(),
+          limit: 1,
+        },
+      );
+      return result.items[0] ? toRefreshToken(result.items[0]) : null;
     },
 
     async list(
@@ -200,6 +239,66 @@ export function createRefreshTokensAdapter(
         );
         for (const item of result.items) {
           if (item.login_id !== login_session_id) continue;
+          if ((item as { revoked_at?: string }).revoked_at) continue;
+          try {
+            await ctx.client.send(
+              new UpdateCommand({
+                TableName: ctx.tableName,
+                Key: {
+                  PK: refreshTokenKeys.pk(tenantId),
+                  SK: refreshTokenKeys.sk(item.id),
+                },
+                UpdateExpression:
+                  "SET #revoked_at = :revoked_at, #updated_at = :updated_at",
+                ConditionExpression:
+                  "attribute_exists(PK) AND attribute_not_exists(#revoked_at)",
+                ExpressionAttributeNames: {
+                  "#revoked_at": "revoked_at",
+                  "#updated_at": "updated_at",
+                },
+                ExpressionAttributeValues: {
+                  ":revoked_at": revoked_at,
+                  ":updated_at": new Date().toISOString(),
+                },
+              }),
+            );
+            count++;
+          } catch (err: unknown) {
+            if (
+              (err as { name?: string })?.name ===
+              "ConditionalCheckFailedException"
+            ) {
+              continue;
+            }
+            throw err;
+          }
+        }
+        if (result.items.length < per_page) break;
+        page++;
+      }
+      return count;
+    },
+
+    async revokeFamily(
+      tenantId: string,
+      family_id: string,
+      revoked_at: string,
+    ): Promise<number> {
+      // No dedicated GSI for family_id; scan tenant refresh tokens and
+      // soft-revoke siblings whose family_id matches and that aren't already
+      // revoked.
+      let count = 0;
+      let page = 0;
+      const per_page = 100;
+      for (;;) {
+        const result = await queryWithPagination<RefreshTokenItem>(
+          ctx,
+          refreshTokenKeys.pk(tenantId),
+          { page, per_page },
+          { skPrefix: "REFRESH_TOKEN#" },
+        );
+        for (const item of result.items) {
+          if (item.family_id !== family_id) continue;
           if ((item as { revoked_at?: string }).revoked_at) continue;
           try {
             await ctx.client.send(

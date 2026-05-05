@@ -177,9 +177,55 @@ export const clientInsertSchema = z.object({
     description: "Initiate login uri, must be https",
   }),
   native_social_login: z.record(z.any()).default({}).optional(),
-  refresh_token: z.record(z.any()).default({}).optional().openapi({
-    description: "Refresh token configuration",
-  }),
+  refresh_token: z
+    .object({
+      rotation_type: z
+        .enum(["rotating", "non-rotating"])
+        .optional()
+        .openapi({
+          description:
+            "Whether refresh tokens for this client are rotated on every exchange (Auth0 'rotating' behavior) or kept stable (legacy non-rotating). Defaults to 'non-rotating' when unset.",
+        }),
+      leeway: z
+        .number()
+        .int()
+        .min(0)
+        .max(600)
+        .optional()
+        .openapi({
+          description:
+            "Seconds after a parent token's first rotation during which presenting it again still mints a fresh sibling child instead of triggering reuse-detection. Defaults to 30s when unset.",
+        }),
+      // Auth0-compatible fields. Listed explicitly (rather than using
+      // .passthrough()) so they survive parse cycles AND keep type info,
+      // without tripping dts-bundle-generator's handling of zod's
+      // `objectInputType`. Not yet honored by the engine — added so values
+      // round-trip cleanly when migrating tenants from Auth0.
+      expiration_type: z.enum(["expiring", "non-expiring"]).optional().openapi({
+        description: "Auth0-compatible: whether refresh tokens expire.",
+      }),
+      token_lifetime: z.number().int().min(0).optional().openapi({
+        description:
+          "Auth0-compatible: refresh-token absolute lifetime in seconds.",
+      }),
+      infinite_token_lifetime: z.boolean().optional().openapi({
+        description:
+          "Auth0-compatible: when true, refresh tokens have no absolute expiry.",
+      }),
+      idle_token_lifetime: z.number().int().min(0).optional().openapi({
+        description:
+          "Auth0-compatible: refresh-token idle (sliding) lifetime in seconds.",
+      }),
+      infinite_idle_token_lifetime: z.boolean().optional().openapi({
+        description:
+          "Auth0-compatible: when true, refresh tokens have no idle expiry.",
+      }),
+    })
+    .default({})
+    .optional()
+    .openapi({
+      description: "Refresh token configuration",
+    }),
   default_organization: z.record(z.any()).default({}).optional().openapi({
     description: "Defines the default Organization ID and flows",
   }),
