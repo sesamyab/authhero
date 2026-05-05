@@ -345,13 +345,18 @@ export async function refreshTokenGrant(
 
     // Anchor `rotated_at` to the *first* rotation so leeway-window siblings
     // don't extend the parent's exposure. Always overwrite `rotated_to` to
-    // the most recent child for traceability.
+    // the most recent child for traceability. Also stamp `family_id` on the
+    // parent — for legacy rows (created before the rotation columns
+    // existed) this is the first time `family_id` gets a value, and
+    // without it `revokeFamily` would skip the parent itself when reuse is
+    // detected later.
     await ctx.env.data.refreshTokens.update(
       client.tenant.id,
       refreshToken.id,
       {
         rotated_to: childId,
         rotated_at: refreshToken.rotated_at ?? new Date().toISOString(),
+        family_id: familyId,
       },
     );
 
