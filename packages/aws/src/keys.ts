@@ -151,6 +151,10 @@ export const refreshTokenKeys = {
   gsi1pk: (tenantId: string, userId: string) =>
     `TENANT#${tenantId}#USER#${userId}`,
   gsi1sk: (tokenId: string) => `REFRESH_TOKEN#${tokenId}`,
+  // GSI2 for token_lookup (the plaintext slice extracted from the wire token)
+  gsi2pk: (tenantId: string, tokenLookup: string) =>
+    `TENANT#${tenantId}#RT_LOOKUP#${tokenLookup}`,
+  gsi2sk: () => "REFRESH_TOKEN",
 };
 
 // Form keys

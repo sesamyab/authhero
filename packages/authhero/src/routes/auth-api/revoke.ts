@@ -5,6 +5,12 @@ import { getEnrichedClient } from "../../helpers/client";
 import { safeCompare } from "../../utils/safe-compare";
 import { parseBasicAuthHeader } from "../../utils/auth-header";
 import { setTenantId } from "../../helpers/set-tenant-id";
+import {
+  hashRefreshTokenSecret,
+  isLegacyRefreshTokenAccepted,
+  parseRefreshToken,
+} from "../../utils/refresh-token-format";
+import { RefreshToken } from "@authhero/adapter-interfaces";
 
 // RFC 7009 §2.1 — only refresh_token is currently revocable. Access tokens
 // are stateless JWTs and are not tracked server-side, so the hint is accepted
@@ -115,10 +121,26 @@ export const revokeRoutes = new OpenAPIHono<{
     // to prevent token-scanning probes. We only act when the token belongs to
     // the authenticating client; mismatches are silently ignored.
     if (params.token_type_hint !== "access_token") {
-      const refreshToken = await ctx.env.data.refreshTokens.get(
-        client.tenant.id,
-        params.token,
-      );
+      const parsed = parseRefreshToken(params.token);
+      let refreshToken: RefreshToken | null = null;
+
+      if (parsed.kind === "new") {
+        const candidate = await ctx.env.data.refreshTokens.getByLookup(
+          client.tenant.id,
+          parsed.lookup,
+        );
+        if (candidate?.token_hash) {
+          const presentedHash = await hashRefreshTokenSecret(parsed.secret);
+          if (safeCompare(presentedHash, candidate.token_hash)) {
+            refreshToken = candidate;
+          }
+        }
+      } else if (isLegacyRefreshTokenAccepted()) {
+        refreshToken = await ctx.env.data.refreshTokens.get(
+          client.tenant.id,
+          parsed.id,
+        );
+      }
 
       if (
         refreshToken &&

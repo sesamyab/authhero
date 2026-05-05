@@ -28,6 +28,7 @@ function sqlToRefreshToken(row: any): RefreshToken {
     idle_expires_at_ts,
     last_exchanged_at_ts,
     revoked_at_ts,
+    rotated_at_ts,
     device,
     resource_servers,
     rotating,
@@ -41,6 +42,7 @@ function sqlToRefreshToken(row: any): RefreshToken {
       idle_expires_at_ts,
       last_exchanged_at_ts,
       revoked_at_ts,
+      rotated_at_ts,
     },
     ["created_at_ts"],
     [
@@ -48,6 +50,7 @@ function sqlToRefreshToken(row: any): RefreshToken {
       "idle_expires_at_ts",
       "last_exchanged_at_ts",
       "revoked_at_ts",
+      "rotated_at_ts",
     ],
   );
 
@@ -81,6 +84,11 @@ export function createRefreshTokensAdapter(db: DrizzleDb) {
         device: JSON.stringify(token.device || {}),
         resource_servers: JSON.stringify(token.resource_servers || []),
         rotating: token.rotating ?? false,
+        token_lookup: token.token_lookup ?? null,
+        token_hash: token.token_hash ?? null,
+        family_id: token.family_id ?? null,
+        rotated_to: token.rotated_to ?? null,
+        rotated_at_ts: isoToDbDate(token.rotated_at),
         created_at_ts: now,
         expires_at_ts: isoToDbDate(token.expires_at),
         idle_expires_at_ts: isoToDbDate(token.idle_expires_at),
@@ -137,6 +145,25 @@ export function createRefreshTokensAdapter(db: DrizzleDb) {
       return sqlToRefreshToken(result);
     },
 
+    async getByLookup(
+      tenant_id: string,
+      token_lookup: string,
+    ): Promise<RefreshToken | null> {
+      const result = await db
+        .select()
+        .from(refreshTokens)
+        .where(
+          and(
+            eq(refreshTokens.tenant_id, tenant_id),
+            eq(refreshTokens.token_lookup, token_lookup),
+          ),
+        )
+        .get();
+
+      if (!result) return null;
+      return sqlToRefreshToken(result);
+    },
+
     async update(
       tenant_id: string,
       id: string,
@@ -150,6 +177,16 @@ export function createRefreshTokensAdapter(db: DrizzleDb) {
       if (token.resource_servers !== undefined)
         updateData.resource_servers = JSON.stringify(token.resource_servers);
       if (token.rotating !== undefined) updateData.rotating = token.rotating;
+      if (token.token_lookup !== undefined)
+        updateData.token_lookup = token.token_lookup;
+      if (token.token_hash !== undefined)
+        updateData.token_hash = token.token_hash;
+      if (token.family_id !== undefined)
+        updateData.family_id = token.family_id;
+      if (token.rotated_to !== undefined)
+        updateData.rotated_to = token.rotated_to;
+      if (token.rotated_at !== undefined)
+        updateData.rotated_at_ts = isoToDbDate(token.rotated_at);
       if (token.expires_at !== undefined)
         updateData.expires_at_ts = isoToDbDate(token.expires_at);
       if (token.idle_expires_at !== undefined)
@@ -272,6 +309,26 @@ export function createRefreshTokensAdapter(db: DrizzleDb) {
           and(
             eq(refreshTokens.tenant_id, tenant_id),
             eq(refreshTokens.login_id, login_session_id),
+            isNull(refreshTokens.revoked_at_ts),
+          ),
+        )
+        .returning();
+
+      return results.length;
+    },
+
+    async revokeFamily(
+      tenant_id: string,
+      family_id: string,
+      revoked_at: string,
+    ): Promise<number> {
+      const results = await db
+        .update(refreshTokens)
+        .set({ revoked_at_ts: isoToDbDate(revoked_at) })
+        .where(
+          and(
+            eq(refreshTokens.tenant_id, tenant_id),
+            eq(refreshTokens.family_id, family_id),
             isNull(refreshTokens.revoked_at_ts),
           ),
         )

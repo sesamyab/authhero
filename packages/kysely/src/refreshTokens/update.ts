@@ -20,6 +20,7 @@ export function update(db: Kysely<Database>) {
       idle_expires_at,
       last_exchanged_at,
       revoked_at,
+      rotated_at,
       device,
       resource_servers,
       rotating,
@@ -47,6 +48,8 @@ export function update(db: Kysely<Database>) {
           : undefined,
       revoked_at_ts:
         revoked_at !== undefined ? isoToDbDate(revoked_at) : undefined,
+      rotated_at_ts:
+        rotated_at !== undefined ? isoToDbDate(rotated_at) : undefined,
     };
 
     const bump = options?.loginSessionBump;

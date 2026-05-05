@@ -7,7 +7,6 @@ import { computeCodeChallenge } from "../utils/crypto";
 import { safeCompare } from "../utils/safe-compare";
 import {
   AuthorizationResponseMode,
-  RefreshToken,
   TokenResponse,
   LogTypes,
 } from "@authhero/adapter-interfaces";
@@ -225,19 +224,20 @@ export async function authorizationCodeGrantUser(
 
   await ctx.env.data.codes.used(client.tenant.id, params.code);
 
-  let refreshToken: RefreshToken | undefined;
+  let refreshTokenWire: string | undefined;
   if (
     loginSession.session_id &&
     loginSession.authParams.scope?.split(" ").includes("offline_access")
   ) {
     // If the offline_access scope is requested, we need to create a refresh token
-    refreshToken = await createRefreshToken(ctx, {
+    const created = await createRefreshToken(ctx, {
       user,
       client,
       login_id: loginSession.id,
       scope: loginSession.authParams.scope,
       audience: loginSession.authParams.audience,
     });
+    refreshTokenWire = created.wireToken;
   }
 
   // Fetch organization data if organization ID is provided in the login session
@@ -286,7 +286,7 @@ export async function authorizationCodeGrantUser(
     client,
     loginSession,
     session_id: loginSession.session_id,
-    refresh_token: refreshToken?.id,
+    refresh_token: refreshTokenWire,
     organization,
     auth_time,
     authParams: {

@@ -177,9 +177,31 @@ export const clientInsertSchema = z.object({
     description: "Initiate login uri, must be https",
   }),
   native_social_login: z.record(z.any()).default({}).optional(),
-  refresh_token: z.record(z.any()).default({}).optional().openapi({
-    description: "Refresh token configuration",
-  }),
+  refresh_token: z
+    .object({
+      rotation_type: z
+        .enum(["rotating", "non-rotating"])
+        .optional()
+        .openapi({
+          description:
+            "Whether refresh tokens for this client are rotated on every exchange (Auth0 'rotating' behavior) or kept stable (legacy non-rotating). Defaults to 'non-rotating' when unset.",
+        }),
+      leeway: z
+        .number()
+        .int()
+        .min(0)
+        .max(600)
+        .optional()
+        .openapi({
+          description:
+            "Seconds after a parent token's first rotation during which presenting it again still mints a fresh sibling child instead of triggering reuse-detection. Defaults to 30s when unset.",
+        }),
+    })
+    .default({})
+    .optional()
+    .openapi({
+      description: "Refresh token configuration",
+    }),
   default_organization: z.record(z.any()).default({}).optional().openapi({
     description: "Defines the default Organization ID and flows",
   }),

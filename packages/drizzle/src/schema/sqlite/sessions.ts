@@ -38,16 +38,21 @@ export const sessions = sqliteTable(
 export const refreshTokens = sqliteTable(
   "refresh_tokens",
   {
-    id: text("id", { length: 21 }).notNull(),
+    id: text("id", { length: 26 }).notNull(),
     tenant_id: text("tenant_id", { length: 191 })
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     client_id: text("client_id", { length: 191 }).notNull(),
-    login_id: text("login_id", { length: 21 }).notNull(),
+    login_id: text("login_id", { length: 26 }).notNull(),
     user_id: text("user_id", { length: 255 }),
     resource_servers: text("resource_servers").notNull(),
     device: text("device").notNull(),
     rotating: integer("rotating", { mode: "boolean" }).notNull(),
+    token_lookup: text("token_lookup", { length: 16 }),
+    token_hash: text("token_hash", { length: 64 }),
+    family_id: text("family_id", { length: 26 }),
+    rotated_to: text("rotated_to", { length: 26 }),
+    rotated_at_ts: integer("rotated_at_ts"),
     created_at_ts: integer("created_at_ts").notNull(),
     expires_at_ts: integer("expires_at_ts"),
     idle_expires_at_ts: integer("idle_expires_at_ts"),
@@ -62,6 +67,11 @@ export const refreshTokens = sqliteTable(
     index("idx_refresh_tokens_user_id").on(table.tenant_id, table.user_id),
     index("idx_refresh_tokens_login_id").on(table.login_id),
     index("idx_refresh_tokens_expires_at_ts").on(table.expires_at_ts),
+    index("idx_refresh_tokens_token_lookup").on(
+      table.tenant_id,
+      table.token_lookup,
+    ),
+    index("idx_refresh_tokens_family_id").on(table.tenant_id, table.family_id),
   ],
 );
 

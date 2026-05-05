@@ -89,6 +89,15 @@ export const refreshTokensRoutes = new OpenAPIHono<{
     async (ctx) => {
       const { id } = ctx.req.valid("param");
 
+      // Resolve the row first so we know its family. Removing a refresh token
+      // via the admin API also revokes any sibling/descendant tokens in the
+      // same rotation chain — matches the user-stated expectation that
+      // "revoke" should torch the entire family.
+      const target = await ctx.env.data.refreshTokens.get(
+        ctx.var.tenant_id,
+        id,
+      );
+
       const result = await ctx.env.data.refreshTokens.remove(
         ctx.var.tenant_id,
         id,
@@ -97,6 +106,15 @@ export const refreshTokensRoutes = new OpenAPIHono<{
         throw new HTTPException(404, {
           message: "Session not found",
         });
+      }
+
+      const familyId = target?.family_id ?? target?.id;
+      if (familyId) {
+        await ctx.env.data.refreshTokens.revokeFamily(
+          ctx.var.tenant_id,
+          familyId,
+          new Date().toISOString(),
+        );
       }
 
       await logMessage(ctx, ctx.var.tenant_id, {

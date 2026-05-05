@@ -23,6 +23,15 @@ export interface RefreshTokensAdapter {
     refresh_token: RefreshTokenInsert,
   ) => Promise<RefreshToken>;
   get: (tenant_id: string, id: string) => Promise<RefreshToken | null>;
+  /**
+   * Look up a refresh token by its plaintext `token_lookup` slice (extracted
+   * from the wire format `rt_<lookup>.<secret>`). Returns null if no row
+   * matches. Callers must verify the secret hash before trusting the row.
+   */
+  getByLookup: (
+    tenant_id: string,
+    token_lookup: string,
+  ) => Promise<RefreshToken | null>;
   list(
     tenant_id: string,
     params?: ListParams,
@@ -37,6 +46,16 @@ export interface RefreshTokensAdapter {
   revokeByLoginSession: (
     tenant_id: string,
     login_session_id: string,
+    revoked_at: string,
+  ) => Promise<number>;
+  /**
+   * Soft-revoke every refresh token that shares `family_id` and isn't already
+   * revoked. Used for reuse detection (entire rotation chain torched) and for
+   * admin revocations that should propagate to descendants.
+   */
+  revokeFamily: (
+    tenant_id: string,
+    family_id: string,
     revoked_at: string,
   ) => Promise<number>;
 }
