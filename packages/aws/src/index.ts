@@ -34,6 +34,7 @@ import { createRolePermissionsAdapter } from "./adapters/rolePermissions";
 import { createUserPermissionsAdapter } from "./adapters/userPermissions";
 import { createUserRolesAdapter } from "./adapters/userRoles";
 import { createOrganizationsAdapter } from "./adapters/organizations";
+import { createOrganizationConnectionsAdapter } from "./adapters/organizationConnections";
 import { createUserOrganizationsAdapter } from "./adapters/userOrganizations";
 import { createInvitesAdapter } from "./adapters/invites";
 import { createCustomTextAdapter } from "./adapters/customText";
@@ -92,6 +93,7 @@ export default function createAdapters(
     logs: createLogsAdapter(ctx),
     authenticationMethods: createAuthenticationMethodsAdapter(ctx),
     organizations: createOrganizationsAdapter(ctx),
+    organizationConnections: createOrganizationConnectionsAdapter(ctx),
     passwords: createPasswordsAdapter(ctx),
     promptSettings: createPromptSettingsAdapter(ctx),
     refreshTokens: createRefreshTokensAdapter(ctx),
@@ -159,6 +161,7 @@ export { createRolePermissionsAdapter } from "./adapters/rolePermissions";
 export { createUserPermissionsAdapter } from "./adapters/userPermissions";
 export { createUserRolesAdapter } from "./adapters/userRoles";
 export { createOrganizationsAdapter } from "./adapters/organizations";
+export { createOrganizationConnectionsAdapter } from "./adapters/organizationConnections";
 export { createUserOrganizationsAdapter } from "./adapters/userOrganizations";
 export { createInvitesAdapter } from "./adapters/invites";
 export { createFlowsAdapter } from "./adapters/flows";

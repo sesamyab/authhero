@@ -2,8 +2,9 @@ import { z } from "@hono/zod-openapi";
 import { nanoid } from "nanoid";
 
 export const clientInsertSchema = z.object({
-  client_id: z.string().openapi({
-    description: "ID of this client.",
+  client_id: z.string().optional().openapi({
+    description:
+      "ID of this client. Generated server-side if omitted (Auth0 behavior).",
   }),
   name: z.string().min(1).openapi({
     description:
@@ -308,6 +309,9 @@ export const clientSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   ...clientInsertSchema.shape,
+  // Insert allows omitting (server-generated to match Auth0). The read schema
+  // always has it — the row in storage is non-null.
+  client_id: z.string(),
 });
 
 export type Client = z.infer<typeof clientSchema>;

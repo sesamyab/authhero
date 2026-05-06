@@ -351,7 +351,8 @@ describe("Entity Hooks", () => {
         },
       );
 
-      expect(assignResponse.status).toBe(201);
+      // Auth0-compatible POST /roles/{id}/permissions returns 204 No Content.
+      expect(assignResponse.status).toBe(204);
 
       // Verify beforeAssign was called
       expect(beforeAssignMock).toHaveBeenCalledTimes(1);

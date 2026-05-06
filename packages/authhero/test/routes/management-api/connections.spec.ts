@@ -268,7 +268,8 @@ describe("connections", () => {
       },
     );
 
-    expect(patchClientsResponse.status).toBe(200);
+    // Auth0 returns 204 No Content for PATCH /connections/{id}/clients.
+    expect(patchClientsResponse.status).toBe(204);
 
     // GET /connections/:id/clients - should now have two clients
     const getClientsResponse2 = await managementClient.connections[":id"][
@@ -318,7 +319,7 @@ describe("connections", () => {
       },
     );
 
-    expect(patchClientsResponse2.status).toBe(200);
+    expect(patchClientsResponse2.status).toBe(204);
 
     // GET /connections/:id/clients - should now have only one client
     const getClientsResponse3 = await managementClient.connections[":id"][

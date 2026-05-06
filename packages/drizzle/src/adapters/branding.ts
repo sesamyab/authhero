@@ -44,14 +44,22 @@ export function createBrandingAdapter(db: DrizzleDb) {
     async set(tenant_id: string, data: Branding): Promise<void> {
       const { colors, font, ...rest } = data;
 
+      // Auth0 allows page_background to be either a hex string or a gradient
+      // object. Persist gradient fields only when an object is provided.
+      const pageBackground = colors?.page_background;
+      const gradient =
+        pageBackground && typeof pageBackground === "object"
+          ? pageBackground
+          : undefined;
+
       const values = {
         ...rest,
         tenant_id,
         colors_primary: colors?.primary,
-        colors_page_background_type: colors?.page_background?.type,
-        colors_page_background_start: colors?.page_background?.start,
-        colors_page_background_end: colors?.page_background?.end,
-        colors_page_background_angle_dev: colors?.page_background?.angle_deg,
+        colors_page_background_type: gradient?.type,
+        colors_page_background_start: gradient?.start,
+        colors_page_background_end: gradient?.end,
+        colors_page_background_angle_dev: gradient?.angle_deg,
         font_url: font?.url,
       };
 
@@ -63,11 +71,10 @@ export function createBrandingAdapter(db: DrizzleDb) {
           set: {
             ...rest,
             colors_primary: colors?.primary,
-            colors_page_background_type: colors?.page_background?.type,
-            colors_page_background_start: colors?.page_background?.start,
-            colors_page_background_end: colors?.page_background?.end,
-            colors_page_background_angle_dev:
-              colors?.page_background?.angle_deg,
+            colors_page_background_type: gradient?.type,
+            colors_page_background_start: gradient?.start,
+            colors_page_background_end: gradient?.end,
+            colors_page_background_angle_dev: gradient?.angle_deg,
             font_url: font?.url,
           },
         });

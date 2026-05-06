@@ -297,9 +297,10 @@ describe("roles", () => {
       },
     );
 
-    expect(addPermissionsResponse.status).toBe(201);
-    const addResult = await addPermissionsResponse.json();
-    expect(addResult.message).toBe("Permissions assigned successfully");
+    // Auth0 returns 204 No Content for POST /roles/{id}/permissions; we
+    // matched that contract so SDK clients (e.g. terraform-provider-auth0)
+    // don't try to decode an empty body.
+    expect(addPermissionsResponse.status).toBe(204);
 
     // --------------------------------------------
     // GET role permissions (should now have 2)

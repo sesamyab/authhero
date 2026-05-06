@@ -438,7 +438,7 @@ export const connectionRoutes = new OpenAPIHono<{
         });
       }
 
-      // Process each client update
+      // Process each client update; respond 204 to match Auth0's contract.
       for (const clientUpdate of body) {
         const client = await ctx.env.data.clients.get(
           ctx.var.tenant_id,
@@ -483,6 +483,6 @@ export const connectionRoutes = new OpenAPIHono<{
         targetId: id,
       });
 
-      return ctx.text("OK");
+      return ctx.body(null, 204);
     },
   );

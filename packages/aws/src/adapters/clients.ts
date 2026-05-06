@@ -7,6 +7,7 @@ import {
   ListParams,
   clientSchema,
 } from "@authhero/adapter-interfaces";
+import { nanoid } from "nanoid";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
 import { clientKeys, legacyClientKeys } from "../keys";
 import {
@@ -143,13 +144,15 @@ export function createClientsAdapter(ctx: DynamoDBContext): ClientsAdapter {
   return {
     async create(_tenantId: string, params: ClientInsert): Promise<Client> {
       const now = new Date().toISOString();
+      // Auth0 semantics: client_id is server-generated when omitted on insert.
+      const client_id = params.client_id ?? nanoid();
 
       const item: ClientItem = {
         PK: clientKeys.pk(_tenantId),
-        SK: clientKeys.sk(params.client_id),
+        SK: clientKeys.sk(client_id),
         entityType: "CLIENT",
         tenant_id: _tenantId,
-        client_id: params.client_id,
+        client_id,
         name: params.name,
         client_secret: params.client_secret,
         description: params.description,

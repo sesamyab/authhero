@@ -4,13 +4,18 @@ export const brandingSchema = z.object({
   colors: z
     .object({
       primary: z.string(),
+      // Auth0 supports either a hex color string ("#ffffff") or a gradient
+      // object. Match both shapes so SDK callers don't get rejected.
       page_background: z
-        .object({
-          type: z.string().optional(),
-          start: z.string().optional(),
-          end: z.string().optional(),
-          angle_deg: z.number().optional(),
-        })
+        .union([
+          z.string(),
+          z.object({
+            type: z.string().optional(),
+            start: z.string().optional(),
+            end: z.string().optional(),
+            angle_deg: z.number().optional(),
+          }),
+        ])
         .optional(),
     })
     .optional(),

@@ -83,6 +83,7 @@ export * from "./UserPermission";
 export * from "./UserRole";
 export * from "./Role";
 export * from "./Organization";
+export * from "./OrganizationConnection";
 export * from "./UserOrganization";
 export * from "./TenantSettings";
 export * from "./Stats";

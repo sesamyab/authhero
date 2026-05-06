@@ -373,6 +373,9 @@ export const sqlInviteSchema = z.object({
 
 const sqlClientSchema = z.object({
   ...clientSchema.shape,
+  // The DB column is NOT NULL even though the API insert schema makes it
+  // optional (server-generated). Override here so the row type is `string`.
+  client_id: z.string(),
   tenant_id: z.string(),
   // Convert boolean fields to integers for SQL storage
   global: z.number(),
@@ -476,6 +479,16 @@ export interface Database {
   user_roles: z.infer<typeof sqlUserRoleSchema>;
   roles: z.infer<typeof sqlRoleSchema>;
   organizations: z.infer<typeof sqlOrganizationSchema>;
+  organization_connections: {
+    tenant_id: string;
+    organization_id: string;
+    connection_id: string;
+    assign_membership_on_login: number;
+    show_as_button: number;
+    is_signup_enabled: number;
+    created_at: string;
+    updated_at: string;
+  };
   user_organizations: z.infer<typeof sqlUserOrganizationSchema>;
   invites: z.infer<typeof sqlInviteSchema>;
   universal_login_templates: z.infer<typeof sqlUniversalLoginTemplateSchema>;
