@@ -100,11 +100,19 @@ export const connectStartRoutes = new OpenAPIHono<{
       });
     }
 
-    // Anchor the login_session to any existing tenant client. The session
-    // is only used to carry consent state through login bounce; the anchor
-    // client_id is never traversed in an OAuth flow.
-    const { clients } = await ctx.env.data.clients.list(tenant_id);
-    const anchorClient = clients[0];
+    // Anchor the login_session to a tenant client. The session is only used
+    // to carry consent state through the login bounce; the anchor client_id
+    // is never traversed in an OAuth flow. Prefer the tenant's configured
+    // `default_client_id` (analogous to Auth0's Default App) so branding
+    // stays deterministic, and fall back to the first available client so a
+    // brand-new tenant can still bootstrap its first DCR integration.
+    let anchorClient = tenant.default_client_id
+      ? await ctx.env.data.clients.get(tenant_id, tenant.default_client_id)
+      : null;
+    if (!anchorClient) {
+      const { clients } = await ctx.env.data.clients.list(tenant_id);
+      anchorClient = clients[0] ?? null;
+    }
     if (!anchorClient) {
       throw new JSONHTTPException(400, {
         error: "invalid_request",

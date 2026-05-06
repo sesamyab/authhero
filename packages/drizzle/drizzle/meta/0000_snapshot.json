@@ -140,6 +140,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "default_client_id": {
+          "name": "default_client_id",
+          "type": "text(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "enabled_locales": {
           "name": "enabled_locales",
           "type": "text",

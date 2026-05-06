@@ -80,6 +80,8 @@ function buildWorkerScript(userCode: string): string {
   return `
 const TRIGGER_FN_NAMES = ${JSON.stringify(TRIGGER_FN_NAMES)};
 const API_SHAPES = ${JSON.stringify(API_SHAPES)};
+const MAX_LOG_ENTRIES = 50;
+const MAX_LOG_LENGTH = 500;
 
 function createRecordingApiProxy(triggerId) {
   const calls = [];
@@ -97,8 +99,29 @@ function createRecordingApiProxy(triggerId) {
   return { api, getCalls: () => calls.map(function(c) { return { method: c.method, args: [].concat(c.args) }; }) };
 }
 
-// Load user code in its own scope so it cannot access recording internals
-function loadUserExports() {
+function createCapturingConsole(logs) {
+  function format(args) {
+    return args.map(function(a) {
+      if (typeof a === "string") return a;
+      try { return JSON.stringify(a); } catch (e) { return String(a); }
+    }).join(" ").slice(0, MAX_LOG_LENGTH);
+  }
+  function push(level, args) {
+    if (logs.length >= MAX_LOG_ENTRIES) return;
+    logs.push({ level: level, message: format(args) });
+  }
+  return {
+    log: function() { push("log", [].slice.call(arguments)); },
+    info: function() { push("info", [].slice.call(arguments)); },
+    warn: function() { push("warn", [].slice.call(arguments)); },
+    error: function() { push("error", [].slice.call(arguments)); },
+    debug: function() { push("debug", [].slice.call(arguments)); },
+  };
+}
+
+// Load user code in its own scope so it cannot access recording internals.
+// The local \`console\` shadows the global so user code's console.* calls are captured.
+function loadUserExports(console) {
   const exports = {};
   ${userCode}
   return exports;
@@ -107,6 +130,7 @@ function loadUserExports() {
 export default {
   async fetch(request) {
     const start = Date.now();
+    const logs = [];
     try {
       const { event, triggerId } = await request.json();
       const fnName = TRIGGER_FN_NAMES[triggerId];
@@ -116,11 +140,13 @@ export default {
           error: "Unknown trigger: " + triggerId,
           durationMs: Date.now() - start,
           apiCalls: [],
+          logs: logs,
         });
       }
 
       const { api, getCalls } = createRecordingApiProxy(triggerId);
-      const exports = loadUserExports();
+      const capturedConsole = createCapturingConsole(logs);
+      const exports = loadUserExports(capturedConsole);
 
       if (typeof exports[fnName] !== "function") {
         return Response.json({
@@ -128,6 +154,7 @@ export default {
           error: "Expected export exports." + fnName + " not found",
           durationMs: Date.now() - start,
           apiCalls: [],
+          logs: logs,
         });
       }
 
@@ -137,6 +164,7 @@ export default {
         success: true,
         durationMs: Date.now() - start,
         apiCalls: getCalls(),
+        logs: logs,
       });
     } catch (err) {
       return Response.json({
@@ -144,6 +172,7 @@ export default {
         error: err instanceof Error ? err.message : String(err),
         durationMs: Date.now() - start,
         apiCalls: [],
+        logs: logs,
       });
     }
   },

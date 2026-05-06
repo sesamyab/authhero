@@ -202,6 +202,56 @@ describe("GET /connect/start", () => {
     expect(response.status).toBe(400);
   });
 
+  it("uses tenant.default_client_id as the anchor when set", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await env.data.clients.create("tenantId", {
+      client_id: "preferredAnchor",
+      client_secret: "s",
+      name: "Preferred Anchor",
+      callbacks: [],
+      allowed_logout_urls: [],
+      web_origins: [],
+    });
+    await env.data.tenants.update("tenantId", {
+      default_client_id: "preferredAnchor",
+    });
+
+    const response = await oauthApp.request(
+      `/connect/start?${VALID_QS}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(302);
+    const stateId = new URL(
+      response.headers.get("location")!,
+      "http://localhost",
+    ).searchParams.get("state");
+    const session = await env.data.loginSessions.get("tenantId", stateId!);
+    expect(session!.authParams.client_id).toBe("preferredAnchor");
+  });
+
+  it("falls back to the first client when default_client_id is unset or stale", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await env.data.tenants.update("tenantId", {
+      default_client_id: "doesNotExist",
+    });
+
+    const response = await oauthApp.request(
+      `/connect/start?${VALID_QS}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(302);
+    const stateId = new URL(
+      response.headers.get("location")!,
+      "http://localhost",
+    ).searchParams.get("state");
+    const session = await env.data.loginSessions.get("tenantId", stateId!);
+    expect(session!.authParams.client_id).toBe("clientId");
+  });
+
   it("on valid input: 302s to /u2/connect/start with a fresh login_session id and stores connect data in state_data", async () => {
     const { oauthApp, env } = await getTestServer();
     await enableConnectFlow(env);

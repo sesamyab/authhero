@@ -2,6 +2,18 @@ import { Kysely } from "kysely";
 import { ActionUpdate } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 
+type StoredSecret = { name: string; value?: string };
+
+function parseStoredSecrets(raw: string | null | undefined): StoredSecret[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function update(db: Kysely<Database>) {
   return async (
     tenant_id: string,
@@ -22,7 +34,24 @@ export function update(db: Kysely<Database>) {
       sqlValues.runtime = action.runtime;
     }
     if (action.secrets !== undefined) {
-      sqlValues.secrets = JSON.stringify(action.secrets);
+      // Merge: an incoming secret without `value` preserves the existing value
+      // for that name. Lets PATCH callers (e.g., admin UI) round-trip the
+      // masked secret list without overwriting stored values.
+      const existingRow = await db
+        .selectFrom("actions")
+        .where("actions.id", "=", action_id)
+        .where("actions.tenant_id", "=", tenant_id)
+        .select("secrets")
+        .executeTakeFirst();
+      const existingByName = new Map(
+        parseStoredSecrets(existingRow?.secrets).map((s) => [s.name, s]),
+      );
+      const merged = action.secrets.map((s) =>
+        s.value === undefined
+          ? { name: s.name, value: existingByName.get(s.name)?.value }
+          : s,
+      );
+      sqlValues.secrets = JSON.stringify(merged);
     }
     if (action.dependencies !== undefined) {
       sqlValues.dependencies = JSON.stringify(action.dependencies);

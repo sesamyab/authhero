@@ -7,6 +7,7 @@ import {
   AuthorizationResponseMode,
   AuthorizationResponseType,
   CodeChallengeMethod,
+  LoginSessionState,
   Strategy,
   tokenResponseSchema,
 } from "@authhero/adapter-interfaces";
@@ -178,15 +179,11 @@ export const authorizeRoutes = new OpenAPIHono<{
       }
 
       // Merge: spread request params first, then query params override
-      const {
-        client_id,
-        vendor_id,
+      let {
         redirect_uri,
         scope,
-        state,
         audience,
         nonce,
-        connection,
         response_type,
         response_mode,
         code_challenge,
@@ -194,12 +191,18 @@ export const authorizeRoutes = new OpenAPIHono<{
         prompt,
         max_age,
         acr_values,
-        login_ticket,
-        realm,
-        auth0Client,
         login_hint,
         ui_locales,
         organization,
+      } = { ...requestParams, ...queryParams };
+      const {
+        client_id,
+        vendor_id,
+        state,
+        connection,
+        login_ticket,
+        realm,
+        auth0Client,
         screen_hint,
       } = { ...requestParams, ...queryParams };
 
@@ -208,6 +211,41 @@ export const authorizeRoutes = new OpenAPIHono<{
       const client = await getEnrichedClient(env, client_id);
       ctx.set("client_id", client.client_id);
       setTenantId(ctx, client.tenant.id);
+
+      // When a `state` param matches a non-terminal login session, hydrate
+      // any params the caller omitted from the session's stored authParams.
+      // This makes `/authorize?connection=X&state=Y` work for social-login
+      // redirects from the universal-login widget, which only reconstructs
+      // params it has on hand (Auth0 parity).
+      if (state) {
+        const existingSession = await env.data.loginSessions.get(
+          client.tenant.id,
+          state,
+        );
+        if (
+          existingSession &&
+          existingSession.state !== LoginSessionState.COMPLETED &&
+          existingSession.state !== LoginSessionState.FAILED &&
+          existingSession.state !== LoginSessionState.EXPIRED
+        ) {
+          const stored = existingSession.authParams;
+          redirect_uri = redirect_uri ?? stored.redirect_uri;
+          scope = scope ?? stored.scope;
+          audience = audience ?? stored.audience;
+          nonce = nonce ?? stored.nonce;
+          response_type = response_type ?? stored.response_type;
+          response_mode = response_mode ?? stored.response_mode;
+          code_challenge = code_challenge ?? stored.code_challenge;
+          code_challenge_method =
+            code_challenge_method ?? stored.code_challenge_method;
+          prompt = prompt ?? stored.prompt;
+          max_age = max_age ?? stored.max_age?.toString();
+          acr_values = acr_values ?? stored.acr_values;
+          login_hint = login_hint ?? stored.username;
+          ui_locales = ui_locales ?? stored.ui_locales;
+          organization = organization ?? stored.organization;
+        }
+      }
 
       // Sanitize redirect_uri: only remove fragment per RFC 6749 section 3.1.2
       // Note: We preserve the URL exactly as received (including trailing slashes)

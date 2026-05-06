@@ -29,6 +29,7 @@ export function ActionCreate() {
           ? [{ id: data.trigger_id }]
           : undefined,
         trigger_id: undefined,
+        secrets: data.secrets?.filter((s: any) => s?.name),
       })}
     >
       <SimpleForm>

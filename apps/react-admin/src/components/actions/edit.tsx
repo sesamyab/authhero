@@ -30,6 +30,8 @@ const triggerChoices = [
   { id: "post-user-registration", name: "Post User Registration" },
 ];
 
+const SECRET_PLACEHOLDER = "******";
+
 function DeployButton() {
   const record = useRecordContext();
   const notify = useNotify();
@@ -76,6 +78,16 @@ function ActionToolbar() {
 export function ActionEdit() {
   return (
     <Edit
+      queryOptions={{
+        select: (data: any) => ({
+          ...data,
+          trigger_id: data.supported_triggers?.[0]?.id,
+          secrets: data.secrets?.map((s: any) => ({
+            name: s.name,
+            value: SECRET_PLACEHOLDER,
+          })),
+        }),
+      }}
       transform={(data: any) => {
         const {
           id,
@@ -92,6 +104,13 @@ export function ActionEdit() {
             ? [{ id: data.trigger_id }]
             : rest.supported_triggers,
           trigger_id: undefined,
+          secrets: rest.secrets
+            ?.filter((s: any) => s?.name)
+            .map((s: any) =>
+              s.value === SECRET_PLACEHOLDER
+                ? { name: s.name }
+                : { name: s.name, value: s.value },
+            ),
         };
       }}
     >

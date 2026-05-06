@@ -20,6 +20,7 @@ export const tenants = sqliteTable("tenants", {
   ephemeral_session_lifetime: integer("ephemeral_session_lifetime"),
   idle_ephemeral_session_lifetime: integer("idle_ephemeral_session_lifetime"),
   default_redirection_uri: text("default_redirection_uri"),
+  default_client_id: text("default_client_id", { length: 255 }),
   enabled_locales: text("enabled_locales"),
   default_directory: text("default_directory", { length: 255 }),
   error_page: text("error_page"),

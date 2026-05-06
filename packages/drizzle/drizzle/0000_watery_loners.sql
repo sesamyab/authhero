@@ -18,6 +18,7 @@ CREATE TABLE `tenants` (
 	`ephemeral_session_lifetime` integer,
 	`idle_ephemeral_session_lifetime` integer,
 	`default_redirection_uri` text,
+	`default_client_id` text(255),
 	`enabled_locales` text,
 	`default_directory` text(255),
 	`error_page` text,
