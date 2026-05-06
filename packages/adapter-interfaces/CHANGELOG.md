@@ -1,5 +1,33 @@
 # @authhero/adapter-interfaces
 
+## 1.12.0
+
+### Minor Changes
+
+- 32aacc6: Action secrets PATCH now preserves existing values when an incoming secret omits its `value` (matched by `name`). The `value` field is optional on writes so admin UIs can round-trip a masked secrets list without overwriting stored values.
+- a4e29bd: Add a `RateLimitAdapter` interface and an opt-in Cloudflare implementation
+  backed by the Workers Rate Limiter binding. The cloudflare adapter accepts
+  `rateLimitBindings` (per-scope: `pre-login`, `pre-user-registration`,
+  `brute-force`) and returns a `rateLimit` adapter when at least one binding
+  is configured. Missing bindings or thrown errors fail open so a misconfigured
+  deploy never locks users out.
+
+  The password grant now consults `data.rateLimit?.consume("pre-login", ...)`
+  keyed by `${tenantId}:${ip}` when the tenant has
+  `suspicious_ip_throttling.enabled` and the IP is not in the allowlist. The
+  Workers Rate Limiter only supports 10s/60s windows, so the configured
+  `max_attempts` is intentionally not honored — see the Durable Object
+  follow-up note in `packages/cloudflare/src/rate-limit/index.ts` for the
+  plan to support tenant-tunable thresholds.
+
+- 32aacc6: Capture `console.*` output from dynamic code hooks and emit a log entry for every execution.
+  - Added `SUCCESS_HOOK` (`"sh"`) log type and a new `CodeExecutionLog` shape on `CodeExecutionResult.logs`.
+  - The Cloudflare and Local executors now shadow `console` inside the sandbox and return up to 50 captured entries (each truncated to 500 chars) per execution.
+  - `handleCodeHook` now writes a `SUCCESS_HOOK` log on success and a `FAILED_HOOK` log on failure, with `hook_id`, `code_id`, `trigger_id`, `duration_ms`, recorded `api_calls`, and the captured `logs` array on the log's `details` payload — surfacing dynamic-action execution in the tenant log feed for debugging.
+
+- 6e5762c: Add `theme.page_background.logo_placement` (`widget` | `chip` | `none`) to control where the tenant logo renders on the universal-login page. Defaults to `widget` (the widget's own internal header). When set to `chip` or `none`, the widget's internal logo is suppressed via `theme.widget.logo_position = "none"` so there's no duplicate.
+- 32aacc6: Add `default_client_id` to the tenant schema. `/connect/start` now prefers this client as the login_session anchor for tenant-level DCR consent flows, falling back to the first available client so a brand-new tenant can still bootstrap its first integration. Roughly analogous to Auth0's "Default App" / Global Client.
+
 ## 1.11.0
 
 ### Minor Changes

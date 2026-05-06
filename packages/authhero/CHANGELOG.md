@@ -1,5 +1,53 @@
 # authhero
 
+## 4.110.0
+
+### Minor Changes
+
+- a4e29bd: Add a `RateLimitAdapter` interface and an opt-in Cloudflare implementation
+  backed by the Workers Rate Limiter binding. The cloudflare adapter accepts
+  `rateLimitBindings` (per-scope: `pre-login`, `pre-user-registration`,
+  `brute-force`) and returns a `rateLimit` adapter when at least one binding
+  is configured. Missing bindings or thrown errors fail open so a misconfigured
+  deploy never locks users out.
+
+  The password grant now consults `data.rateLimit?.consume("pre-login", ...)`
+  keyed by `${tenantId}:${ip}` when the tenant has
+  `suspicious_ip_throttling.enabled` and the IP is not in the allowlist. The
+  Workers Rate Limiter only supports 10s/60s windows, so the configured
+  `max_attempts` is intentionally not honored — see the Durable Object
+  follow-up note in `packages/cloudflare/src/rate-limit/index.ts` for the
+  plan to support tenant-tunable thresholds.
+
+- 32aacc6: Capture `console.*` output from dynamic code hooks and emit a log entry for every execution.
+  - Added `SUCCESS_HOOK` (`"sh"`) log type and a new `CodeExecutionLog` shape on `CodeExecutionResult.logs`.
+  - The Cloudflare and Local executors now shadow `console` inside the sandbox and return up to 50 captured entries (each truncated to 500 chars) per execution.
+  - `handleCodeHook` now writes a `SUCCESS_HOOK` log on success and a `FAILED_HOOK` log on failure, with `hook_id`, `code_id`, `trigger_id`, `duration_ms`, recorded `api_calls`, and the captured `logs` array on the log's `details` payload — surfacing dynamic-action execution in the tenant log feed for debugging.
+
+- 6e5762c: Add `theme.page_background.logo_placement` (`widget` | `chip` | `none`) to control where the tenant logo renders on the universal-login page. Defaults to `widget` (the widget's own internal header). When set to `chip` or `none`, the widget's internal logo is suppressed via `theme.widget.logo_position = "none"` so there's no duplicate.
+- 3c41bac: Provision a `client_grants` row alongside the client when `audience` (and optionally `scope`) are passed to `POST /oidc/register`. The DCR endpoint now accepts an `audience` field (RFC 7591 extension), validates it against the tenant's resource servers, validates each scope is defined on that resource server, and creates the grant inside the same transaction as the client. `DELETE /oidc/register/:client_id` removes the client's grants alongside the soft-delete.
+
+  The `/connect/start` consent flow accepts the same `audience` query param, validates it up front, surfaces the resource server's name on the consent screen ("For API: <name>"), and pre-binds `audience` into the IAT constraints so a user-initiated DCR call cannot widen what was consented to. This makes a fully self-service M2M client registration possible: the user clicks Connect → DCR creates client + grant → `client_credentials` at `/oauth/token` mints an access token with the granted scopes.
+
+  `scope` without `audience` is now rejected at both `/connect/start` and `POST /oidc/register` (previously the scope round-tripped as metadata but produced no working permissions).
+
+- 32aacc6: Enforce `client.grant_types` at `POST /oauth/token`. When a client has a non-empty `grant_types` list, requests using a grant type not in that list are rejected with `400 unauthorized_client` (RFC 6749 §5.2). Clients with an empty or undefined `grant_types` continue to work as before, so this is a back-compat opt-in: set the field on a client to start enforcing.
+
+### Patch Changes
+
+- 32aacc6: Fix `Missing required parameter: response_type` when the universal-login widget redirects to `/authorize?connection=X&state=Y` for social login.
+
+  When `state` matches a non-terminal `loginSession`, `/authorize` now hydrates missing OAuth params (`response_type`, `redirect_uri`, `scope`, `audience`, `nonce`, `response_mode`, `code_challenge`, `code_challenge_method`, `prompt`, `max_age`, `acr_values`, `login_hint`, `ui_locales`, `organization`) from the session's stored `authParams` before validating. Query params still take precedence — only missing values are filled in. This matches Auth0's behavior of treating `state` as sufficient to identify an in-progress flow.
+
+- 32aacc6: Add `default_client_id` to the tenant schema. `/connect/start` now prefers this client as the login_session anchor for tenant-level DCR consent flows, falling back to the first available client so a brand-new tenant can still bootstrap its first integration. Roughly analogous to Auth0's "Default App" / Global Client.
+- Updated dependencies [32aacc6]
+- Updated dependencies [a4e29bd]
+- Updated dependencies [32aacc6]
+- Updated dependencies [6e5762c]
+- Updated dependencies [32aacc6]
+  - @authhero/adapter-interfaces@1.12.0
+  - @authhero/widget@0.32.12
+
 ## 4.109.0
 
 ### Minor Changes

@@ -1,5 +1,17 @@
 # @authhero/drizzle
 
+## 0.44.1
+
+### Patch Changes
+
+- 32aacc6: Add `default_client_id` to the tenant schema. `/connect/start` now prefers this client as the login_session anchor for tenant-level DCR consent flows, falling back to the first available client so a brand-new tenant can still bootstrap its first integration. Roughly analogous to Auth0's "Default App" / Global Client.
+- Updated dependencies [32aacc6]
+- Updated dependencies [a4e29bd]
+- Updated dependencies [32aacc6]
+- Updated dependencies [6e5762c]
+- Updated dependencies [32aacc6]
+  - @authhero/adapter-interfaces@1.12.0
+
 ## 0.44.0
 
 ### Minor Changes
