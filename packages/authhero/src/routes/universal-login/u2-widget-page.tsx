@@ -4,8 +4,10 @@
  * v3 — Logo inside widget by default + adaptive chip chrome.
  *
  * Changes vs. v2:
- *  - Logo now renders INSIDE the widget card by default (Auth0-style).
- *    Set `logoPosition="chip"` to keep the previous floating-chip behavior.
+ *  - Logo renders INSIDE the widget card by default (Auth0-style). The
+ *    widget's own shadow DOM emits the logo from `branding.logo_url`, so
+ *    the page doesn't add an outer-container duplicate. Set
+ *    `logoPosition="chip"` to render the floating-chip variant instead.
  *  - Chips adapt to dark/light page mode (translucent dark vs. translucent
  *    white). Tokens are CSS variables flipped via a `data-mode` attribute,
  *    so a single ruleset handles both directions.
@@ -18,7 +20,7 @@
  *   │ [logo*]                 [settings]  │   *only when logoPosition=chip
  *   │                                     │
  *   │            ┌──────────┐             │
- *   │            │ [logo]   │             │   <- default position
+ *   │            │ [logo]   │             │   <- widget's own header (default)
  *   │            │  widget  │             │
  *   │            └──────────┘             │
  *   │                                     │
@@ -45,7 +47,7 @@ import { createTranslation, getLocaleDisplayName } from "../../i18n";
 // ---------------------------------------------------------------------------
 
 export type DarkModePreference = "auto" | "light" | "dark";
-export type LogoPosition = "widget" | "chip";
+export type LogoPosition = "widget" | "chip" | "none";
 
 export type WidgetPageProps = {
   widgetHtml: string;
@@ -81,13 +83,15 @@ export type WidgetPageProps = {
   termsAndConditionsUrl?: string;
   darkMode?: DarkModePreference;
   /**
-   * Where to render the tenant logo.
-   * - "widget" (default): inside the widget card, above the form. Matches
-   *   Auth0's Universal Login behavior — the logo is part of the branded
-   *   surface, not the page chrome.
-   * - "chip": floating pill in the top-left corner. Use when the logo
-   *   shouldn't compete with the form's primary action, or when the page
-   *   background is the brand canvas.
+   * Where to render the tenant logo on the page.
+   * - "widget" (default): inside the widget card, via the widget's own header.
+   * - "chip": floating pill in the top-left page corner. The widget's
+   *   internal logo should also be suppressed in this mode (callers use
+   *   `derivePageLogoPlacement` to clone the theme accordingly before SSR).
+   * - "none": no logo on the page or in the widget.
+   *
+   * If not provided, defaults to `theme.page_background.logo_placement`,
+   * falling back to "widget".
    */
   logoPosition?: LogoPosition;
   /** Optional inline script injected at page level (e.g. WebAuthn ceremony) */
@@ -266,35 +270,11 @@ function buildPageCss(opts: {
     }
     .widget-container { position: relative; z-index: 1; }
 
-    /* ============= IN-WIDGET LOGO =============
-       Default position. Renders above the form inside the widget card.
-       The widget's shadow DOM keeps its own --ah-color-* vars; we render
-       the logo OUTSIDE the widget but inside the .widget-container so it
-       sits above the widget chrome and inherits the page's color context. */
-    .ah-widget-logo {
-      display: flex; align-items: center; justify-content: center;
-      gap: 10px;
-      margin: 0 0 16px;
-      min-height: 32px;
-    }
-    .ah-widget-logo img {
-      display: block;
-      max-height: 40px;
-      max-width: 200px;
-      width: auto;
-      object-fit: contain;
-    }
-    .ah-widget-logo .ah-widget-logo-text {
-      font-family: 'Inter Tight', 'Inter', system-ui, sans-serif;
-      font-weight: 700;
-      font-size: 14px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--ah-color-header, #0f1115);
-    }
-    /* Position-driven visibility — only one logo renders at a time */
-    html[data-logo-position="chip"] .ah-widget-logo { display: none; }
-    html[data-logo-position="widget"] .ah-chip-logo { display: none; }
+    /* The "widget" logo position is rendered by the widget's own shadow DOM
+       (see authhero-widget.tsx). The page only renders a logo when the
+       caller opts into the chip variant. */
+    html[data-logo-position="widget"] .ah-chip-logo,
+    html[data-logo-position="none"] .ah-chip-logo { display: none; }
 
     /* ============= FLOATING CHIPS =============
        Self-contained pills positioned at page corners. Surface comes from
@@ -430,9 +410,11 @@ export function WidgetPage({
   availableLanguages,
   termsAndConditionsUrl,
   darkMode = "auto",
-  logoPosition = "widget",
+  logoPosition,
   extraScript,
 }: WidgetPageProps) {
+  const resolvedLogoPosition: LogoPosition =
+    logoPosition ?? theme?.page_background?.logo_placement ?? "widget";
   // ---- Build CSS variables from branding (widget-internal) ----
   const cssVariables: string[] = [];
   const primaryColor = sanitizeCssColor(branding?.colors?.primary);
@@ -544,20 +526,11 @@ export function WidgetPage({
   });
 
   // -------------------------------------------------------------------------
-  // Logo render helpers — same source of truth, two render targets.
-  // The CSS [data-logo-position] selectors hide whichever one isn't active,
-  // so SSR is deterministic and there's no flash on the client.
+  // Logo render helper — page-level chip variant only. The "widget" position
+  // is rendered by the widget's own shadow DOM from `branding.logo_url`, so
+  // the page doesn't emit a duplicate. The chip is hidden by CSS when
+  // logoPosition === "widget".
   // -------------------------------------------------------------------------
-
-  const inWidgetLogo = safeLogoUrl ? (
-    <div class="ah-widget-logo" data-ah-slot="widget-header">
-      <img src={safeLogoUrl} alt={clientName} />
-    </div>
-  ) : (
-    <div class="ah-widget-logo" data-ah-slot="widget-header">
-      <span class="ah-widget-logo-text">{clientName}</span>
-    </div>
-  );
 
   const logoChip = safeLogoUrl ? (
     <div class="ah-chip ah-chip-logo" data-ah-slot="top-left">
@@ -672,7 +645,7 @@ export function WidgetPage({
       class={htmlClass}
       data-mode={htmlDataMode}
       data-bg={hasBgImage ? "image" : "none"}
-      data-logo-position={logoPosition}
+      data-logo-position={resolvedLogoPosition}
     >
       <head>
         <meta charSet="UTF-8" />
@@ -689,17 +662,15 @@ export function WidgetPage({
       <body style={bodyStyle}>
         {hasBgImage && <div class="ah-bg-tint" aria-hidden="true" />}
 
-        {/* Widget container — wraps the in-widget logo + the widget itself.
-            CSS hides whichever logo isn't active for the chosen position. */}
+        {/* Widget container — the widget's own shadow DOM renders the logo
+            in its header for the default "widget" position. */}
         <div
           class="widget-container"
           data-authhero-widget-container
           data-screen={screenId}
           style={widgetContainerStyle}
-        >
-          {inWidgetLogo}
-          <div dangerouslySetInnerHTML={{ __html: widgetHtml }} />
-        </div>
+          dangerouslySetInnerHTML={{ __html: widgetHtml }}
+        />
 
         {extraScript && (
           <script dangerouslySetInnerHTML={{ __html: extraScript }} />
@@ -740,6 +711,35 @@ var h2=document.documentElement;if(!h2.classList.contains('ah-dark-mode')&&!h2.c
       </body>
     </html>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Page-logo placement helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads `theme.page_background.logo_placement` and returns the resolved
+ * page-level `logoPosition` plus a theme variant suitable for passing to
+ * the widget SSR. When placement is "chip" or "none" we override
+ * `theme.widget.logo_position = "none"` so the widget's internal header
+ * logo is suppressed — otherwise we'd render a duplicate (chip + widget
+ * header) or a logo when the caller asked for none.
+ *
+ * Callers should pass the returned `theme` to `JSON.stringify` for the
+ * widget's `theme` attribute, and forward `logoPosition` to `WidgetPage`.
+ */
+export function derivePageLogoPlacement<T extends { page_background?: { logo_placement?: LogoPosition }; widget?: { logo_position?: string } } | null | undefined>(
+  theme: T,
+): { logoPosition: LogoPosition; theme: T } {
+  const placement = theme?.page_background?.logo_placement ?? "widget";
+  if (placement === "widget" || !theme) {
+    return { logoPosition: placement, theme };
+  }
+  const adjusted = {
+    ...theme,
+    widget: { ...(theme.widget ?? {}), logo_position: "none" },
+  } as T;
+  return { logoPosition: placement, theme: adjusted };
 }
 
 // ---------------------------------------------------------------------------
@@ -828,11 +828,20 @@ export async function renderWidgetPageResponse(
     logoPosition?: LogoPosition;
   },
 ): Promise<Response> {
+  // When placement suppresses the widget's own logo, the SSR'd widget needs
+  // a theme with `widget.logo_position = "none"` — re-stringify if the
+  // caller didn't already do this transform.
+  const { logoPosition: derivedPosition, theme: themeForWidget } =
+    derivePageLogoPlacement(opts.theme);
+  const themeJsonForSsr =
+    themeForWidget !== opts.theme
+      ? JSON.stringify(themeForWidget)
+      : opts.themeJson;
   const widgetHtml = await renderWidgetSSR({
     screenId: opts.screenId,
     screenJson: opts.screenJson,
     brandingJson: opts.brandingJson,
-    themeJson: opts.themeJson,
+    themeJson: themeJsonForSsr,
     state: opts.state,
     authParamsJson: opts.authParamsJson,
   });
@@ -850,7 +859,7 @@ export async function renderWidgetPageResponse(
       availableLanguages={opts.availableLanguages}
       termsAndConditionsUrl={opts.termsAndConditionsUrl}
       darkMode={opts.darkMode}
-      logoPosition={opts.logoPosition}
+      logoPosition={opts.logoPosition ?? derivedPosition}
     />,
   );
 }

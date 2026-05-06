@@ -55,6 +55,15 @@ export const pageBackgroundSchema = z.object({
   background_color: z.string(),
   background_image_url: z.string(),
   page_layout: z.enum(["center", "left", "right"]),
+  /**
+   * Where the tenant logo renders on the page.
+   * - "widget" (default): inside the widget card via the widget's own header.
+   * - "chip": as a floating pill in the top-left page corner. The widget's
+   *   internal logo is suppressed when this is selected.
+   * - "none": no logo on the page or in the widget.
+   * Optional for backwards compatibility; absent values mean "widget".
+   */
+  logo_placement: z.enum(["widget", "chip", "none"]).optional(),
 });
 
 export const widgetSchema = z.object({
