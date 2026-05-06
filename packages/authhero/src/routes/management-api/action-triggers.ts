@@ -30,7 +30,7 @@ function toAuth0TriggerId(triggerId: string): string {
 // — accept that shape. Keep id/name fields for backwards-compatibility with
 // older callers.
 const bindingRefSchema = z.object({
-  type: z.enum(["binding_id", "action_id", "action_name"]).optional(),
+  type: z.enum(["action_id", "action_name"]).optional(),
   value: z.string().optional(),
   id: z.string().optional(),
   name: z.string().optional(),
