@@ -52,6 +52,8 @@ export type Bindings = {
   // Set via init({ poweredByLogo: ... })
   poweredByLogo?: {
     url: string;
+    // Optional dark-mode variant; falls back to `url` when omitted
+    darkUrl?: string;
     alt: string;
     href?: string;
     height?: number;

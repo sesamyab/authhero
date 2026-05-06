@@ -7,6 +7,7 @@ import {
   AuthParams,
   LoginSession,
   LogTypes,
+  RateLimitDecision,
   Strategy,
   StrategyType,
 } from "@authhero/adapter-interfaces";
@@ -55,6 +56,15 @@ async function recordFailedLogin(
   });
 }
 
+function isRateLimitDecision(value: unknown): value is RateLimitDecision {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "allowed" in value &&
+    typeof value.allowed === "boolean"
+  );
+}
+
 function getRecentFailedLogins(user: any): number[] {
   const appMetadata = user.app_metadata || {};
   const failedLogins = appMetadata.failed_logins || [];
@@ -76,6 +86,40 @@ export async function passwordGrant(
   ctx.set("username", username);
   if (!username) {
     throw new JSONHTTPException(400, { message: "Username is required" });
+  }
+
+  // Pre-login throttling: short-window IP-based guard backed by
+  // `data.rateLimit` (e.g. Cloudflare Workers Rate Limiter binding).
+  // Honors the tenant's `suspicious_ip_throttling.enabled` flag and
+  // allowlist; the binding's threshold is fixed at deploy time so the
+  // tenant-configured `max_attempts` is intentionally not consulted here.
+  const sip = client.tenant.attack_protection?.suspicious_ip_throttling;
+  const ip = ctx.var.ip;
+  const allowlisted = ip ? sip?.allowlist?.includes(ip) : false;
+  if (data.rateLimit && sip?.enabled && ip && !allowlisted) {
+    let decision: RateLimitDecision = { allowed: true };
+    try {
+      const result: unknown = await data.rateLimit.consume(
+        "pre-login",
+        `${client.tenant.id}:${ip}`,
+      );
+      if (isRateLimitDecision(result)) {
+        decision = result;
+      }
+    } catch (error) {
+      // Fail open: a misbehaving rate-limit adapter should never lock users out.
+      console.error("Pre-login rate limit consume failed:", error);
+    }
+    if (!decision.allowed) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_LOGIN,
+        description: "Rate limit exceeded for pre-login",
+      });
+      throw new AuthError(429, {
+        message: "Too many requests",
+        code: "TOO_MANY_REQUESTS",
+      });
+    }
   }
 
   const user = await getUserByProvider({

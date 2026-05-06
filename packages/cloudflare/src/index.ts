@@ -3,6 +3,7 @@ import {
   CacheAdapter,
   LogsDataAdapter,
   GeoAdapter,
+  RateLimitAdapter,
 } from "@authhero/adapter-interfaces";
 import { createCustomDomainsAdapter } from "./customDomains";
 import { createCloudflareCache } from "./cache";
@@ -16,12 +17,20 @@ import {
   type AnalyticsEngineDataset,
 } from "./analytics-engine-logs";
 import { createCloudflareGeoAdapter } from "./geo";
+import {
+  createCloudflareRateLimitAdapter,
+  type CloudflareRateLimitBinding,
+  type CloudflareRateLimitBindings,
+} from "./rate-limit";
 import { CloudflareConfig } from "./types/CloudflareConfig";
 
 // Re-export R2 SQL config type for convenience
 export type { R2SQLLogsAdapterConfig };
 // Re-export Analytics Engine config types for convenience
 export type { AnalyticsEngineLogsAdapterConfig, AnalyticsEngineDataset };
+// Re-export rate-limit types so consumers can type their wrangler bindings
+export type { CloudflareRateLimitBinding, CloudflareRateLimitBindings };
+export { createCloudflareRateLimitAdapter } from "./rate-limit";
 export type { CloudflareConfig };
 
 // Code executor for Workers for Platforms
@@ -43,6 +52,7 @@ export interface CloudflareAdapters {
   cache: CacheAdapter;
   logs?: LogsDataAdapter;
   geo?: GeoAdapter;
+  rateLimit?: RateLimitAdapter;
 }
 
 export default function createAdapters(
@@ -71,6 +81,13 @@ export default function createAdapters(
     adapters.logs = createAnalyticsEngineLogsAdapter(
       config.analyticsEngineLogs,
     );
+  }
+
+  // Rate limiter is opt-in: only create the adapter if at least one
+  // scope binding is configured. Missing bindings are not an error.
+  const rateLimit = createCloudflareRateLimitAdapter(config.rateLimitBindings);
+  if (rateLimit) {
+    adapters.rateLimit = rateLimit;
   }
 
   return adapters;

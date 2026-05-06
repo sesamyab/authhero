@@ -1,6 +1,7 @@
 import { CustomDomainsAdapter } from "@authhero/adapter-interfaces";
 import type { R2SQLLogsAdapterConfig } from "../r2-sql-logs";
 import type { AnalyticsEngineLogsAdapterConfig } from "../analytics-engine-logs";
+import type { CloudflareRateLimitBindings } from "../rate-limit";
 
 export interface CloudflareConfig {
   zoneId: string;
@@ -30,4 +31,11 @@ export interface CloudflareConfig {
    * Use this for low-latency log writes with Cloudflare Analytics Engine
    */
   analyticsEngineLogs?: AnalyticsEngineLogsAdapterConfig;
+  /**
+   * Cloudflare Workers Rate Limiter bindings, keyed by logical scope.
+   * Each binding's `limit` and `period` are baked in at deploy time; this
+   * adapter can't override them per tenant. Bindings are optional — any
+   * unconfigured scope is treated as permissive.
+   */
+  rateLimitBindings?: CloudflareRateLimitBindings;
 }

@@ -71,6 +71,7 @@ export type WidgetPageProps = {
   clientName: string;
   poweredByLogo?: {
     url: string;
+    darkUrl?: string;
     alt: string;
     href?: string;
     height?: number;

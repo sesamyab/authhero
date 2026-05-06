@@ -328,7 +328,11 @@ function HeadContent({
     .powered-by img {
       display: block;
     }
-    
+
+    .powered-by .powered-by-dark {
+      display: none;
+    }
+
     .page-footer {
       position: fixed;
       bottom: 16px;
@@ -425,6 +429,13 @@ function HeadContent({
       border-color: rgba(255, 255, 255, 0.3);
     }
 
+    html.ah-dark-mode .powered-by .powered-by-light {
+      display: none;
+    }
+    html.ah-dark-mode .powered-by .powered-by-dark {
+      display: block;
+    }
+
     /* Auto mode: follow system preference, unless explicitly set to light */
     @media (prefers-color-scheme: dark) {
       html:not(.ah-light-mode) body {
@@ -449,6 +460,12 @@ function HeadContent({
       html:not(.ah-light-mode) .page-footer .language-picker:hover,
       html:not(.ah-light-mode) .page-footer .dark-mode-toggle:hover {
         border-color: rgba(255, 255, 255, 0.3);
+      }
+      html:not(.ah-light-mode) .powered-by .powered-by-light {
+        display: none;
+      }
+      html:not(.ah-light-mode) .powered-by .powered-by-dark {
+        display: block;
       }
     }
 
@@ -525,6 +542,7 @@ type WidgetContentProps = {
   extraScript?: string;
   poweredByLogo?: {
     url: string;
+    darkUrl?: string;
     alt: string;
     href?: string;
     height?: number;
@@ -553,6 +571,9 @@ function WidgetContent({
   // Sanitize powered-by logo URLs
   const safePoweredByUrl = poweredByLogo?.url
     ? sanitizeUrl(poweredByLogo.url)
+    : null;
+  const safePoweredByDarkUrl = poweredByLogo?.darkUrl
+    ? sanitizeUrl(poweredByLogo.darkUrl)
     : null;
   const safePoweredByHref = poweredByLogo?.href
     ? sanitizeUrl(poweredByLogo.href)
@@ -590,25 +611,40 @@ function WidgetContent({
       )}
       {safePoweredByUrl && (
         <div class="powered-by">
-          {safePoweredByHref ? (
-            <a
-              href={safePoweredByHref}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <img
-                src={safePoweredByUrl}
-                alt={poweredByLogo?.alt || ""}
-                height={poweredByLogo?.height || 20}
-              />
-            </a>
-          ) : (
-            <img
-              src={safePoweredByUrl}
-              alt={poweredByLogo?.alt || ""}
-              height={poweredByLogo?.height || 20}
-            />
-          )}
+          {(() => {
+            const alt = poweredByLogo?.alt || "";
+            const height = poweredByLogo?.height || 20;
+            const imgs = safePoweredByDarkUrl ? (
+              <>
+                <img
+                  class="powered-by-light"
+                  src={safePoweredByUrl}
+                  alt={alt}
+                  height={height}
+                />
+                <img
+                  class="powered-by-dark"
+                  src={safePoweredByDarkUrl}
+                  alt=""
+                  aria-hidden="true"
+                  height={height}
+                />
+              </>
+            ) : (
+              <img src={safePoweredByUrl} alt={alt} height={height} />
+            );
+            return safePoweredByHref ? (
+              <a
+                href={safePoweredByHref}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {imgs}
+              </a>
+            ) : (
+              imgs
+            );
+          })()}
         </div>
       )}
     </div>
