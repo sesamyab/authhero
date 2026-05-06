@@ -5,6 +5,9 @@ export const jwksSchema = z.object({
     "RS256",
     "RS384",
     "RS512",
+    "PS256",
+    "PS384",
+    "PS512",
     "ES256",
     "ES384",
     "ES512",
@@ -12,18 +15,26 @@ export const jwksSchema = z.object({
     "HS384",
     "HS512",
   ]),
-  e: z.string(),
   kid: z.string(),
   kty: z.enum(["RSA", "EC", "oct"]),
-  n: z.string(),
+  use: z.enum(["sig", "enc"]).optional(),
+  // RSA-specific public-key members (RFC 7518 §6.3.1).
+  n: z.string().optional(),
+  e: z.string().optional(),
+  // EC-specific public-key members (RFC 7518 §6.2.1).
+  crv: z.string().optional(),
+  x: z.string().optional(),
+  y: z.string().optional(),
   x5t: z.string().optional(),
   x5c: z.array(z.string()).optional(),
-  use: z.enum(["sig", "enc"]).optional(),
 });
 
 export const jwksKeySchema = z.object({
   keys: z.array(jwksSchema),
 });
+
+export type Jwk = z.infer<typeof jwksSchema>;
+export type Jwks = z.infer<typeof jwksKeySchema>;
 
 export const openIDConfigurationSchema = z.object({
   issuer: z.string(),

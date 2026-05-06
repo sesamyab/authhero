@@ -1,31 +1,12 @@
 import { z } from "@hono/zod-openapi";
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { jwksSchema } from "@authhero/adapter-interfaces";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { decode, verify } from "hono/jwt";
 import { getJwksFromDatabase } from "./jwks";
 import { Bindings } from "../types";
-
-const JwksKeySchema = z.object({
-  alg: z.enum([
-    "RS256",
-    "RS384",
-    "RS512",
-    "ES256",
-    "ES384",
-    "ES512",
-    "HS256",
-    "HS384",
-    "HS512",
-  ]),
-  kty: z.enum(["RSA", "EC", "oct"]),
-  use: z.enum(["sig", "enc"]).optional(),
-  n: z.string(),
-  e: z.string(),
-  kid: z.string(),
-  x5t: z.string().optional(),
-  x5c: z.array(z.string()).optional(),
-});
+import { importParamsForJwk, SupportedAlg } from "./jwk-alg";
 
 export interface JwtPayload {
   sub: string;
@@ -55,7 +36,7 @@ async function getJwks(bindings: Bindings) {
 
       const responseBody = await response.json();
       const parsed = z
-        .object({ keys: z.array(JwksKeySchema) })
+        .object({ keys: z.array(jwksSchema) })
         .parse(responseBody);
 
       return parsed.keys;
@@ -70,12 +51,29 @@ async function getJwks(bindings: Bindings) {
   return await getJwksFromDatabase(bindings.data);
 }
 
+function toSupportedAlg(alg: unknown): SupportedAlg {
+  switch (alg) {
+    case "RS256":
+    case "RS384":
+    case "RS512":
+    case "ES256":
+    case "ES384":
+    case "ES512":
+      return alg;
+    default:
+      throw new JSONHTTPException(401, {
+        message: `Unsupported JWS alg: ${alg ?? "(missing)"}`,
+      });
+  }
+}
+
 export async function validateJwtToken(
   ctx: Context,
   token: string,
 ): Promise<JwtPayload> {
   try {
     const { header } = decode(token);
+    const alg = toSupportedAlg(header?.alg);
 
     const jwksKeys = await getJwks(ctx.env);
     const jwksKey = jwksKeys.find((key) => key.kid === header.kid);
@@ -84,15 +82,16 @@ export async function validateJwtToken(
       throw new JSONHTTPException(401, { message: "No matching kid found" });
     }
 
+    const importParams = importParamsForJwk(jwksKey, alg);
     const cryptoKey = await crypto.subtle.importKey(
       "jwk",
       jwksKey,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      importParams,
       false,
       ["verify"],
     );
 
-    const verifiedPayload = await verify(token, cryptoKey, "RS256");
+    const verifiedPayload = await verify(token, cryptoKey, alg);
 
     return verifiedPayload as unknown as JwtPayload;
   } catch (error) {
