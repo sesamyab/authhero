@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { testClient } from "hono/testing";
+import { parseJWT } from "oslo/jwt";
 import { getTestServer } from "../../helpers/test-server";
 import { mintRegistrationToken } from "../../../src/helpers/dcr/mint-token";
 import type { Bindings } from "../../../src/types";
@@ -505,6 +506,313 @@ describe("RFC 7592 client configuration endpoint", () => {
       env,
     );
     expect(after.status).toBe(401);
+  });
+});
+
+describe("POST /oidc/register — client_grants provisioning", () => {
+  async function seedSesamyApi(env: Bindings) {
+    await env.data.resourceServers.create("tenantId", {
+      name: "Sesamy API",
+      identifier: "https://api.sesamy.com",
+      scopes: [
+        { value: "paywalls:read" },
+        { value: "products:read" },
+        { value: "admin:write" },
+      ],
+    });
+  }
+
+  it("creates a client_grants row when audience and scope are pre-bound on the IAT", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await env.data.tenants.update("tenantId", {
+      flags: {
+        enable_dynamic_client_registration: true,
+        dcr_require_initial_access_token: true,
+      },
+    });
+    await seedSesamyApi(env);
+
+    const iat = await mintIat(env, {
+      sub: "email|userId",
+      constraints: {
+        audience: "https://api.sesamy.com",
+        scope: "paywalls:read products:read",
+        grant_types: ["client_credentials"],
+      },
+    });
+
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${iat}`,
+        },
+        body: JSON.stringify({
+          client_name: "Publisher Site",
+          token_endpoint_auth_method: "client_secret_basic",
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.scope).toBe("paywalls:read products:read");
+
+    const { client_grants } = await env.data.clientGrants.list("tenantId", {
+      q: `client_id:"${body.client_id}"`,
+    });
+    expect(client_grants).toHaveLength(1);
+    expect(client_grants[0].audience).toBe("https://api.sesamy.com");
+    expect(client_grants[0].scope).toEqual([
+      "paywalls:read",
+      "products:read",
+    ]);
+  });
+
+  it("creates a client_grants row when audience+scope come from the request body (open DCR)", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    await seedSesamyApi(env);
+
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "Open M2M",
+          grant_types: ["client_credentials"],
+          token_endpoint_auth_method: "client_secret_basic",
+          audience: "https://api.sesamy.com",
+          scope: "paywalls:read",
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    const { client_grants } = await env.data.clientGrants.list("tenantId", {
+      q: `client_id:"${body.client_id}"`,
+    });
+    expect(client_grants).toHaveLength(1);
+    expect(client_grants[0].scope).toEqual(["paywalls:read"]);
+  });
+
+  it("rejects scope without audience", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    await seedSesamyApi(env);
+
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "Bad",
+          grant_types: ["client_credentials"],
+          scope: "paywalls:read",
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_client_metadata");
+  });
+
+  it("rejects unknown audience", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "Bad",
+          grant_types: ["client_credentials"],
+          audience: "https://nope.example.com",
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_client_metadata");
+    expect(body.error_description).toMatch(/Unknown audience/);
+  });
+
+  it("rejects scope not defined on the resource server", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    await seedSesamyApi(env);
+
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "Bad",
+          grant_types: ["client_credentials"],
+          audience: "https://api.sesamy.com",
+          scope: "paywalls:read root:everything",
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_scope");
+  });
+
+  it("does not create a grant when audience is omitted", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "No grant",
+          redirect_uris: ["https://example.com/cb"],
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    const { client_grants } = await env.data.clientGrants.list("tenantId", {
+      q: `client_id:"${body.client_id}"`,
+    });
+    expect(client_grants).toHaveLength(0);
+  });
+
+  it("DELETE removes the client's grants alongside the soft-delete", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    await seedSesamyApi(env);
+
+    const reg = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "Will be deleted",
+          grant_types: ["client_credentials"],
+          token_endpoint_auth_method: "client_secret_basic",
+          audience: "https://api.sesamy.com",
+          scope: "paywalls:read",
+        }),
+      },
+      env,
+    );
+    expect(reg.status).toBe(201);
+    const created = await reg.json();
+    expect(
+      (
+        await env.data.clientGrants.list("tenantId", {
+          q: `client_id:"${created.client_id}"`,
+        })
+      ).client_grants,
+    ).toHaveLength(1);
+
+    const del = await oauthApp.request(
+      `/oidc/register/${created.client_id}`,
+      {
+        method: "DELETE",
+        headers: {
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${created.registration_access_token}`,
+        },
+      },
+      env,
+    );
+    expect(del.status).toBe(204);
+
+    const { client_grants } = await env.data.clientGrants.list("tenantId", {
+      q: `client_id:"${created.client_id}"`,
+    });
+    expect(client_grants).toHaveLength(0);
+  });
+
+  it("end-to-end: registered client can mint an access token with the granted scopes via client_credentials", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    await seedSesamyApi(env);
+
+    const reg = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "M2M App",
+          grant_types: ["client_credentials"],
+          token_endpoint_auth_method: "client_secret_basic",
+          audience: "https://api.sesamy.com",
+          scope: "paywalls:read products:read",
+        }),
+      },
+      env,
+    );
+    expect(reg.status).toBe(201);
+    const { client_id, client_secret } = await reg.json();
+
+    const tokenResp = await oauthApp.request(
+      "/oauth/token",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "tenant-id": "tenantId",
+        },
+        body: new URLSearchParams({
+          grant_type: "client_credentials",
+          client_id,
+          client_secret,
+          audience: "https://api.sesamy.com",
+        }).toString(),
+      },
+      env,
+    );
+    expect(tokenResp.status).toBe(200);
+    const tokenBody = await tokenResp.json();
+    const accessToken = parseJWT(tokenBody.access_token as string);
+    const scopes = ((accessToken?.payload as { scope?: string })?.scope ?? "")
+      .split(" ")
+      .filter(Boolean);
+    expect(scopes).toContain("paywalls:read");
+    expect(scopes).toContain("products:read");
   });
 });
 
