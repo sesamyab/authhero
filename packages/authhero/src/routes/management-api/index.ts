@@ -22,6 +22,8 @@ import { emailProviderRoutes } from "./emails";
 import { sessionsRoutes } from "./sessions";
 import { refreshTokensRoutes } from "./refresh_tokens";
 import { customDomainRoutes } from "./custom-domains";
+import { logStreamsRoutes } from "./log-streams";
+import { attackProtectionRoutes } from "./attack-protection";
 import { addDataHooks } from "../../hooks";
 import { addTimingLogs } from "../../helpers/server-timing";
 import { applyConfigMiddleware } from "../../middlewares/apply-config";
@@ -348,6 +350,8 @@ export default function create(config: AuthHeroConfig) {
     .route("/client-grants", clientGrantRoutes)
     .route("/client-registration-tokens", clientRegistrationTokenRoutes)
     .route("/logs", logRoutes)
+    .route("/log-streams", logStreamsRoutes)
+    .route("/attack-protection", attackProtectionRoutes)
     .route("/failed-events", failedEventsRoutes)
     .route("/hooks", hooksRoutes)
     .route("/hook-code", hookCodeRoutes)

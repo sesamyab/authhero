@@ -66,6 +66,8 @@ export * from "./JWKS";
 export * from "./ListParams";
 export * from "./LoginSession";
 export * from "./Logs";
+export * from "./LogStream";
+export * from "./AttackProtection";
 export * from "./Password";
 export * from "./Session";
 export * from "./SigningKey";

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { attackProtectionSchema } from "./AttackProtection";
 
 export const tenantInsertSchema = z.object({
   id: z.string().optional(),
@@ -203,6 +204,9 @@ export const tenantInsertSchema = z.object({
   // Authorization settings
   pushed_authorization_requests_supported: z.boolean().optional(),
   authorization_response_iss_parameter_supported: z.boolean().optional(),
+
+  // Attack-protection config (singleton, exposed via /api/v2/attack-protection)
+  attack_protection: attackProtectionSchema.optional(),
 
   // Guardian MFA Factors configuration (internal storage, exposed via /guardian API)
   mfa: z

@@ -75,8 +75,13 @@ export const emailProviderRoutes = new OpenAPIHono<{
         },
       ],
       responses: {
-        200: {
-          description: "Branding settings",
+        201: {
+          content: {
+            "application/json": {
+              schema: emailProviderSchema,
+            },
+          },
+          description: "Email provider",
         },
       },
     }),
@@ -139,7 +144,12 @@ export const emailProviderRoutes = new OpenAPIHono<{
       ],
       responses: {
         200: {
-          description: "Branding settings",
+          content: {
+            "application/json": {
+              schema: emailProviderSchema,
+            },
+          },
+          description: "Email provider",
         },
       },
     }),
@@ -148,6 +158,11 @@ export const emailProviderRoutes = new OpenAPIHono<{
 
       await ctx.env.data.emailProviders.update(ctx.var.tenant_id, patch);
 
+      const updated = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
+      if (!updated) {
+        throw new HTTPException(404, { message: "Email provider not found" });
+      }
+
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
         description: "Update Email Provider",
@@ -155,7 +170,6 @@ export const emailProviderRoutes = new OpenAPIHono<{
         targetId: ctx.var.tenant_id,
       });
 
-      const updated = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
-      return ctx.json(updated ?? patch);
+      return ctx.json(updated);
     },
   );

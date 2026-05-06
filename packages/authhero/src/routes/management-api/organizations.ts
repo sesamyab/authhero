@@ -1311,12 +1311,9 @@ export const organizationRoutes = new OpenAPIHono<{
         200: {
           content: {
             "application/json": {
-              schema: z.union([
-                z.array(organizationConnectionSchema),
-                totalsSchema.extend({
-                  connections: z.array(organizationConnectionSchema),
-                }),
-              ]),
+              schema: totalsSchema.extend({
+                connections: z.array(organizationConnectionSchema),
+              }),
             },
           },
           description: "Connections enabled for the organization",

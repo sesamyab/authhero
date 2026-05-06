@@ -170,12 +170,28 @@ export const connectionOptionsSchema = z.object({
     .optional(),
 });
 
+// terraform's auth0 provider serializes unset connection-options fields as
+// JSON null. Strip nulls before validation so optional string fields don't
+// reject "null" values.
+function stripNullsShallow(v: unknown): unknown {
+  if (v === null) return undefined;
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (val === null) continue;
+      out[k] = val;
+    }
+    return out;
+  }
+  return v;
+}
+
 export const connectionInsertSchema = z.object({
   id: z.string().optional(),
   name: z.string(),
   display_name: z.string().optional(),
   strategy: z.string(),
-  options: connectionOptionsSchema.default({}),
+  options: z.preprocess(stripNullsShallow, connectionOptionsSchema).default({}),
   enabled_clients: z.array(z.string()).default([]).optional(),
   response_type: z.custom<AuthorizationResponseType>().optional(),
   response_mode: z.custom<AuthorizationResponseMode>().optional(),

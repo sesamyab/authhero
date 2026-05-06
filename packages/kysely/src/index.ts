@@ -40,6 +40,7 @@ import { createStatsAdapter } from "./stats";
 import { createCustomTextAdapter } from "./customText";
 import { createAuthenticationMethodsAdapter } from "./authenticationMethods";
 import { createOutboxAdapter } from "./outbox";
+import { createLogStreamsAdapter } from "./log-streams";
 
 export { migrateToLatest, migrateDown } from "../migrate/migrate";
 
@@ -66,6 +67,7 @@ export default function createAdapters(
     keys: createKeysAdapter(db),
     loginSessions: createLoginAdapter(db),
     logs: createLogsAdapter(db),
+    logStreams: createLogStreamsAdapter(db),
     authenticationMethods: createAuthenticationMethodsAdapter(db),
     passwords: createPasswordAdapter(db),
     promptSettings: createPromptSettingsAdapter(db),

@@ -53,6 +53,11 @@ import { useMemo, useState, useEffect } from "react";
 import { RoleCreate, RoleEdit, RoleList } from "./components/roles";
 import SecurityIcon from "@mui/icons-material/Security";
 import { SettingsList, SettingsEdit } from "./components/settings";
+import {
+  AttackProtectionList,
+  AttackProtectionEdit,
+} from "./components/attack-protection";
+import ShieldIcon from "@mui/icons-material/Shield";
 import { CertificateErrorDialog } from "./components/CertificateErrorDialog";
 import { ActivityDashboard } from "./components/activity";
 import { buildUrlWithProtocol } from "./utils/domainUtils";
@@ -316,6 +321,13 @@ export function App(props: AppProps) {
           list={SettingsList}
           edit={SettingsEdit}
           options={{ hasSingle: true }}
+        />
+        <Resource
+          icon={ShieldIcon}
+          name="attack-protection"
+          list={AttackProtectionList}
+          edit={AttackProtectionEdit}
+          options={{ hasSingle: true, label: "Attack Protection" }}
         />
       </Admin>
     </>

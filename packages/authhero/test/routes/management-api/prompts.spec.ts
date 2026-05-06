@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { testClient } from "hono/testing";
 import { getAdminToken } from "../../helpers/token";
 import { getTestServer } from "../../helpers/test-server";
-import { getLocaleDefaults } from "../../../src/i18n";
 
 describe("prompts", () => {
   it("should set and get prompts", async () => {
@@ -67,7 +66,9 @@ describe("prompts", () => {
     const token = await getAdminToken();
 
     // ----------------------------------------
-    // Get non-existent custom text returns locale defaults
+    // Get non-existent custom text returns an empty object — terraform's
+    // auth0 provider PUTs desired state then GETs to confirm; returning
+    // defaults here breaks PUT/GET symmetry and hangs the provider.
     // ----------------------------------------
     const emptyResponse = await managementClient.prompts[":prompt"][
       "custom-text"
@@ -81,8 +82,7 @@ describe("prompts", () => {
       },
     );
     expect(emptyResponse.status).toBe(200);
-    const loginDefaults = getLocaleDefaults("login", "en");
-    expect(await emptyResponse.json()).toEqual(loginDefaults);
+    expect(await emptyResponse.json()).toEqual({});
 
     // ----------------------------------------
     // Set custom text
@@ -132,15 +132,13 @@ describe("prompts", () => {
       },
     );
     expect(getResponse.status).toBe(200);
-    const getResponseBody = await getResponse.json();
-    // Should contain defaults merged with custom overrides
-    expect(getResponseBody.login.pageTitle).toBe("Welcome Back");
-    expect(getResponseBody.login.buttonText).toBe("Sign In");
-    expect(getResponseBody.login.description).toBe(
-      "Please enter your credentials",
-    );
-    // Should also include default keys not overridden
-    expect(getResponseBody.login.title).toBe(loginDefaults.login?.title);
+    expect(await getResponse.json()).toEqual({
+      login: {
+        pageTitle: "Welcome Back",
+        buttonText: "Sign In",
+        description: "Please enter your credentials",
+      },
+    });
 
     // ----------------------------------------
     // Set custom text for another language
@@ -232,9 +230,8 @@ describe("prompts", () => {
         headers: { authorization: `Bearer ${token}` },
       },
     );
-    // After deletion, should fall back to defaults (en fallback for de)
-    const loginDefaultsDe = getLocaleDefaults("login", "de");
-    expect(await afterDeleteResponse.json()).toEqual(loginDefaultsDe);
+    // After deletion, GET returns an empty object (no defaults merge).
+    expect(await afterDeleteResponse.json()).toEqual({});
 
     // Verify list is updated
     const listAfterDeleteResponse = await managementClient.prompts[
