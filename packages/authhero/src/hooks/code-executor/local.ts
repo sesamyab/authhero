@@ -1,7 +1,37 @@
 import {
+  CodeExecutionLog,
   CodeExecutionResult,
   CodeExecutor,
 } from "@authhero/adapter-interfaces";
+
+const MAX_LOG_ENTRIES = 50;
+const MAX_LOG_LENGTH = 500;
+
+function createCapturingConsole(logs: CodeExecutionLog[]) {
+  const format = (args: unknown[]) =>
+    args
+      .map((a) => {
+        if (typeof a === "string") return a;
+        try {
+          return JSON.stringify(a);
+        } catch {
+          return String(a);
+        }
+      })
+      .join(" ")
+      .slice(0, MAX_LOG_LENGTH);
+  const push = (level: CodeExecutionLog["level"], args: unknown[]) => {
+    if (logs.length >= MAX_LOG_ENTRIES) return;
+    logs.push({ level, message: format(args) });
+  };
+  return {
+    log: (...args: unknown[]) => push("log", args),
+    info: (...args: unknown[]) => push("info", args),
+    warn: (...args: unknown[]) => push("warn", args),
+    error: (...args: unknown[]) => push("error", args),
+    debug: (...args: unknown[]) => push("debug", args),
+  };
+}
 
 /**
  * Creates a recording API proxy that captures method calls for later replay.
@@ -64,6 +94,8 @@ export class LocalCodeExecutor implements CodeExecutor {
   }): Promise<CodeExecutionResult> {
     const start = Date.now();
     const { api, getCalls } = createRecordingApiProxy(params.triggerId);
+    const logs: CodeExecutionLog[] = [];
+    const capturedConsole = createCapturingConsole(logs);
 
     try {
       // Map trigger ID to the expected export function name
@@ -81,12 +113,14 @@ export class LocalCodeExecutor implements CodeExecutor {
           error: `Unknown trigger: ${params.triggerId}`,
           durationMs: Date.now() - start,
           apiCalls: [],
+          logs,
         };
       }
 
-      // Build the function from user code.
-      // The user code is expected to use `exports.onExecuteXxx = async (event, api) => { ... }`
-      // We wrap it so the exports object is available and then call the function.
+      // Build the function from user code. The user code is expected to use
+      // `exports.onExecuteXxx = async (event, api) => { ... }`. The local
+      // `console` parameter shadows the global so user code's console.* calls
+      // are captured rather than written to the host stdout.
       const wrappedCode = `
         const exports = {};
         ${params.code}
@@ -96,13 +130,14 @@ export class LocalCodeExecutor implements CodeExecutor {
         return exports.${fnName}(event, api);
       `;
 
-      const fn = new Function("event", "api", wrappedCode);
-      await fn(params.event, api);
+      const fn = new Function("event", "api", "console", wrappedCode);
+      await fn(params.event, api, capturedConsole);
 
       return {
         success: true,
         durationMs: Date.now() - start,
         apiCalls: getCalls(),
+        logs,
       };
     } catch (err) {
       return {
@@ -110,6 +145,7 @@ export class LocalCodeExecutor implements CodeExecutor {
         error: err instanceof Error ? err.message : String(err),
         durationMs: Date.now() - start,
         apiCalls: getCalls(),
+        logs,
       };
     }
   }

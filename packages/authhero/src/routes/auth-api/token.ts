@@ -209,6 +209,25 @@ export const tokenRoutes = new OpenAPIHono<{
           );
       }
 
+      // RFC 6749 §5.2: reject grants the client is not registered for. Only
+      // enforced when the client explicitly lists `grant_types` — clients with
+      // an empty/undefined list (legacy / unconfigured) keep working as before.
+      const allowedGrantTypes = grantResult.client.grant_types;
+      if (
+        allowedGrantTypes &&
+        allowedGrantTypes.length > 0 &&
+        !allowedGrantTypes.includes(body.grant_type)
+      ) {
+        logMessage(ctx, grantResult.client.tenant.id, {
+          type: LogTypes.FAILED_LOGIN,
+          description: `Grant type "${body.grant_type}" is not allowed for this client`,
+        });
+        throw new JSONHTTPException(400, {
+          error: "unauthorized_client",
+          error_description: `The grant type "${body.grant_type}" is not allowed for this client`,
+        });
+      }
+
       // Set tenant_id in context (or validate it matches if already set)
       setTenantId(ctx, grantResult.client.tenant.id);
 

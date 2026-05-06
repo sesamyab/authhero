@@ -3382,4 +3382,131 @@ describe("token", () => {
       });
     });
   });
+
+  describe("client.grant_types enforcement", () => {
+    it("rejects a grant_type the client is not registered for", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const client = testClient(oauthApp, env);
+
+      await env.data.clients.update("tenantId", "clientId", {
+        grant_types: ["authorization_code"],
+      });
+
+      const response = await client.oauth.token.$post(
+        // @ts-expect-error - testClient type requires both form and json
+        {
+          form: {
+            grant_type: "client_credentials",
+            client_id: "clientId",
+            client_secret: "clientSecret",
+            audience: "https://example.com",
+          },
+        },
+        { headers: { "tenant-id": "tenantId" } },
+      );
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as ErrorResponse;
+      expect(body.error).toBe("unauthorized_client");
+      expect(body.error_description).toContain("client_credentials");
+    });
+
+    it("allows a grant_type that is in the client's registered list", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const client = testClient(oauthApp, env);
+
+      await env.data.clients.update("tenantId", "clientId", {
+        grant_types: ["client_credentials"],
+      });
+
+      const response = await client.oauth.token.$post(
+        // @ts-expect-error - testClient type requires both form and json
+        {
+          form: {
+            grant_type: "client_credentials",
+            client_id: "clientId",
+            client_secret: "clientSecret",
+            audience: "https://example.com",
+          },
+        },
+        { headers: { "tenant-id": "tenantId" } },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("allows any grant_type when grant_types is empty (back-compat)", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const client = testClient(oauthApp, env);
+
+      // The default fixture client has no grant_types set; explicitly clear
+      // to make the back-compat intent obvious in this test.
+      await env.data.clients.update("tenantId", "clientId", {
+        grant_types: [],
+      });
+
+      const response = await client.oauth.token.$post(
+        // @ts-expect-error - testClient type requires both form and json
+        {
+          form: {
+            grant_type: "client_credentials",
+            client_id: "clientId",
+            client_secret: "clientSecret",
+            audience: "https://example.com",
+          },
+        },
+        { headers: { "tenant-id": "tenantId" } },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("rejects authorization_code when not in the client's grant_types", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const client = testClient(oauthApp, env);
+
+      await env.data.clients.update("tenantId", "clientId", {
+        grant_types: ["client_credentials"],
+      });
+
+      // Set up a valid authorization code so the rejection is provably the
+      // grant_types check, not a missing-code 400 from the grant handler.
+      const loginSession = await env.data.loginSessions.create("tenantId", {
+        expires_at: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
+        csrf_token: "csrfToken",
+        authParams: {
+          client_id: "clientId",
+          scope: "",
+          audience: "http://example.com",
+          redirect_uri: "http://example.com/callback",
+        },
+      });
+      await env.data.codes.create("tenantId", {
+        code_type: "authorization_code",
+        user_id: "email|userId",
+        code_id: "grant-types-reject-code",
+        login_id: loginSession.id,
+        expires_at: new Date(Date.now() + 1000 * 60 * 5).toISOString(),
+      });
+
+      const response = await client.oauth.token.$post(
+        // @ts-expect-error - testClient type requires both form and json
+        {
+          form: {
+            grant_type: "authorization_code",
+            code: "grant-types-reject-code",
+            redirect_uri: "http://example.com/callback",
+            client_id: "clientId",
+            client_secret: "clientSecret",
+          },
+        },
+        { headers: { "tenant-id": "tenantId" } },
+      );
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as ErrorResponse;
+      expect(body.error).toBe("unauthorized_client");
+      expect(body.error_description).toContain("authorization_code");
+    });
+  });
 });

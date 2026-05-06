@@ -96,13 +96,30 @@ export async function handleCodeHook(
     timeoutMs: 5000,
   });
 
+  const details = {
+    hook_id: hook.hook_id,
+    code_id: hook.code_id,
+    trigger_id: triggerId,
+    duration_ms: result.durationMs,
+    api_calls: result.apiCalls.map((c) => c.method),
+    logs: result.logs ?? [],
+    ...(result.error ? { error: result.error } : {}),
+  };
+
   if (!result.success) {
     logMessage(ctx, tenant_id, {
       type: LogTypes.FAILED_HOOK,
       description: `Code hook ${hook.hook_id} failed: ${result.error}`,
+      details,
     });
     return;
   }
+
+  logMessage(ctx, tenant_id, {
+    type: LogTypes.SUCCESS_HOOK,
+    description: `Code hook ${hook.hook_id} executed (${result.durationMs}ms, ${result.apiCalls.length} api calls, ${result.logs?.length ?? 0} logs)`,
+    details,
+  });
 
   // Replay the recorded API calls against the real api objects
   replayApiCalls(result.apiCalls, api);

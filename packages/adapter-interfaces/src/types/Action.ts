@@ -13,7 +13,9 @@ export const actionDependencySchema = z.object({
 
 export const actionSecretSchema = z.object({
   name: z.string(),
-  value: z.string(),
+  // Optional on writes so PATCH callers can omit the value to preserve the
+  // existing secret. The adapter merges by name when value is missing.
+  value: z.string().optional(),
 });
 
 export const actionInsertSchema = z.object({

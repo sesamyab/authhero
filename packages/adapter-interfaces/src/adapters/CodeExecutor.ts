@@ -1,8 +1,19 @@
+export interface CodeExecutionLog {
+  level: "log" | "info" | "warn" | "error" | "debug";
+  message: string;
+}
+
 export interface CodeExecutionResult {
   success: boolean;
   error?: string;
   durationMs: number;
   apiCalls: Array<{ method: string; args: unknown[] }>;
+  /**
+   * Console output captured from the user code during execution. Populated by
+   * executors that shadow `console.*` inside the sandbox; absent on executors
+   * that don't support capture.
+   */
+  logs?: CodeExecutionLog[];
 }
 
 export interface CodeExecutor {

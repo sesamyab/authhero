@@ -91,6 +91,60 @@ describe("authorize", () => {
     expect(responseText).toContain("Missing required parameter: response_type");
   });
 
+  it("should hydrate missing params from an existing login session when only state+connection are provided (social-login redirect from universal-login widget)", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+
+    await env.data.connections.create("tenantId", {
+      id: "google-oauth2",
+      name: "google-oauth2",
+      strategy: "google-oauth2",
+      options: {
+        client_id: "clientId",
+        client_secret: "clientSecret",
+      },
+    });
+
+    // Pre-create a login session as if the user had already started a flow
+    // and reached the universal-login screen.
+    const existingSession = await env.data.loginSessions.create("tenantId", {
+      csrf_token: "csrf-token",
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      authParams: {
+        client_id: "clientId",
+        redirect_uri: "https://example.com/callback",
+        scope: "openid email profile",
+        response_type: AuthorizationResponseType.CODE,
+        state: "original-rp-state",
+      },
+    });
+
+    // Widget builds /authorize?connection=X&state=Y&client_id=Z when the
+    // user clicks a social button — without echoing response_type/redirect_uri.
+    const response = await oauthClient.authorize.$get(
+      {
+        query: {
+          client_id: "clientId",
+          state: existingSession.id,
+          connection: "google-oauth2",
+        },
+      },
+      {
+        headers: {
+          origin: "https://example.com",
+        },
+      },
+    );
+
+    expect(response.status).toEqual(302);
+    const location = response.headers.get("location");
+    if (!location) throw new Error("No location header");
+    const redirectUri = new URL(location);
+    // Should redirect to Google's OAuth endpoint, not back with invalid_request
+    expect(redirectUri.pathname).toEqual("/o/oauth2/v2/auth");
+    expect(redirectUri.searchParams.get("error")).toBeNull();
+  });
+
   it("should return a redirect to the universal login", async () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);

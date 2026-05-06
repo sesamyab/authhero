@@ -31,6 +31,12 @@ export const tenantInsertSchema = z.object({
   // Universal Login settings
   default_redirection_uri: z.string().optional(),
 
+  // Anchor client used for tenant-level flows that aren't tied to a specific
+  // application (e.g. /connect/start DCR consent). When unset, /connect/start
+  // falls back to the first available client. Roughly analogous to Auth0's
+  // "Default App" / Global Client.
+  default_client_id: z.string().optional(),
+
   // Advanced settings
   enabled_locales: z.array(z.string()).optional(),
   default_directory: z.string().optional(),
