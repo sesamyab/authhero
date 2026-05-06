@@ -47,6 +47,10 @@ import {
   type DarkModePreference,
 } from "./u2-widget-page";
 import { getCookie } from "hono/cookie";
+import { getLocaleDisplayName, locales } from "../../i18n";
+
+// Mutable copy of the readonly `locales` tuple — handlers expect string[].
+const availableLocales: string[] = [...locales];
 
 /**
  * Mapping from screen IDs (used in routes) to prompt screen IDs (used for custom text)
@@ -610,7 +614,7 @@ function WidgetContent({
           {(() => {
             const alt = poweredByLogo?.alt || "";
             const height = poweredByLogo?.height || 20;
-            const imgs = (
+            const imgs = safePoweredByDarkUrl ? (
               <>
                 <img
                   class="powered-by-light"
@@ -618,15 +622,16 @@ function WidgetContent({
                   alt={alt}
                   height={height}
                 />
-                {safePoweredByDarkUrl && (
-                  <img
-                    class="powered-by-dark"
-                    src={safePoweredByDarkUrl}
-                    alt={alt}
-                    height={height}
-                  />
-                )}
+                <img
+                  class="powered-by-dark"
+                  src={safePoweredByDarkUrl}
+                  alt=""
+                  aria-hidden="true"
+                  height={height}
+                />
               </>
+            ) : (
+              <img src={safePoweredByUrl} alt={alt} height={height} />
             );
             return safePoweredByHref ? (
               <a
@@ -654,20 +659,6 @@ function generateWidgetContent(options: WidgetContentProps): string {
 }
 
 /**
- * Language display names in their native language
- */
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  nb: "Norsk",
-  sv: "Svenska",
-  da: "Dansk",
-  fi: "Suomi",
-  cs: "Čeština",
-  pl: "Polski",
-  it: "Italiano",
-};
-
-/**
  * Props for footer content
  */
 type FooterContentProps = {
@@ -679,6 +670,12 @@ type FooterContentProps = {
 /**
  * Footer content component for liquid template substitution.
  * Renders a language picker and other page-level footer items.
+ *
+ * NOTE: this is the legacy footer chrome (`.page-footer`,
+ * `.dark-mode-toggle`, `.language-picker`) used only when a tenant has set
+ * a custom Liquid template. The default SSR path renders the new chip/pill
+ * chrome from `WidgetPage` (see `u2-widget-page.tsx`). Tenants on a custom
+ * template will not pick up the new UI until they migrate their template.
  */
 function FooterContent({
   language,
@@ -780,7 +777,7 @@ function FooterContent({
           >
             {langs.map((lang) => (
               <option value={lang} selected={lang === language}>
-                {LANGUAGE_NAMES[lang] || lang}
+                {getLocaleDisplayName(lang)}
               </option>
             ))}
           </select>
@@ -1050,7 +1047,7 @@ function createScreenRouteHandler(screenId: string) {
 
       const footerContent = generateFooterContent({
         language,
-        availableLanguages: Object.keys(LANGUAGE_NAMES),
+        availableLanguages: availableLocales,
         darkMode,
       });
 
@@ -1075,7 +1072,7 @@ function createScreenRouteHandler(screenId: string) {
         clientName={client.name || "AuthHero"}
         poweredByLogo={ctx.env.poweredByLogo}
         language={language}
-        availableLanguages={Object.keys(LANGUAGE_NAMES)}
+        availableLanguages={availableLocales}
         termsAndConditionsUrl={sanitizeUrl(
           client.client_metadata?.termsAndConditionsUrl,
         )}
@@ -1363,7 +1360,7 @@ function createScreenPostHandler(screenId: string) {
         widgetContent,
         generateFooterContent({
           language,
-          availableLanguages: Object.keys(LANGUAGE_NAMES),
+          availableLanguages: availableLocales,
           darkMode,
         }),
       );
@@ -1382,7 +1379,7 @@ function createScreenPostHandler(screenId: string) {
         clientName={client.name || "AuthHero"}
         poweredByLogo={ctx.env.poweredByLogo}
         language={language}
-        availableLanguages={Object.keys(LANGUAGE_NAMES)}
+        availableLanguages={availableLocales}
         termsAndConditionsUrl={sanitizeUrl(
           client.client_metadata?.termsAndConditionsUrl,
         )}

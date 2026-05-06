@@ -56,6 +56,15 @@ async function recordFailedLogin(
   });
 }
 
+function isRateLimitDecision(value: unknown): value is RateLimitDecision {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "allowed" in value &&
+    typeof value.allowed === "boolean"
+  );
+}
+
 function getRecentFailedLogins(user: any): number[] {
   const appMetadata = user.app_metadata || {};
   const failedLogins = appMetadata.failed_logins || [];
@@ -90,10 +99,13 @@ export async function passwordGrant(
   if (data.rateLimit && sip?.enabled && ip && !allowlisted) {
     let decision: RateLimitDecision = { allowed: true };
     try {
-      decision = await data.rateLimit.consume(
+      const result: unknown = await data.rateLimit.consume(
         "pre-login",
         `${client.tenant.id}:${ip}`,
       );
+      if (isRateLimitDecision(result)) {
+        decision = result;
+      }
     } catch (error) {
       // Fail open: a misbehaving rate-limit adapter should never lock users out.
       console.error("Pre-login rate limit consume failed:", error);

@@ -1,5 +1,11 @@
 # create-authhero
 
+## 0.41.0
+
+### Minor Changes
+
+- ea5ec43: Add endpoints for organization connections
+
 ## 0.40.0
 
 ### Minor Changes

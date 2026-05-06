@@ -38,6 +38,33 @@ export const locales = [
 ] as const;
 export const baseLocale = "en" as const;
 
+/**
+ * Native display names for each supported locale. Used by the language picker
+ * in the universal-login chrome. Keys must stay in sync with `locales` above —
+ * adding a locale here without a JSON file (or vice versa) will leave the
+ * picker showing a raw code instead of a name.
+ */
+export const LOCALE_DISPLAY_NAMES: Record<(typeof locales)[number], string> = {
+  cs: "Čeština",
+  da: "Dansk",
+  en: "English",
+  fi: "Suomi",
+  it: "Italiano",
+  nb: "Norsk",
+  pl: "Polski",
+  sv: "Svenska",
+};
+
+const LOCALE_DISPLAY_NAMES_LOOKUP: Record<string, string> = LOCALE_DISPLAY_NAMES;
+
+/**
+ * Resolve a locale code to its native display name, falling back to the
+ * raw code when the locale is not recognised.
+ */
+export function getLocaleDisplayName(lang: string): string {
+  return LOCALE_DISPLAY_NAMES_LOOKUP[lang] ?? lang;
+}
+
 // Load Auth0-format locale files at build time via Vite's import.meta.glob
 const localeModules = import.meta.glob("../../locales/*.json", {
   eager: true,
@@ -128,8 +155,8 @@ export function createTranslation<P extends string, S extends string>(
   customText?: CustomText,
 ): {
   m: `${P}.${S}` extends keyof ScreenMap
-    ? ScreenMap[`${P}.${S}`]
-    : TranslationMap;
+  ? ScreenMap[`${P}.${S}`]
+  : TranslationMap;
   locale: (typeof locales)[number];
 } {
   const validLocale = normalizeLocale(locale);
