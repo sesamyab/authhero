@@ -1291,7 +1291,12 @@ export const organizationRoutes = new OpenAPIHono<{
           include_totals: z
             .string()
             .optional()
-            .transform((v) => v === "true"),
+            .transform((v) => v === "true")
+            .openapi({
+              deprecated: true,
+              description:
+                "Ignored for compatibility; the connections/total/start/limit/length wrapper is always returned.",
+            }),
           page: z
             .string()
             .optional()

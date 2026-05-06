@@ -12,6 +12,24 @@ import { logMessage } from "../../helpers/logging";
 
 type Section = keyof AttackProtection;
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+// Recursively merge `source` into `target` so nested objects (e.g.
+// breached_password_detection.stage["pre-user-registration"]) preserve sibling
+// keys instead of being overwritten wholesale by a partial PATCH.
+function deepMerge<T>(target: T, source: unknown): T {
+  if (!isPlainObject(source)) return target;
+  const base: Record<string, unknown> = isPlainObject(target)
+    ? { ...target }
+    : {};
+  for (const [k, v] of Object.entries(source)) {
+    base[k] = isPlainObject(v) ? deepMerge(base[k], v) : v;
+  }
+  return base as T;
+}
+
 async function getSection<S extends Section>(
   ctx: { env: Bindings; var: Variables },
   section: S,
@@ -34,9 +52,10 @@ async function patchSection<S extends Section>(
     throw new HTTPException(404, { message: "Tenant not found" });
   }
   const existing = tenant.attack_protection ?? {};
+  const mergedSection = deepMerge(existing[section] ?? {}, patch ?? {});
   const next: AttackProtection = {
     ...existing,
-    [section]: { ...(existing[section] ?? {}), ...(patch ?? {}) },
+    [section]: mergedSection,
   };
   await ctx.env.data.tenants.update(ctx.var.tenant_id, {
     attack_protection: next,

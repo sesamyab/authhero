@@ -101,7 +101,7 @@ export const logStreamsRoutes = new OpenAPIHono<{
     }),
     async (ctx) => {
       const adapter = getAdapter(ctx);
-      const body = logStreamInsertSchema.parse(await ctx.req.json());
+      const body = ctx.req.valid("json");
       const stream = await adapter.create(ctx.var.tenant_id, body);
 
       await logMessage(ctx, ctx.var.tenant_id, {
@@ -143,7 +143,7 @@ export const logStreamsRoutes = new OpenAPIHono<{
     async (ctx) => {
       const adapter = getAdapter(ctx);
       const { id } = ctx.req.valid("param");
-      const body = logStreamSchema.partial().parse(await ctx.req.json());
+      const body = ctx.req.valid("json");
       const ok = await adapter.update(ctx.var.tenant_id, id, body);
       if (!ok) {
         throw new HTTPException(404);

@@ -367,8 +367,9 @@ resource "auth0_email_provider" "mailgun" {
   enabled              = true
   default_from_address = "noreply@example.com"
   credentials {
-    domain    = "example.com"
-    smtp_port = 0
+    api_key = "key-test"
+    domain  = "example.com"
+    region  = "us"
   }
 }
 
