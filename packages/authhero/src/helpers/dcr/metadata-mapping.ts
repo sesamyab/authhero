@@ -32,6 +32,10 @@ export const dcrRequestSchema = z.object({
   software_version: z.string().optional(),
   client_id: z.string().optional(),
   client_secret: z.string().optional(),
+  // AuthHero extension: API identifier for the client_grants row provisioned
+  // alongside the client. Not part of RFC 7591 but accepted at the wire so
+  // IAT constraints can pre-bind it from the /connect/start consent flow.
+  audience: z.string().optional(),
 });
 
 export type DcrRequest = z.infer<typeof dcrRequestSchema>;
@@ -91,6 +95,9 @@ const KNOWN_RFC_7591_FIELDS = new Set([
   // through IAT constraints but which are not RFC 7591 metadata.
   "domain",
   "integration_type",
+  // AuthHero extension: drives client_grants provisioning. Not stored on
+  // the client itself, so it must not leak into registration_metadata.
+  "audience",
 ]);
 
 export interface RegistrationMapping {

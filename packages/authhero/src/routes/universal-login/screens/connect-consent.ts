@@ -25,6 +25,7 @@ interface ConnectConsentData {
   domain: string;
   return_to: string;
   scope?: string;
+  audience?: string;
   caller_state: string;
   is_local_dev?: boolean;
   /**
@@ -60,7 +61,9 @@ function readConnectData(stateDataJson?: string): ConnectConsentData | null {
         typeof c.integration_type === "string") &&
       typeof c.domain === "string" &&
       typeof c.return_to === "string" &&
-      typeof c.caller_state === "string"
+      typeof c.caller_state === "string" &&
+      (c.audience === undefined || typeof c.audience === "string") &&
+      (c.scope === undefined || typeof c.scope === "string")
     ) {
       return c as ConnectConsentData;
     }
@@ -161,8 +164,28 @@ export async function connectConsentScreen(
     authhero_error: "cancelled",
   });
 
+  // Resolve audience -> resource server name for display. Failing to resolve
+  // here is non-fatal: the audience was already validated at /connect/start
+  // before the IAT was minted, so we can still render the screen using the
+  // raw identifier as the label.
+  let audienceLabel: string | null = null;
+  if (connect.audience) {
+    const targetTenantIdForLookup = connect.target_tenant_id ?? tenant.id;
+    const { resource_servers } = await ctx.env.data.resourceServers.list(
+      targetTenantIdForLookup,
+    );
+    const resourceServer = resource_servers.find(
+      (rs) => rs.identifier === connect.audience,
+    );
+    audienceLabel = resourceServer?.name || connect.audience;
+  }
+
+  const audienceBlock = audienceLabel
+    ? `<div style="margin-top:12px;font-size:13px;color:#6b7280">For API: <span style="color:#111827;font-weight:500">${escapeHtml(audienceLabel)}</span></div>`
+    : "";
+
   const scopeBlock = connect.scope
-    ? `<div style="margin-top:12px;font-size:13px;color:#6b7280">Requested permissions: <span style="color:#111827;font-weight:500">${escapeHtml(connect.scope)}</span></div>`
+    ? `<div style="margin-top:4px;font-size:13px;color:#6b7280">Requested permissions: <span style="color:#111827;font-weight:500">${escapeHtml(connect.scope)}</span></div>`
     : "";
 
   const localDevBadge = connect.is_local_dev
@@ -197,6 +220,7 @@ export async function connectConsentScreen(
             <div style="font-size:18px;font-weight:600;color:#111827">${escapeHtml(connect.domain)}${localDevBadge}</div>
             <div style="font-size:14px;color:#374151">wants to connect to your ${escapeHtml(tenant.friendly_name)} account as <span style="font-weight:500">${escapeHtml(user.email || user.name || user.user_id)}</span>.</div>
             ${workspaceLine}
+            ${audienceBlock}
             ${scopeBlock}
           </div>
         `,
@@ -329,6 +353,9 @@ async function handleConnectConsentSubmit(
   }
   if (connect.scope) {
     constraints.scope = connect.scope;
+  }
+  if (connect.audience) {
+    constraints.audience = connect.audience;
   }
 
   const minted = await mintIat(

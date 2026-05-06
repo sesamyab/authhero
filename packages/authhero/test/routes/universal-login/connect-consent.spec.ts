@@ -101,6 +101,102 @@ async function provisionControlPlane(env: Bindings) {
   return org;
 }
 
+describe("/u2/connect/start — audience + scope plumbing", () => {
+  async function startConnectFlowWithAudience(
+    oauthApp: any,
+    env: Bindings,
+  ): Promise<string> {
+    const qs = new URLSearchParams({
+      integration_type: "wordpress",
+      domain: "publisher.com",
+      return_to: "https://publisher.com/wp-admin/connect-callback",
+      state: "csrf-abc",
+      audience: "https://api.sesamy.com",
+      scope: "paywalls:read products:read",
+    }).toString();
+    const response = await oauthApp.request(
+      `/connect/start?${qs}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(302);
+    const stateId = new URL(
+      response.headers.get("location")!,
+      "http://localhost",
+    ).searchParams.get("state")!;
+    return stateId;
+  }
+
+  async function seedSesamyApi(env: Bindings) {
+    await env.data.resourceServers.create("tenantId", {
+      name: "Sesamy API",
+      identifier: "https://api.sesamy.com",
+      scopes: [{ value: "paywalls:read" }, { value: "products:read" }],
+    });
+  }
+
+  it("renders the resource server name on the consent screen when audience is set", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await seedSesamyApi(env);
+    const stateId = await startConnectFlowWithAudience(oauthApp, env);
+    const session = await createUserSession(env);
+
+    const response = await u2App.request(
+      `/connect/start?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "GET",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+        },
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Sesamy API");
+    expect(body).toContain("paywalls:read products:read");
+  });
+
+  it("POST consent binds audience and scope into the IAT constraints", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await seedSesamyApi(env);
+    const stateId = await startConnectFlowWithAudience(oauthApp, env);
+    const session = await createUserSession(env);
+
+    const response = await u2App.request(
+      `/connect/start?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "",
+      },
+      env,
+    );
+    expect(response.status).toBe(302);
+    const iat = new URL(
+      response.headers.get("location")!,
+    ).searchParams.get("authhero_iat")!;
+    const hash = await hashRegistrationToken(iat);
+    const stored = await env.data.clientRegistrationTokens!.getByHash(
+      "tenantId",
+      hash,
+    );
+    expect(stored!.constraints).toMatchObject({
+      domain: "publisher.com",
+      grant_types: ["client_credentials"],
+      audience: "https://api.sesamy.com",
+      scope: "paywalls:read products:read",
+    });
+  });
+});
+
 describe("/u2/connect/start — direct-to-child mode (no multi-tenancy)", () => {
   it("renders the consent screen directly when the request resolves to a leaf tenant", async () => {
     const { oauthApp, u2App, env } = await getTestServer();

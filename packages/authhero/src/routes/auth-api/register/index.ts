@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import type { Client, ClientInsert } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../../types";
@@ -66,6 +67,66 @@ function validateGrantTypesAllowed(
       });
     }
   }
+}
+
+interface DcrAudienceGrant {
+  audience: string;
+  scopes: string[];
+}
+
+/**
+ * Resolve `audience` + `scope` from a DCR request into a validated grant
+ * spec. Returns `null` if no audience was requested (no grant to provision).
+ *
+ * Rejects with 400 when the audience does not match a resource server on
+ * the tenant or when a requested scope is not defined on that resource
+ * server. Mirrors the validation in `/connect/start` so a client created
+ * without going through the consent flow (e.g. via Mgmt-API minted IAT)
+ * still gets a sane grant.
+ */
+async function resolveAudienceGrant(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  audience: string | undefined,
+  scope: string | undefined,
+): Promise<DcrAudienceGrant | null> {
+  if (!audience) {
+    if (scope) {
+      throw new JSONHTTPException(400, {
+        error: "invalid_client_metadata",
+        error_description: "scope requires audience",
+      });
+    }
+    return null;
+  }
+
+  const { resource_servers } = await ctx.env.data.resourceServers.list(
+    ctx.var.tenant_id,
+  );
+  const resourceServer = resource_servers.find(
+    (rs) => rs.identifier === audience,
+  );
+  if (!resourceServer) {
+    throw new JSONHTTPException(400, {
+      error: "invalid_client_metadata",
+      error_description: `Unknown audience: ${audience}`,
+    });
+  }
+
+  const scopes = scope ? scope.split(/\s+/).filter(Boolean) : [];
+  if (scopes.length > 0) {
+    const definedScopes = new Set(
+      (resourceServer.scopes ?? []).map((s) => s.value),
+    );
+    const unknown = scopes.filter((s) => !definedScopes.has(s));
+    if (unknown.length > 0) {
+      throw new JSONHTTPException(400, {
+        error: "invalid_scope",
+        error_description: `Scope(s) not defined on the resource server: ${unknown.join(", ")}`,
+      });
+    }
+  }
+
+  return { audience, scopes };
 }
 
 export const registerRoutes = new OpenAPIHono<{
@@ -145,6 +206,12 @@ export const registerRoutes = new OpenAPIHono<{
         tenant.flags?.dcr_allowed_grant_types,
       );
 
+      const audienceGrant = await resolveAudienceGrant(
+        ctx,
+        mergedRequest.audience,
+        mergedRequest.scope,
+      );
+
       const { clientFields, extraMetadata } = dcrRequestToClient(mergedRequest);
 
       const client_id = generateClientId();
@@ -197,6 +264,14 @@ export const registerRoutes = new OpenAPIHono<{
           ctx.var.tenant_id,
           clientInsert,
         );
+
+        if (audienceGrant) {
+          await trx.clientGrants.create(ctx.var.tenant_id, {
+            client_id,
+            audience: audienceGrant.audience,
+            scope: audienceGrant.scopes,
+          });
+        }
 
         await trxTokens.create(ctx.var.tenant_id, {
           id: rat.id,
@@ -445,10 +520,20 @@ export const registerRoutes = new OpenAPIHono<{
         status: "deleted",
       };
 
+      const grantsToRemove = await ctx.env.data.clientGrants.list(
+        ctx.var.tenant_id,
+        { q: `client_id:"${client_id}"` },
+      );
+
       await ctx.env.data.transaction(async (trx) => {
         await trx.clients.update(ctx.var.tenant_id, client_id, {
           client_metadata: metadata,
         });
+        for (const grant of grantsToRemove.client_grants) {
+          if (grant.id) {
+            await trx.clientGrants.remove(ctx.var.tenant_id, grant.id);
+          }
+        }
         await requireClientRegistrationTokens(trx).revokeByClient(
           ctx.var.tenant_id,
           client_id,

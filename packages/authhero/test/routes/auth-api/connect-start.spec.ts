@@ -252,11 +252,106 @@ describe("GET /connect/start", () => {
     expect(session!.authParams.client_id).toBe("clientId");
   });
 
+  it("rejects scope without audience", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableConnectFlow(env);
+    const qs = new URLSearchParams({
+      domain: "publisher.com",
+      return_to: "https://publisher.com/cb",
+      state: "csrf-abc",
+      scope: "paywalls:read",
+    }).toString();
+    const response = await oauthApp.request(
+      `/connect/start?${qs}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error_description).toMatch(/audience/);
+  });
+
+  it("rejects unknown audience", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableConnectFlow(env);
+    const qs = new URLSearchParams({
+      domain: "publisher.com",
+      return_to: "https://publisher.com/cb",
+      state: "csrf-abc",
+      audience: "https://api.unknown.example.com",
+    }).toString();
+    const response = await oauthApp.request(
+      `/connect/start?${qs}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error_description).toMatch(/Unknown audience/);
+  });
+
+  it("rejects scope not defined on the resource server", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await env.data.resourceServers.create("tenantId", {
+      name: "Sesamy API",
+      identifier: "https://api.sesamy.com",
+      scopes: [{ value: "paywalls:read" }, { value: "products:read" }],
+    });
+    const qs = new URLSearchParams({
+      domain: "publisher.com",
+      return_to: "https://publisher.com/cb",
+      state: "csrf-abc",
+      audience: "https://api.sesamy.com",
+      scope: "paywalls:read admin:write",
+    }).toString();
+    const response = await oauthApp.request(
+      `/connect/start?${qs}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_scope");
+    expect(body.error_description).toMatch(/admin:write/);
+  });
+
+  it("persists audience and scope into state_data when both are valid", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await env.data.resourceServers.create("tenantId", {
+      name: "Sesamy API",
+      identifier: "https://api.sesamy.com",
+      scopes: [{ value: "paywalls:read" }, { value: "products:read" }],
+    });
+    const qs = new URLSearchParams({
+      domain: "publisher.com",
+      return_to: "https://publisher.com/cb",
+      state: "csrf-abc",
+      audience: "https://api.sesamy.com",
+      scope: "paywalls:read products:read",
+    }).toString();
+    const response = await oauthApp.request(
+      `/connect/start?${qs}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(302);
+    const stateId = new URL(
+      response.headers.get("location")!,
+      "http://localhost",
+    ).searchParams.get("state");
+    const session = await env.data.loginSessions.get("tenantId", stateId!);
+    const data = JSON.parse(session!.state_data!);
+    expect(data.connect.audience).toBe("https://api.sesamy.com");
+    expect(data.connect.scope).toBe("paywalls:read products:read");
+  });
+
   it("on valid input: 302s to /u2/connect/start with a fresh login_session id and stores connect data in state_data", async () => {
     const { oauthApp, env } = await getTestServer();
     await enableConnectFlow(env);
     const response = await oauthApp.request(
-      `/connect/start?${VALID_QS}&scope=read%3Acms`,
+      `/connect/start?${VALID_QS}`,
       { method: "GET", headers: { "tenant-id": "tenantId" } },
       env,
     );
@@ -276,7 +371,6 @@ describe("GET /connect/start", () => {
     expect(data.connect.return_to).toBe(
       "https://publisher.com/wp-admin/connect-callback",
     );
-    expect(data.connect.scope).toBe("read:cms");
     expect(data.connect.caller_state).toBe("csrf-abc");
   });
 });
