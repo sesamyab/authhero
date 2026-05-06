@@ -78,6 +78,31 @@ export async function passwordGrant(
     throw new JSONHTTPException(400, { message: "Username is required" });
   }
 
+  // Pre-login throttling: short-window IP-based guard backed by
+  // `data.rateLimit` (e.g. Cloudflare Workers Rate Limiter binding).
+  // Honors the tenant's `suspicious_ip_throttling.enabled` flag and
+  // allowlist; the binding's threshold is fixed at deploy time so the
+  // tenant-configured `max_attempts` is intentionally not consulted here.
+  const sip = client.tenant.attack_protection?.suspicious_ip_throttling;
+  const ip = ctx.var.ip;
+  const allowlisted = ip ? sip?.allowlist?.includes(ip) : false;
+  if (data.rateLimit && sip?.enabled && ip && !allowlisted) {
+    const decision = await data.rateLimit.consume(
+      "pre-login",
+      `${client.tenant.id}:${ip}`,
+    );
+    if (!decision.allowed) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_LOGIN,
+        description: "Rate limit exceeded for pre-login",
+      });
+      throw new AuthError(429, {
+        message: "Too many requests",
+        code: "TOO_MANY_REQUESTS",
+      });
+    }
+  }
+
   const user = await getUserByProvider({
     userAdapter: ctx.env.data.users,
     tenant_id: client.tenant.id,

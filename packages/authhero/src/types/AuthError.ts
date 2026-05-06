@@ -5,7 +5,8 @@ export type HttpExceptionCode =
   | "EMAIL_NOT_VERIFIED"
   | "INVALID_PASSWORD"
   | "USER_NOT_FOUND"
-  | "TOO_MANY_FAILED_LOGINS";
+  | "TOO_MANY_FAILED_LOGINS"
+  | "TOO_MANY_REQUESTS";
 
 export type HttpExceptionOptions = {
   code: HttpExceptionCode;

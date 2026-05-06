@@ -41,6 +41,7 @@ import { CustomTextAdapter } from "./CustomText";
 import { EmailServiceAdapter } from "./EmailService";
 import { SmsServiceAdapter } from "./SmsService";
 import { OutboxAdapter } from "./Outbox";
+import { RateLimitAdapter } from "./RateLimit";
 
 /**
  * Parameters for cleaning up expired sessions
@@ -98,6 +99,13 @@ export interface DataAdapters {
   /** Optional outbox adapter for transactional audit event capture */
   outbox?: OutboxAdapter;
   /**
+   * Optional rate-limit adapter for short-window abuse protection
+   * (e.g. backed by the Cloudflare Workers Rate Limiter binding).
+   * Auth flows treat this as opt-in: when undefined, no extra
+   * throttling is applied.
+   */
+  rateLimit?: RateLimitAdapter;
+  /**
    * Execute a callback within a database transaction.
    * The callback receives a set of adapters scoped to the transaction.
    * If the callback throws, the transaction is rolled back.
@@ -143,6 +151,7 @@ export * from "./LogStreams";
 export * from "./EmailService";
 export * from "./SmsService";
 export * from "./Outbox";
+export * from "./RateLimit";
 export * from "./HookCode";
 export * from "./CodeExecutor";
 export * from "./RefreshTokens";
