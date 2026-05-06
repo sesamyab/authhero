@@ -68,7 +68,7 @@ jobs:
             --yes
 
       - name: Wire generated auth-server into the workspace
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
         env:
           NODE_AUTH_TOKEN: ${{ secrets.PACKAGE_READ_TOKEN }}
 

@@ -50,6 +50,7 @@ export interface ThemeData {
     background_color?: string;
     background_image_url?: string;
     page_layout?: string;
+    logo_placement?: "widget" | "chip" | "none";
   };
   widget: {
     header_text_alignment?: string;

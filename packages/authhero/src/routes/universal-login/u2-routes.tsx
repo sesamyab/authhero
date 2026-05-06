@@ -44,6 +44,7 @@ import {
   WidgetPage,
   renderWidgetSSR,
   extractBrandingProps,
+  derivePageLogoPlacement,
   type DarkModePreference,
 } from "./u2-widget-page";
 import { getCookie } from "hono/cookie";
@@ -972,7 +973,13 @@ function createScreenRouteHandler(screenId: string) {
       ? JSON.stringify(result.branding)
       : undefined;
     const authParamsJson = JSON.stringify(authParams);
-    const themeJson = theme ? JSON.stringify(theme) : undefined;
+    // When page-level placement suppresses the widget's own logo we feed the
+    // SSR renderer a theme variant with `widget.logo_position = "none"`.
+    const { logoPosition: pageLogoPosition, theme: themeForWidget } =
+      derivePageLogoPlacement(theme);
+    const themeJson = themeForWidget
+      ? JSON.stringify(themeForWidget)
+      : undefined;
 
     // Attempt SSR for the widget
     const widgetHtml = await renderWidgetSSR({
@@ -1041,6 +1048,7 @@ function createScreenRouteHandler(screenId: string) {
           client.client_metadata?.termsAndConditionsUrl,
         )}
         darkMode={darkMode}
+        logoPosition={pageLogoPosition}
         extraScript={result.extraScript}
       />,
     );
@@ -1279,7 +1287,12 @@ function createScreenPostHandler(screenId: string) {
       ? JSON.stringify(screenResult.branding)
       : undefined;
     const authParamsJson = JSON.stringify(authParams);
-    const themeJson = theme ? JSON.stringify(theme) : undefined;
+    // Suppress the widget's internal logo when page-level placement owns it.
+    const { logoPosition: pageLogoPosition, theme: themeForWidget } =
+      derivePageLogoPlacement(theme);
+    const themeJson = themeForWidget
+      ? JSON.stringify(themeForWidget)
+      : undefined;
     // Get screen name for data-screen attribute (falls back to original screenId if not set)
     const resultScreenId = screenResult.screen.name || screenId;
 
@@ -1348,6 +1361,7 @@ function createScreenPostHandler(screenId: string) {
           client.client_metadata?.termsAndConditionsUrl,
         )}
         darkMode={darkMode}
+        logoPosition={pageLogoPosition}
         extraScript={screenResult.extraScript}
       />,
     );

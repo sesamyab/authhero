@@ -234,6 +234,16 @@ export function ThemesTab() {
             { id: "right", name: "Right" },
           ]}
         />
+        <SelectInput
+          source="themes.page_background.logo_placement"
+          label="Logo Placement"
+          helperText="Where the tenant logo renders on the page. Chip suppresses the widget's internal logo."
+          choices={[
+            { id: "widget", name: "Inside widget (default)" },
+            { id: "chip", name: "Floating chip (top-left)" },
+            { id: "none", name: "None" },
+          ]}
+        />
       </Box>
 
       <Divider sx={{ my: 3 }} />
