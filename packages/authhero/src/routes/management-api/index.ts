@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables, AuthHeroConfig } from "../../types";
 import { actionsRoutes } from "./actions";
 import { actionTriggersRoutes } from "./action-triggers";
@@ -157,6 +158,101 @@ export default function create(config: AuthHeroConfig) {
     }
   });
 
+  // Auth0 SDKs (e.g. terraform-provider-auth0 via go-auth0) parse error bodies
+  // strictly as { statusCode, error, message, errorCode }. Cover the two cases
+  // authhero produces by default that aren't that shape: (1) plaintext from
+  // HTTPException, (2) zod-openapi's default validation-failure JSON.
+  app.onError((err, ctx) => {
+    if (!(err instanceof HTTPException)) {
+      // Let the parent app's onError do its thing (logging, 500 response).
+      throw err;
+    }
+    const status = err.status;
+    if (status < 400 || status >= 500) throw err;
+
+    // If the exception already carries a Response (e.g. JSONHTTPException
+    // sets a JSON body), pass it through untouched. Only wrap the bare
+    // HTTPException case where the message was meant to be a plaintext body.
+    const existing = err.getResponse();
+    if (
+      existing.headers.get("content-type")?.includes("application/json")
+    ) {
+      return existing;
+    }
+    const errorTextByStatus: Record<number, string> = {
+      400: "Bad Request",
+      401: "Unauthorized",
+      403: "Forbidden",
+      404: "Not Found",
+      405: "Method Not Allowed",
+      409: "Conflict",
+      422: "Unprocessable Entity",
+      429: "Too Many Requests",
+    };
+    return ctx.json(
+      {
+        statusCode: status,
+        error: errorTextByStatus[status] ?? "Error",
+        message: err.message || errorTextByStatus[status] || "Error",
+      },
+      status as 400 | 401 | 403 | 404 | 405 | 409 | 422 | 429,
+    );
+  });
+
+  // Translate @hono/zod-openapi's default validation-failure JSON
+  // ({ success: false, error: { issues, name: "ZodError" } }) into Auth0's
+  // shape so SDK callers get a readable message instead of an unmarshal error.
+  app.use(async (ctx, next) => {
+    await next();
+    if (
+      ctx.res.status !== 400 ||
+      !ctx.res.headers.get("content-type")?.includes("application/json")
+    ) {
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await ctx.res.clone().json();
+    } catch {
+      return;
+    }
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !("success" in body) ||
+      body.success !== false ||
+      !("error" in body) ||
+      typeof body.error !== "object" ||
+      body.error === null ||
+      !("name" in body.error) ||
+      body.error.name !== "ZodError"
+    ) {
+      return;
+    }
+    const issues =
+      "issues" in body.error && Array.isArray(body.error.issues)
+        ? (body.error.issues as Array<{ path?: unknown; message?: string }>)
+        : [];
+    const message = issues.length
+      ? `Payload validation error: ${issues
+          .map((i) => {
+            const segments = Array.isArray(i.path) ? i.path : [];
+            const pathStr = segments.length ? segments.join(".") : "root";
+            return `'${pathStr}': ${i.message ?? "invalid"}`;
+          })
+          .join("; ")}`
+      : "Payload validation error";
+    ctx.res = new Response(
+      JSON.stringify({
+        statusCode: 400,
+        error: "Bad Request",
+        message,
+        errorCode: "invalid_body",
+      }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
+  });
+
   registerComponent(app);
 
   // Apply decorator chain (hooks, caching, timing) on top of base adapters
@@ -243,6 +339,8 @@ export default function create(config: AuthHeroConfig) {
     .route("/branding", brandingRoutes)
     .route("/custom-domains", customDomainRoutes)
     .route("/email/providers", emailProviderRoutes)
+    // Auth0's official path is /emails/provider — alias so SDKs work.
+    .route("/emails/provider", emailProviderRoutes)
     .route("/users", userRoutes)
     .route("/keys", keyRoutes)
     .route("/users-by-email", usersByEmailRoutes)

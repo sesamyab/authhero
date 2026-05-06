@@ -1,14 +1,18 @@
 import { Kysely } from "kysely";
 import { Client, ClientInsert } from "@authhero/adapter-interfaces";
+import { nanoid } from "nanoid";
 import { Database } from "../db";
 import { booleanToInt } from "../helpers/stringify";
 
 export function create(db: Kysely<Database>) {
   return async (tenant_id: string, params: ClientInsert): Promise<Client> => {
+    // Auth0 semantics: client_id is server-generated when omitted on insert.
+    const client_id = params.client_id ?? nanoid();
     const client: Client = {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       ...params,
+      client_id,
       // Ensure required boolean fields have defaults
       global: params.global ?? false,
       is_first_party: params.is_first_party ?? false,

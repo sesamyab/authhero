@@ -39,7 +39,7 @@ export const tenantInsertSchema = z.object({
       show_log_link: z.boolean().optional(),
       url: z.string().optional(),
     })
-    .optional(),
+    .nullish(),
 
   // Flags
   flags: z
@@ -162,7 +162,7 @@ export const tenantInsertSchema = z.object({
         })
         .optional(),
     })
-    .optional(),
+    .nullish(),
 
   // Default audience
   default_audience: z.string().optional(),
@@ -198,7 +198,7 @@ export const tenantInsertSchema = z.object({
     .object({
       enable_endpoint_aliases: z.boolean().optional(),
     })
-    .optional(),
+    .nullish(),
 
   // Authorization settings
   pushed_authorization_requests_supported: z.boolean().optional(),

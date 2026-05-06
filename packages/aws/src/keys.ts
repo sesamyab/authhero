@@ -238,6 +238,14 @@ export const userOrganizationKeys = {
   gsi2sk: (userId: string) => `USER_ORG#${userId}`,
 };
 
+// Organization connection keys (junction table)
+export const organizationConnectionKeys = {
+  pk: (tenantId: string, organizationId: string) =>
+    `TENANT#${tenantId}#ORG#${organizationId}`,
+  sk: (connectionId: string) => `ORG_CONNECTION#${connectionId}`,
+  skPrefix: () => "ORG_CONNECTION#",
+};
+
 // Invite keys
 export const inviteKeys = {
   pk: (tenantId: string) => `TENANT#${tenantId}`,

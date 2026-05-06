@@ -26,7 +26,12 @@ function toAuth0TriggerId(triggerId: string): string {
   return REVERSE_TRIGGER_ID_MAP[triggerId] || triggerId;
 }
 
+// Auth0's PATCH /actions/triggers/{id}/bindings sends ref as { type, value }
+// — accept that shape. Keep id/name fields for backwards-compatibility with
+// older callers.
 const bindingRefSchema = z.object({
+  type: z.enum(["action_id", "action_name"]).optional(),
+  value: z.string().optional(),
   id: z.string().optional(),
   name: z.string().optional(),
 });
@@ -184,15 +189,44 @@ export const actionTriggersRoutes = new OpenAPIHono<{
         }
       }
 
-      // Create new hooks for each binding
+      // Create new hooks for each binding. Resolve actionId from either
+      // Auth0's { type, value } shape or our legacy { id, name } shape.
       const resultBindings: any[] = [];
       for (let i = 0; i < bindings.length; i++) {
         const binding = bindings[i]!;
-        const actionId = binding.ref.id;
+        let actionId = binding.ref.id;
+        if (!actionId && binding.ref.type === "action_id" && binding.ref.value) {
+          actionId = binding.ref.value;
+        } else if (
+          !actionId &&
+          binding.ref.type === "action_name" &&
+          binding.ref.value
+        ) {
+          // Look up action by exact name. The lucene-style q parser used by
+          // actions.list doesn't support escapes, so a name containing `"`
+          // would unbalance tokenization. Page through actions and filter in
+          // JS for an exact match.
+          const refName = binding.ref.value;
+          const per_page = 100;
+          let lookupPage = 0;
+          while (true) {
+            const matches = await ctx.env.data.actions.list(
+              ctx.var.tenant_id,
+              { page: lookupPage, per_page, include_totals: false },
+            );
+            const found = matches.actions.find((a) => a.name === refName);
+            if (found) {
+              actionId = found.id;
+              break;
+            }
+            if (matches.actions.length < per_page) break;
+            lookupPage++;
+          }
+        }
 
         if (!actionId) {
           throw new HTTPException(400, {
-            message: `Binding at index ${i} must have ref.id`,
+            message: `Binding at index ${i} must reference an action via ref.id or ref.value`,
           });
         }
 

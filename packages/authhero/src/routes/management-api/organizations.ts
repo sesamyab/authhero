@@ -2,6 +2,8 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   organizationSchema,
   organizationInsertSchema,
+  organizationConnectionSchema,
+  organizationConnectionInsertSchema,
   totalsSchema,
   roleListSchema,
   inviteSchema,
@@ -1269,6 +1271,335 @@ export const organizationRoutes = new OpenAPIHono<{
         description: "Delete an Organization Invitation",
         targetType: "invitation",
         targetId: invitation_id,
+      });
+
+      return ctx.body(null, { status: 204 });
+    },
+  )
+  // --------------------------------
+  // GET /api/v2/organizations/:id/enabled_connections
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["organizations"],
+      method: "get",
+      path: "/{id}/enabled_connections",
+      request: {
+        params: z.object({ id: z.string() }),
+        headers: z.object({ "tenant-id": z.string().optional() }),
+        query: z.object({
+          include_totals: z
+            .string()
+            .optional()
+            .transform((v) => v === "true"),
+          page: z
+            .string()
+            .optional()
+            .transform((v) => (v ? parseInt(v, 10) : 0)),
+          per_page: z
+            .string()
+            .optional()
+            .transform((v) => (v ? parseInt(v, 10) : 50)),
+        }),
+      },
+      security: [
+        {
+          Bearer: ["read:organization_connections", "auth:read"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.union([
+                z.array(organizationConnectionSchema),
+                totalsSchema.extend({
+                  connections: z.array(organizationConnectionSchema),
+                }),
+              ]),
+            },
+          },
+          description: "Connections enabled for the organization",
+        },
+      },
+    }),
+    async (ctx) => {
+      const tenant_id = ctx.var.tenant_id;
+      const { id: organization_id } = ctx.req.valid("param");
+      const { include_totals, page, per_page } = ctx.req.valid("query");
+
+      const organization = await ctx.env.data.organizations.get(
+        tenant_id,
+        organization_id,
+      );
+      if (!organization) {
+        throw new HTTPException(404, { message: "Organization not found" });
+      }
+
+      const connections = await ctx.env.data.organizationConnections.list(
+        tenant_id,
+        organization_id,
+      );
+      // Adapter returns the full unpaginated list; slice in memory.
+      const start = page * per_page;
+      const paginated = connections.slice(start, start + per_page);
+      // Auth0 wraps this list endpoint by default — the go-auth0 SDK decodes
+      // into an OrganizationConnectionList struct which always expects the
+      // `connections` key, regardless of the include_totals flag. Always wrap.
+      void include_totals;
+      return ctx.json({
+        connections: paginated,
+        total: connections.length,
+        start,
+        limit: per_page,
+        length: paginated.length,
+      });
+    },
+  )
+  // --------------------------------
+  // POST /api/v2/organizations/:id/enabled_connections
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["organizations"],
+      method: "post",
+      path: "/{id}/enabled_connections",
+      request: {
+        params: z.object({ id: z.string() }),
+        headers: z.object({ "tenant-id": z.string().optional() }),
+        body: {
+          content: {
+            "application/json": {
+              schema: organizationConnectionInsertSchema,
+            },
+          },
+        },
+      },
+      security: [
+        {
+          Bearer: ["create:organization_connections", "auth:write"],
+        },
+      ],
+      responses: {
+        201: {
+          content: {
+            "application/json": {
+              schema: organizationConnectionSchema,
+            },
+          },
+          description: "Connection enabled for the organization",
+        },
+      },
+    }),
+    async (ctx) => {
+      const tenant_id = ctx.var.tenant_id;
+      const { id: organization_id } = ctx.req.valid("param");
+      const body = ctx.req.valid("json");
+
+      const organization = await ctx.env.data.organizations.get(
+        tenant_id,
+        organization_id,
+      );
+      if (!organization) {
+        throw new HTTPException(404, { message: "Organization not found" });
+      }
+
+      const connection = await ctx.env.data.connections.get(
+        tenant_id,
+        body.connection_id,
+      );
+      if (!connection) {
+        throw new HTTPException(400, {
+          message: `Connection ${body.connection_id} not found`,
+        });
+      }
+
+      const existing = await ctx.env.data.organizationConnections.get(
+        tenant_id,
+        organization_id,
+        body.connection_id,
+      );
+      if (existing) {
+        throw new HTTPException(409, {
+          message: "Connection already enabled for this organization",
+        });
+      }
+
+      const created = await ctx.env.data.organizationConnections.create(
+        tenant_id,
+        organization_id,
+        body,
+      );
+
+      await logMessage(ctx, tenant_id, {
+        type: LogTypes.SUCCESS_API_OPERATION,
+        description: "Enable an Organization Connection",
+        targetType: "organization_connection",
+        targetId: `${organization_id}:${body.connection_id}`,
+      });
+
+      return ctx.json(created, { status: 201 });
+    },
+  )
+  // --------------------------------
+  // GET /api/v2/organizations/:id/enabled_connections/:connection_id
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["organizations"],
+      method: "get",
+      path: "/{id}/enabled_connections/{connection_id}",
+      request: {
+        params: z.object({
+          id: z.string(),
+          connection_id: z.string(),
+        }),
+        headers: z.object({ "tenant-id": z.string().optional() }),
+      },
+      security: [
+        {
+          Bearer: ["read:organization_connections", "auth:read"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: organizationConnectionSchema,
+            },
+          },
+          description: "An enabled organization connection",
+        },
+      },
+    }),
+    async (ctx) => {
+      const tenant_id = ctx.var.tenant_id;
+      const { id: organization_id, connection_id } = ctx.req.valid("param");
+
+      const orgConn = await ctx.env.data.organizationConnections.get(
+        tenant_id,
+        organization_id,
+        connection_id,
+      );
+      if (!orgConn) {
+        throw new HTTPException(404, {
+          message: "Organization connection not found",
+        });
+      }
+      return ctx.json(orgConn);
+    },
+  )
+  // --------------------------------
+  // PATCH /api/v2/organizations/:id/enabled_connections/:connection_id
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["organizations"],
+      method: "patch",
+      path: "/{id}/enabled_connections/{connection_id}",
+      request: {
+        params: z.object({
+          id: z.string(),
+          connection_id: z.string(),
+        }),
+        headers: z.object({ "tenant-id": z.string().optional() }),
+        body: {
+          content: {
+            "application/json": {
+              schema: organizationConnectionInsertSchema
+                .omit({ connection_id: true })
+                .partial(),
+            },
+          },
+        },
+      },
+      security: [
+        {
+          Bearer: ["update:organization_connections", "auth:write"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: organizationConnectionSchema,
+            },
+          },
+          description: "Updated organization connection",
+        },
+      },
+    }),
+    async (ctx) => {
+      const tenant_id = ctx.var.tenant_id;
+      const { id: organization_id, connection_id } = ctx.req.valid("param");
+      const body = ctx.req.valid("json");
+
+      const updated = await ctx.env.data.organizationConnections.update(
+        tenant_id,
+        organization_id,
+        connection_id,
+        body,
+      );
+      if (!updated) {
+        throw new HTTPException(404, {
+          message: "Organization connection not found",
+        });
+      }
+
+      await logMessage(ctx, tenant_id, {
+        type: LogTypes.SUCCESS_API_OPERATION,
+        description: "Update an Organization Connection",
+        targetType: "organization_connection",
+        targetId: `${organization_id}:${connection_id}`,
+      });
+
+      return ctx.json(updated);
+    },
+  )
+  // --------------------------------
+  // DELETE /api/v2/organizations/:id/enabled_connections/:connection_id
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["organizations"],
+      method: "delete",
+      path: "/{id}/enabled_connections/{connection_id}",
+      request: {
+        params: z.object({
+          id: z.string(),
+          connection_id: z.string(),
+        }),
+        headers: z.object({ "tenant-id": z.string().optional() }),
+      },
+      security: [
+        {
+          Bearer: ["delete:organization_connections", "auth:write"],
+        },
+      ],
+      responses: {
+        204: { description: "Connection disabled" },
+      },
+    }),
+    async (ctx) => {
+      const tenant_id = ctx.var.tenant_id;
+      const { id: organization_id, connection_id } = ctx.req.valid("param");
+
+      const removed = await ctx.env.data.organizationConnections.remove(
+        tenant_id,
+        organization_id,
+        connection_id,
+      );
+      if (!removed) {
+        throw new HTTPException(404, {
+          message: "Organization connection not found",
+        });
+      }
+
+      await logMessage(ctx, tenant_id, {
+        type: LogTypes.SUCCESS_API_OPERATION,
+        description: "Disable an Organization Connection",
+        targetType: "organization_connection",
+        targetId: `${organization_id}:${connection_id}`,
       });
 
       return ctx.body(null, { status: 204 });

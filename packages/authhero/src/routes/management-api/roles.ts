@@ -7,6 +7,7 @@ import {
   roleSchema,
   roleInsertSchema,
   totalsSchema,
+  rolePermissionSchema,
   rolePermissionListSchema,
   LogTypes,
 } from "@authhero/adapter-interfaces";
@@ -14,6 +15,10 @@ import { logMessage } from "../../helpers/logging";
 
 const rolesWithTotalsSchema = totalsSchema.extend({
   roles: z.array(roleSchema),
+});
+
+const rolePermissionsWithTotalsSchema = totalsSchema.extend({
+  permissions: z.array(rolePermissionSchema),
 });
 
 export const roleRoutes = new OpenAPIHono<{
@@ -331,7 +336,10 @@ export const roleRoutes = new OpenAPIHono<{
         200: {
           content: {
             "application/json": {
-              schema: rolePermissionListSchema,
+              schema: z.union([
+                rolePermissionListSchema,
+                rolePermissionsWithTotalsSchema,
+              ]),
             },
           },
           description: "Role permissions",
@@ -341,7 +349,8 @@ export const roleRoutes = new OpenAPIHono<{
     async (ctx) => {
       const { id } = ctx.req.valid("param");
 
-      const { page, per_page, sort, q } = ctx.req.valid("query");
+      const { page, per_page, include_totals, sort, q } =
+        ctx.req.valid("query");
 
       const tenantId = ctx.var.tenant_id;
       if (!tenantId) {
@@ -359,7 +368,30 @@ export const roleRoutes = new OpenAPIHono<{
         });
       }
 
-      // Get permissions assigned to this role using the new adapter
+      // Auth0's GET /roles/:id/permissions returns the raw array by default,
+      // but { permissions, total, start, limit } when include_totals=true.
+      // SDKs (e.g. go-auth0) decode into a PermissionList struct and rely on
+      // the wrapped form, so honor the flag rather than always returning array.
+      if (include_totals) {
+        // The rolePermissions adapter returns an array (no totals shape), so
+        // fetch a large window to compute an accurate total and slice in
+        // memory. Roles have a bounded number of permissions in practice.
+        const all = await ctx.env.data.rolePermissions.list(tenantId, id, {
+          per_page: 10000,
+          sort: parseSort(sort),
+          q,
+        });
+        const limit = per_page ?? 50;
+        const start = (page ?? 0) * limit;
+        return ctx.json({
+          permissions: all.slice(start, start + limit),
+          total: all.length,
+          start,
+          limit,
+          length: all.length,
+        });
+      }
+
       const permissions = await ctx.env.data.rolePermissions.list(
         tenantId,
         id,
@@ -371,7 +403,6 @@ export const roleRoutes = new OpenAPIHono<{
           q,
         },
       );
-
       return ctx.json(permissions);
     },
   )
@@ -460,10 +491,9 @@ export const roleRoutes = new OpenAPIHono<{
         targetId: id,
       });
 
-      return ctx.json(
-        { message: "Permissions assigned successfully" },
-        { status: 201 },
-      );
+      // Auth0 returns 204 No Content for POST /roles/{id}/permissions; matching
+      // it lets SDKs (e.g. go-auth0) skip body decoding.
+      return ctx.body(null, 204);
     },
   )
   // --------------------------------

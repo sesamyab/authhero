@@ -83,10 +83,23 @@ export const emailProviderRoutes = new OpenAPIHono<{
     async (ctx) => {
       const emailProvider = ctx.req.valid("json");
 
-      await ctx.env.data.emailProviders.create(
+      // The email provider is a singleton per tenant. POST behaves as upsert
+      // so SDK clients (and the existing test seed) don't hit unique-key
+      // collisions when calling against an already-configured tenant.
+      const existing = await ctx.env.data.emailProviders.get(
         ctx.var.tenant_id,
-        emailProvider,
       );
+      if (existing) {
+        await ctx.env.data.emailProviders.update(
+          ctx.var.tenant_id,
+          emailProvider,
+        );
+      } else {
+        await ctx.env.data.emailProviders.create(
+          ctx.var.tenant_id,
+          emailProvider,
+        );
+      }
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -95,7 +108,8 @@ export const emailProviderRoutes = new OpenAPIHono<{
         targetId: ctx.var.tenant_id,
       });
 
-      return ctx.text("OK", { status: 201 });
+      const stored = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
+      return ctx.json(stored ?? emailProvider, { status: 201 });
     },
   )
   // --------------------------------
@@ -130,9 +144,9 @@ export const emailProviderRoutes = new OpenAPIHono<{
       },
     }),
     async (ctx) => {
-      const branding = ctx.req.valid("json");
+      const patch = ctx.req.valid("json");
 
-      await ctx.env.data.emailProviders.update(ctx.var.tenant_id, branding);
+      await ctx.env.data.emailProviders.update(ctx.var.tenant_id, patch);
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -141,6 +155,7 @@ export const emailProviderRoutes = new OpenAPIHono<{
         targetId: ctx.var.tenant_id,
       });
 
-      return ctx.text("OK");
+      const updated = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
+      return ctx.json(updated ?? patch);
     },
   );

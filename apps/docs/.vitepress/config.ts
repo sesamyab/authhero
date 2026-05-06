@@ -555,6 +555,7 @@ gtag('config', 'G-DNZWG3PF2L');`,
               text: "SAML Migration",
               link: "/auth0-comparison/saml-migration",
             },
+            { text: "Terraform", link: "/auth0-comparison/terraform" },
           ],
         },
         {

@@ -292,6 +292,7 @@ export const clientRoutes = new OpenAPIHono<{
 
       const clientCreate = {
         ...body,
+        client_id: body.client_id || nanoid(),
         client_secret: body.client_secret || nanoid(),
       };
 

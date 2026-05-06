@@ -33,6 +33,7 @@ import { rolePermissions } from "./role-permissions";
 import { createUserPermissionsAdapter } from "./user-permissions/adapter";
 import { createUserRolesAdapter } from "./user-roles/adapter";
 import { createOrganizationsAdapter } from "./organizations";
+import { createOrganizationConnectionsAdapter } from "./organization-connections";
 import { createUserOrganizationsAdapter } from "./user-organizations";
 import { createInvitesAdapter } from "./invites";
 import { createStatsAdapter } from "./stats";
@@ -82,6 +83,7 @@ export default function createAdapters(
     customText: createCustomTextAdapter(db),
     users: createUsersAdapter(db),
     organizations: createOrganizationsAdapter(db),
+    organizationConnections: createOrganizationConnectionsAdapter(db),
     userOrganizations: createUserOrganizationsAdapter(db),
     stats: createStatsAdapter(db),
     outbox: createOutboxAdapter(db),

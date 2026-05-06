@@ -154,6 +154,7 @@ import * as o055_planetscale_redundant_indexes_cleanup from "./2026-04-24T10:00:
 import * as o056_client_user_linking_mode from "./2026-04-28T10:00:00_client_user_linking_mode";
 import * as o057_hooks_metadata from "./2026-04-29T10:00:00_hooks_metadata";
 import * as o058_refresh_tokens_rotation from "./2026-05-05T10:00:00_refresh_tokens_rotation";
+import * as o059_organization_connections from "./2026-05-05T20:00:00_organization_connections";
 
 // These need to be in alphabetic order
 export default {
@@ -313,4 +314,5 @@ export default {
   o056_client_user_linking_mode,
   o057_hooks_metadata,
   o058_refresh_tokens_rotation,
+  o059_organization_connections,
 };

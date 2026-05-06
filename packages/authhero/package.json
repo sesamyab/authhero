@@ -48,6 +48,7 @@
     "@ape-egg/tailwind-rows-columns": "^1.0.2",
     "@authhero/kysely-adapter": "workspace:*",
     "@authhero/widget": "workspace:*",
+    "@hono/node-server": "^1.19.14",
     "@hono/zod-openapi": "^0.19.10",
     "@storybook/react": "^10.0.4",
     "@storybook/react-vite": "^10.0.4",

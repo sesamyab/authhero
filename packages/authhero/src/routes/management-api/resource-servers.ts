@@ -1,10 +1,12 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { Context } from "hono";
 import { Bindings, Variables } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import { querySchema } from "../../types";
 import {
   resourceServerInsertSchema,
   resourceServerSchema,
+  ResourceServer,
   totalsSchema,
   LogTypes,
 } from "@authhero/adapter-interfaces";
@@ -14,6 +16,26 @@ import { logMessage } from "../../helpers/logging";
 const resourceServersWithTotalsSchema = totalsSchema.extend({
   resource_servers: z.array(resourceServerSchema),
 });
+
+// Auth0 lets clients reference a resource server by either its UUID id or its
+// URL identifier. SDKs (e.g. terraform-provider-auth0) commonly pass the
+// identifier. Look up by id first; on miss, scan by identifier.
+async function resolveResourceServer(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  tenantId: string,
+  idOrIdentifier: string,
+): Promise<ResourceServer | null> {
+  const direct = await ctx.env.data.resourceServers.get(
+    tenantId,
+    idOrIdentifier,
+  );
+  if (direct) return direct;
+  const list = await ctx.env.data.resourceServers.list(tenantId, {});
+  return (
+    list.resource_servers.find((rs) => rs.identifier === idOrIdentifier) ??
+    null
+  );
+}
 
 export const resourceServerRoutes = new OpenAPIHono<{
   Bindings: Bindings;
@@ -116,10 +138,7 @@ export const resourceServerRoutes = new OpenAPIHono<{
       const tenant_id = ctx.var.tenant_id;
       const { id } = ctx.req.valid("param");
 
-      const resourceServer = await ctx.env.data.resourceServers.get(
-        tenant_id,
-        id,
-      );
+      const resourceServer = await resolveResourceServer(ctx, tenant_id, id);
 
       if (!resourceServer) {
         throw new HTTPException(404);
@@ -159,10 +178,7 @@ export const resourceServerRoutes = new OpenAPIHono<{
       const tenant_id = ctx.var.tenant_id;
       const { id } = ctx.req.valid("param");
 
-      const resourceServer = await ctx.env.data.resourceServers.get(
-        tenant_id,
-        id,
-      );
+      const resourceServer = await resolveResourceServer(ctx, tenant_id, id);
 
       if (!resourceServer) {
         throw new HTTPException(404, {
@@ -176,7 +192,7 @@ export const resourceServerRoutes = new OpenAPIHono<{
         });
       }
 
-      await ctx.env.data.resourceServers.remove(tenant_id, id);
+      await ctx.env.data.resourceServers.remove(tenant_id, resourceServer.id!);
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -233,7 +249,8 @@ export const resourceServerRoutes = new OpenAPIHono<{
       const { id } = ctx.req.valid("param");
       const body = ctx.req.valid("json");
 
-      const existingResourceServer = await ctx.env.data.resourceServers.get(
+      const existingResourceServer = await resolveResourceServer(
+        ctx,
         tenant_id,
         id,
       );
@@ -250,11 +267,12 @@ export const resourceServerRoutes = new OpenAPIHono<{
         });
       }
 
-      await ctx.env.data.resourceServers.update(tenant_id, id, body);
+      const realId = existingResourceServer.id!;
+      await ctx.env.data.resourceServers.update(tenant_id, realId, body);
 
       const resourceServer = await ctx.env.data.resourceServers.get(
         tenant_id,
-        id,
+        realId,
       );
 
       if (!resourceServer) {

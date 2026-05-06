@@ -11,7 +11,7 @@ export const emailProviderSchema = z.object({
       region: z.string(),
     }),
     z.object({
-      smtp_host: z.array(z.string()),
+      smtp_host: z.string(),
       smtp_port: z.number(),
       smtp_user: z.string(),
       smtp_pass: z.string(),

@@ -526,6 +526,7 @@ Ready to try AuthHero? Start here:
 1. [Getting Started Guide](/getting-started) - Quick start tutorial
 2. [Architecture Overview](/architecture/) - Understanding the system
 3. [Hooks Documentation](./hooks) - Implementing custom logic
+4. [Terraform](./terraform) - Manage AuthHero with the official `auth0/auth0` provider
 
 ## Community & Support
 
