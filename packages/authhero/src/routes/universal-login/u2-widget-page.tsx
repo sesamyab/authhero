@@ -47,6 +47,7 @@ export type WidgetPageProps = {
   clientName: string;
   poweredByLogo?: {
     url: string;
+    darkUrl?: string;
     alt: string;
     href?: string;
     height?: number;
@@ -232,6 +233,9 @@ export function WidgetPage({
   const safePoweredByUrl = poweredByLogo?.url
     ? sanitizeUrl(poweredByLogo.url)
     : null;
+  const safePoweredByDarkUrl = poweredByLogo?.darkUrl
+    ? sanitizeUrl(poweredByLogo.darkUrl)
+    : null;
   const safePoweredByHref = poweredByLogo?.href
     ? sanitizeUrl(poweredByLogo.href)
     : null;
@@ -320,6 +324,7 @@ export function WidgetPage({
               .powered-by { opacity: 0.7; transition: opacity 0.2s; line-height: 0; }
               .powered-by:hover { opacity: 1; }
               .powered-by img { display: block; }
+              .powered-by .powered-by-dark { display: none; }
               .terms-link { font-size: 12px; color: inherit; opacity: 0.65; text-decoration: none; transition: opacity 0.2s; }
               .terms-link:hover { opacity: 1; text-decoration: underline; }
               .language-picker { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 0; font-size: 13px; color: inherit; cursor: pointer; opacity: 0.7; transition: opacity 0.2s; }
@@ -333,6 +338,8 @@ export function WidgetPage({
               html.ah-dark-mode body { background: #111827 !important; }
               html.ah-dark-mode .widget-container { position: relative; z-index: 1; }
               html.ah-dark-mode .page-footer-bar { background: rgba(0,0,0,0.5); border-top-color: rgba(255,255,255,0.08); color: #eee; }
+              html.ah-dark-mode .powered-by .powered-by-light { display: none; }
+              html.ah-dark-mode .powered-by .powered-by-dark { display: block; }
               ${darkModeCssVarRules("html.ah-dark-mode authhero-widget", primaryColor || sanitizeCssColor(theme?.colors?.primary_button))}
 
               /* Auto mode: follow system preference, unless explicitly set to light */
@@ -340,6 +347,8 @@ export function WidgetPage({
                 html:not(.ah-light-mode) body { background: #111827 !important; }
                 html:not(.ah-light-mode) .widget-container { position: relative; z-index: 1; }
                 html:not(.ah-light-mode) .page-footer-bar { background: rgba(0,0,0,0.5); border-top-color: rgba(255,255,255,0.08); color: #eee; }
+                html:not(.ah-light-mode) .powered-by .powered-by-light { display: none; }
+                html:not(.ah-light-mode) .powered-by .powered-by-dark { display: block; }
                 ${darkModeCssVarRules("html:not(.ah-light-mode) authhero-widget", primaryColor || sanitizeCssColor(theme?.colors?.primary_button))}
               }
 
@@ -382,25 +391,39 @@ export function WidgetPage({
           <div class="footer-left">
             {safePoweredByUrl && (
               <div class="powered-by">
-                {safePoweredByHref ? (
-                  <a
-                    href={safePoweredByHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <img
-                      src={safePoweredByUrl}
-                      alt={poweredByLogo?.alt || ""}
-                      height={poweredByLogo?.height || 20}
-                    />
-                  </a>
-                ) : (
-                  <img
-                    src={safePoweredByUrl}
-                    alt={poweredByLogo?.alt || ""}
-                    height={poweredByLogo?.height || 20}
-                  />
-                )}
+                {(() => {
+                  const alt = poweredByLogo?.alt || "";
+                  const height = poweredByLogo?.height || 20;
+                  const imgs = (
+                    <>
+                      <img
+                        class="powered-by-light"
+                        src={safePoweredByUrl}
+                        alt={alt}
+                        height={height}
+                      />
+                      {safePoweredByDarkUrl && (
+                        <img
+                          class="powered-by-dark"
+                          src={safePoweredByDarkUrl}
+                          alt={alt}
+                          height={height}
+                        />
+                      )}
+                    </>
+                  );
+                  return safePoweredByHref ? (
+                    <a
+                      href={safePoweredByHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {imgs}
+                    </a>
+                  ) : (
+                    imgs
+                  );
+                })()}
               </div>
             )}
             {termsAndConditionsUrl && (

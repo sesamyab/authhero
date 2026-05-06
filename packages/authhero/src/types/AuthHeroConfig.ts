@@ -271,6 +271,7 @@ export interface AuthHeroConfig {
    *   dataAdapter,
    *   poweredByLogo: {
    *     url: "https://example.com/logo.svg",
+   *     darkUrl: "https://example.com/logo-dark.svg", // optional dark-mode variant
    *     alt: "Powered by Example",
    *     href: "https://example.com", // optional link
    *     height: 24, // optional height in pixels (default: 20)
@@ -279,8 +280,10 @@ export interface AuthHeroConfig {
    * ```
    */
   poweredByLogo?: {
-    /** URL of the logo image */
+    /** URL of the logo image (used in light mode, and in dark mode if `darkUrl` is not provided) */
     url: string;
+    /** Optional dark-mode variant; falls back to `url` when omitted */
+    darkUrl?: string;
     /** Alt text for the logo */
     alt: string;
     /** Optional link URL - if provided, the logo will be clickable */

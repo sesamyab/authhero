@@ -59,14 +59,17 @@ describe("Cloudflare RateLimit adapter", () => {
 
   it("fails open when the binding throws", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const binding = makeBinding({ throws: new Error("binding offline") });
-    const adapter = createCloudflareRateLimitAdapter({
-      "pre-login": binding,
-    });
-    const decision = await adapter!.consume("pre-login", "tenant:1.2.3.4");
-    expect(decision).toEqual({ allowed: true });
-    expect(errorSpy).toHaveBeenCalled();
-    errorSpy.mockRestore();
+    try {
+      const binding = makeBinding({ throws: new Error("binding offline") });
+      const adapter = createCloudflareRateLimitAdapter({
+        "pre-login": binding,
+      });
+      const decision = await adapter!.consume("pre-login", "tenant:1.2.3.4");
+      expect(decision).toEqual({ allowed: true });
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("routes different scopes to different bindings", async () => {

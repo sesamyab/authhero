@@ -7,6 +7,7 @@ import {
   AuthParams,
   LoginSession,
   LogTypes,
+  RateLimitDecision,
   Strategy,
   StrategyType,
 } from "@authhero/adapter-interfaces";
@@ -87,10 +88,16 @@ export async function passwordGrant(
   const ip = ctx.var.ip;
   const allowlisted = ip ? sip?.allowlist?.includes(ip) : false;
   if (data.rateLimit && sip?.enabled && ip && !allowlisted) {
-    const decision = await data.rateLimit.consume(
-      "pre-login",
-      `${client.tenant.id}:${ip}`,
-    );
+    let decision: RateLimitDecision = { allowed: true };
+    try {
+      decision = await data.rateLimit.consume(
+        "pre-login",
+        `${client.tenant.id}:${ip}`,
+      );
+    } catch (error) {
+      // Fail open: a misbehaving rate-limit adapter should never lock users out.
+      console.error("Pre-login rate limit consume failed:", error);
+    }
     if (!decision.allowed) {
       logMessage(ctx, client.tenant.id, {
         type: LogTypes.FAILED_LOGIN,
