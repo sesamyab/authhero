@@ -1291,7 +1291,12 @@ export const organizationRoutes = new OpenAPIHono<{
           include_totals: z
             .string()
             .optional()
-            .transform((v) => v === "true"),
+            .transform((v) => v === "true")
+            .openapi({
+              deprecated: true,
+              description:
+                "Ignored for compatibility; the connections/total/start/limit/length wrapper is always returned.",
+            }),
           page: z
             .string()
             .optional()
@@ -1311,12 +1316,9 @@ export const organizationRoutes = new OpenAPIHono<{
         200: {
           content: {
             "application/json": {
-              schema: z.union([
-                z.array(organizationConnectionSchema),
-                totalsSchema.extend({
-                  connections: z.array(organizationConnectionSchema),
-                }),
-              ]),
+              schema: totalsSchema.extend({
+                connections: z.array(organizationConnectionSchema),
+              }),
             },
           },
           description: "Connections enabled for the organization",

@@ -383,12 +383,13 @@ export const roleRoutes = new OpenAPIHono<{
         });
         const limit = per_page ?? 50;
         const start = (page ?? 0) * limit;
+        const slice = all.slice(start, start + limit);
         return ctx.json({
-          permissions: all.slice(start, start + limit),
+          permissions: slice,
           total: all.length,
           start,
           limit,
-          length: all.length,
+          length: slice.length,
         });
       }
 
@@ -442,7 +443,7 @@ export const roleRoutes = new OpenAPIHono<{
         },
       ],
       responses: {
-        201: {
+        204: {
           description: "Permissions assigned to role",
         },
       },

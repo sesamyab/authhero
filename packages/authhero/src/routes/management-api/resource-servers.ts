@@ -198,7 +198,7 @@ export const resourceServerRoutes = new OpenAPIHono<{
         type: LogTypes.SUCCESS_API_OPERATION,
         description: "Delete a Resource Server",
         targetType: "resource_server",
-        targetId: id,
+        targetId: resourceServer.id!,
         beforeState: resourceServer as unknown as Record<string, unknown>,
       });
 
@@ -285,7 +285,7 @@ export const resourceServerRoutes = new OpenAPIHono<{
         type: LogTypes.SUCCESS_API_OPERATION,
         description: "Update a Resource Server",
         targetType: "resource_server",
-        targetId: id,
+        targetId: resourceServer.id!,
         beforeState: existingResourceServer as unknown as Record<
           string,
           unknown

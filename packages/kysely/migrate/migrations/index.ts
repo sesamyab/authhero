@@ -155,6 +155,8 @@ import * as o056_client_user_linking_mode from "./2026-04-28T10:00:00_client_use
 import * as o057_hooks_metadata from "./2026-04-29T10:00:00_hooks_metadata";
 import * as o058_refresh_tokens_rotation from "./2026-05-05T10:00:00_refresh_tokens_rotation";
 import * as o059_organization_connections from "./2026-05-05T20:00:00_organization_connections";
+import * as o060_log_streams from "./2026-05-06T10:00:00_log_streams";
+import * as o061_tenants_attack_protection from "./2026-05-06T11:00:00_tenants_attack_protection";
 
 // These need to be in alphabetic order
 export default {
@@ -315,4 +317,6 @@ export default {
   o057_hooks_metadata,
   o058_refresh_tokens_rotation,
   o059_organization_connections,
+  o060_log_streams,
+  o061_tenants_attack_protection,
 };

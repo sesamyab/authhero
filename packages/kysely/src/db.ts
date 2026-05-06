@@ -494,6 +494,18 @@ export interface Database {
   universal_login_templates: z.infer<typeof sqlUniversalLoginTemplateSchema>;
   custom_text: z.infer<typeof sqlCustomTextSchema>;
   authentication_methods: z.infer<typeof sqlAuthenticationMethodSchema>;
+  log_streams: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    type: string;
+    status: string;
+    sink: string; // JSON
+    filters: string | null; // JSON
+    is_priority: number | null;
+    created_at: string;
+    updated_at: string;
+  };
   outbox_events: {
     id: string;
     tenant_id: string;

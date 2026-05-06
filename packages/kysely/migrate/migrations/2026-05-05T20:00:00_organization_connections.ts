@@ -27,6 +27,20 @@ export async function up(db: Kysely<Database>): Promise<void> {
       "organization_id",
       "connection_id",
     ])
+    .addForeignKeyConstraint(
+      "organization_connections_organization_fk",
+      ["organization_id"],
+      "organizations",
+      ["id"],
+      (cb) => cb.onDelete("cascade"),
+    )
+    .addForeignKeyConstraint(
+      "organization_connections_connection_fk",
+      ["tenant_id", "connection_id"],
+      "connections",
+      ["tenant_id", "id"],
+      (cb) => cb.onDelete("cascade"),
+    )
     .execute();
 
   await db.schema

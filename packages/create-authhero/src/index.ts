@@ -4,6 +4,7 @@ import { Command } from "commander";
 import inquirer from "inquirer";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 
 const program = new Command();
@@ -1350,18 +1351,22 @@ program
       ),
     );
 
-    // Copy template files
+    // Copy template files. Templates live next to the entry when bundled
+    // (dist/<type>/) and under templates/ when running from source via tsx.
     const templateDir = config.templateDir;
+    const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+    const candidatePaths = [
+      path.join(scriptDir, templateDir),
+      path.join(scriptDir, "..", "templates", templateDir),
+    ];
+    const sourceDir = candidatePaths.find((p) => fs.existsSync(p));
 
-    const sourceDir = path.join(
-      import.meta.url.replace("file://", "").replace("/create-authhero.js", ""),
-      templateDir,
-    );
-
-    if (fs.existsSync(sourceDir)) {
+    if (sourceDir) {
       copyFiles(sourceDir, projectPath);
     } else {
-      console.error(`❌ Template directory not found: ${sourceDir}`);
+      console.error(
+        `❌ Template directory not found. Looked in:\n  ${candidatePaths.join("\n  ")}`,
+      );
       process.exit(1);
     }
 

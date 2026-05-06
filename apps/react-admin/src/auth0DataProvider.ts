@@ -397,6 +397,33 @@ export default (
         );
       }
 
+      if (resource === "attack-protection") {
+        const headers = createHeaders(tenantId);
+        const sections = [
+          "breached-password-detection",
+          "brute-force-protection",
+          "suspicious-ip-throttling",
+        ] as const;
+        const [bpd, bf, sip] = await Promise.all(
+          sections.map((s) =>
+            httpClient(`${apiUrl}/api/v2/attack-protection/${s}`, {
+              headers,
+            }).then((r) => r.json),
+          ),
+        );
+        return {
+          data: [
+            {
+              id: resource,
+              breached_password_detection: bpd,
+              brute_force_protection: bf,
+              suspicious_ip_throttling: sip,
+            },
+          ],
+          total: 1,
+        };
+      }
+
       // Handle prompts singleton resource
       if (resource === "prompts") {
         const headers = createHeaders(tenantId);
@@ -765,6 +792,30 @@ export default (
           data: {
             ...result,
             id: resource,
+          },
+        };
+      }
+
+      if (resource === "attack-protection") {
+        const headers = createHeaders(tenantId);
+        const sections = [
+          "breached-password-detection",
+          "brute-force-protection",
+          "suspicious-ip-throttling",
+        ] as const;
+        const [bpd, bf, sip] = await Promise.all(
+          sections.map((s) =>
+            httpClient(`${apiUrl}/api/v2/attack-protection/${s}`, {
+              headers,
+            }).then((r) => r.json),
+          ),
+        );
+        return {
+          data: {
+            id: resource,
+            breached_password_detection: bpd,
+            brute_force_protection: bf,
+            suspicious_ip_throttling: sip,
           },
         };
       }
@@ -1226,6 +1277,40 @@ export default (
         return {
           data: { ...result, id: resource },
         };
+      }
+
+      if (resource === "attack-protection") {
+        const headers = createHeaders(tenantId);
+        headers.set("Content-Type", "application/json");
+        const sectionMap = {
+          breached_password_detection: "breached-password-detection",
+          brute_force_protection: "brute-force-protection",
+          suspicious_ip_throttling: "suspicious-ip-throttling",
+        } as const;
+        const responses = await Promise.all(
+          (
+            Object.entries(sectionMap) as [
+              keyof typeof sectionMap,
+              (typeof sectionMap)[keyof typeof sectionMap],
+            ][]
+          ).map(async ([key, path]) => {
+            const body = cleanParams.data[key] ?? {};
+            const res = await httpClient(
+              `${apiUrl}/api/v2/attack-protection/${path}`,
+              {
+                method: "PATCH",
+                headers,
+                body: JSON.stringify(body),
+              },
+            );
+            return [key, res.json] as const;
+          }),
+        );
+        const data: Record<string, unknown> = { id: resource };
+        for (const [key, value] of responses) {
+          data[key] = value;
+        }
+        return { data };
       }
 
       // Handle prompts singleton resource

@@ -82,6 +82,12 @@ export function sqlTenantToTenant(sqlTenant: any): Tenant {
   if (sqlTenant.mfa && typeof sqlTenant.mfa === "string") {
     tenant.mfa = JSON.parse(sqlTenant.mfa);
   }
+  if (
+    sqlTenant.attack_protection &&
+    typeof sqlTenant.attack_protection === "string"
+  ) {
+    tenant.attack_protection = JSON.parse(sqlTenant.attack_protection);
+  }
 
   // Convert integer to boolean
   if (sqlTenant.allow_organization_name_in_authentication_api !== undefined) {
@@ -126,6 +132,7 @@ export function tenantToSqlTenant(tenant: Partial<Tenant>): any {
       "acr_values_supported",
       "mtls",
       "mfa",
+      "attack_protection",
     ],
     sqlTenant,
   );

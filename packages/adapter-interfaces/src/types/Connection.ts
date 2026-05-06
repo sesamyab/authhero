@@ -170,12 +170,37 @@ export const connectionOptionsSchema = z.object({
     .optional(),
 });
 
+// terraform's auth0 provider serializes unset connection-options fields as
+// JSON null, including inside nested objects (e.g. password_complexity_options,
+// attributes.email.signup). Strip nulls recursively before validation so
+// optional fields don't reject "null" values at any depth.
+function stripNullsDeep(v: unknown): unknown {
+  if (v === null) return undefined;
+  if (Array.isArray(v)) {
+    return v.filter((x) => x !== null).map(stripNullsDeep);
+  }
+  if (v && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (val === null) continue;
+      out[k] = stripNullsDeep(val);
+    }
+    return out;
+  }
+  return v;
+}
+
 export const connectionInsertSchema = z.object({
   id: z.string().optional(),
   name: z.string(),
   display_name: z.string().optional(),
   strategy: z.string(),
-  options: connectionOptionsSchema.default({}),
+  options: z
+    .preprocess(
+      (v) => (v === null ? {} : stripNullsDeep(v)),
+      connectionOptionsSchema,
+    )
+    .default({}),
   enabled_clients: z.array(z.string()).default([]).optional(),
   response_type: z.custom<AuthorizationResponseType>().optional(),
   response_mode: z.custom<AuthorizationResponseMode>().optional(),

@@ -417,8 +417,8 @@ export const connectionRoutes = new OpenAPIHono<{
         },
       ],
       responses: {
-        200: {
-          description: "Clients updated successfully",
+        204: {
+          description: "Clients updated successfully (No Content)",
         },
       },
     }),
