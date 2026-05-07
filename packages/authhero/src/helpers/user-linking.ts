@@ -5,7 +5,8 @@ import { UserLinkingMode } from "../types/AuthHeroConfig";
 /**
  * Resolves the effective `UserLinkingMode` for a request, applying the
  * priority order: per-client `user_linking_mode` (highest) → service-level
- * `userLinkingMode` (set via `init`) → `"builtin"` (legacy default).
+ * `userLinkingMode` (set via `init`, static value or resolver function) →
+ * `"builtin"` (legacy default).
  *
  * The per-client override is read from the client referenced by
  * `ctx.var.client_id`. Management-API requests don't have a client_id and
@@ -22,7 +23,12 @@ async function resolveUserLinkingMode(
       return client.user_linking_mode;
     }
   }
-  return ctx.env.userLinkingMode ?? "builtin";
+  const serviceLevel = ctx.env.userLinkingMode;
+  if (typeof serviceLevel === "function") {
+    const resolved = await serviceLevel({ tenant_id, client_id });
+    return resolved === "builtin" || resolved === "off" ? resolved : "builtin";
+  }
+  return serviceLevel ?? "builtin";
 }
 
 /**
