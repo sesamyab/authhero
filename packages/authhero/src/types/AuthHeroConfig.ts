@@ -157,6 +157,18 @@ export interface OutboxConfig {
  */
 export type UserLinkingMode = "builtin" | "off";
 
+/**
+ * Resolver form for the service-level user-linking mode. Receives the
+ * resolved `tenant_id` (and `client_id`, when the request has one) and
+ * returns the mode to use for that request. May be async.
+ */
+export type UserLinkingModeResolver = (params: {
+  tenant_id: string;
+  client_id?: string;
+}) => UserLinkingMode | Promise<UserLinkingMode>;
+
+export type UserLinkingModeOption = UserLinkingMode | UserLinkingModeResolver;
+
 export interface AuthHeroConfig {
   dataAdapter: DataAdapters;
 
@@ -368,7 +380,11 @@ export interface AuthHeroConfig {
    * lookup by verified email at user creation and email update. A per-client
    * `user_linking_mode` setting overrides this default.
    *
+   * Accepts either a static value or a resolver function that receives
+   * `{ tenant_id, client_id }` and returns the mode (sync or async). Use
+   * the resolver form to disable built-in linking on a per-tenant basis.
+   *
    * @default "builtin"
    */
-  userLinkingMode?: UserLinkingMode;
+  userLinkingMode?: UserLinkingModeOption;
 }
