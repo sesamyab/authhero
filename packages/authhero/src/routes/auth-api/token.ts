@@ -31,11 +31,40 @@ import { GrantFlowResult } from "src/types/GrantFlowResult";
 import { JSONHTTPException } from "../../errors/json-http-exception";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { parseBasicAuthHeader } from "../../utils/auth-header";
+import {
+  verifyClientAssertion,
+  ClientAssertionError,
+  CLIENT_ASSERTION_TYPE,
+} from "../../helpers/client-assertion";
+import { getEnrichedClient, EnrichedClient } from "../../helpers/client";
+import { getAuthUrl, getIssuer } from "../../variables";
+import { base64url } from "oslo/encoding";
 
 const optionalClientCredentials = z.object({
   client_id: z.string().optional(),
   client_secret: z.string().optional(),
+  client_assertion: z.string().optional(),
+  client_assertion_type: z.string().optional(),
 });
+
+function peekAssertionClientId(jwt: string): string | undefined {
+  const parts = jwt.split(".");
+  if (parts.length !== 3 || !parts[1]) return undefined;
+  try {
+    const payload = JSON.parse(
+      new TextDecoder().decode(base64url.decode(parts[1], { strict: false })),
+    );
+    if (payload && typeof payload === "object") {
+      const iss = (payload as Record<string, unknown>).iss;
+      const sub = (payload as Record<string, unknown>).sub;
+      if (typeof sub === "string") return sub;
+      if (typeof iss === "string") return iss;
+    }
+  } catch {
+    /* fall through — invalid JSON is caught when we verify the assertion. */
+  }
+  return undefined;
+}
 
 // We need to make the client_id and client_secret optional on each type as it can be passed in a auth-header
 const CreateRequestSchema = z.union([
@@ -53,11 +82,10 @@ const CreateRequestSchema = z.union([
   // Refresh token
   z.object({
     grant_type: z.literal("refresh_token"),
-    client_id: z.string().optional(),
     refresh_token: z.string(),
     redirect_uri: z.string().optional(),
-    client_secret: z.string().optional(),
     organization: z.string().optional(),
+    ...optionalClientCredentials.shape,
   }),
   // OTP
   z.object({
@@ -165,9 +193,114 @@ export const tokenRoutes = new OpenAPIHono<{
         : ctx.req.valid("form");
 
       const basicAuth = parseBasicAuthHeader(ctx.req.header("Authorization"));
-      const params = { ...body, ...basicAuth };
+      const params: Record<string, unknown> = { ...body, ...basicAuth };
 
-      if (!params.client_id) {
+      // RFC 7523 client authentication: clients registered with
+      // `private_key_jwt` or `client_secret_jwt` send a signed JWT in
+      // `client_assertion`. We verify it before the grant switch so the
+      // grant handlers can skip their client_secret comparison.
+      const clientAssertion =
+        typeof params.client_assertion === "string"
+          ? params.client_assertion
+          : undefined;
+      const clientAssertionType =
+        typeof params.client_assertion_type === "string"
+          ? params.client_assertion_type
+          : undefined;
+
+      if (clientAssertion) {
+        if (clientAssertionType !== CLIENT_ASSERTION_TYPE) {
+          throw new JSONHTTPException(400, {
+            error: "invalid_request",
+            error_description: `client_assertion_type must be ${CLIENT_ASSERTION_TYPE}`,
+          });
+        }
+        // RFC 6749 §2.3: a client MUST NOT use more than one auth method.
+        if (
+          typeof params.client_secret === "string" ||
+          basicAuth?.client_secret
+        ) {
+          throw new JSONHTTPException(400, {
+            error: "invalid_request",
+            error_description:
+              "client_secret and client_assertion are mutually exclusive",
+          });
+        }
+
+        const explicitClientId =
+          typeof params.client_id === "string" ? params.client_id : undefined;
+        const assertionClientId =
+          explicitClientId ?? peekAssertionClientId(clientAssertion);
+        if (!assertionClientId) {
+          throw new JSONHTTPException(400, {
+            error: "invalid_request",
+            error_description:
+              "client_id could not be determined from client_assertion",
+          });
+        }
+
+        let assertionClient: EnrichedClient;
+        try {
+          assertionClient = await getEnrichedClient(
+            ctx.env,
+            assertionClientId,
+            ctx.var.tenant_id,
+          );
+        } catch {
+          throw new JSONHTTPException(401, {
+            error: "invalid_client",
+            error_description: "client not found",
+          });
+        }
+
+        const tokenEndpoint = `${getAuthUrl(ctx.env, ctx.var.custom_domain)}oauth/token`;
+        const issuer = getIssuer(ctx.env, ctx.var.custom_domain);
+
+        try {
+          const verified = await verifyClientAssertion(
+            clientAssertion,
+            assertionClient,
+            { acceptedAudiences: [tokenEndpoint, issuer] },
+          );
+          // RFC 7521 §4.2: the assertion authentication method MUST match the
+          // method the client registered. Block clients that registered with a
+          // non-assertion method (or `none`) from authenticating via assertion.
+          const registered = assertionClient.token_endpoint_auth_method;
+          if (registered === "none") {
+            throw new JSONHTTPException(401, {
+              error: "invalid_client",
+              error_description:
+                "public clients must not authenticate with client_assertion",
+            });
+          }
+          if (
+            (registered === "client_secret_jwt" ||
+              registered === "private_key_jwt") &&
+            registered !== verified.method
+          ) {
+            throw new JSONHTTPException(401, {
+              error: "invalid_client",
+              error_description: `client_assertion method ${verified.method} does not match registered token_endpoint_auth_method ${registered}`,
+            });
+          }
+          params.client_id = verified.clientId;
+          ctx.set("client_authenticated_via_assertion", true);
+        } catch (e) {
+          if (e instanceof ClientAssertionError) {
+            // RFC 6749 §5.2 enumerates the valid `error` values for the token
+            // endpoint. Translate internal assertion error codes to those.
+            const error =
+              e.code === "unsupported_alg" ? "invalid_request" : "invalid_client";
+            throw new JSONHTTPException(401, {
+              error,
+              error_description: e.message,
+            });
+          }
+          throw e;
+        }
+      }
+
+      if (typeof params.client_id !== "string" || !params.client_id) {
         throw new HTTPException(400, { message: "client_id is required" });
       }
       ctx.set("client_id", params.client_id);
