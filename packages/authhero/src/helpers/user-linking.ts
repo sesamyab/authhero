@@ -25,7 +25,8 @@ async function resolveUserLinkingMode(
   }
   const serviceLevel = ctx.env.userLinkingMode;
   if (typeof serviceLevel === "function") {
-    return await serviceLevel({ tenant_id, client_id });
+    const resolved = await serviceLevel({ tenant_id, client_id });
+    return resolved === "builtin" || resolved === "off" ? resolved : "builtin";
   }
   return serviceLevel ?? "builtin";
 }
