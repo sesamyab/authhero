@@ -82,6 +82,16 @@ export async function validateJwtToken(
       throw new JSONHTTPException(401, { message: "No matching kid found" });
     }
 
+    // The JWK's published alg is authoritative. Reject tokens whose header
+    // alg differs (or where the JWK didn't bind itself to an alg) so an
+    // attacker can't reuse a kid to verify with an alg the key wasn't
+    // intended for.
+    if (jwksKey.alg !== alg) {
+      throw new JSONHTTPException(401, {
+        message: "alg mismatch between token header and JWK",
+      });
+    }
+
     const importParams = importParamsForJwk(jwksKey, alg);
     const cryptoKey = await crypto.subtle.importKey(
       "jwk",

@@ -63,22 +63,38 @@ const authorizeParamsSchema = z.object({
   ui_locales: z.string().optional(),
 });
 
+// Content types we accept for a request_uri payload. RFC 9101 §6.2 specifies
+// `application/oauth-authz-req+jwt`; `application/jwt` is the historical OIDC
+// Core media type many clients still serve.
+const REQUEST_URI_CONTENT_TYPES = new Set([
+  "application/oauth-authz-req+jwt",
+  "application/jwt",
+]);
+
 async function fetchRequestUri(
   rawUrl: string,
   ssrfOpts: SsrfFetchOptions,
 ): Promise<string> {
-  const { status, body } = await ssrfSafeFetch(rawUrl, ssrfOpts);
+  const { status, body, contentType } = await ssrfSafeFetch(rawUrl, ssrfOpts);
   if (status !== 200) {
     throw new HTTPException(400, {
       message: `request_uri returned status ${status}`,
     });
   }
-  if (!body || body.split(".").length !== 3) {
+  // Strip parameters like ";charset=utf-8" before checking against allow-list.
+  const ctype = (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (!REQUEST_URI_CONTENT_TYPES.has(ctype)) {
+    throw new HTTPException(400, {
+      message: `request_uri returned unsupported content-type: ${ctype || "(missing)"}`,
+    });
+  }
+  const trimmed = body.trim();
+  if (!trimmed || trimmed.split(".").length !== 3) {
     throw new HTTPException(400, {
       message: "request_uri did not return a JWT",
     });
   }
-  return body.trim();
+  return trimmed;
 }
 
 export const authorizeRoutes = new OpenAPIHono<{
@@ -206,16 +222,14 @@ export const authorizeRoutes = new OpenAPIHono<{
       }
 
       let requestParams: z.infer<typeof authorizeParamsSchema> = {};
+      let requestClient: Awaited<ReturnType<typeof getEnrichedClient>> | undefined;
       if (requestObjectJwt) {
         if (!queryParams.client_id) {
           throw new HTTPException(400, {
             message: "client_id is required to verify a request object",
           });
         }
-        const requestClient = await getEnrichedClient(
-          env,
-          queryParams.client_id,
-        );
+        requestClient = await getEnrichedClient(env, queryParams.client_id);
         try {
           const payload = await verifyRequestObject(
             requestObjectJwt,
@@ -269,7 +283,12 @@ export const authorizeRoutes = new OpenAPIHono<{
 
       ctx.set("log", "authorize");
 
-      const client = await getEnrichedClient(env, client_id);
+      // Reuse the client we already fetched while verifying the request object
+      // when client_id matches; otherwise fetch fresh.
+      const client =
+        requestClient && requestClient.client_id === client_id
+          ? requestClient
+          : await getEnrichedClient(env, client_id);
       ctx.set("client_id", client.client_id);
       setTenantId(ctx, client.tenant.id);
 

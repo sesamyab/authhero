@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import * as x509 from "@peculiar/x509";
 import { encodeHex, base64, base64url } from "oslo/encoding";
 import { sha256 } from "oslo/crypto";
+import { getRuntimeKey } from "hono/adapter";
 import { SigningKey } from "@authhero/adapter-interfaces";
 
 const RFC7638_REQUIRED_MEMBERS: Record<string, string[]> = {
@@ -11,6 +12,12 @@ const RFC7638_REQUIRED_MEMBERS: Record<string, string[]> = {
   OKP: ["crv", "kty", "x"],
 };
 
+/**
+ * Supported signing-key shapes. Note: `EC-P-521` is not supported on
+ * Cloudflare Workers (`workerd`) — `crypto.subtle.generateKey` will reject
+ * `{ name: "ECDSA", namedCurve: "P-521" }` there. Callers running on Workers
+ * must pick `RSA`, `EC-P-256`, or `EC-P-384`.
+ */
 export type SigningKeyType = "RSA" | "EC-P-256" | "EC-P-384" | "EC-P-521";
 
 export interface CreateX509CertificateParams {
@@ -22,6 +29,13 @@ export interface CreateX509CertificateParams {
   keyType?: SigningKeyType;
 }
 
+/**
+ * Map a `SigningKeyType` to the WebCrypto `generateKey` parameters.
+ *
+ * The `EC-P-521` entry returns `{ name: "ECDSA", namedCurve: "P-521" }`. That
+ * curve is unsupported on Cloudflare Workers — see `SigningKeyType` and the
+ * runtime guard in `createX509Certificate` for details.
+ */
 function genAlgForKeyType(
   keyType: SigningKeyType,
 ): RsaHashedKeyGenParams | EcKeyGenParams {
@@ -66,6 +80,15 @@ export async function createX509Certificate(
   params: CreateX509CertificateParams,
 ): Promise<SigningKey> {
   const keyType = params.keyType ?? "RSA";
+
+  if (keyType === "EC-P-521" && getRuntimeKey() === "workerd") {
+    throw new Error(
+      "EC-P-521 signing keys are not supported on Cloudflare Workers: " +
+        "workerd's WebCrypto implementation cannot generate the P-521 curve. " +
+        "Use RSA, EC-P-256, or EC-P-384 instead.",
+    );
+  }
+
   const keys = await crypto.subtle.generateKey(
     genAlgForKeyType(keyType),
     true,

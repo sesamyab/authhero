@@ -202,6 +202,15 @@ export async function verifyRequestObject(
           : `no JWK found for alg=${alg}`,
       );
     }
+    // Even when the kid matched, verify the key's kty/alg are compatible with
+    // the JWS alg — otherwise importParamsForJwk throws a raw Error and the
+    // caller can't distinguish a verification failure from a runtime crash.
+    if (!matchesAlg(candidate, alg)) {
+      throw new RequestObjectVerificationError(
+        "missing_keys",
+        `JWK for kid=${header.kid ?? "(none)"} is not compatible with alg=${alg}`,
+      );
+    }
     const importParams = importParamsForJwk(candidate, alg);
     const cryptoKey = await crypto.subtle.importKey(
       "jwk",
@@ -252,7 +261,15 @@ function validateRequestObjectClaims(
   const leeway = opts.leewaySeconds ?? 30;
   const nowSec = Math.floor((opts.now ? opts.now() : Date.now()) / 1000);
 
-  if (typeof payload.exp === "number" && payload.exp + leeway < nowSec) {
+  // OIDC Core 6.1 / RFC 9101 don't strictly require `exp`, but without it a
+  // request object can be replayed forever. Require a numeric exp.
+  if (typeof payload.exp !== "number") {
+    throw new RequestObjectVerificationError(
+      "claim_invalid",
+      "request object missing exp",
+    );
+  }
+  if (payload.exp + leeway < nowSec) {
     throw new RequestObjectVerificationError(
       "claim_invalid",
       "request object is expired",

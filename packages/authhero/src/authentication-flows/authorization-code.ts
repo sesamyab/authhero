@@ -128,11 +128,16 @@ export async function authorizationCodeGrantUser(
     }
   }
 
+  const authenticatedViaAssertion =
+    ctx.var.client_authenticated_via_assertion === true;
+
   // Reject exchanges with no verifiable proof of possession: a confidential client
-  // must supply client_secret; a public client must supply code_verifier AND the
-  // stored code must carry a code_challenge issued at /authorize. A bare
-  // code_verifier against a non-PKCE code is not proof and must not authenticate.
+  // must supply client_secret (or RFC 7523 client_assertion); a public client must
+  // supply code_verifier AND the stored code must carry a code_challenge issued at
+  // /authorize. A bare code_verifier against a non-PKCE code is not proof and must
+  // not authenticate.
   if (
+    !authenticatedViaAssertion &&
     !params.client_secret &&
     !(params.code_verifier && code.code_challenge)
   ) {
@@ -147,7 +152,7 @@ export async function authorizationCodeGrantUser(
   }
 
   // OAuth 2.1 / RFC 7636: validate client_secret and PKCE independently — both may be present.
-  if (params.client_secret !== undefined) {
+  if (!authenticatedViaAssertion && params.client_secret !== undefined) {
     // A temporary solution to handle cross tenant clients
     let defaultClient;
     try {

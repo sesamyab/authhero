@@ -52,6 +52,26 @@ describe("assertSsrfSafeUrl", () => {
     );
   });
 
+  it.each(["fe81::1", "feaa::1", "febf::1"])(
+    "rejects IPv6 link-local %s in fe80::/10",
+    (host) => {
+      expect(() => assertSsrfSafeUrl(`https://[${host}]/x`)).toThrow(
+        SsrfBlockedError,
+      );
+    },
+  );
+
+  it.each([
+    "::ffff:127.0.0.1",
+    "::ffff:10.0.0.1",
+    "::ffff:7f00:1",
+    "::127.0.0.1",
+  ])("rejects IPv4-mapped IPv6 form %s", (host) => {
+    expect(() => assertSsrfSafeUrl(`https://[${host}]/x`)).toThrow(
+      SsrfBlockedError,
+    );
+  });
+
   it("rejects IPv6 unique-local fc00::1", () => {
     expect(() => assertSsrfSafeUrl("https://[fc00::1]/x")).toThrow(
       SsrfBlockedError,

@@ -264,4 +264,74 @@ describe("verifyRequestObject", () => {
       ),
     ).rejects.toBeInstanceOf(RequestObjectVerificationError);
   });
+
+  it("rejects when the registered JWK kty does not match the JWS alg", async () => {
+    // Sign with RSA but advertise the EC key's kid in the header. The lookup
+    // by kid will succeed, but kty=EC is not compatible with alg=RS256.
+    const rsa = await generateRsaKeypair();
+    const ec = await generateEcKeypair();
+
+    const jwt = await createJWT(
+      "RS256",
+      rsa.privateBuffer,
+      { iss: CLIENT_ID, aud: ISSUER, scope: "openid" },
+      {
+        includeIssuedTimestamp: true,
+        expiresIn: new TimeSpan(5, "m"),
+        headers: { kid: ec.publicJwk.kid }, // points at the EC JWK
+      },
+    );
+
+    await expect(
+      verifyRequestObject(jwt, clientWithJwks(ec.publicJwk), {
+        issuer: ISSUER,
+      }),
+    ).rejects.toMatchObject({
+      name: "RequestObjectVerificationError",
+      code: "missing_keys",
+    });
+  });
+
+  it("rejects request objects that omit the exp claim", async () => {
+    const { privateBuffer, publicJwk } = await generateRsaKeypair();
+    // createJWT requires expiresIn, so build the JWT manually without exp.
+    const header = base64url.encode(
+      new TextEncoder().encode(
+        JSON.stringify({ alg: "RS256", typ: "JWT", kid: publicJwk.kid }),
+      ),
+      { includePadding: false },
+    );
+    const body = base64url.encode(
+      new TextEncoder().encode(
+        JSON.stringify({
+          iss: CLIENT_ID,
+          aud: ISSUER,
+          scope: "openid",
+          iat: Math.floor(Date.now() / 1000),
+        }),
+      ),
+      { includePadding: false },
+    );
+    const signingInput = new TextEncoder().encode(`${header}.${body}`);
+    const cryptoKey = await crypto.subtle.importKey(
+      "pkcs8",
+      privateBuffer,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sig = new Uint8Array(
+      await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, signingInput),
+    );
+    const jwt = `${header}.${body}.${base64url.encode(sig, { includePadding: false })}`;
+
+    await expect(
+      verifyRequestObject(jwt, clientWithJwks(publicJwk), {
+        issuer: ISSUER,
+      }),
+    ).rejects.toMatchObject({
+      name: "RequestObjectVerificationError",
+      code: "claim_invalid",
+    });
+  });
 });

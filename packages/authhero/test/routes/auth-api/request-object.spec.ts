@@ -7,7 +7,7 @@ import { getTestServer } from "../../helpers/test-server";
 
 const ISSUER = "http://localhost:3000/";
 
-async function generateRsaKeypairWithJwks() {
+async function generateRsaKeypairWithJwks(kid = "client-kid") {
   const keys = await crypto.subtle.generateKey(
     {
       name: "RSASSA-PKCS1-v1_5",
@@ -22,7 +22,7 @@ async function generateRsaKeypairWithJwks() {
   const publicJwk = await crypto.subtle.exportKey("jwk", keys.publicKey);
   return {
     privateBuffer,
-    publicJwk: { ...publicJwk, kid: "client-kid", alg: "RS256", use: "sig" },
+    publicJwk: { ...publicJwk, kid, alg: "RS256", use: "sig" },
   };
 }
 

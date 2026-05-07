@@ -11,7 +11,10 @@ import { logMessage } from "../helpers/logging";
 export const clientCredentialGrantParamsSchema = z.object({
   grant_type: z.literal("client_credentials"),
   scope: z.string().optional(),
-  client_secret: z.string(),
+  // Optional: when authenticated via RFC 7523 client_assertion the secret is
+  // not present on the request. The /oauth/token handler enforces that *some*
+  // form of client authentication ran before this point.
+  client_secret: z.string().optional(),
   client_id: z.string(),
   audience: z.string().optional(),
   organization: z.string().optional(),
@@ -27,15 +30,31 @@ export async function clientCredentialsGrant(
     ctx.var.tenant_id,
   );
 
-  if (
-    client.client_secret &&
-    !safeCompare(client.client_secret, params.client_secret)
-  ) {
-    logMessage(ctx, client.tenant.id, {
-      type: LogTypes.FAILED_EXCHANGE_ACCESS_TOKEN_FOR_CLIENT_CREDENTIALS,
-      description: "Invalid client credentials",
-    });
-    throw new JSONHTTPException(403, { message: "Invalid client credentials" });
+  const authenticatedViaAssertion =
+    ctx.var.client_authenticated_via_assertion === true;
+
+  if (!authenticatedViaAssertion) {
+    if (!params.client_secret) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_EXCHANGE_ACCESS_TOKEN_FOR_CLIENT_CREDENTIALS,
+        description: "Missing client_secret",
+      });
+      throw new JSONHTTPException(401, {
+        message: "client_secret is required",
+      });
+    }
+    if (
+      client.client_secret &&
+      !safeCompare(client.client_secret, params.client_secret)
+    ) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_EXCHANGE_ACCESS_TOKEN_FOR_CLIENT_CREDENTIALS,
+        description: "Invalid client credentials",
+      });
+      throw new JSONHTTPException(403, {
+        message: "Invalid client credentials",
+      });
+    }
   }
 
   // Fetch organization if organization ID is provided

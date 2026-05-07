@@ -309,6 +309,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
                   link: "/standards/rfc-7592",
                 },
                 {
+                  text: "RFC 7523 — JWT Client Authentication",
+                  link: "/standards/rfc-7523",
+                },
+                {
                   text: "Connect Start (consent flow)",
                   link: "/standards/connect-start",
                 },
@@ -341,6 +345,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
                 {
                   text: "OIDC RP-Initiated Logout 1.0",
                   link: "/standards/oidc-rp-initiated-logout",
+                },
+                {
+                  text: "RFC 9101 — JAR (Request Objects)",
+                  link: "/standards/rfc-9101",
                 },
                 {
                   text: "Form Post Response Mode",
