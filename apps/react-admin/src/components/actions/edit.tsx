@@ -10,7 +10,6 @@ import {
   FieldTitle,
   DateField,
   TextField,
-  Toolbar,
   SaveButton,
   useRecordContext,
   useNotify,
@@ -18,9 +17,9 @@ import {
 } from "react-admin";
 import { Box } from "@mui/material";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
-import { fetchUtils } from "react-admin";
 import { getConfigValue } from "../../utils/runtimeConfig";
-import { buildUrlWithProtocol } from "../../utils/domainUtils";
+import { createManagementClient } from "../../authProvider";
+import { resolveApiBase } from "../../dataProvider";
 import { useParams } from "react-router-dom";
 
 const triggerChoices = [
@@ -41,14 +40,11 @@ function DeployButton() {
     if (!record?.id) return;
     try {
       const domain = getConfigValue("domain") || "";
-      const apiUrl = buildUrlWithProtocol(domain);
-      const headers = new Headers({ "Content-Type": "application/json" });
-      if (tenantId) headers.set("tenant-id", tenantId);
-
-      await fetchUtils.fetchJson(
-        `${apiUrl}/api/v2/actions/actions/${record.id}/deploy`,
-        { method: "POST", headers },
-      );
+      const apiDomain = resolveApiBase(domain)
+        .replace(/^https?:\/\//, "")
+        .replace(/\/.*$/, "");
+      const client = await createManagementClient(apiDomain, tenantId, domain);
+      await client.actions.deploy(String(record.id));
       notify("Action deployed successfully", { type: "success" });
     } catch (err: any) {
       notify(`Deploy failed: ${err.message}`, { type: "error" });
@@ -64,14 +60,19 @@ function DeployButton() {
   );
 }
 
-function ActionToolbar() {
+function TopActionBar() {
   return (
-    <Toolbar>
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "flex-end",
+        gap: 2,
+        mb: 2,
+      }}
+    >
       <SaveButton />
-      <Box sx={{ ml: 2 }}>
-        <DeployButton />
-      </Box>
-    </Toolbar>
+      <DeployButton />
+    </Box>
   );
 }
 
@@ -114,7 +115,8 @@ export function ActionEdit() {
         };
       }}
     >
-      <SimpleForm toolbar={<ActionToolbar />}>
+      <SimpleForm toolbar={false}>
+        <TopActionBar />
         <TextInput source="name" validate={[required()]} fullWidth />
         <SelectInput
           source="trigger_id"

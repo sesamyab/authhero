@@ -50,7 +50,7 @@ export function ActionCreate() {
           defaultValue={defaultCode}
           sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
         />
-        <TextInput source="runtime" fullWidth defaultValue="node18" />
+        <TextInput source="runtime" fullWidth defaultValue="webworker" />
         <ArrayInput source="secrets">
           <SimpleFormIterator inline>
             <TextInput source="name" label="Name" />
