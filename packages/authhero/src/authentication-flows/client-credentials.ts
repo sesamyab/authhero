@@ -43,10 +43,16 @@ export async function clientCredentialsGrant(
         message: "client_secret is required",
       });
     }
-    if (
-      client.client_secret &&
-      !safeCompare(client.client_secret, params.client_secret)
-    ) {
+    if (!client.client_secret) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_EXCHANGE_ACCESS_TOKEN_FOR_CLIENT_CREDENTIALS,
+        description: "Client has no registered secret",
+      });
+      throw new JSONHTTPException(401, {
+        message: "Client authentication failed",
+      });
+    }
+    if (!safeCompare(client.client_secret, params.client_secret)) {
       logMessage(ctx, client.tenant.id, {
         type: LogTypes.FAILED_EXCHANGE_ACCESS_TOKEN_FOR_CLIENT_CREDENTIALS,
         description: "Invalid client credentials",

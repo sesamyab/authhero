@@ -211,14 +211,22 @@ export async function verifyRequestObject(
         `JWK for kid=${header.kid ?? "(none)"} is not compatible with alg=${alg}`,
       );
     }
-    const importParams = importParamsForJwk(candidate, alg);
-    const cryptoKey = await crypto.subtle.importKey(
-      "jwk",
-      candidate,
-      importParams,
-      false,
-      ["verify"],
-    );
+    let cryptoKey: CryptoKey;
+    try {
+      const importParams = importParamsForJwk(candidate, alg);
+      cryptoKey = await crypto.subtle.importKey(
+        "jwk",
+        candidate,
+        importParams,
+        false,
+        ["verify"],
+      );
+    } catch {
+      throw new RequestObjectVerificationError(
+        "missing_keys",
+        `failed to import JWK for kid=${header.kid ?? "(none)"} (alg=${alg})`,
+      );
+    }
     const verifyParams =
       candidate.kty === "EC"
         ? { name: "ECDSA", hash: EC_HASH_BY_ALG[alg]! }
