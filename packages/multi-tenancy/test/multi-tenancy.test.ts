@@ -224,6 +224,84 @@ describe("Multi-Tenancy", () => {
     );
   });
 
+  it("should not bypass org filtering when token is org-scoped, even with admin:organizations", async () => {
+    // Regression: an org-scoped token (org_id present) carrying admin:organizations
+    // got that permission via an org role, not a global one. It must not see tenants
+    // the user has no membership for.
+    await adapters.tenants.create({
+      id: "user-tenant",
+      friendly_name: "User Tenant",
+      audience: "https://user.example.com",
+      sender_email: "support@user.com",
+      sender_name: "User",
+    });
+    await adapters.tenants.create({
+      id: "other-tenant",
+      friendly_name: "Other Tenant",
+      audience: "https://other.example.com",
+      sender_email: "support@other.com",
+      sender_name: "Other",
+    });
+
+    await adapters.organizations.create("control_plane", {
+      id: "user-tenant",
+      name: "user-tenant",
+      display_name: "User Tenant",
+    });
+    await adapters.userOrganizations.create("control_plane", {
+      user_id: testUserId,
+      organization_id: "user-tenant",
+    });
+
+    // Build an isolated app where the auth-middleware stand-in injects a token
+    // with admin:organizations and an org_id (matching the linkfire-style JWT).
+    const orgScopedApp = new Hono<{
+      Bindings: { data: typeof adapters };
+      Variables: {
+        tenant_id: string;
+        organization_id?: string;
+        user?: {
+          sub: string;
+          tenant_id: string;
+          permissions?: string[];
+          org_id?: string;
+        };
+      };
+    }>();
+
+    const multiTenancy = setupMultiTenancy({
+      accessControl: {
+        controlPlaneTenantId: "control_plane",
+        requireOrganizationMatch: false,
+        defaultPermissions: ["tenant:admin"],
+      },
+    });
+
+    orgScopedApp.use("*", async (c, next) => {
+      c.set("tenant_id", "control_plane");
+      c.set("organization_id", "org_linkfire");
+      c.set("user", {
+        sub: testUserId,
+        tenant_id: "control_plane",
+        permissions: ["admin:organizations", "read:tenants"],
+        org_id: "org_linkfire",
+      });
+      await next();
+    });
+    orgScopedApp.use("*", multiTenancy.middleware);
+    orgScopedApp.route("/management", multiTenancy.app);
+
+    const response = await orgScopedApp.request("/management/tenants", {}, env);
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(Array.isArray(data.tenants)).toBe(true);
+    const ids = data.tenants.map((t: any) => t.id);
+    expect(ids).toContain("user-tenant");
+    expect(ids).not.toContain("other-tenant");
+    expect(ids).not.toContain("control_plane");
+  });
+
   it("should delete a tenant", async () => {
     // Create test tenant
     await adapters.tenants.create({

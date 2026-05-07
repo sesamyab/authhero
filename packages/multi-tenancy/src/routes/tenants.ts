@@ -49,7 +49,7 @@ export function createTenantsOpenAPIRouter(
       },
       security: [
         {
-          Bearer: [],
+          Bearer: ["read:tenants", "auth:read"],
         },
       ],
       responses: {
@@ -79,14 +79,20 @@ export function createTenantsOpenAPIRouter(
             tenant_id: string;
             scope?: string;
             permissions?: string[];
+            org_id?: string;
           }
         | undefined;
 
-      // If user has auth:read or admin:organizations permission, allow access to all tenants
+      // If user has auth:read or admin:organizations permission, allow access to all tenants.
+      // Why: tokens with an org_id were issued for a specific organization, so any
+      // admin:organizations permission they carry came from an org-scoped role — not a
+      // global one — and must not bypass per-org tenant filtering.
       const userPermissions = user?.permissions || [];
+      const tokenIsOrgScoped = Boolean(user?.org_id ?? ctx.var.organization_id);
       const hasFullAccess =
-        userPermissions.includes("auth:read") ||
-        userPermissions.includes("admin:organizations");
+        !tokenIsOrgScoped &&
+        (userPermissions.includes("auth:read") ||
+          userPermissions.includes("admin:organizations"));
 
       if (hasFullAccess) {
         const result = await ctx.env.data.tenants.list({
