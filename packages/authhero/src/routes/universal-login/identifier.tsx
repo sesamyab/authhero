@@ -18,6 +18,8 @@ import generateOTP from "../../utils/otp";
 import { sendCode, sendLink } from "../../emails";
 import { OTP_EXPIRATION_TIME } from "../../constants";
 import { getConnectionFromIdentifier } from "../../utils/username";
+import { findHrdConnection } from "../../helpers/hrd";
+import { connectionAuth } from "../../authentication-flows/connection";
 import { HTTPException } from "hono/http-exception";
 
 import { DefaultUserAgentDetector } from "../../client/user-agent-detector";
@@ -163,6 +165,29 @@ export const identifierRoutes = new OpenAPIHono<{
         params.username,
         vendorCountryCode || countryCode,
       );
+
+      // Home Realm Discovery: route to enterprise/social IdP by email domain.
+      if (connectionType === "email" && username) {
+        const hrdConnection = findHrdConnection(
+          username,
+          client.connections,
+          env.STRATEGIES,
+        );
+        if (hrdConnection) {
+          loginSession.authParams.username = username;
+          await env.data.loginSessions.update(
+            client.tenant.id,
+            loginSession.id,
+            loginSession,
+          );
+          return connectionAuth(
+            ctx,
+            client,
+            hrdConnection.name,
+            loginSession.authParams,
+          );
+        }
+      }
 
       // Check if the password connection has username identifier enabled
       const passwordConnection = client.connections.find(

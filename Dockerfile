@@ -16,10 +16,10 @@ COPY packages/cloudflare/package.json packages/cloudflare/
 COPY packages/drizzle/package.json packages/drizzle/
 COPY packages/aws/package.json packages/aws/
 COPY packages/create-authhero/package.json packages/create-authhero/
-COPY packages/create-authhero/auth-server/package.json packages/create-authhero/auth-server/
 COPY packages/ui-widget/package.json packages/ui-widget/
 COPY apps/react-admin/package.json apps/react-admin/
 COPY apps/auth0-proxy/package.json apps/auth0-proxy/
+COPY apps/conformance-runner/package.json apps/conformance-runner/
 COPY apps/docs/package.json apps/docs/
 COPY docker/package.json docker/
 
@@ -35,6 +35,7 @@ COPY docker/ docker/
 # Build packages in dependency order
 RUN pnpm --filter @authhero/adapter-interfaces build
 RUN pnpm --filter @authhero/kysely-adapter build
+RUN pnpm --filter @authhero/widget build
 RUN NODE_OPTIONS="--max-old-space-size=4096" pnpm --filter authhero build
 RUN pnpm --filter @authhero/react-admin exec vite build
 

@@ -24,6 +24,8 @@ export const connectionOptionsSchema = z.object({
   twilio_sid: z.string().optional(),
   twilio_token: z.string().optional(),
   icon_url: z.string().optional(),
+  // Email domains that route to this connection via Home Realm Discovery
+  domain_aliases: z.array(z.string()).optional(),
   // Password policy options for Username-Password-Authentication connections
   passwordPolicy: z
     .enum(["none", "low", "fair", "good", "excellent"])

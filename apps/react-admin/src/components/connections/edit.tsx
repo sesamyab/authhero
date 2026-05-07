@@ -183,17 +183,28 @@ function ConnectionTabbedFrom() {
 
           {!isDbConnection(record?.strategy) &&
             record?.strategy !== Strategy.SMS && (
-              <SelectInput
-                source="options.set_user_root_attributes"
-                label="Set User Root Attributes"
-                helperText="Controls when profile data from this connection updates user attributes"
-                choices={[
-                  { id: "on_each_login", name: "On Each Login" },
-                  { id: "on_first_login", name: "On First Login" },
-                  { id: "never_on_login", name: "Never On Login" },
-                ]}
-                defaultValue="on_each_login"
-              />
+              <>
+                <SelectInput
+                  source="options.set_user_root_attributes"
+                  label="Set User Root Attributes"
+                  helperText="Controls when profile data from this connection updates user attributes"
+                  choices={[
+                    { id: "on_each_login", name: "On Each Login" },
+                    { id: "on_first_login", name: "On First Login" },
+                    { id: "never_on_login", name: "Never On Login" },
+                  ]}
+                  defaultValue="on_each_login"
+                />
+                <ArrayInput
+                  source="options.domain_aliases"
+                  label="Domain Aliases"
+                  helperText="Email domains routed to this connection via Home Realm Discovery (e.g. acme.com)"
+                >
+                  <SimpleFormIterator inline>
+                    <TextInput source="" label="Domain" />
+                  </SimpleFormIterator>
+                </ArrayInput>
+              </>
             )}
 
           {isDbConnection(record?.strategy) && (
