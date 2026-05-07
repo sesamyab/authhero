@@ -75,4 +75,11 @@ export type Bindings = {
   // Set via init({ userLinkingMode: "off" }). A per-client `user_linking_mode`
   // overrides this default. Defaults to "builtin" when unset.
   userLinkingMode?: UserLinkingMode;
+
+  /**
+   * Allow outbound fetches (jwks_uri, request_uri) to localhost / private IP
+   * ranges and over plain http. Intended for tests and local development;
+   * leave unset (or false) in production so SSRF protection stays on.
+   */
+  ALLOW_PRIVATE_OUTBOUND_FETCH?: boolean;
 };

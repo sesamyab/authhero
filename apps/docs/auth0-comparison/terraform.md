@@ -91,6 +91,7 @@ genuinely works rather than what is documented to work:
 | Resource                          | Status |
 | --------------------------------- | ------ |
 | `auth0_action`                    | ✓      |
+| `auth0_attack_protection`         | ✓      |
 | `auth0_branding`                  | ✓      |
 | `auth0_client`                    | ✓      |
 | `auth0_client_grant`              | ✓      |
@@ -99,27 +100,16 @@ genuinely works rather than what is documented to work:
 | `auth0_custom_domain`             | ✓      |
 | `auth0_email_provider`            | ✓      |
 | `auth0_guardian`                  | ✓      |
+| `auth0_log_stream`                | ✓      |
 | `auth0_organization`              | ✓      |
 | `auth0_organization_connections`  | ✓      |
+| `auth0_prompt_custom_text`        | ✓      |
 | `auth0_resource_server`           | ✓      |
 | `auth0_resource_server_scopes`    | ✓      |
 | `auth0_role`                      | ✓      |
 | `auth0_role_permissions`          | ✓      |
 | `auth0_tenant`                    | ✓      |
 | `auth0_trigger_actions`           | ✓      |
-
-### Known gaps
-
-These resources are intentionally absent from AuthHero today and will fail with
-404 against the Management API:
-
-- `auth0_log_stream` — no `/api/v2/log-streams` endpoint
-- `auth0_attack_protection` — no `/api/v2/attack-protection` endpoint
-- `auth0_prompt_custom_text` — endpoint exists but the provider's create flow
-  has compat issues; investigate before relying on it
-
-If you need any of these, open an issue on GitHub or contribute the missing
-endpoint.
 
 ## Local development
 
