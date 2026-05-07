@@ -15,6 +15,23 @@ import { execSync } from "child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Locate a workspace dependency's real directory under either pnpm's
+// per-package node_modules or a hoisted root node_modules.
+function resolvePackageDir(name: string): string {
+  const candidates = [
+    path.join(__dirname, "node_modules", name),
+    path.join(__dirname, "..", "node_modules", name),
+  ];
+  for (const candidate of candidates) {
+    try {
+      return fs.realpathSync(candidate);
+    } catch {
+      // try next
+    }
+  }
+  throw new Error(`Cannot locate package "${name}" in node_modules`);
+}
+
 // Configuration from environment variables
 const port = Number(process.env.PORT) || 3000;
 const databasePath = process.env.DATABASE_PATH || "/data/db.sqlite";
@@ -103,16 +120,14 @@ const allowedOrigins = allowedOriginsEnv
       "http://localhost:5173",
     ];
 
-// Resolve widget path
-const widgetPath = path.resolve(
-  __dirname,
-  "../node_modules/@authhero/widget/dist/authhero-widget",
+const widgetPath = path.join(
+  resolvePackageDir("@authhero/widget"),
+  "dist/authhero-widget",
 );
 
-// Resolve admin UI path
-const adminDistPath = path.resolve(
-  __dirname,
-  "../node_modules/@authhero/react-admin/dist",
+const adminDistPath = path.join(
+  resolvePackageDir("@authhero/react-admin"),
+  "dist",
 );
 const adminIndexPath = path.join(adminDistPath, "index.html");
 

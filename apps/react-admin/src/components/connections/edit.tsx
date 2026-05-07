@@ -50,6 +50,20 @@ export function ConnectionEdit(props: any) {
 const isDbConnection = (strategy?: string) =>
   strategy === Strategy.USERNAME_PASSWORD;
 
+// Strategies that don't have a registered redirect handler in authhero's
+// findHrdConnection eligibility check, so HRD can't route to them.
+const NON_HRD_STRATEGIES = new Set<string>([
+  Strategy.USERNAME_PASSWORD,
+  Strategy.EMAIL,
+  Strategy.SMS,
+  Strategy.SAMLP,
+  Strategy.WAAD,
+  Strategy.ADFS,
+]);
+
+const isHrdEligibleStrategy = (strategy?: string) =>
+  !!strategy && !NON_HRD_STRATEGIES.has(strategy);
+
 function ConnectionTabbedFrom() {
   const record = useRecordContext();
 
@@ -195,6 +209,18 @@ function ConnectionTabbedFrom() {
                 defaultValue="on_each_login"
               />
             )}
+
+          {isHrdEligibleStrategy(record?.strategy) && (
+            <ArrayInput
+              source="options.domain_aliases"
+              label="Domain Aliases"
+              helperText="Email domains routed to this connection via Home Realm Discovery (e.g. acme.com)"
+            >
+              <SimpleFormIterator inline>
+                <TextInput source="" label="Domain" />
+              </SimpleFormIterator>
+            </ArrayInput>
+          )}
 
           {isDbConnection(record?.strategy) && (
             <>
