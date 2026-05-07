@@ -15,21 +15,18 @@ import { logMessage } from "../helpers/logging";
 import { getEnrichedClient } from "../helpers/client";
 
 // OAuth 2.1 / RFC 7636: client_secret and code_verifier are independent and may co-exist.
-// At least one MUST be supplied so an authorization code cannot be redeemed without proof
-// (confidential client → client_secret; public client → code_verifier; both is also valid).
-export const authorizationCodeGrantParamsSchema = z
-  .object({
-    grant_type: z.literal("authorization_code"),
-    client_id: z.string(),
-    code: z.string(),
-    redirect_uri: z.string().optional(),
-    client_secret: z.string().optional(),
-    code_verifier: z.string().optional(),
-    organization: z.string().optional(),
-  })
-  .refine((data) => !!data.client_secret || !!data.code_verifier, {
-    message: "client_secret or code_verifier is required",
-  });
+// Proof-of-possession (one of client_secret, code_verifier, or RFC 7523 client_assertion)
+// is enforced at runtime in `authorizationCodeGrantUser` so assertion-only flows can pass
+// schema validation before the handler reads `client_authenticated_via_assertion`.
+export const authorizationCodeGrantParamsSchema = z.object({
+  grant_type: z.literal("authorization_code"),
+  client_id: z.string(),
+  code: z.string(),
+  redirect_uri: z.string().optional(),
+  client_secret: z.string().optional(),
+  code_verifier: z.string().optional(),
+  organization: z.string().optional(),
+});
 
 export type AuthorizationCodeGrantTypeParams = z.infer<
   typeof authorizationCodeGrantParamsSchema

@@ -198,10 +198,10 @@ export async function verifyClientAssertion(
         "client has no jwks/jwks_uri registered",
       );
     }
-    const candidate: Jwk | undefined = header.kid
-      ? jwks.find((k) => k.kid === header.kid)
-      : jwks.find((k) => matchesAlg(k, alg));
-    if (!candidate) {
+    const candidates: Jwk[] = header.kid
+      ? jwks.filter((k) => k.kid === header.kid)
+      : jwks.filter((k) => matchesAlg(k, alg));
+    if (candidates.length === 0) {
       throw new ClientAssertionError(
         "missing_keys",
         header.kid
@@ -209,25 +209,36 @@ export async function verifyClientAssertion(
           : `no JWK found for alg=${alg}`,
       );
     }
-    const importParams = importParamsForJwk(candidate, alg);
-    const cryptoKey = await crypto.subtle.importKey(
-      "jwk",
-      candidate,
-      importParams,
-      false,
-      ["verify"],
-    );
-    const verifyParams =
-      candidate.kty === "EC"
-        ? { name: "ECDSA", hash: EC_HASH_BY_ALG[alg]! }
-        : RSA_VERIFY_PARAMS;
-    const ok = await crypto.subtle.verify(
-      verifyParams,
-      cryptoKey,
-      signature,
-      signedInput,
-    );
-    if (!ok) {
+    let verified = false;
+    for (const candidate of candidates) {
+      if (!matchesAlg(candidate, alg)) continue;
+      let cryptoKey: CryptoKey;
+      try {
+        const importParams = importParamsForJwk(candidate, alg);
+        cryptoKey = await crypto.subtle.importKey(
+          "jwk",
+          candidate,
+          importParams,
+          false,
+          ["verify"],
+        );
+      } catch {
+        continue;
+      }
+      const verifyParams =
+        candidate.kty === "EC"
+          ? { name: "ECDSA", hash: EC_HASH_BY_ALG[alg]! }
+          : RSA_VERIFY_PARAMS;
+      try {
+        if (await crypto.subtle.verify(verifyParams, cryptoKey, signature, signedInput)) {
+          verified = true;
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+    if (!verified) {
       throw new ClientAssertionError(
         "invalid_client",
         "asymmetric signature did not verify",

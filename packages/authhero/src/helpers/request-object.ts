@@ -191,10 +191,10 @@ export async function verifyRequestObject(
         "client has no jwks/jwks_uri registered",
       );
     }
-    const candidate: Jwk | undefined = header.kid
-      ? jwks.find((k) => k.kid === header.kid)
-      : jwks.find((k) => matchesAlg(k, alg));
-    if (!candidate) {
+    const candidates: Jwk[] = header.kid
+      ? jwks.filter((k) => k.kid === header.kid)
+      : jwks.filter((k) => matchesAlg(k, alg));
+    if (candidates.length === 0) {
       throw new RequestObjectVerificationError(
         "missing_keys",
         header.kid
@@ -202,45 +202,48 @@ export async function verifyRequestObject(
           : `no JWK found for alg=${alg}`,
       );
     }
-    // Even when the kid matched, verify the key's kty/alg are compatible with
-    // the JWS alg — otherwise importParamsForJwk throws a raw Error and the
-    // caller can't distinguish a verification failure from a runtime crash.
-    if (!matchesAlg(candidate, alg)) {
-      throw new RequestObjectVerificationError(
-        "missing_keys",
-        `JWK for kid=${header.kid ?? "(none)"} is not compatible with alg=${alg}`,
-      );
+    // Try every alg-compatible candidate; any single key that verifies passes.
+    // Failed import or verify on one key must not be fatal — another candidate
+    // may still match.
+    let verified = false;
+    let attemptedVerify = false;
+    for (const candidate of candidates) {
+      if (!matchesAlg(candidate, alg)) continue;
+      let cryptoKey: CryptoKey;
+      try {
+        const importParams = importParamsForJwk(candidate, alg);
+        cryptoKey = await crypto.subtle.importKey(
+          "jwk",
+          candidate,
+          importParams,
+          false,
+          ["verify"],
+        );
+      } catch {
+        continue;
+      }
+      const verifyParams =
+        candidate.kty === "EC"
+          ? { name: "ECDSA", hash: EC_HASH_BY_ALG[alg]! }
+          : RSA_VERIFY_PARAMS;
+      try {
+        attemptedVerify = true;
+        if (await crypto.subtle.verify(verifyParams, cryptoKey, signature, signedInput)) {
+          verified = true;
+          break;
+        }
+      } catch {
+        continue;
+      }
     }
-    let cryptoKey: CryptoKey;
-    try {
-      const importParams = importParamsForJwk(candidate, alg);
-      cryptoKey = await crypto.subtle.importKey(
-        "jwk",
-        candidate,
-        importParams,
-        false,
-        ["verify"],
-      );
-    } catch {
+    if (!verified) {
+      // If no candidate was alg-compatible and importable, this is a key
+      // problem (`missing_keys`) rather than a signature mismatch.
       throw new RequestObjectVerificationError(
-        "missing_keys",
-        `failed to import JWK for kid=${header.kid ?? "(none)"} (alg=${alg})`,
-      );
-    }
-    const verifyParams =
-      candidate.kty === "EC"
-        ? { name: "ECDSA", hash: EC_HASH_BY_ALG[alg]! }
-        : RSA_VERIFY_PARAMS;
-    const ok = await crypto.subtle.verify(
-      verifyParams,
-      cryptoKey,
-      signature,
-      signedInput,
-    );
-    if (!ok) {
-      throw new RequestObjectVerificationError(
-        "signature_invalid",
-        "asymmetric signature did not verify",
+        attemptedVerify ? "signature_invalid" : "missing_keys",
+        attemptedVerify
+          ? `asymmetric signature did not verify (kid=${header.kid ?? "(none)"}, alg=${alg})`
+          : `no JWK compatible with alg=${alg} (kid=${header.kid ?? "(none)"})`,
       );
     }
   } else {

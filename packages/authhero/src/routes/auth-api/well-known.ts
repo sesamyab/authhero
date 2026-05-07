@@ -172,7 +172,13 @@ export const wellKnownRoutes = new OpenAPIHono<{
         token_endpoint_auth_signing_alg_values_supported: [
           "RS256",
           "RS384",
-          "PS256",
+          "RS512",
+          "ES256",
+          "ES384",
+          "ES512",
+          "HS256",
+          "HS384",
+          "HS512",
         ],
       });
 

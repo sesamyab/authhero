@@ -222,7 +222,9 @@ describe("/oauth/token with RFC 7523 client_assertion", () => {
 
     expect(response.status).toBe(401);
     const body = (await response.json()) as TokenFailure;
-    expect(body.error).toBe("unsupported_alg");
+    // RFC 6749 §5.2: the token endpoint may only emit the enumerated error
+    // codes — internal "unsupported_alg" maps to "invalid_request".
+    expect(body.error).toBe("invalid_request");
   });
 
   it("rejects assertion signed with an unknown key", async () => {
@@ -258,7 +260,11 @@ describe("/oauth/token with RFC 7523 client_assertion", () => {
 
   it("authenticates client_credentials via client_secret_jwt (HS256)", async () => {
     const { oauthApp, env } = await getTestServer();
-    // Default test client has client_secret = "clientSecret".
+    // Default test client has client_secret = "clientSecret"; register it for
+    // client_secret_jwt so the auth-method match check accepts the assertion.
+    await env.data.clients.update("tenantId", "clientId", {
+      token_endpoint_auth_method: "client_secret_jwt",
+    });
     const secretBytes = new Uint8Array(new TextEncoder().encode("clientSecret"));
     const assertion = await createJWT(
       "HS256",

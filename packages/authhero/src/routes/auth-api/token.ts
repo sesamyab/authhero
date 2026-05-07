@@ -244,6 +244,7 @@ export const tokenRoutes = new OpenAPIHono<{
           assertionClient = await getEnrichedClient(
             ctx.env,
             assertionClientId,
+            ctx.var.tenant_id,
           );
         } catch {
           throw new JSONHTTPException(401, {
@@ -261,12 +262,37 @@ export const tokenRoutes = new OpenAPIHono<{
             assertionClient,
             { acceptedAudiences: [tokenEndpoint, issuer] },
           );
+          // RFC 7521 §4.2: the assertion authentication method MUST match the
+          // method the client registered. Block clients that registered with a
+          // non-assertion method (or `none`) from authenticating via assertion.
+          const registered = assertionClient.token_endpoint_auth_method;
+          if (registered === "none") {
+            throw new JSONHTTPException(401, {
+              error: "invalid_client",
+              error_description:
+                "public clients must not authenticate with client_assertion",
+            });
+          }
+          if (
+            (registered === "client_secret_jwt" ||
+              registered === "private_key_jwt") &&
+            registered !== verified.method
+          ) {
+            throw new JSONHTTPException(401, {
+              error: "invalid_client",
+              error_description: `client_assertion method ${verified.method} does not match registered token_endpoint_auth_method ${registered}`,
+            });
+          }
           params.client_id = verified.clientId;
           ctx.set("client_authenticated_via_assertion", true);
         } catch (e) {
           if (e instanceof ClientAssertionError) {
+            // RFC 6749 §5.2 enumerates the valid `error` values for the token
+            // endpoint. Translate internal assertion error codes to those.
+            const error =
+              e.code === "unsupported_alg" ? "invalid_request" : "invalid_client";
             throw new JSONHTTPException(401, {
-              error: e.code,
+              error,
               error_description: e.message,
             });
           }

@@ -240,9 +240,17 @@ export const authorizeRoutes = new OpenAPIHono<{
             },
           );
           const parsed = authorizeParamsSchema.safeParse(payload);
-          if (parsed.success) {
-            requestParams = parsed.data;
+          if (!parsed.success) {
+            // RFC 9101 §6.1: a verified-but-malformed Request Object MUST be
+            // rejected. Falling through to unsigned query params would let a
+            // forged unsigned request slip past the signature gate.
+            throw new HTTPException(400, {
+              message: `invalid request object: ${parsed.error.issues
+                .map((i) => `${i.path.join(".")}: ${i.message}`)
+                .join("; ")}`,
+            });
           }
+          requestParams = parsed.data;
         } catch (e) {
           if (e instanceof RequestObjectVerificationError) {
             throw new HTTPException(400, {
@@ -253,7 +261,26 @@ export const authorizeRoutes = new OpenAPIHono<{
         }
       }
 
-      // Merge: spread request params first, then query params override
+      // RFC 9101 §6.1 / OIDC Core §6.1: parameters in the signed Request Object
+      // take precedence over duplicate query-string values. If the same param
+      // is present in both with differing values, reject — silently picking
+      // either side is unsafe (an attacker who controls the query string could
+      // override a signed redirect_uri).
+      for (const key of Object.keys(requestParams) as Array<
+        keyof typeof requestParams
+      >) {
+        const reqValue = requestParams[key];
+        const qValue = (queryParams as Record<string, unknown>)[key];
+        if (
+          reqValue !== undefined &&
+          qValue !== undefined &&
+          reqValue !== qValue
+        ) {
+          throw new HTTPException(400, {
+            message: `request object and query parameter "${key}" disagree`,
+          });
+        }
+      }
       let {
         redirect_uri,
         scope,
@@ -269,7 +296,7 @@ export const authorizeRoutes = new OpenAPIHono<{
         login_hint,
         ui_locales,
         organization,
-      } = { ...requestParams, ...queryParams };
+      } = { ...queryParams, ...requestParams };
       const {
         client_id,
         vendor_id,
@@ -279,7 +306,7 @@ export const authorizeRoutes = new OpenAPIHono<{
         realm,
         auth0Client,
         screen_hint,
-      } = { ...requestParams, ...queryParams };
+      } = { ...queryParams, ...requestParams };
 
       ctx.set("log", "authorize");
 
