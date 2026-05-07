@@ -367,7 +367,7 @@ function generateLocalSeedFileContent(
   return `import { SqliteDialect, Kysely } from "kysely";
 import Database from "better-sqlite3";
 import createAdapters from "@authhero/kysely-adapter";
-import { seed } from "authhero";
+import { seed${conformance ? ", USERNAME_PASSWORD_PROVIDER" : ""} } from "authhero";
 
 interface ExtraClient {
   client_id: string;

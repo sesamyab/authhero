@@ -38,4 +38,8 @@ export type Variables = {
   // writes, outbox webhook dispatch) is observable by tests and completes
   // before the process exits.
   backgroundPromises?: Promise<void>[];
+  // True when the /oauth/token request authenticated the client via an
+  // RFC 7523 `client_assertion` (private_key_jwt or client_secret_jwt). Grant
+  // handlers consult this so they can skip the client_secret comparison.
+  client_authenticated_via_assertion?: boolean;
 };

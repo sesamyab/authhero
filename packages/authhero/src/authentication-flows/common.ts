@@ -22,6 +22,7 @@ import { nanoid } from "nanoid";
 import { ulid } from "../utils/ulid";
 import { generateCodeVerifier } from "oslo/oauth2";
 import { pemToBuffer } from "../utils/crypto";
+import { algForCert } from "../utils/jwk-alg";
 import { Bindings, Variables } from "../types";
 import {
   AUTHORIZATION_CODE_EXPIRES_IN_SECONDS,
@@ -163,11 +164,12 @@ export async function createAuthTokens(
     (key: any) => !key.revoked_at || new Date(key.revoked_at) > new Date(),
   );
 
-  if (!signingKey?.pkcs7) {
+  if (!signingKey?.pkcs7 || !signingKey.cert) {
     throw new JSONHTTPException(500, { message: "No signing key available" });
   }
 
   const keyBuffer = pemToBuffer(signingKey.pkcs7);
+  const signingAlg = await algForCert(signingKey.cert);
   const iss = getIssuer(ctx.env, ctx.var.custom_domain);
 
   // Audience is normally stamped onto authParams at /authorize (or
@@ -443,14 +445,14 @@ export async function createAuthTokens(
   };
 
   const access_token = await createJWT(
-    "RS256",
+    signingAlg,
     keyBuffer,
     accessTokenPayload,
     header,
   );
 
   const id_token = idTokenPayload
-    ? await createJWT("RS256", keyBuffer, idTokenPayload, header)
+    ? await createJWT(signingAlg, keyBuffer, idTokenPayload, header)
     : undefined;
 
   return {

@@ -1,5 +1,4 @@
 import { verifyRequestOrigin } from "oslo/request";
-import { base64url } from "oslo/encoding";
 import { HTTPException } from "hono/http-exception";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
@@ -22,6 +21,15 @@ import { resumeLoginSession } from "../../authentication-flows/resume";
 import { getEnrichedClient } from "../../helpers/client";
 import { getIssuer, getUniversalLoginUrl } from "../../variables";
 import { setTenantId } from "../../helpers/set-tenant-id";
+import {
+  verifyRequestObject,
+  RequestObjectVerificationError,
+} from "../../helpers/request-object";
+import {
+  ssrfSafeFetch,
+  SsrfBlockedError,
+  SsrfFetchOptions,
+} from "../../utils/ssrf-fetch";
 
 const UI_STRATEGIES: string[] = [
   Strategy.EMAIL,
@@ -55,31 +63,38 @@ const authorizeParamsSchema = z.object({
   ui_locales: z.string().optional(),
 });
 
-/**
- * Decodes the payload of a JWT request parameter (OpenID Connect Core Section 6.1)
- * Supports unsigned JWTs (alg: none) as well as signed JWTs
- * Returns the decoded payload or null if invalid
- */
-function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
-  try {
-    const parts = jwt.split(".");
-    if (parts.length < 2 || !parts[1]) {
-      return null;
-    }
+// Content types we accept for a request_uri payload. RFC 9101 §6.2 specifies
+// `application/oauth-authz-req+jwt`; `application/jwt` is the historical OIDC
+// Core media type many clients still serve.
+const REQUEST_URI_CONTENT_TYPES = new Set([
+  "application/oauth-authz-req+jwt",
+  "application/jwt",
+]);
 
-    const decoded = new TextDecoder().decode(
-      base64url.decode(parts[1], { strict: false }),
-    );
-    const parsed = JSON.parse(decoded);
-
-    if (typeof parsed !== "object" || parsed === null) {
-      return null;
-    }
-
-    return parsed as Record<string, unknown>;
-  } catch {
-    return null;
+async function fetchRequestUri(
+  rawUrl: string,
+  ssrfOpts: SsrfFetchOptions,
+): Promise<string> {
+  const { status, body, contentType } = await ssrfSafeFetch(rawUrl, ssrfOpts);
+  if (status !== 200) {
+    throw new HTTPException(400, {
+      message: `request_uri returned status ${status}`,
+    });
   }
+  // Strip parameters like ";charset=utf-8" before checking against allow-list.
+  const ctype = (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (!REQUEST_URI_CONTENT_TYPES.has(ctype)) {
+    throw new HTTPException(400, {
+      message: `request_uri returned unsupported content-type: ${ctype || "(missing)"}`,
+    });
+  }
+  const trimmed = body.trim();
+  if (!trimmed || trimmed.split(".").length !== 3) {
+    throw new HTTPException(400, {
+      message: "request_uri did not return a JWT",
+    });
+  }
+  return trimmed;
 }
 
 export const authorizeRoutes = new OpenAPIHono<{
@@ -110,7 +125,15 @@ export const authorizeRoutes = new OpenAPIHono<{
               .string()
               .openapi({
                 description:
-                  "JWT containing authorization request parameters (OpenID Connect Core Section 6.1)",
+                  "JWT containing authorization request parameters (OpenID Connect Core Section 6.1). MUST be signed; alg=none is rejected.",
+              })
+              .optional(),
+            request_uri: z
+              .string()
+              .url()
+              .openapi({
+                description:
+                  "URL referencing a Request Object JWT (OpenID Connect Core Section 6.2). The URL is fetched with SSRF protection.",
               })
               .optional(),
           })
@@ -164,21 +187,100 @@ export const authorizeRoutes = new OpenAPIHono<{
       const { env } = ctx;
       const queryParams = ctx.req.valid("query");
 
-      // Parse request JWT if present (OpenID Connect Core Section 6.1)
-      // Then merge with query params (query params take precedence)
-      let requestParams: z.infer<typeof authorizeParamsSchema> = {};
-      if (queryParams.request) {
-        const payload = decodeJwtPayload(queryParams.request);
-        if (payload) {
-          // Parse with Zod to get proper types, ignore validation errors
-          const parsed = authorizeParamsSchema.safeParse(payload);
-          if (parsed.success) {
-            requestParams = parsed.data;
+      // OIDC Core 6.1/6.2: a Request Object MAY be passed by value (`request`)
+      // or by reference (`request_uri`), but never both.
+      if (queryParams.request && queryParams.request_uri) {
+        throw new HTTPException(400, {
+          message: "request and request_uri are mutually exclusive",
+        });
+      }
+
+      // SSRF guard scopes for request_uri/jwks_uri fetches. In tests private
+      // hosts (127.0.0.1, localhost) are allowed via the env override.
+      const ssrfFetchOptions: SsrfFetchOptions = {
+        allowPrivateHosts: env.ALLOW_PRIVATE_OUTBOUND_FETCH === true,
+        allowedSchemes: env.ALLOW_PRIVATE_OUTBOUND_FETCH
+          ? ["http:", "https:"]
+          : ["https:"],
+      };
+
+      let requestObjectJwt: string | undefined = queryParams.request;
+      if (queryParams.request_uri) {
+        try {
+          requestObjectJwt = await fetchRequestUri(
+            queryParams.request_uri,
+            ssrfFetchOptions,
+          );
+        } catch (e) {
+          if (e instanceof SsrfBlockedError) {
+            throw new HTTPException(400, {
+              message: `request_uri rejected: ${e.message}`,
+            });
           }
+          throw e;
         }
       }
 
-      // Merge: spread request params first, then query params override
+      let requestParams: z.infer<typeof authorizeParamsSchema> = {};
+      let requestClient: Awaited<ReturnType<typeof getEnrichedClient>> | undefined;
+      if (requestObjectJwt) {
+        if (!queryParams.client_id) {
+          throw new HTTPException(400, {
+            message: "client_id is required to verify a request object",
+          });
+        }
+        requestClient = await getEnrichedClient(env, queryParams.client_id);
+        try {
+          const payload = await verifyRequestObject(
+            requestObjectJwt,
+            requestClient,
+            {
+              issuer: getIssuer(env, ctx.var.custom_domain),
+              fetch: ssrfFetchOptions,
+            },
+          );
+          const parsed = authorizeParamsSchema.safeParse(payload);
+          if (!parsed.success) {
+            // RFC 9101 §6.1: a verified-but-malformed Request Object MUST be
+            // rejected. Falling through to unsigned query params would let a
+            // forged unsigned request slip past the signature gate.
+            throw new HTTPException(400, {
+              message: `invalid request object: ${parsed.error.issues
+                .map((i) => `${i.path.join(".")}: ${i.message}`)
+                .join("; ")}`,
+            });
+          }
+          requestParams = parsed.data;
+        } catch (e) {
+          if (e instanceof RequestObjectVerificationError) {
+            throw new HTTPException(400, {
+              message: `invalid request object (${e.code}): ${e.message}`,
+            });
+          }
+          throw e;
+        }
+      }
+
+      // RFC 9101 §6.1 / OIDC Core §6.1: parameters in the signed Request Object
+      // take precedence over duplicate query-string values. If the same param
+      // is present in both with differing values, reject — silently picking
+      // either side is unsafe (an attacker who controls the query string could
+      // override a signed redirect_uri).
+      for (const key of Object.keys(requestParams) as Array<
+        keyof typeof requestParams
+      >) {
+        const reqValue = requestParams[key];
+        const qValue = (queryParams as Record<string, unknown>)[key];
+        if (
+          reqValue !== undefined &&
+          qValue !== undefined &&
+          reqValue !== qValue
+        ) {
+          throw new HTTPException(400, {
+            message: `request object and query parameter "${key}" disagree`,
+          });
+        }
+      }
       let {
         redirect_uri,
         scope,
@@ -194,7 +296,7 @@ export const authorizeRoutes = new OpenAPIHono<{
         login_hint,
         ui_locales,
         organization,
-      } = { ...requestParams, ...queryParams };
+      } = { ...queryParams, ...requestParams };
       const {
         client_id,
         vendor_id,
@@ -204,11 +306,16 @@ export const authorizeRoutes = new OpenAPIHono<{
         realm,
         auth0Client,
         screen_hint,
-      } = { ...requestParams, ...queryParams };
+      } = { ...queryParams, ...requestParams };
 
       ctx.set("log", "authorize");
 
-      const client = await getEnrichedClient(env, client_id);
+      // Reuse the client we already fetched while verifying the request object
+      // when client_id matches; otherwise fetch fresh.
+      const client =
+        requestClient && requestClient.client_id === client_id
+          ? requestClient
+          : await getEnrichedClient(env, client_id);
       ctx.set("client_id", client.client_id);
       setTenantId(ctx, client.tenant.id);
 

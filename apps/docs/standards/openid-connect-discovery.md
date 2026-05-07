@@ -14,15 +14,17 @@ OpenID Connect Discovery lets clients dynamically learn an OP's endpoints and ca
 
 - **Discovery endpoint** — `GET /.well-known/openid-configuration`.
 - **JWKS endpoint advertisement** — `jwks_uri` points to [`/.well-known/jwks.json`](/standards/rfc-7517).
-- **Core endpoints** — `issuer`, `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`, `end_session_endpoint` are always advertised.
-- **Conditional endpoints** — `registration_endpoint` is included in the discovery metadata only when the Dynamic Client Registration feature is enabled for the tenant.
+- **Core endpoints** — `issuer`, `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`, `jwks_uri`, `revocation_endpoint`, `device_authorization_endpoint`, `mfa_challenge_endpoint` are always advertised.
+- **Conditional endpoints** — `registration_endpoint` is included only when Dynamic Client Registration is enabled for the tenant; `end_session_endpoint` is included only when `oidc_logout.rp_logout_end_session_endpoint_discovery` is set (see [OIDC RP-Initiated Logout](/standards/oidc-rp-initiated-logout)).
 - **Supported response types** — `code`, `token`, `id_token`, `code token`, `code id_token`, `token id_token`, `code token id_token`.
 - **Supported response modes** — `query`, `fragment`, `form_post`.
-- **Supported grant types** — `authorization_code`, `client_credentials`, `refresh_token`, plus Auth0-compatible passwordless OTP grant.
-- **Supported scopes** — `openid`, `profile`, `email`, `address`, `phone`, `offline_access`.
+- **Supported grant types** — `authorization_code`, `client_credentials`, `refresh_token`, `implicit`, plus Auth0-compatible passwordless OTP grant.
+- **Supported scopes** — `openid`, `profile`, `email`, `address`, `phone`, `offline_access`, plus profile claim scopes.
 - **Supported subject types** — `public`.
-- **Supported signing algorithms** — `RS256` (ID tokens), plus additional algorithms for access tokens.
-- **Supported token endpoint auth methods** — `client_secret_basic`, `client_secret_post`, `none`.
+- **ID token signing algorithms** — `RS256` (default), `ES256`, `ES384`, `ES512`. The algorithm is derived from the tenant's `jwt_signing` key material.
+- **Token endpoint auth methods** — `client_secret_basic`, `client_secret_post`, `client_secret_jwt`, `private_key_jwt`. See [RFC 7523](/standards/rfc-7523).
+- **Request objects** — `request_parameter_supported: true`, `request_uri_parameter_supported: true`, with `request_object_signing_alg_values_supported` listing `RS256/384/512`, `ES256/384/512`, `HS256/384/512`. See [RFC 9101](/standards/rfc-9101).
+- **PKCE** — `code_challenge_methods_supported`: `S256`, `plain`.
 - **Supported claims** — published in `claims_supported`.
 
 ## Declared but not yet implemented

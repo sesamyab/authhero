@@ -9,6 +9,7 @@ import { createJWT } from "oslo/jwt";
 import { Bindings, Variables } from "../types";
 import { createAuthTokens } from "../authentication-flows/common";
 import { pemToBuffer } from "../utils/crypto";
+import { algForCert } from "../utils/jwk-alg";
 
 const AUTH_SERVICE_CLIENT_ID = "auth-service";
 const DEFAULT_EXPIRES_IN_SECONDS = 3600;
@@ -80,11 +81,12 @@ export async function createServiceTokenCore(
   const signingKey = signingKeys.find(
     (key) => !key.revoked_at || new Date(key.revoked_at) > new Date(),
   );
-  if (!signingKey?.pkcs7) {
+  if (!signingKey?.pkcs7 || !signingKey.cert) {
     throw new Error("No signing key available");
   }
 
   const keyBuffer = pemToBuffer(signingKey.pkcs7);
+  const alg = await algForCert(signingKey.cert);
   const expiresInSeconds =
     params.expiresInSeconds ?? DEFAULT_EXPIRES_IN_SECONDS;
 
@@ -98,7 +100,7 @@ export async function createServiceTokenCore(
     ...params.customClaims,
   };
 
-  const access_token = await createJWT("RS256", keyBuffer, accessTokenPayload, {
+  const access_token = await createJWT(alg, keyBuffer, accessTokenPayload, {
     includeIssuedTimestamp: true,
     expiresIn: new TimeSpan(expiresInSeconds, "s"),
     headers: { kid: signingKey.kid },

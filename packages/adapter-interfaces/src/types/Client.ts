@@ -156,12 +156,18 @@ export const clientInsertSchema = z.object({
       "Addons enabled for this client and their associated configurations.",
   }),
   token_endpoint_auth_method: z
-    .enum(["none", "client_secret_post", "client_secret_basic"])
+    .enum([
+      "none",
+      "client_secret_post",
+      "client_secret_basic",
+      "client_secret_jwt",
+      "private_key_jwt",
+    ])
     .default("client_secret_basic")
     .optional()
     .openapi({
       description:
-        "Defines the requested authentication method for the token endpoint. Can be none (public client without a client secret), client_secret_post (client uses HTTP POST parameters), or client_secret_basic (client uses HTTP Basic).",
+        "Defines the requested authentication method for the token endpoint. `none` (public client), `client_secret_post` / `client_secret_basic` (HTTP POST / Basic), `client_secret_jwt` (RFC 7523 HMAC assertion using client_secret), or `private_key_jwt` (RFC 7523 asymmetric assertion verified against the client's `jwks` / `jwks_uri`).",
     }),
   client_metadata: z
     .record(z.string().max(255))

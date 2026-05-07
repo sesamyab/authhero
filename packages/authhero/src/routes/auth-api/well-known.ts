@@ -7,6 +7,7 @@ import { JWKS_CACHE_TIMEOUT_IN_SECONDS } from "../../constants";
 import { Bindings, Variables } from "../../types";
 import { getAuthUrl, getIssuer } from "../../variables";
 import { getJwksFromDatabase } from "../../utils/jwks";
+import { SUPPORTED_ID_TOKEN_SIGNING_ALGS } from "../../utils/jwk-alg";
 
 export const wellKnownRoutes = new OpenAPIHono<{
   Bindings: Bindings;
@@ -130,13 +131,12 @@ export const wellKnownRoutes = new OpenAPIHono<{
         code_challenge_methods_supported: ["S256", "plain"],
         response_modes_supported: ["query", "fragment", "form_post"],
         subject_types_supported: ["public"],
-        // Currently only support RS256 and not HS256
-        id_token_signing_alg_values_supported: ["RS256"],
+        id_token_signing_alg_values_supported: SUPPORTED_ID_TOKEN_SIGNING_ALGS,
         token_endpoint_auth_methods_supported: [
           "client_secret_basic",
           "client_secret_post",
-          // private_key_jwt is not supported yet
-          // "private_key_jwt",
+          "client_secret_jwt",
+          "private_key_jwt",
         ],
         claims_supported: [
           "aud",
@@ -156,12 +156,29 @@ export const wellKnownRoutes = new OpenAPIHono<{
           "picture",
           "sub",
         ],
-        request_uri_parameter_supported: false,
+        request_uri_parameter_supported: true,
         request_parameter_supported: true,
+        request_object_signing_alg_values_supported: [
+          "RS256",
+          "RS384",
+          "RS512",
+          "ES256",
+          "ES384",
+          "ES512",
+          "HS256",
+          "HS384",
+          "HS512",
+        ],
         token_endpoint_auth_signing_alg_values_supported: [
           "RS256",
           "RS384",
-          "PS256",
+          "RS512",
+          "ES256",
+          "ES384",
+          "ES512",
+          "HS256",
+          "HS384",
+          "HS512",
         ],
       });
 

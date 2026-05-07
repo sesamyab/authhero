@@ -24,7 +24,13 @@ export const dcrRequestSchema = z.object({
   grant_types: z.array(z.string()).optional(),
   response_types: z.array(z.string()).optional(),
   token_endpoint_auth_method: z
-    .enum(["none", "client_secret_basic", "client_secret_post"])
+    .enum([
+      "none",
+      "client_secret_basic",
+      "client_secret_post",
+      "client_secret_jwt",
+      "private_key_jwt",
+    ])
     .optional(),
   jwks_uri: z.string().url().optional(),
   jwks: z.record(z.unknown()).optional(),
