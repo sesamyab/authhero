@@ -130,6 +130,8 @@ export default function create(config: AuthHeroConfig) {
           "promptSettings",
           "forms",
           "hooks",
+          "customText",
+          "universalLoginTemplates",
         ],
         cache: cacheAdapter,
       });
