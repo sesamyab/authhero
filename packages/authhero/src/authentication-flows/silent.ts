@@ -11,6 +11,7 @@ import { logMessage } from "../helpers/logging";
 import { Bindings, Variables } from "../types";
 import { serializeAuthCookie, clearAuthCookie } from "../utils/cookies";
 import renderAuthIframe from "../utils/authIframe";
+import { formPostResponse } from "../utils/form-post";
 import { createAuthTokens, createCodeData } from "./common";
 
 import { nanoid } from "nanoid";
@@ -89,26 +90,32 @@ export async function silentAuth({
       );
     }
 
-    // For other response modes, redirect back with error
-    // Use fragment for token responses, query for code responses
+    // OIDC Core 3.1.2.6: error responses MUST use the same response_mode
+    // the client requested for success. form_post → POST the params to the
+    // redirect_uri; otherwise 302 with query (code) or fragment (token).
+    const errorParams: Record<string, string> = {
+      error: "login_required",
+      error_description: description,
+    };
+    if (state) errorParams.state = state;
+
+    if (response_mode === AuthorizationResponseMode.FORM_POST) {
+      return formPostResponse(redirect_uri, errorParams, headers);
+    }
+
     const errorUrl = new URL(redirect_uri);
     const useFragment =
       response_type === AuthorizationResponseType.TOKEN ||
       response_type === AuthorizationResponseType.TOKEN_ID_TOKEN;
 
     if (useFragment) {
-      const params = new URLSearchParams();
-      params.set("error", "login_required");
-      params.set("error_description", description);
-      if (state) params.set("state", state);
-      errorUrl.hash = params.toString();
+      errorUrl.hash = new URLSearchParams(errorParams).toString();
     } else {
-      errorUrl.searchParams.set("error", "login_required");
-      errorUrl.searchParams.set("error_description", description);
-      if (state) errorUrl.searchParams.set("state", state);
+      for (const [k, v] of Object.entries(errorParams)) {
+        errorUrl.searchParams.set(k, v);
+      }
     }
 
-    // Apply headers to the redirect response
     const responseHeaders: Record<string, string> = {
       Location: errorUrl.toString(),
     };
@@ -362,24 +369,27 @@ export async function silentAuth({
     );
   }
 
-  // For other response modes, redirect back with the token/code
+  const successParams: Record<string, string> = {};
+  Object.entries(tokenResponse).forEach(([key, value]) => {
+    if (value !== undefined) successParams[key] = String(value);
+  });
+  if (state) successParams.state = state;
+
+  if (response_mode === AuthorizationResponseMode.FORM_POST) {
+    return formPostResponse(redirect_uri, successParams, headers);
+  }
+
   const successUrl = new URL(redirect_uri);
   const useFragment =
     response_type === AuthorizationResponseType.TOKEN ||
     response_type === AuthorizationResponseType.TOKEN_ID_TOKEN;
 
   if (useFragment) {
-    const params = new URLSearchParams();
-    Object.entries(tokenResponse).forEach(([key, value]) => {
-      if (value !== undefined) params.set(key, String(value));
-    });
-    if (state) params.set("state", state);
-    successUrl.hash = params.toString();
+    successUrl.hash = new URLSearchParams(successParams).toString();
   } else {
-    Object.entries(tokenResponse).forEach(([key, value]) => {
-      if (value !== undefined) successUrl.searchParams.set(key, String(value));
-    });
-    if (state) successUrl.searchParams.set("state", state);
+    for (const [k, v] of Object.entries(successParams)) {
+      successUrl.searchParams.set(k, v);
+    }
   }
 
   const responseHeaders: Record<string, string> = {

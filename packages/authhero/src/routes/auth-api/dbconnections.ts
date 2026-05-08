@@ -1,13 +1,13 @@
 import { HTTPException } from "hono/http-exception";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { AuthParams, LogTypes, Strategy } from "@authhero/adapter-interfaces";
-import { USERNAME_PASSWORD_PROVIDER } from "../../constants";
 import { Bindings, Variables } from "../../types";
 import { logMessage } from "../../helpers/logging";
 import {
-  getPrimaryUserByProvider,
-  getUserByProvider,
-} from "../../helpers/users";
+  getPrimaryUsernamePasswordUser,
+  getUsernamePasswordUser,
+  resolveUsernamePasswordProvider,
+} from "../../utils/username-password-provider";
 import { UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS } from "../../constants";
 import { userIdGenerate } from "../../utils/user-id";
 import {
@@ -99,11 +99,10 @@ export const dbConnectionRoutes = new OpenAPIHono<{
         });
       }
 
-      const existingUser = await getPrimaryUserByProvider({
-        userAdapter: ctx.env.data.users,
+      const existingUser = await getPrimaryUsernamePasswordUser({
+        env: ctx.env,
         tenant_id: client.tenant.id,
         username: email,
-        provider: USERNAME_PASSWORD_PROVIDER,
       });
 
       if (existingUser) {
@@ -114,12 +113,17 @@ export const dbConnectionRoutes = new OpenAPIHono<{
       // Hash password first
       const { hash, algorithm } = await hashPassword(password);
 
+      const provider = await resolveUsernamePasswordProvider(
+        ctx.env,
+        client.tenant.id,
+      );
+
       // Create the new user with password atomically in a single transaction
       const newUser = await ctx.env.data.users.create(client.tenant.id, {
-        user_id: `${USERNAME_PASSWORD_PROVIDER}|${userIdGenerate()}`,
+        user_id: `${provider}|${userIdGenerate()}`,
         email,
         email_verified: false,
-        provider: USERNAME_PASSWORD_PROVIDER,
+        provider,
         connection: Strategy.USERNAME_PASSWORD,
         is_social: false,
         password: { hash, algorithm },
@@ -185,11 +189,10 @@ export const dbConnectionRoutes = new OpenAPIHono<{
       ctx.set("client_id", client.client_id);
       setTenantId(ctx, client.tenant.id);
 
-      const existingUser = await getUserByProvider({
-        userAdapter: ctx.env.data.users,
+      const existingUser = await getUsernamePasswordUser({
+        env: ctx.env,
         tenant_id: client.tenant.id,
         username: email,
-        provider: USERNAME_PASSWORD_PROVIDER,
       });
 
       if (!existingUser) {

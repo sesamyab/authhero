@@ -52,6 +52,10 @@ export function applyConfigMiddleware(
       ctx.env.userLinkingMode = config.userLinkingMode;
     }
 
+    if (config.usernamePasswordProvider) {
+      ctx.env.usernamePasswordProvider = config.usernamePasswordProvider;
+    }
+
     return next();
   };
 }

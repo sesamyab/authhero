@@ -2,8 +2,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
 import EnterCodePage from "../../components/EnterCodePage";
-import { getPrimaryUserByProvider } from "../../helpers/users";
-import { USERNAME_PASSWORD_PROVIDER } from "../../constants";
+import { getPrimaryUsernamePasswordUser } from "../../utils/username-password-provider";
 import { passwordlessGrant } from "../../authentication-flows/passwordless";
 import MessagePage from "../../components/MessagePage";
 import i18next from "i18next";
@@ -110,11 +109,10 @@ export const enterCodeRoutes = new OpenAPIHono<{
           );
         }
 
-        const passwordUser = await getPrimaryUserByProvider({
-          userAdapter: ctx.env.data.users,
+        const passwordUser = await getPrimaryUsernamePasswordUser({
+          env: ctx.env,
           tenant_id: client.tenant.id,
           username: loginSession.authParams.username,
-          provider: USERNAME_PASSWORD_PROVIDER,
         });
 
         // Classic style
@@ -252,11 +250,10 @@ export const enterCodeRoutes = new OpenAPIHono<{
       } catch (e: unknown) {
         let passwordUser;
         try {
-          passwordUser = await getPrimaryUserByProvider({
-            userAdapter: ctx.env.data.users,
+          passwordUser = await getPrimaryUsernamePasswordUser({
+            env: ctx.env,
             tenant_id: client.tenant.id,
             username: loginSession.authParams.username,
-            provider: USERNAME_PASSWORD_PROVIDER,
           });
         } catch {
           passwordUser = null;

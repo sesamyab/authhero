@@ -13,7 +13,7 @@ describe("emailProviders", () => {
     // Delete the default email provider created by test setup
     await env.data.emailProviders.remove("tenantId");
 
-    // Check that we get a 404 when no email provider is set
+    // Auth0 returns 200 with an empty object when no provider is configured.
     const emptyEmailProviderResponse =
       await managementClient.email.providers.$get(
         {
@@ -27,7 +27,8 @@ describe("emailProviders", () => {
           },
         },
       );
-    expect(emptyEmailProviderResponse.status).toBe(404);
+    expect(emptyEmailProviderResponse.status).toBe(200);
+    expect(await emptyEmailProviderResponse.json()).toEqual({});
 
     // Set the email provider
     const createEmailProviderResponse =
@@ -147,7 +148,7 @@ describe("emailProviders", () => {
     expect(res.status).toBe(404);
   });
 
-  it("DELETE removes the provider and returns 204; subsequent GET is 404", async () => {
+  it("DELETE removes the provider and returns 204; subsequent GET is 200 with empty body", async () => {
     const { managementApp, env } = await getTestServer();
     const managementClient = testClient(managementApp, env);
     const token = await getAdminToken();
@@ -163,7 +164,8 @@ describe("emailProviders", () => {
       { header: { "tenant-id": "tenantId" } },
       { headers: { authorization: `Bearer ${token}` } },
     );
-    expect(get.status).toBe(404);
+    expect(get.status).toBe(200);
+    expect(await get.json()).toEqual({});
   });
 
   it("DELETE returns 404 when no provider is configured", async () => {

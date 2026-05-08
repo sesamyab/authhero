@@ -9,11 +9,19 @@ import { Bindings, Variables } from "../types";
 import { getOrCreateUserByProvider } from "../helpers/users";
 import { createFrontChannelAuthResponse } from "./common";
 import { getEnrichedClient } from "../helpers/client";
-import { USERNAME_PASSWORD_PROVIDER } from "../constants";
+import {
+  getOrCreateUsernamePasswordUser,
+  isUsernamePasswordProvider,
+  resolveUsernamePasswordProvider,
+} from "../utils/username-password-provider";
 
-function getProviderFromRealm(realm: string) {
+async function getProviderFromRealm(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  tenant_id: string,
+  realm: string,
+) {
   if (realm === Strategy.USERNAME_PASSWORD) {
-    return USERNAME_PASSWORD_PROVIDER;
+    return resolveUsernamePasswordProvider(ctx.env, tenant_id);
   }
 
   if (realm === Strategy.EMAIL) {
@@ -56,13 +64,13 @@ export async function ticketAuth(
 
   await env.data.codes.used(tenant_id, ticketId);
 
-  const provider = getProviderFromRealm(realm);
+  const provider = await getProviderFromRealm(ctx, tenant_id, realm);
 
   // Look up the connection to get its strategy
   const connection = client.connections.find((c) => c.name === realm);
   const strategy =
     connection?.strategy ||
-    (provider === USERNAME_PASSWORD_PROVIDER
+    (isUsernamePasswordProvider(provider)
       ? Strategy.USERNAME_PASSWORD
       : Strategy.EMAIL);
   const strategy_type =
@@ -70,14 +78,22 @@ export async function ticketAuth(
       ? StrategyType.DATABASE
       : StrategyType.PASSWORDLESS;
 
-  let user = await getOrCreateUserByProvider(ctx, {
-    username: loginSession.authParams.username,
-    provider,
-    client,
-    connection: realm,
-    isSocial: false,
-    ip: ctx.var.ip,
-  });
+  let user =
+    realm === Strategy.USERNAME_PASSWORD
+      ? await getOrCreateUsernamePasswordUser(ctx, {
+          client,
+          username: loginSession.authParams.username,
+          connection: realm,
+          ip: ctx.var.ip,
+        })
+      : await getOrCreateUserByProvider(ctx, {
+          username: loginSession.authParams.username,
+          provider,
+          client,
+          connection: realm,
+          isSocial: false,
+          ip: ctx.var.ip,
+        });
 
   ctx.set("username", user.email || user.phone_number);
   ctx.set("user_id", user.user_id);

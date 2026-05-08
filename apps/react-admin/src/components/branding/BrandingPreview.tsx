@@ -8,14 +8,22 @@ import {
   ToggleButton,
 } from "@mui/material";
 import { useState } from "react";
-import { defineCustomElements } from "@authhero/widget/loader";
+// Load the Stencil-built widget via a <script type="module"> so its lazy chunks
+// resolve relative to unpkg (via import.meta.url). Importing the loader through
+// Vite places its origin at /assets/, where the entry chunks don't exist and
+// the SPA fallback returns index.html — breaking the dynamic import.
+const WIDGET_VERSION = "0.32.14";
+const WIDGET_SRC = `https://unpkg.com/@authhero/widget@${WIDGET_VERSION}/dist/authhero-widget/authhero-widget.esm.js`;
 
-// Initialize the widget custom elements with CDN path for assets
-if (typeof window !== "undefined") {
-  defineCustomElements(window, {
-    resourcesUrl:
-      "https://unpkg.com/@authhero/widget@latest/dist/authhero-widget/",
-  });
+if (
+  typeof window !== "undefined" &&
+  !document.querySelector(`script[data-authhero-widget]`)
+) {
+  const s = document.createElement("script");
+  s.type = "module";
+  s.src = WIDGET_SRC;
+  s.dataset.authheroWidget = "true";
+  document.head.appendChild(s);
 }
 
 // Types for the widget screen configuration

@@ -2,11 +2,11 @@ import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getEnrichedClient, EnrichedClient } from "../../helpers/client";
 import i18next from "i18next";
-import { USERNAME_PASSWORD_PROVIDER } from "../../constants";
 import {
   getPrimaryUserByEmail,
   getPrimaryUserByProvider,
 } from "../../helpers/users";
+import { getPrimaryUsernamePasswordUser } from "../../utils/username-password-provider";
 import { RedirectException } from "../../errors/redirect-exception";
 import { Strategy } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
@@ -237,8 +237,9 @@ export async function getLoginStrategy(
     return connectionType === "sms" ? "sms" : "email";
   }
 
-  // Look up user - for email use getPrimaryUserByEmail (finds any provider),
-  // for sms/username use getPrimaryUserByProvider
+  // Look up user - for email use getPrimaryUserByEmail (finds any provider);
+  // for username use the dual-read helper (auth2 or auth0); for sms use the
+  // literal "sms" provider.
   const user =
     connectionType === "email"
       ? await getPrimaryUserByEmail({
@@ -246,13 +247,18 @@ export async function getLoginStrategy(
           tenant_id: client.tenant.id,
           email: username,
         })
-      : await getPrimaryUserByProvider({
-          userAdapter: ctx.env.data.users,
-          tenant_id: client.tenant.id,
-          username,
-          provider:
-            connectionType === "sms" ? "sms" : USERNAME_PASSWORD_PROVIDER,
-        });
+      : connectionType === "sms"
+        ? await getPrimaryUserByProvider({
+            userAdapter: ctx.env.data.users,
+            tenant_id: client.tenant.id,
+            username,
+            provider: "sms",
+          })
+        : await getPrimaryUsernamePasswordUser({
+            env: ctx.env,
+            tenant_id: client.tenant.id,
+            username,
+          });
 
   // Check user's preferred login method (last used)
   const userStrategy = user?.app_metadata?.strategy;

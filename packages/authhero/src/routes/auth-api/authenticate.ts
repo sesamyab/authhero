@@ -109,6 +109,7 @@ export const authenticateRoutes = new OpenAPIHono<{
           },
           loginSession,
           true,
+          body.realm,
         );
       } else {
         throw new HTTPException(400, { message: "Code or password required" });

@@ -59,6 +59,7 @@ const NON_HRD_STRATEGIES = new Set<string>([
   Strategy.SAMLP,
   Strategy.WAAD,
   Strategy.ADFS,
+  Strategy.AUTH0,
 ]);
 
 const isHrdEligibleStrategy = (strategy?: string) =>
@@ -195,6 +196,30 @@ function ConnectionTabbedFrom() {
             </>
           )}
 
+          {record?.strategy === Strategy.AUTH0 && (
+            <>
+              <TextInput
+                source="options.token_endpoint"
+                label="Token Endpoint"
+                placeholder="https://example.auth0.com/oauth/token"
+                helperText="Upstream Auth0 /oauth/token URL"
+                fullWidth
+              />
+              <TextInput
+                source="options.userinfo_endpoint"
+                label="Userinfo Endpoint"
+                placeholder="https://example.auth0.com/userinfo"
+                helperText="Upstream Auth0 /userinfo URL — called after a successful password-realm grant to populate the local user profile"
+                fullWidth
+              />
+              <BooleanInput
+                source="options.import_mode"
+                label="Proxy Refresh Tokens"
+                helperText="Forward grant_type=refresh_token requests that don't match a local row to upstream Auth0. Enable during migration so existing Auth0 sessions keep working until the next interactive login."
+              />
+            </>
+          )}
+
           {!isDbConnection(record?.strategy) &&
             record?.strategy !== Strategy.SMS && (
               <SelectInput
@@ -236,7 +261,7 @@ function ConnectionTabbedFrom() {
               <BooleanInput
                 source="options.import_mode"
                 label="Import Mode"
-                helperText="Only allow imported users to log in"
+                helperText="On unknown passwords, fall back to upstream Auth0 (requires an 'auth0' strategy connection in this tenant). On success the user/password are migrated locally."
               />
             </>
           )}

@@ -50,13 +50,20 @@ jobs:
           pnpm authhero build
           pnpm multi-tenancy build
 
+      # Build create-authhero so we can run its compiled CLI. The scaffolder
+      # writes into <cwd>/<projectName>, and `pnpm conformance:seed` expects
+      # the result at apps/conformance-auth-server, so we run it from apps/.
+      - name: Build create-authhero
+        run: pnpm --filter create-authhero build
+
       # Generate the auth-server fresh — it's gitignored. The --conformance
       # flag bakes in the test clients, conformance user, and tenant
       # default_audience that the OIDCC plan needs.
       - name: Generate auth-server
-        working-directory: packages/create-authhero
+        working-directory: apps
         run: |
-          pnpm tsx src/index.ts auth-server \
+          node ../packages/create-authhero/dist/create-authhero.js \
+            conformance-auth-server \
             --template local \
             --multi-tenant \
             --conformance \

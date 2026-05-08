@@ -30,7 +30,7 @@ export const emailProviderRoutes = new OpenAPIHono<{
         200: {
           content: {
             "application/json": {
-              schema: emailProviderSchema,
+              schema: z.object(emailProviderSchema.shape).partial(),
             },
           },
           description: "Email provider",
@@ -42,11 +42,8 @@ export const emailProviderRoutes = new OpenAPIHono<{
         ctx.var.tenant_id,
       );
 
-      if (!emailProvider) {
-        throw new HTTPException(404, { message: "Email provider not found" });
-      }
-
-      return ctx.json(emailProvider);
+      // Auth0 returns 200 with an empty object when no provider is configured.
+      return ctx.json(emailProvider ?? {});
     },
   )
   // --------------------------------

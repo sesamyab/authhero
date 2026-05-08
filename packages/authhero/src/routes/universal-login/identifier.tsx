@@ -6,6 +6,7 @@ import {
   getPrimaryUserByProvider,
   getPrimaryUserByEmail,
 } from "../../helpers/users";
+import { getPrimaryUsernamePasswordUser } from "../../utils/username-password-provider";
 import { validateSignupEmail } from "../../hooks";
 import { logMessage } from "../../helpers/logging";
 import {
@@ -157,14 +158,11 @@ export const identifierRoutes = new OpenAPIHono<{
       // Note: country code not available in theme or branding schema yet
       const vendorCountryCode = undefined; // Could add to theme.widget or branding later
 
-      const {
-        normalized: username,
-        connectionType,
-        provider,
-      } = getConnectionFromIdentifier(
-        params.username,
-        vendorCountryCode || countryCode,
-      );
+      const { normalized: username, connectionType } =
+        getConnectionFromIdentifier(
+          params.username,
+          vendorCountryCode || countryCode,
+        );
 
       // Home Realm Discovery: route to enterprise/social IdP by email domain.
       if (connectionType === "email" && username) {
@@ -223,8 +221,9 @@ export const identifierRoutes = new OpenAPIHono<{
         }
       }
 
-      // Look up user - for email use getPrimaryUserByEmail (finds any provider),
-      // for sms/username use getPrimaryUserByProvider
+      // Look up user - for email use getPrimaryUserByEmail (finds any provider);
+      // for username use the dual-read helper (accepts auth2 or auth0); for sms
+      // use getPrimaryUserByProvider with the literal "sms" provider.
       const user = username
         ? connectionType === "email"
           ? await getPrimaryUserByEmail({
@@ -232,12 +231,18 @@ export const identifierRoutes = new OpenAPIHono<{
               tenant_id: client.tenant.id,
               email: username,
             })
-          : await getPrimaryUserByProvider({
-              userAdapter: env.data.users,
-              tenant_id: client.tenant.id,
-              username,
-              provider,
-            })
+          : connectionType === "username"
+            ? await getPrimaryUsernamePasswordUser({
+                env,
+                tenant_id: client.tenant.id,
+                username,
+              })
+            : await getPrimaryUserByProvider({
+                userAdapter: env.data.users,
+                tenant_id: client.tenant.id,
+                username,
+                provider: "sms",
+              })
         : null;
 
       // Allow connection if:

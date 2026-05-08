@@ -13,4 +13,5 @@ export const Strategy = {
   SAMLP: "samlp",
   WAAD: "waad",
   ADFS: "adfs",
+  AUTH0: "auth0",
 } as const;

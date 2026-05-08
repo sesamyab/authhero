@@ -3,9 +3,9 @@ import { ConformanceClient } from "../lib/conformance-api";
 import { runBrowserFlow } from "../lib/run-browser-flow";
 import { env } from "../lib/env";
 import {
-  PLAN_NAME,
-  PLAN_VARIANT,
-  buildPlanConfig,
+  FORM_POST_BASIC_PLAN_NAME,
+  FORM_POST_BASIC_PLAN_VARIANT,
+  buildFormPostBasicPlanConfig,
 } from "../lib/test-plan-config";
 
 const client = new ConformanceClient();
@@ -14,11 +14,15 @@ let planId: string;
 let modules: { testModule: string; variant?: Record<string, string> }[];
 
 test.beforeAll(async () => {
-  const config = buildPlanConfig();
+  const config = buildFormPostBasicPlanConfig();
   console.log(
-    `[conformance-runner] Creating plan ${PLAN_NAME} with alias ${config.alias}`,
+    `[conformance-runner] Creating plan ${FORM_POST_BASIC_PLAN_NAME} with alias ${config.alias}`,
   );
-  const plan = await client.createPlan(PLAN_NAME, config, PLAN_VARIANT);
+  const plan = await client.createPlan(
+    FORM_POST_BASIC_PLAN_NAME,
+    config,
+    FORM_POST_BASIC_PLAN_VARIANT,
+  );
   planId = plan.id;
   modules = plan.modules;
   console.log(
@@ -29,9 +33,6 @@ test.beforeAll(async () => {
   );
 });
 
-// Modules whose WARNING outcome reflects a known unimplemented feature
-// rather than a regression. Each entry should reference the issue tracking
-// the work to make it PASS.
 const MODULES_ALLOWED_TO_WARN = new Set<string>([
   // OIDC `claims` request parameter (essential claims) — issue #781
   "oidcc-claims-essential",
@@ -39,9 +40,7 @@ const MODULES_ALLOWED_TO_WARN = new Set<string>([
 
 test.describe.configure({ mode: "serial" });
 
-test.describe("OIDCC Basic Certification", () => {
-  // The plan is created lazily in beforeAll, so we register one Playwright test
-  // per available module. Module names come from the suite's plan response.
+test.describe("OIDCC Form Post Basic Certification", () => {
   for (const moduleName of getStaticModulesForPlan()) {
     test(moduleName, async ({ page }) => {
       const moduleEntry = modules.find((m) => m.testModule === moduleName);
@@ -60,11 +59,6 @@ test.describe("OIDCC Basic Certification", () => {
         `[conformance-runner] ${moduleName} -> ${client.baseUrl}/log-detail.html?log=${testId}`,
       );
 
-      // Most OP tests auto-start; some need an explicit start when CONFIGURED.
-      // INTERRUPTED is allowed at every stage so negative modules that move
-      // straight to a terminal state don't crash the runner with a generic
-      // "moved to INTERRUPTED: no detail" — let the result assertion below
-      // surface the actual outcome instead.
       const initial = await client.waitForState(testId, [
         "CONFIGURED",
         "WAITING",
@@ -95,16 +89,6 @@ test.describe("OIDCC Basic Certification", () => {
         `[conformance-runner] ${moduleName} status=${info.status} result=${result ?? "(none)"}`,
       );
 
-      // REVIEW is the suite's outcome when a screenshot placeholder was
-      // uploaded — for unattended runs we auto-fill those, so REVIEW means
-      // "the suite finished and would normally need a human to verify the
-      // screenshot." We treat it as PASSED.
-      // SKIPPED is the suite's outcome when discovery indicates a feature
-      // isn't supported (e.g. unsigned request objects), so the test isn't
-      // applicable. Treat as PASSED.
-      // Per-module WARNING allowlist tracks known-missing features by their
-      // own issues. Drop entries from the set when the underlying feature
-      // lands. env.allowWarning is the global escape hatch for CI debugging.
       const acceptable: string[] = ["PASSED", "REVIEW", "SKIPPED"];
       if (env.allowWarning || MODULES_ALLOWED_TO_WARN.has(moduleName)) {
         acceptable.push("WARNING");
@@ -113,8 +97,6 @@ test.describe("OIDCC Basic Certification", () => {
       let failureDetail = "";
       if (!acceptable.includes(result ?? "")) {
         const log = await client.getTestLog(testId).catch(() => []);
-        // Surface the first FAILURE *and* WARNING from the suite's log so the
-        // assertion message is self-contained — no need to open the web UI.
         const firstFail = log.find((l) => l.result === "FAILURE");
         const firstWarn = log.find((l) => l.result === "WARNING");
         const parts: string[] = [];
@@ -139,15 +121,14 @@ test.describe("OIDCC Basic Certification", () => {
   }
 });
 
-// The basic plan's module list (kept in source to allow `--grep`-style filtering
-// before the suite is contacted). At runtime, modules absent from the live plan
-// are skipped via test.skip above.
+// The form-post-basic plan's module list largely mirrors the Basic plan but
+// exercises response_mode=form_post throughout. Modules absent from the live
+// plan are filtered via test.skip above, so it's safe for this list to be a
+// superset across suite versions.
 function getStaticModulesForPlan(): string[] {
   return [
     "oidcc-server",
     "oidcc-response-type-missing",
-    "oidcc-idtoken-signature",
-    "oidcc-idtoken-unsigned",
     "oidcc-userinfo-get",
     "oidcc-userinfo-post-header",
     "oidcc-userinfo-post-body",

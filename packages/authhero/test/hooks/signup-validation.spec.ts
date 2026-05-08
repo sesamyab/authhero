@@ -155,10 +155,13 @@ describe("signup validation hooks", () => {
       expect(error).toContain("User account does not exist");
     });
 
-    it("should allow email/password signup for existing user even when disable_sign_ups is true", async () => {
+    it("should reject signup as 400 'Invalid sign up' when a username-password user already exists, regardless of disable_sign_ups", async () => {
       const { env, oauthApp } = await getTestServer({ mockEmail: true });
 
-      // Create an existing email user first
+      // Existing user is stored under provider "auth0" (i.e. an Auth0-imported
+      // or migrated tenant), but the connection is still
+      // Username-Password-Authentication, so it counts as an existing native
+      // user for the dbconnections endpoint.
       await env.data.users.create("tenantId", {
         email: "user@example.com",
         email_verified: true,
@@ -173,7 +176,6 @@ describe("signup validation hooks", () => {
         last_login: new Date().toISOString(),
       });
 
-      // Update the client to disable signups
       await env.data.clients.update("tenantId", "clientId", {
         client_metadata: {
           disable_sign_ups: "true",
@@ -182,7 +184,6 @@ describe("signup validation hooks", () => {
 
       const client = testClient(oauthApp, env);
 
-      // Try signup with existing user email (should be treated as login, not signup)
       const userResponse = await client.dbconnections.signup.$post(
         {
           json: {
@@ -199,8 +200,13 @@ describe("signup validation hooks", () => {
         },
       );
 
-      // Should succeed because user exists
-      expect(userResponse.status).toBe(200);
+      // Mirrors Auth0: don't reveal that the account exists.
+      expect(userResponse.status).toBe(400);
+      const error = await userResponse.text();
+      expect(error).toMatch(/^Invalid sign up\b/);
+      expect(error).not.toContain("already");
+      expect(error).not.toContain("exists");
+      expect(error).not.toContain("duplicate");
     });
   });
 

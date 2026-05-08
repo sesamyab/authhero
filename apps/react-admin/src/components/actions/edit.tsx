@@ -20,7 +20,7 @@ import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { getConfigValue } from "../../utils/runtimeConfig";
 import { createManagementClient } from "../../authProvider";
 import { resolveApiBase } from "../../dataProvider";
-import { useParams } from "react-router-dom";
+import { useTenantId } from "../../TenantContext";
 
 const triggerChoices = [
   { id: "post-login", name: "Post Login" },
@@ -34,7 +34,7 @@ const SECRET_PLACEHOLDER = "******";
 function DeployButton() {
   const record = useRecordContext();
   const notify = useNotify();
-  const { tenantId } = useParams();
+  const tenantId = useTenantId();
 
   const handleDeploy = async () => {
     if (!record?.id) return;

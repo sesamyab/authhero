@@ -3,6 +3,7 @@ import DoneIcon from "@mui/icons-material/Done";
 import CloseIcon from "@mui/icons-material/Close";
 import EmailIcon from "@mui/icons-material/Email";
 import ErrorIcon from "@mui/icons-material/Error";
+import InfoIcon from "@mui/icons-material/Info";
 import QuestionMarkIcon from "@mui/icons-material/QuestionMark";
 
 export function LogIcon({ type: logType }: { type: LogTypes }) {
@@ -17,6 +18,7 @@ export function LogIcon({ type: logType }: { type: LogTypes }) {
     case LogTypes.SUCCESS_EXCHANGE_ACCESS_TOKEN_FOR_CLIENT_CREDENTIALS:
     case LogTypes.SUCCESS_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN:
     case LogTypes.SUCCESS_EXCHANGE_PASSWORD_FOR_ACCESS_TOKEN:
+    case LogTypes.SUCCESS_EXCHANGE_PASSWORD_OTP_FOR_ACCESS_TOKEN:
     case LogTypes.SUCCESS_REVOCATION:
     case LogTypes.SUCCESS_CHANGE_EMAIL:
     case LogTypes.SUCCESS_CHANGE_PASSWORD:
@@ -47,6 +49,8 @@ export function LogIcon({ type: logType }: { type: LogTypes }) {
       return <EmailIcon />;
     case LogTypes.FAILED_LOGIN:
       return <ErrorIcon />;
+    case LogTypes.INFORMATION:
+      return <InfoIcon />;
     default:
       return <QuestionMarkIcon />;
   }

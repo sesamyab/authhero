@@ -5,6 +5,7 @@ import {
   EntityHooksConfig,
   OutboxConfig,
   UserLinkingModeOption,
+  UsernamePasswordProviderResolver,
   WebhookInvoker,
 } from "./AuthHeroConfig";
 import { StrategyHandler } from "../strategies";
@@ -75,6 +76,12 @@ export type Bindings = {
   // Set via init({ userLinkingMode: "off" | resolverFn }). A per-client
   // `user_linking_mode` overrides this default. Defaults to "builtin" when unset.
   userLinkingMode?: UserLinkingModeOption;
+
+  // Per-tenant override for the native database provider value written on
+  // new password users. When unset, all tenants use the legacy "auth2".
+  // Returning "auth0" for a tenant migrates that tenant onto the "auth0"
+  // provider value. TRANSITIONAL — remove once all tenants are backfilled.
+  usernamePasswordProvider?: UsernamePasswordProviderResolver;
 
   /**
    * Allow outbound fetches (jwks_uri, request_uri) to localhost / private IP

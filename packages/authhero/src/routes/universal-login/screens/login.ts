@@ -18,6 +18,7 @@ import {
   getPrimaryUserByProvider,
   getPrimaryUserByEmail,
 } from "../../../helpers/users";
+import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
 import { validateSignupEmail } from "../../../hooks";
 import { getConnectionFromIdentifier } from "../../../utils/username";
 import { createTranslation } from "../../../i18n";
@@ -521,8 +522,10 @@ export const loginScreenDefinition: ScreenDefinition = {
 
       // Parse the identifier to get connection type
       const countryCode = ctx.get("countryCode");
-      const { normalized, connectionType, provider } =
-        getConnectionFromIdentifier(username, countryCode);
+      const { normalized, connectionType } = getConnectionFromIdentifier(
+        username,
+        countryCode,
+      );
 
       if (!normalized) {
         const errorMsg = m.invalidIdentifier();
@@ -587,12 +590,18 @@ export const loginScreenDefinition: ScreenDefinition = {
               tenant_id: client.tenant.id,
               email: normalized,
             })
-          : await getPrimaryUserByProvider({
-              userAdapter: ctx.env.data.users,
-              tenant_id: client.tenant.id,
-              username: normalized,
-              provider,
-            });
+          : connectionType === "username"
+            ? await getPrimaryUsernamePasswordUser({
+                env: ctx.env,
+                tenant_id: client.tenant.id,
+                username: normalized,
+              })
+            : await getPrimaryUserByProvider({
+                userAdapter: ctx.env.data.users,
+                tenant_id: client.tenant.id,
+                username: normalized,
+                provider: "sms",
+              });
 
       // Check if password connection is allowed
       if (!passwordConnection) {

@@ -1,9 +1,29 @@
-import { DomainConfig } from "./domainUtils";
+import { DomainConfig, formatDomain } from "./domainUtils";
 import { Auth0Client } from "@auth0/auth0-spa-js";
+import { getConfigValue } from "./runtimeConfig";
 
-// In-memory cache for organization-scoped access tokens.
-// The Auth0 SDK cache key does not include organization, so we maintain our own.
+// In-memory caches for access tokens. The Auth0 SDK cache key is
+// clientId+audience+scope only, so a token fetched for org A would be served
+// for a later request that wanted no org (or a different org). We maintain our
+// own caches and force `cacheMode: "off"` to bypass the SDK cache for both
+// org-scoped and non-org-scoped tokens.
 const orgTokenCache = new Map<string, { token: string; expiresAt: number }>();
+const nonOrgTokenCache = new Map<
+  string,
+  { token: string; expiresAt: number }
+>();
+
+// Decode the `exp` claim from a JWT for cache TTL (Base64URL → Base64).
+function getTokenExpiryMs(token: string): number {
+  const base64Url = token.split(".")[1]!;
+  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(
+    base64.length + ((4 - (base64.length % 4)) % 4),
+    "=",
+  );
+  const payload = JSON.parse(atob(padded));
+  return payload.exp * 1000;
+}
 
 /**
  * Get an access token scoped to a specific organization using refresh tokens.
@@ -27,17 +47,37 @@ export async function getOrgAccessToken(
     authorizationParams: { audience, organization: normalizedOrgId },
   });
 
-  // Decode JWT exp claim for cache TTL (Base64URL → Base64 before decoding)
-  const base64Url = token.split(".")[1]!;
-  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64.padEnd(
-    base64.length + ((4 - (base64.length % 4)) % 4),
-    "=",
-  );
-  const payload = JSON.parse(atob(padded));
   orgTokenCache.set(cacheKey, {
     token,
-    expiresAt: payload.exp * 1000,
+    expiresAt: getTokenExpiryMs(token),
+  });
+  return token;
+}
+
+/**
+ * Get a non-org-scoped access token. Mirrors `getOrgAccessToken`: keeps its
+ * own cache and forces `cacheMode: "off"` so a previously-cached org-scoped
+ * token (which lives under the same SDK cache key) cannot be returned here.
+ */
+async function getNonOrgAccessToken(
+  auth0Client: Auth0Client,
+  audience: string,
+  domain: string,
+): Promise<string> {
+  const cacheKey = `${domain}|${audience}`;
+  const cached = nonOrgTokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now() + 60_000) {
+    return cached.token;
+  }
+
+  const token = await auth0Client.getTokenSilently({
+    cacheMode: "off" as const,
+    authorizationParams: { audience, organization: undefined },
+  });
+
+  nonOrgTokenCache.set(cacheKey, {
+    token,
+    expiresAt: getTokenExpiryMs(token),
   });
   return token;
 }
@@ -93,6 +133,7 @@ async function fetchTokenWithClientCredentials(
  */
 export function clearOrganizationTokenCache(): void {
   orgTokenCache.clear();
+  nonOrgTokenCache.clear();
 }
 
 /**
@@ -161,15 +202,16 @@ export default async function getToken(
     );
     return token;
   } else if (domainConfig.connectionMethod === "login" && auth0Client) {
-    // Get a regular token WITHOUT organization scope
-    // This is used for tenant management endpoints which require non-org-scoped tokens
+    // Get a regular token WITHOUT organization scope. The SDK cache is keyed
+    // on clientId+audience+scope (no org), so we must bypass it via
+    // getNonOrgAccessToken — otherwise a cached org-scoped token from a prior
+    // tenant page can be returned here and the tenants list endpoint will
+    // filter results to that org.
     try {
-      const token = await auth0Client.getTokenSilently({
-        authorizationParams: {
-          organization: undefined,
-        },
-      });
-      return token;
+      const audience =
+        getConfigValue("audience") || "urn:authhero:management";
+      const domain = formatDomain(domainConfig.url);
+      return await getNonOrgAccessToken(auth0Client, audience, domain);
     } catch (error) {
       throw new Error(
         "Failed to get token from OAuth session. Please log in again.",

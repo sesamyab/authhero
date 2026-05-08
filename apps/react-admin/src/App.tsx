@@ -66,6 +66,7 @@ import ShieldIcon from "@mui/icons-material/Shield";
 import { CertificateErrorDialog } from "./components/CertificateErrorDialog";
 import { ActivityDashboard } from "./components/activity";
 import { buildUrlWithProtocol } from "./utils/domainUtils";
+import { TenantProvider } from "./TenantContext";
 
 interface AppProps {
   tenantId: string;
@@ -185,7 +186,7 @@ export function App(props: AppProps) {
   }
 
   return (
-    <>
+    <TenantProvider tenantId={props.tenantId}>
       <CertificateErrorDialog
         open={!!certErrorUrl}
         serverUrl={certErrorUrl || ""}
@@ -321,13 +322,6 @@ export function App(props: AppProps) {
           show={ShowGuesser}
         />
         <Resource
-          icon={SettingsIcon}
-          name="settings"
-          list={SettingsList}
-          edit={SettingsEdit}
-          options={{ hasSingle: true }}
-        />
-        <Resource
           icon={ShieldIcon}
           name="attack-protection"
           list={AttackProtectionList}
@@ -341,7 +335,14 @@ export function App(props: AppProps) {
           edit={EmailProvidersEdit}
           options={{ hasSingle: true, label: "Email Provider" }}
         />
+        <Resource
+          icon={SettingsIcon}
+          name="settings"
+          list={SettingsList}
+          edit={SettingsEdit}
+          options={{ hasSingle: true }}
+        />
       </Admin>
-    </>
+    </TenantProvider>
   );
 }
