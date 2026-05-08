@@ -1,5 +1,21 @@
 # authhero
 
+## 4.112.0
+
+### Minor Changes
+
+- 85d1d06: Add `/login/callback` as the new path for the upstream connection callback. The existing `/callback` route continues to work but is now marked as deprecated in the OpenAPI spec.
+
+  Connections can also override the redirect_uri sent to the upstream IdP via the new `options.callback_url` field. When set, the strategy uses that URL verbatim; when unset, it falls back to the legacy `${authUrl}callback`. This lets operators flip individual connections to `/login/callback` (or any other registered redirect URI) one at a time as they update each IdP's allowed redirect URIs — no big-bang migration required.
+
+- 85d1d06: Add `MailgunEmailService`, a zero-dependency `EmailServiceAdapter` implementation that posts to the Mailgun HTTP API via `fetch`. Credentials shape (`api_key`, `domain`, `region: "eu" | null`) matches Auth0's Mailgun provider config, so existing Auth0 tenants can migrate without changing their stored values. Sends `template` + `h:X-Mailgun-Variables` so integrators can use Mailgun-side templates named after the auth flows (`auth-code`, `auth-password-reset`, `auth-link`, `auth-verify-email`, `auth-pre-signup-verification`); `html`/`text` are sent as fallback content.
+
+### Patch Changes
+
+- Updated dependencies [85d1d06]
+  - @authhero/adapter-interfaces@1.14.0
+  - @authhero/widget@0.32.14
+
 ## 4.111.0
 
 ### Minor Changes
