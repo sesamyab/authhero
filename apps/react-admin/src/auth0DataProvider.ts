@@ -454,6 +454,36 @@ export default (
         }
       }
 
+      // Handle email-providers singleton resource
+      if (resource === "email-providers") {
+        const headers = createHeaders(tenantId);
+        try {
+          const res = await httpClient(`${apiUrl}/api/v2/emails/provider`, {
+            headers,
+          });
+          return {
+            data: [{ ...res.json, id: resource }],
+            total: 1,
+          };
+        } catch (err) {
+          // 404 when no provider is configured yet — return an empty record
+          // so the Edit form can render with default values. Anything else
+          // (401/403/5xx/network) should bubble up.
+          if (
+            err &&
+            typeof err === "object" &&
+            "status" in err &&
+            err.status === 404
+          ) {
+            return {
+              data: [{ id: resource, enabled: true, credentials: {} }],
+              total: 1,
+            };
+          }
+          throw err;
+        }
+      }
+
       // Handle custom-text resource (for individual custom text entries)
       if (resource === "custom-text") {
         const headers = createHeaders(tenantId);
@@ -845,6 +875,33 @@ export default (
           return {
             data: { id: resource, customTextEntries: [] },
           };
+        }
+      }
+
+      // Handle email-providers singleton resource
+      if (resource === "email-providers") {
+        const headers = createHeaders(tenantId);
+        try {
+          const res = await httpClient(`${apiUrl}/api/v2/emails/provider`, {
+            headers,
+          });
+          return {
+            data: { ...res.json, id: resource },
+          };
+        } catch (err) {
+          // No provider configured yet — render the form with sensible defaults.
+          // Anything other than 404 (401/403/5xx/network) should bubble up.
+          if (
+            err &&
+            typeof err === "object" &&
+            "status" in err &&
+            err.status === 404
+          ) {
+            return {
+              data: { id: resource, enabled: true, credentials: {} },
+            };
+          }
+          throw err;
         }
       }
 
@@ -1329,6 +1386,37 @@ export default (
         };
       }
 
+      // Handle email-providers singleton resource. Match Auth0 semantics:
+      // PATCH to update, POST to create. PATCH 404s when no row exists yet,
+      // so we fall back to POST in that case.
+      if (resource === "email-providers") {
+        const epHeaders = createHeaders(tenantId);
+        epHeaders.set("Content-Type", "application/json");
+        const { id: _id, ...body } = cleanParams.data;
+        const url = `${apiUrl}/api/v2/emails/provider`;
+        try {
+          const res = await httpClient(url, {
+            method: "PATCH",
+            headers: epHeaders,
+            body: JSON.stringify(body),
+          });
+          return {
+            data: { ...res.json, id: resource },
+          };
+        } catch (err: unknown) {
+          const status = (err as { status?: number } | undefined)?.status;
+          if (status !== 404) throw err;
+          const created = await httpClient(url, {
+            method: "POST",
+            headers: epHeaders,
+            body: JSON.stringify(body),
+          });
+          return {
+            data: { ...created.json, id: resource },
+          };
+        }
+      }
+
       // Handle custom-text resource
       if (resource === "custom-text") {
         // ID format is "prompt:language"
@@ -1770,6 +1858,18 @@ export default (
           headers,
           body: body ? JSON.stringify(body) : undefined,
         });
+
+      // Handle email-providers singleton resource — DELETE returns 204.
+      if (resource === "email-providers") {
+        try {
+          await del("emails/provider");
+        } catch (err: unknown) {
+          // 404 means already deleted — treat as success.
+          const status = (err as { status?: number } | undefined)?.status;
+          if (status !== 404) throw err;
+        }
+        return { data: { id: resource } };
+      }
 
       // Organization invitations
       if (resource === "organization-invitations") {

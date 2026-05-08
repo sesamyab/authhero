@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { Bindings, Variables } from "../types";
 import { parseJWT } from "oslo/jwt";
 import { idTokenSchema } from "../types/IdToken";
-import { getAuthUrl } from "../variables";
+import { getConnectionCallbackUrl } from "./index";
 
 export const displayName = "Microsoft";
 
@@ -22,7 +22,7 @@ export async function getRedirect(
     throw new Error("Missing required Microsoft authentication parameters");
   }
 
-  const callbackUrl = `${getAuthUrl(ctx.env)}callback`;
+  const callbackUrl = getConnectionCallbackUrl(ctx, connection);
 
   // tenant can be 'common', 'organizations', 'consumers', or a specific tenant ID
   const tenant = options.realms || "common";
@@ -68,7 +68,7 @@ export async function validateAuthorizationCodeAndGetUser(
     tenant,
     options.client_id,
     options.client_secret,
-    `${getAuthUrl(ctx.env)}callback`,
+    getConnectionCallbackUrl(ctx, connection),
   );
 
   const tokens = await microsoft.validateAuthorizationCode(code, code_verifier);

@@ -1,14 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import fs from "node:fs";
 import { env } from "./lib/env";
+import { AUTH_SERVER_CERT_PATH } from "./lib/prepare-auth-server";
 
-const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const AUTHHERO_CERT_PATH = path.join(
-  REPO_ROOT,
-  "packages/create-authhero/auth-server/.certs/localhost.pem",
-);
 const SUITE_SERVER_CONTAINER = "conformance-suite-server-1";
 const SUITE_TRUSTSTORE = "/opt/java/openjdk/lib/security/cacerts";
 const SUITE_TRUSTSTORE_PASSWORD = "changeit";
@@ -41,11 +35,7 @@ async function waitFor(
 }
 
 function run(cmd: string, args: string[]): void {
-  const result = spawnSync(cmd, args, {
-    cwd: REPO_ROOT,
-    stdio: "inherit",
-    shell: false,
-  });
+  const result = spawnSync(cmd, args, { stdio: "inherit", shell: false });
   if (result.error) {
     throw result.error;
   }
@@ -73,9 +63,9 @@ function parseSha256(output: string): string | null {
 // silently shadowed by it. The suite is restarted whenever the truststore
 // changes so the running JVM picks up the new entry.
 function trustAuthHeroCertInSuite(): void {
-  if (!fs.existsSync(AUTHHERO_CERT_PATH)) {
+  if (!fs.existsSync(AUTH_SERVER_CERT_PATH)) {
     throw new Error(
-      `HTTPS_ENABLED=true but cert not found at ${AUTHHERO_CERT_PATH}. ` +
+      `HTTPS_ENABLED=true but cert not found at ${AUTH_SERVER_CERT_PATH}. ` +
         `Start the auth-server once with HTTPS_ENABLED=true to generate it.`,
     );
   }
@@ -100,7 +90,7 @@ function trustAuthHeroCertInSuite(): void {
   // Stage the pem in the container so keytool can fingerprint it.
   run("docker", [
     "cp",
-    AUTHHERO_CERT_PATH,
+    AUTH_SERVER_CERT_PATH,
     `${SUITE_SERVER_CONTAINER}:/tmp/authhero-local.pem`,
   ]);
 
@@ -196,23 +186,43 @@ function trustAuthHeroCertInSuite(): void {
   run("docker", ["restart", SUITE_SERVER_CONTAINER]);
 }
 
+// Docker Desktop on Mac populates `host.docker.internal` in the suite
+// container's /etc/hosts with BOTH an IPv4 and an IPv6 entry. The JVM
+// prefers IPv6 by default, but Docker Desktop's IPv6 host gateway isn't
+// actually routable, so every discovery fetch fails with "Network is
+// unreachable". Stripping the IPv6 line leaves the working IPv4 entry as
+// the only option. Docker regenerates /etc/hosts on container start, so
+// this must run AFTER any cert-driven restart and BEFORE tests fire the
+// first lookup.
+function stripSuiteIPv6HostDockerInternal(): void {
+  // /etc/hosts inside a Docker container is bind-mounted, so `sed -i` (which
+  // works by atomic rename of a temp file) fails with EBUSY. Truncate-and-
+  // write via shell redirection keeps the original inode, which is what the
+  // bind mount permits.
+  run("docker", [
+    "exec",
+    SUITE_SERVER_CONTAINER,
+    "sh",
+    "-c",
+    "grep -v '::.*host\\.docker\\.internal' /etc/hosts > /etc/hosts.tmp && cat /etc/hosts.tmp > /etc/hosts && rm /etc/hosts.tmp",
+  ]);
+}
+
+// Scaffold + install + cert + docker + seed all happen at playwright.config.ts
+// module-load time (see prepare-auth-server.ts) because Playwright runs its
+// webServer plugin BEFORE globalSetup. By the time we get here, the
+// auth-server is already running. This hook only handles the post-server
+// work: importing the cert into the suite's JRE truststore (which requires
+// the suite container to be up) and waiting for the suite API to respond.
 export default async function globalSetup(): Promise<void> {
   // Allow Node fetch to talk to the suite's self-signed cert.
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-  if (env.skipSetup) {
-    console.log("[conformance-runner] SKIP_SETUP=1 — skipping docker + seed");
-  } else {
-    console.log("[conformance-runner] Starting conformance suite...");
-    run("pnpm", ["conformance:start"]);
-
-    console.log("[conformance-runner] Reseeding auth-server database...");
-    run("pnpm", ["conformance:seed"]);
-  }
-
   if (env.httpsEnabled) {
     trustAuthHeroCertInSuite();
   }
+
+  stripSuiteIPv6HostDockerInternal();
 
   console.log("[conformance-runner] Waiting for conformance suite API...");
   await waitFor(

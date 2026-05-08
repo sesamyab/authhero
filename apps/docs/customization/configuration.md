@@ -300,6 +300,38 @@ interface EmailServiceAdapter {
 }
 ```
 
+#### Built-in: `MailgunEmailService`
+
+A zero-dependency Mailgun implementation is shipped from `authhero` directly. It uses `fetch` only — no SDK is pulled in.
+
+```typescript
+import { init, MailgunEmailService } from "authhero";
+
+const dataAdapter = {
+  ...createAdapters(db),
+  emailService: new MailgunEmailService(),
+};
+
+const { app } = init({ dataAdapter });
+```
+
+Per-tenant credentials are stored on the tenant's `email_providers` row and use the same shape as Auth0's Mailgun configuration, so tenants migrating from Auth0 can copy their values verbatim:
+
+```json
+{
+  "name": "mailgun",
+  "enabled": true,
+  "default_from_address": "noreply@example.com",
+  "credentials": {
+    "api_key": "key-...",
+    "domain": "mg.example.com",
+    "region": "eu"
+  }
+}
+```
+
+`region` is `"eu"` for Mailgun's EU region or `null`/omitted for US (default). Each `send()` call POSTs to `/v3/{domain}/messages` with HTTP Basic auth (`api:{api_key}`) and includes `template` + `h:X-Mailgun-Variables` so integrators who upload Mailgun-side templates named after the auth flows (`auth-code`, `auth-password-reset`, `auth-link`, `auth-verify-email`, `auth-pre-signup-verification`) get rendered output. The inline `html`/`text` is sent as fallback.
+
 ### SMS Service Adapter
 
 Configure an SMS service adapter for sending authentication codes. The adapter is provided as part of `DataAdapters`:

@@ -7,6 +7,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import FormatAlignLeftIcon from "@mui/icons-material/FormatAlignLeft";
 import BusinessIcon from "@mui/icons-material/Business";
 import SettingsIcon from "@mui/icons-material/Settings";
+import EmailIcon from "@mui/icons-material/Email";
 import { getDataproviderForTenant } from "./dataProvider";
 import { getConfigValue } from "./utils/runtimeConfig";
 import { getAuthProvider } from "./authProvider";
@@ -26,6 +27,10 @@ import {
   DomainList,
 } from "./components/custom-domains";
 import { BrandingList, BrandingEdit } from "./components/branding";
+import {
+  EmailProvidersList,
+  EmailProvidersEdit,
+} from "./components/email-providers";
 import { PromptsList, PromptsEdit } from "./components/prompts";
 import { LogsList, LogShow } from "./components/logs";
 import { ActionCreate, ActionEdit, ActionList } from "./components/actions";
@@ -328,6 +333,13 @@ export function App(props: AppProps) {
           list={AttackProtectionList}
           edit={AttackProtectionEdit}
           options={{ hasSingle: true, label: "Attack Protection" }}
+        />
+        <Resource
+          icon={EmailIcon}
+          name="email-providers"
+          list={EmailProvidersList}
+          edit={EmailProvidersEdit}
+          options={{ hasSingle: true, label: "Email Provider" }}
         />
       </Admin>
     </>

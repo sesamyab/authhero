@@ -49,7 +49,7 @@ export function createTenantsOpenAPIRouter(
       },
       security: [
         {
-          Bearer: ["read:tenants", "auth:read"],
+          Bearer: [],
         },
       ],
       responses: {
@@ -83,16 +83,14 @@ export function createTenantsOpenAPIRouter(
           }
         | undefined;
 
-      // If user has auth:read or admin:organizations permission, allow access to all tenants.
+      // If user has admin:organizations permission, allow access to all tenants.
       // Why: tokens with an org_id were issued for a specific organization, so any
       // admin:organizations permission they carry came from an org-scoped role — not a
       // global one — and must not bypass per-org tenant filtering.
       const userPermissions = user?.permissions || [];
       const tokenIsOrgScoped = Boolean(user?.org_id ?? ctx.var.organization_id);
       const hasFullAccess =
-        !tokenIsOrgScoped &&
-        (userPermissions.includes("auth:read") ||
-          userPermissions.includes("admin:organizations"));
+        !tokenIsOrgScoped && userPermissions.includes("admin:organizations");
 
       if (hasFullAccess) {
         const result = await ctx.env.data.tenants.list({
@@ -118,6 +116,15 @@ export function createTenantsOpenAPIRouter(
       const controlPlaneTenantId =
         config.accessControl?.controlPlaneTenantId ??
         ctx.env.data.multiTenancyConfig?.controlPlaneTenantId;
+
+      // When access control is enabled, a token without a subject must not
+      // fall through to the global "return all tenants" path below — that
+      // would bypass the per-organization filtering entirely. Reject instead.
+      if (controlPlaneTenantId && !user?.sub) {
+        throw new HTTPException(403, {
+          message: "Access denied: token has no subject",
+        });
+      }
 
       // If access control is enabled, filter tenants based on user's organization memberships
       if (controlPlaneTenantId && user?.sub) {

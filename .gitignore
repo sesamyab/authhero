@@ -130,6 +130,8 @@ dist
  
 # The default generated auth-server
 auth-server
+# Conformance runner's auto-scaffolded auth-server (regenerated each run)
+conformance-auth-server
 
 .DS_Store
 db.sqlite

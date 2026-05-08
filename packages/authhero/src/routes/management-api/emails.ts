@@ -83,28 +83,29 @@ export const emailProviderRoutes = new OpenAPIHono<{
           },
           description: "Email provider",
         },
+        409: {
+          description: "Email provider already configured",
+        },
       },
     }),
     async (ctx) => {
       const emailProvider = ctx.req.valid("json");
 
-      // The email provider is a singleton per tenant. POST behaves as upsert
-      // so SDK clients (and the existing test seed) don't hit unique-key
-      // collisions when calling against an already-configured tenant.
+      // Match Auth0: POST is strict create. If the singleton already exists,
+      // return 409 — clients should PATCH to update, or DELETE first.
       const existing = await ctx.env.data.emailProviders.get(
         ctx.var.tenant_id,
       );
       if (existing) {
-        await ctx.env.data.emailProviders.update(
-          ctx.var.tenant_id,
-          emailProvider,
-        );
-      } else {
-        await ctx.env.data.emailProviders.create(
-          ctx.var.tenant_id,
-          emailProvider,
-        );
+        throw new HTTPException(409, {
+          message: "Email provider already configured",
+        });
       }
+
+      await ctx.env.data.emailProviders.create(
+        ctx.var.tenant_id,
+        emailProvider,
+      );
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -171,5 +172,52 @@ export const emailProviderRoutes = new OpenAPIHono<{
       });
 
       return ctx.json(updated);
+    },
+  )
+  // --------------------------------
+  // DELETE /api/v2/emails/provider
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["emails"],
+      method: "delete",
+      path: "/",
+      request: {
+        headers: z.object({
+          "tenant-id": z.string().optional(),
+        }),
+      },
+      security: [
+        {
+          Bearer: ["delete:emails", "auth:write"],
+        },
+      ],
+      responses: {
+        204: {
+          description: "Email provider deleted",
+        },
+        404: {
+          description: "Email provider not found",
+        },
+      },
+    }),
+    async (ctx) => {
+      const existing = await ctx.env.data.emailProviders.get(
+        ctx.var.tenant_id,
+      );
+      if (!existing) {
+        throw new HTTPException(404, { message: "Email provider not found" });
+      }
+
+      await ctx.env.data.emailProviders.remove(ctx.var.tenant_id);
+
+      await logMessage(ctx, ctx.var.tenant_id, {
+        type: LogTypes.SUCCESS_API_OPERATION,
+        description: "Delete Email Provider",
+        targetType: "email_provider",
+        targetId: ctx.var.tenant_id,
+      });
+
+      return ctx.body(null, 204);
     },
   );

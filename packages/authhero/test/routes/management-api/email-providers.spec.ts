@@ -97,4 +97,86 @@ describe("emailProviders", () => {
       },
     });
   });
+
+  it("returns 409 on POST when a provider is already configured", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    await env.data.emailProviders.remove("tenantId");
+
+    const first = await managementClient.email.providers.$post(
+      {
+        header: { "tenant-id": "tenantId" },
+        json: {
+          name: "sendgrid",
+          credentials: { api_key: "apiKey" },
+        },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(first.status).toBe(201);
+
+    const second = await managementClient.email.providers.$post(
+      {
+        header: { "tenant-id": "tenantId" },
+        json: {
+          name: "mailgun",
+          credentials: { api_key: "apiKey", domain: "mg.example.com" },
+        },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(second.status).toBe(409);
+  });
+
+  it("returns 404 on PATCH when no provider is configured", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    await env.data.emailProviders.remove("tenantId");
+
+    const res = await managementClient.email.providers.$patch(
+      {
+        header: { "tenant-id": "tenantId" },
+        json: { name: "mailgun" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("DELETE removes the provider and returns 204; subsequent GET is 404", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    // Default provider is seeded by the test server, so DELETE should succeed.
+    const deleted = await managementClient.email.providers.$delete(
+      { header: { "tenant-id": "tenantId" } },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(deleted.status).toBe(204);
+
+    const get = await managementClient.email.providers.$get(
+      { header: { "tenant-id": "tenantId" } },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(get.status).toBe(404);
+  });
+
+  it("DELETE returns 404 when no provider is configured", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    await env.data.emailProviders.remove("tenantId");
+
+    const res = await managementClient.email.providers.$delete(
+      { header: { "tenant-id": "tenantId" } },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(res.status).toBe(404);
+  });
 });

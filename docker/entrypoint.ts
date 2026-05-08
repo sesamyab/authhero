@@ -148,10 +148,15 @@ if (fs.existsSync(adminIndexPath)) {
     adminConfig.audience = process.env.ADMIN_AUDIENCE;
   }
   const adminConfigJson = JSON.stringify(adminConfig).replace(/</g, "\\u003c");
-  adminIndexHtml = rawHtml.replace(
-    "</head>",
-    `<script>window.__AUTHHERO_ADMIN_CONFIG__=${adminConfigJson};</script>\n</head>`,
-  );
+  // Vite is built with base="./", so the HTML has relative asset refs.
+  // Inject <base> so they resolve against /admin/ regardless of the
+  // request URL (handles /admin, /admin/users/123 refreshes, etc.).
+  adminIndexHtml = rawHtml
+    .replace(/<head(\s[^>]*)?>/, (match) => `${match}\n    <base href="/admin/" />`)
+    .replace(
+      "</head>",
+      `<script>window.__AUTHHERO_ADMIN_CONFIG__=${adminConfigJson};</script>\n</head>`,
+    );
   adminHandler = serveStatic({
     root: adminDistPath,
     rewriteRequestPath: (p: string) => p.replace("/admin", ""),

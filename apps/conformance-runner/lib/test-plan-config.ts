@@ -15,6 +15,14 @@ export const LOGOUT_PLAN_VARIANT = {
   response_type: "code",
 } as const;
 
+export const CONFIG_PLAN_NAME = "oidcc-config-certification-test-plan";
+
+// The config plan's only module (oidcc-discovery-endpoint-verification)
+// already pins server_metadata=discovery + client_registration=static_client
+// at the module level, so passing them again as plan-level variants makes
+// the suite reject the plan with "Variant 'X' has been set by user, but
+// test plan already sets this variant for module ...". Hence: no variants.
+
 function buildSharedClientConfig(label: string) {
   const issuer = env.authheroIssuer.endsWith("/")
     ? env.authheroIssuer
@@ -55,4 +63,8 @@ export function buildPlanConfig() {
 
 export function buildLogoutPlanConfig() {
   return buildSharedClientConfig("OIDC RP-Initiated Logout");
+}
+
+export function buildConfigPlanConfig() {
+  return buildSharedClientConfig("OIDC Config");
 }

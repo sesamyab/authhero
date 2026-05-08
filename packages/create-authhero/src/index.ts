@@ -376,6 +376,7 @@ interface ExtraClient {
   callbacks?: string[];
   allowed_logout_urls?: string[];
   web_origins?: string[];
+  auth0_conformant?: boolean;
 }
 
 function parseFlag(name: string): string | undefined {
@@ -448,6 +449,9 @@ async function main() {
       web_origins: c.web_origins ?? [],
       connections: ["Username-Password-Authentication"],
       client_metadata: { universal_login_version: "2" },
+      ...(c.auth0_conformant !== undefined && {
+        auth0_conformant: c.auth0_conformant,
+      }),
     });
     console.log(\`✅ Created client "\${c.client_id}"\`);
   }
