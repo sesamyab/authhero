@@ -11,7 +11,7 @@ Playwright-driven runner for the OpenID Foundation conformance suite against Aut
 5. Starts the local auth-server on port 3000 (managed by Playwright's `webServer`, never reused — fresh process per run).
 6. Creates each plan via the suite's REST API.
 7. Runs every module in the plan as its own Playwright test, driving the AuthHero login form when a test is `WAITING` for browser interaction.
-8. Asserts each module finishes with `PASSED` (or `WARNING` if `ALLOW_WARNING=1`).
+8. Asserts each module finishes with `PASSED`, `REVIEW`, or `SKIPPED` (or `WARNING` if `ALLOW_WARNING=1`).
 
 ## One-time setup
 
@@ -63,7 +63,7 @@ The runner currently drives three plans, each in its own spec file:
 | `CONFORMANCE_PASSWORD` | `password2` | Seeded password |
 | `CONFORMANCE_ALIAS` | `my-local-test` | Plan alias matching seeded callback URLs |
 | `ALLOW_WARNING` | unset | If set, modules finishing with `WARNING` pass instead of fail |
-| `SKIP_SETUP` | unset | If set, globalSetup skips scaffold + `conformance:start` + `conformance:seed` (assumes the auth-server already exists and the suite is already running). The cert-import step still runs when `HTTPS_ENABLED=true`. |
+| `SKIP_SETUP` | unset | If set, `prepareAuthServer()` (which runs at `playwright.config.ts` module-load time, before `globalSetup`) skips scaffold + `conformance:start` + `conformance:seed` and skips cert generation (assumes the auth-server already exists, the suite is already running, and certs are already on disk). The cert-import step in `globalSetup` still runs when `HTTPS_ENABLED=true`. When troubleshooting setup failures, inspect `prepareAuthServer()` and the config-load path — not `globalSetup`. |
 
 ### Auth-server lifecycle
 
@@ -71,7 +71,7 @@ The runner currently drives three plans, each in its own spec file:
 
 ### HTTPS mode (default)
 
-HTTPS is on by default. Because `apps/conformance-auth-server/` is wiped at the start of every run, globalSetup pre-generates a fresh self-signed cert (via `openssl`) on every run, then imports it into the suite container's truststore and restarts the suite container. The truststore comparison short-circuits the docker restart when the on-disk cert matches the stored alias, so back-to-back runs without code changes don't pay the restart cost twice.
+HTTPS is on by default. Because `apps/conformance-auth-server/` is wiped at the start of every run, `prepareAuthServer()` (invoked at `playwright.config.ts` module-load, before `globalSetup`) pre-generates a fresh self-signed cert (via `openssl`) on every run; `globalSetup` then imports it into the suite container's truststore and restarts the suite container. The truststore comparison short-circuits the docker restart when the on-disk cert matches the stored alias, so back-to-back runs without code changes don't pay the restart cost twice.
 
 ```sh
 # Default — HTTPS enabled:

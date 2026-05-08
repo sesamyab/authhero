@@ -6,7 +6,7 @@ import createAdapters from "@authhero/kysely-adapter";
 import createApp from "./app";
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import https from "https";
 
 // Generate self-signed certificates for local HTTPS if they don't exist
@@ -24,19 +24,33 @@ function ensureCertificates() {
 
     // Try mkcert first (if installed), otherwise fall back to openssl
     try {
-      execSync(`which mkcert`, { stdio: "ignore" });
-      execSync(
-        `mkcert -key-file ${keyPath} -cert-file ${certPath} localhost 127.0.0.1`,
-        {
-          stdio: "inherit",
-        },
+      execFileSync("which", ["mkcert"], { stdio: "ignore" });
+      execFileSync(
+        "mkcert",
+        ["-key-file", keyPath, "-cert-file", certPath, "localhost", "127.0.0.1"],
+        { stdio: "inherit" },
       );
       console.log("✅ Certificates generated with mkcert");
     } catch {
       // Fall back to openssl
       try {
-        execSync(
-          `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=localhost"`,
+        execFileSync(
+          "openssl",
+          [
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            keyPath,
+            "-out",
+            certPath,
+            "-days",
+            "365",
+            "-nodes",
+            "-subj",
+            "/CN=localhost",
+          ],
           { stdio: "inherit" },
         );
         console.log("✅ Self-signed certificates generated with openssl");

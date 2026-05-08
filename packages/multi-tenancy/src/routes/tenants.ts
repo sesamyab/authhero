@@ -117,6 +117,15 @@ export function createTenantsOpenAPIRouter(
         config.accessControl?.controlPlaneTenantId ??
         ctx.env.data.multiTenancyConfig?.controlPlaneTenantId;
 
+      // When access control is enabled, a token without a subject must not
+      // fall through to the global "return all tenants" path below — that
+      // would bypass the per-organization filtering entirely. Reject instead.
+      if (controlPlaneTenantId && !user?.sub) {
+        throw new HTTPException(403, {
+          message: "Access denied: token has no subject",
+        });
+      }
+
       // If access control is enabled, filter tenants based on user's organization memberships
       if (controlPlaneTenantId && user?.sub) {
         // Get all organizations the user belongs to on the control plane

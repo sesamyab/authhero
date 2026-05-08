@@ -37,12 +37,28 @@ function run(cmd: string, args: string[], cwd: string = REPO_ROOT): void {
   }
 }
 
+// Returns the cwd of `pid` according to lsof, or null if it can't be read.
+function getProcessCwd(pid: string): string | null {
+  const out = spawnSync("lsof", ["-a", "-p", pid, "-d", "cwd", "-Fn"], {
+    encoding: "utf-8",
+  });
+  if (out.status !== 0) return null;
+  for (const line of out.stdout.split("\n")) {
+    if (line.startsWith("n")) return line.slice(1);
+  }
+  return null;
+}
+
 // Kill anything still bound to port 3000 before we wipe the auth-server
 // directory. A `tsx watch` left over from a previous (failed/cancelled) run
 // has its cwd inside conformance-auth-server; deleting that cwd out from
 // under it crashes the watcher with "ENOENT: no such file or directory,
 // uv_cwd" while it's mid-recompile, which then surfaces in the next run's
 // webServer logs and confuses the failure mode.
+//
+// Only kill processes whose cwd is inside AUTH_SERVER_DIR — anything else
+// listening on :3000 belongs to someone else's local dev server and we'd
+// rather fail loudly than silently nuke it.
 function killStaleAuthServer(): void {
   const lsof = spawnSync(
     "lsof",
@@ -51,11 +67,38 @@ function killStaleAuthServer(): void {
   );
   if (lsof.status !== 0 || !lsof.stdout.trim()) return;
   const pids = lsof.stdout.trim().split(/\s+/).filter(Boolean);
-  console.log(
-    `[conformance-runner] Killing stale auth-server process(es) on port 3000: ${pids.join(", ")}`,
-  );
+  const ours: string[] = [];
+  const foreign: { pid: string; cwd: string | null }[] = [];
   for (const pid of pids) {
-    spawnSync("kill", ["-9", pid]);
+    const cwd = getProcessCwd(pid);
+    if (cwd && (cwd === AUTH_SERVER_DIR || cwd.startsWith(AUTH_SERVER_DIR + path.sep))) {
+      ours.push(pid);
+    } else {
+      foreign.push({ pid, cwd });
+    }
+  }
+  if (foreign.length > 0) {
+    const detail = foreign
+      .map((f) => `pid=${f.pid} cwd=${f.cwd ?? "(unknown)"}`)
+      .join(", ");
+    throw new Error(
+      `[conformance-runner] Port 3000 is held by a process whose cwd is not under ${AUTH_SERVER_DIR}: ${detail}. Free the port and retry.`,
+    );
+  }
+  if (ours.length === 0) return;
+  console.log(
+    `[conformance-runner] Killing stale auth-server process(es) on port 3000: ${ours.join(", ")}`,
+  );
+  for (const pid of ours) {
+    const term = spawnSync("kill", ["-TERM", pid]);
+    if (term.status !== 0) {
+      const kill = spawnSync("kill", ["-KILL", pid]);
+      if (kill.status !== 0) {
+        throw new Error(
+          `[conformance-runner] Failed to kill stale auth-server pid ${pid} (SIGTERM and SIGKILL both failed).`,
+        );
+      }
+    }
   }
 }
 

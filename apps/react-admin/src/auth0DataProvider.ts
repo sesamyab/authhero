@@ -465,13 +465,22 @@ export default (
             data: [{ ...res.json, id: resource }],
             total: 1,
           };
-        } catch {
+        } catch (err) {
           // 404 when no provider is configured yet — return an empty record
-          // so the Edit form can render with default values.
-          return {
-            data: [{ id: resource, enabled: true, credentials: {} }],
-            total: 1,
-          };
+          // so the Edit form can render with default values. Anything else
+          // (401/403/5xx/network) should bubble up.
+          if (
+            err &&
+            typeof err === "object" &&
+            "status" in err &&
+            err.status === 404
+          ) {
+            return {
+              data: [{ id: resource, enabled: true, credentials: {} }],
+              total: 1,
+            };
+          }
+          throw err;
         }
       }
 
@@ -879,11 +888,20 @@ export default (
           return {
             data: { ...res.json, id: resource },
           };
-        } catch {
+        } catch (err) {
           // No provider configured yet — render the form with sensible defaults.
-          return {
-            data: { id: resource, enabled: true, credentials: {} },
-          };
+          // Anything other than 404 (401/403/5xx/network) should bubble up.
+          if (
+            err &&
+            typeof err === "object" &&
+            "status" in err &&
+            err.status === 404
+          ) {
+            return {
+              data: { id: resource, enabled: true, credentials: {} },
+            };
+          }
+          throw err;
         }
       }
 

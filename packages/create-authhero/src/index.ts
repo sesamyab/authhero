@@ -376,6 +376,7 @@ interface ExtraClient {
   callbacks?: string[];
   allowed_logout_urls?: string[];
   web_origins?: string[];
+  auth0_conformant?: boolean;
 }
 
 function parseFlag(name: string): string | undefined {

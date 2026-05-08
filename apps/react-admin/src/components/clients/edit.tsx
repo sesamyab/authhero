@@ -1355,6 +1355,7 @@ const RefreshTokensTab = () => (
       source="refresh_token.token_lifetime"
       label="Absolute lifetime (seconds)"
       min={0}
+      max={2592000}
       helperText="Auth0-compatible. Maximum total lifetime of a refresh token chain."
     />
     <BooleanInput
@@ -1366,6 +1367,7 @@ const RefreshTokensTab = () => (
       source="refresh_token.idle_token_lifetime"
       label="Idle (sliding) lifetime (seconds)"
       min={0}
+      max={2592000}
       helperText="Auth0-compatible. Inactivity window before a refresh token expires."
     />
   </Stack>
