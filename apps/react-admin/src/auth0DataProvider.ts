@@ -444,11 +444,24 @@ export default (
 
       // Handle email-providers singleton resource
       if (resource === "email-providers") {
-        const provider = await managementClient.emails.provider.get();
-        return {
-          data: [{ ...provider, id: resource }],
-          total: 1,
-        };
+        try {
+          const provider = await managementClient.emails.provider.get();
+          return {
+            data: [{ ...provider, id: resource }],
+            total: 1,
+          };
+        } catch (err) {
+          // Match getOne/update/delete: 404 means no provider configured.
+          if (
+            err &&
+            typeof err === "object" &&
+            "statusCode" in err &&
+            err.statusCode === 404
+          ) {
+            return { data: [], total: 0 };
+          }
+          throw err;
+        }
       }
 
       // Handle custom-text resource (for individual custom text entries)
@@ -1282,17 +1295,17 @@ export default (
 
       if (resource === "attack-protection") {
         const ap = managementClient.attackProtection;
-        const [bpd, bf, sip] = await Promise.all([
-          ap.breachedPasswordDetection.update(
-            cleanParams.data.breached_password_detection ?? {},
-          ),
-          ap.bruteForceProtection.update(
-            cleanParams.data.brute_force_protection ?? {},
-          ),
-          ap.suspiciousIpThrottling.update(
-            cleanParams.data.suspicious_ip_throttling ?? {},
-          ),
-        ]);
+        // Run sequentially so that a failure aborts subsequent updates,
+        // and the returned data reflects only operations that succeeded.
+        const bpd = await ap.breachedPasswordDetection.update(
+          cleanParams.data.breached_password_detection ?? {},
+        );
+        const bf = await ap.bruteForceProtection.update(
+          cleanParams.data.brute_force_protection ?? {},
+        );
+        const sip = await ap.suspiciousIpThrottling.update(
+          cleanParams.data.suspicious_ip_throttling ?? {},
+        );
         return {
           data: {
             id: resource,
@@ -1710,9 +1723,25 @@ export default (
       const userIdentitiesMatch = resource.match(/^users\/([^/]+)\/identities$/);
       if (userIdentitiesMatch?.[1]) {
         const primaryUserId = userIdentitiesMatch[1];
+        // Auth0 expects either link_with=<JWT> or { provider, user_id }.
+        // The admin UI passes link_with=<raw user_id> (e.g. "auth0|abc"),
+        // so split on "|" into provider + user_id when it's not a JWT.
+        let payload = params.data;
+        const linkWith = params.data?.link_with;
+        if (typeof linkWith === "string" && !linkWith.includes(".")) {
+          const sep = linkWith.indexOf("|");
+          if (sep > 0) {
+            const { link_with, ...rest } = params.data;
+            payload = {
+              ...rest,
+              provider: linkWith.slice(0, sep),
+              user_id: linkWith.slice(sep + 1),
+            };
+          }
+        }
         const result = await managementClient.users.identities.link(
           primaryUserId,
-          params.data,
+          payload,
         );
         const identities = (result as any).data || (result as any).response || result;
         return {

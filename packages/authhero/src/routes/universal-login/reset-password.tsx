@@ -179,6 +179,22 @@ export const resetPasswordRoutes = new OpenAPIHono<{
         );
       }
 
+      const username = loginSession.authParams.username;
+      const renderCodeExpired = () =>
+        ctx.html(
+          <ResetPasswordPage
+            error={i18next.t(
+              "password_reset_code_expired",
+              "Code not found or expired",
+            )}
+            theme={theme}
+            branding={branding}
+            client={client}
+            email={username}
+          />,
+          400,
+        );
+
       try {
         const foundCode = await env.data.codes.get(
           client.tenant.id,
@@ -190,21 +206,7 @@ export const resetPasswordRoutes = new OpenAPIHono<{
           // surely we should check this on the GET rather than have the user waste time entering a new password?
           // THEN we can assume here it works and throw a hono exception if it doesn't... because it's an issue with our system
           // ALTHOUGH the user could have taken a long time to enter the password...
-          const codeExpiredMessage = i18next.t(
-            "password_reset_code_expired",
-            "Code not found or expired",
-          );
-
-          return ctx.html(
-            <ResetPasswordPage
-              error={codeExpiredMessage}
-              theme={theme}
-              branding={branding}
-              client={client}
-              email={loginSession.authParams.username}
-            />,
-            400,
-          );
+          return renderCodeExpired();
         }
 
         // Atomically claim the code so it cannot be reused.
@@ -213,20 +215,7 @@ export const resetPasswordRoutes = new OpenAPIHono<{
           foundCode.code_id,
         );
         if (!consumed) {
-          const codeExpiredMessage = i18next.t(
-            "password_reset_code_expired",
-            "Code not found or expired",
-          );
-          return ctx.html(
-            <ResetPasswordPage
-              error={codeExpiredMessage}
-              theme={theme}
-              branding={branding}
-              client={client}
-              email={loginSession.authParams.username}
-            />,
-            400,
-          );
+          return renderCodeExpired();
         }
 
         // Mark old password as not current (for password history)
