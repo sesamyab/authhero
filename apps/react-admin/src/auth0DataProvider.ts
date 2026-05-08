@@ -372,8 +372,18 @@ export default (
         > | null = null;
         try {
           themes = await managementClient.branding.themes.getDefault();
-        } catch (e) {
-          // Themes might not exist yet, that's ok
+        } catch (err) {
+          // 404 means no default theme configured yet; anything else should bubble up.
+          if (
+            !(
+              err &&
+              typeof err === "object" &&
+              "statusCode" in err &&
+              err.statusCode === 404
+            )
+          ) {
+            throw err;
+          }
         }
         return {
           data: [
@@ -776,8 +786,18 @@ export default (
         > | null = null;
         try {
           themes = await managementClient.branding.themes.getDefault();
-        } catch (e) {
-          // Themes might not exist yet, that's ok
+        } catch (err) {
+          // 404 means no default theme configured yet; anything else should bubble up.
+          if (
+            !(
+              err &&
+              typeof err === "object" &&
+              "statusCode" in err &&
+              err.statusCode === 404
+            )
+          ) {
+            throw err;
+          }
         }
         return {
           data: {
@@ -1728,7 +1748,7 @@ export default (
         // so split on "|" into provider + user_id when it's not a JWT.
         let payload = params.data;
         const linkWith = params.data?.link_with;
-        if (typeof linkWith === "string" && !linkWith.includes(".")) {
+        if (typeof linkWith === "string" && linkWith.includes("|")) {
           const sep = linkWith.indexOf("|");
           if (sep > 0) {
             const { link_with, ...rest } = params.data;

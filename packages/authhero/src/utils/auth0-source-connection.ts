@@ -39,26 +39,6 @@ export async function getAuth0SourceConnection(
 }
 
 /**
- * Returns the first DB-strategy connection flagged `import_mode: true` for a
- * tenant. Used by the password flow to pick a realm name when the user does
- * not yet exist locally, so the upstream ROPG call can target the right
- * upstream database connection.
- */
-export async function findImportModeDbConnection(
-  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
-  tenantId: string,
-): Promise<Connection | null> {
-  const connections = await listConnections(ctx, tenantId);
-  return (
-    connections.find(
-      (c) =>
-        c.strategy === Strategy.USERNAME_PASSWORD &&
-        c.options?.import_mode === true,
-    ) ?? null
-  );
-}
-
-/**
  * Look up a connection by its `name`. Used to resolve the connection an
  * existing user is registered under so we can read its options.
  */

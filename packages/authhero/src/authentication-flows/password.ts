@@ -37,7 +37,6 @@ import {
 } from "../helpers/password-policy";
 import {
   findConnectionByName,
-  findImportModeDbConnection,
   getAuth0SourceConnection,
 } from "../utils/auth0-source-connection";
 import { attemptUpstreamPasswordFallback } from "./auth0-migration";
@@ -87,6 +86,7 @@ export async function passwordGrant(
   client: EnrichedClient,
   authParams: AuthParams & { password: string },
   loginSession?: LoginSession,
+  realm: string = Strategy.USERNAME_PASSWORD,
 ): Promise<GrantFlowUserResult> {
   const { data } = ctx.env;
 
@@ -145,17 +145,22 @@ export async function passwordGrant(
 
   if (!user) {
     if (auth0Source) {
-      const importModeDbConnection = await findImportModeDbConnection(
+      // Resolve the DB connection by the requested realm (the connection the
+      // login is targeting), not "any import_mode connection in the tenant".
+      // This prevents a login for realm A from being verified against realm
+      // B's upstream just because B happens to have import_mode enabled.
+      const realmDbConnection = await findConnectionByName(
         ctx,
         client.tenant.id,
+        realm,
       );
-      if (importModeDbConnection) {
+      if (realmDbConnection?.options?.import_mode === true) {
         const migrated = await attemptUpstreamPasswordFallback({
           ctx,
           client,
           username,
           password: authParams.password,
-          dbConnection: importModeDbConnection,
+          dbConnection: realmDbConnection,
           source: auth0Source,
           existingUser: null,
         });
@@ -318,8 +323,15 @@ export async function loginWithPassword(
   authParams: AuthParams & { password: string },
   loginSession?: LoginSession,
   ticketAuth?: boolean,
+  realm: string = Strategy.USERNAME_PASSWORD,
 ): Promise<Response> {
-  const result = await passwordGrant(ctx, client, authParams, loginSession);
+  const result = await passwordGrant(
+    ctx,
+    client,
+    authParams,
+    loginSession,
+    realm,
+  );
 
   // Pass through to createFrontChannelAuthResponse which handles session creation
   // and calls postUserLoginHook (via completeLogin) after the session exists.
