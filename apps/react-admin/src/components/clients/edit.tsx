@@ -4,6 +4,8 @@ import {
   Labeled,
   TextInput,
   BooleanInput,
+  NumberInput,
+  SelectInput,
   SimpleShowLayout,
   TextField,
   TabbedForm,
@@ -18,6 +20,7 @@ import {
   useInput,
   type RaRecord,
 } from "react-admin";
+import { Stack } from "@mui/material";
 // @ts-ignore - React Admin components compatibility with React 19
 const PaginationComponent = Pagination as any;
 // @ts-ignore - React Admin components compatibility with React 19
@@ -1301,12 +1304,72 @@ const normalizeClient = (record: RaRecord): RaRecord => {
     : {};
   const addons = isPlainObject(record.addons) ? record.addons : {};
   const samlp = isPlainObject(addons.samlp) ? addons.samlp : {};
+  const refresh_token = isPlainObject(record.refresh_token)
+    ? record.refresh_token
+    : {};
   return {
     ...record,
     client_metadata,
     addons: { ...addons, samlp },
+    refresh_token,
   };
 };
+
+const RefreshTokensTab = () => (
+  <Stack spacing={2} sx={{ maxWidth: 600 }}>
+    <Typography variant="body2" color="textSecondary">
+      Configure refresh token rotation, reuse-detection leeway, and expiration
+      for this client.
+    </Typography>
+    <SelectInput
+      source="refresh_token.rotation_type"
+      label="Rotation"
+      choices={[
+        { id: "non-rotating", name: "Non-rotating (legacy)" },
+        { id: "rotating", name: "Rotating (recommended)" },
+      ]}
+      helperText="Whether refresh tokens are rotated on every exchange. Defaults to non-rotating."
+    />
+    <NumberInput
+      source="refresh_token.leeway"
+      label="Reuse-detection leeway (seconds)"
+      min={0}
+      max={600}
+      helperText="Seconds after a parent token's first rotation during which presenting it again still mints a sibling child instead of triggering reuse-detection. Only applies when rotation is enabled. Defaults to 30s."
+    />
+    <SelectInput
+      source="refresh_token.expiration_type"
+      label="Expiration type"
+      choices={[
+        { id: "expiring", name: "Expiring" },
+        { id: "non-expiring", name: "Non-expiring" },
+      ]}
+      helperText="Auth0-compatible. Round-trips through the API but is not yet enforced by the engine."
+    />
+    <BooleanInput
+      source="refresh_token.infinite_token_lifetime"
+      label="No absolute expiry"
+      helperText="Auth0-compatible. When set, refresh tokens have no absolute lifetime."
+    />
+    <NumberInput
+      source="refresh_token.token_lifetime"
+      label="Absolute lifetime (seconds)"
+      min={0}
+      helperText="Auth0-compatible. Maximum total lifetime of a refresh token chain."
+    />
+    <BooleanInput
+      source="refresh_token.infinite_idle_token_lifetime"
+      label="No idle expiry"
+      helperText="Auth0-compatible. When set, refresh tokens never time out from inactivity."
+    />
+    <NumberInput
+      source="refresh_token.idle_token_lifetime"
+      label="Idle (sliding) lifetime (seconds)"
+      min={0}
+      helperText="Auth0-compatible. Inactivity window before a refresh token expires."
+    />
+  </Stack>
+);
 
 export function ClientEdit() {
   // Transform data before submission to ensure client_metadata values are strings
@@ -1476,6 +1539,9 @@ export function ClientEdit() {
             label="SSO Disabled"
             helperText="When enabled, this client will not reuse existing SSO sessions. Users must authenticate every time, even if they have an active session from another client."
           />
+        </TabbedForm.Tab>
+        <TabbedForm.Tab label="Refresh Tokens">
+          <RefreshTokensTab />
         </TabbedForm.Tab>
         <TabbedForm.Tab label="Raw JSON">
           <FunctionField

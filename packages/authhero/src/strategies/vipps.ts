@@ -6,7 +6,7 @@ import { Bindings, Variables } from "../types";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { parseJWT } from "oslo/jwt";
 import { idTokenSchema } from "../types/IdToken";
-import { getAuthUrl } from "../variables";
+import { getConnectionCallbackUrl } from "./index";
 
 export const displayName = "Vipps";
 
@@ -26,7 +26,7 @@ export async function getRedirect(
   const client = new OAuth2Client(
     options.client_id,
     options.client_secret,
-    `${getAuthUrl(ctx.env)}callback`,
+    getConnectionCallbackUrl(ctx, connection),
   );
 
   const code = nanoid();
@@ -66,7 +66,7 @@ export async function validateAuthorizationCodeAndGetUser(
   const client = new OAuth2Client(
     options.client_id,
     options.client_secret,
-    `${getAuthUrl(ctx.env)}callback`,
+    getConnectionCallbackUrl(ctx, connection),
   );
 
   const tokens = await client.validateAuthorizationCode(

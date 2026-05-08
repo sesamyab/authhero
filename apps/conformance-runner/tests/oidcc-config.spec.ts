@@ -3,9 +3,8 @@ import { ConformanceClient } from "../lib/conformance-api";
 import { runBrowserFlow } from "../lib/run-browser-flow";
 import { env } from "../lib/env";
 import {
-  LOGOUT_PLAN_NAME,
-  LOGOUT_PLAN_VARIANT,
-  buildLogoutPlanConfig,
+  CONFIG_PLAN_NAME,
+  buildConfigPlanConfig,
 } from "../lib/test-plan-config";
 
 const client = new ConformanceClient();
@@ -14,15 +13,12 @@ let planId: string;
 let modules: { testModule: string; variant?: Record<string, string> }[];
 
 test.beforeAll(async () => {
-  const config = buildLogoutPlanConfig();
+  const config = buildConfigPlanConfig();
   console.log(
-    `[conformance-runner] Creating plan ${LOGOUT_PLAN_NAME} with alias ${config.alias}`,
+    `[conformance-runner] Creating plan ${CONFIG_PLAN_NAME} with alias ${config.alias}`,
   );
-  const plan = await client.createPlan(
-    LOGOUT_PLAN_NAME,
-    config,
-    LOGOUT_PLAN_VARIANT,
-  );
+  // No plan-level variant — see CONFIG_PLAN_NAME comment in test-plan-config.
+  const plan = await client.createPlan(CONFIG_PLAN_NAME, config);
   planId = plan.id;
   modules = plan.modules;
   console.log(
@@ -33,29 +29,13 @@ test.beforeAll(async () => {
   );
 });
 
-// RP-initiated logout depends on `end_session_endpoint` being advertised in
-// the discovery document. Until we wire that up + implement the OIDC logout
-// endpoint, every module is expected to fail. Listed here so they show up as
-// pending work rather than silent skips. Drop entries when each module starts
-// passing.
 const MODULES_ALLOWED_TO_WARN = new Set<string>([]);
-
-// Expected-to-fail modules — marked with test.fail() so the spec passes
-// while still surfacing pending work. If any of these unexpectedly pass
-// (e.g. once end_session_endpoint is implemented), Playwright reports the
-// unexpected pass and you remove the entry. Currently every module in the
-// plan: see comment above.
-const MODULES_EXPECTED_TO_FAIL = new Set<string>(getStaticModulesForPlan());
 
 test.describe.configure({ mode: "serial" });
 
-test.describe("OIDCC RP-Initiated Logout Certification", () => {
+test.describe("OIDCC Config Certification", () => {
   for (const moduleName of getStaticModulesForPlan()) {
     test(moduleName, async ({ page }) => {
-      test.fail(
-        MODULES_EXPECTED_TO_FAIL.has(moduleName),
-        "Awaiting end_session_endpoint + OIDC logout implementation",
-      );
       const moduleEntry = modules.find((m) => m.testModule === moduleName);
       test.skip(
         !moduleEntry,
@@ -72,11 +52,6 @@ test.describe("OIDCC RP-Initiated Logout Certification", () => {
         `[conformance-runner] ${moduleName} -> ${client.baseUrl}/log-detail.html?log=${testId}`,
       );
 
-      // Accept INTERRUPTED here too — some negative modules (e.g.
-      // bad-id-token-hint) drive the failure path entirely from the suite's
-      // configuration phase and never enter WAITING. Letting the result
-      // assertion below decide instead of throwing gives a much cleaner
-      // signal than "moved to INTERRUPTED: no detail".
       const initial = await client.waitForState(testId, [
         "CONFIGURED",
         "WAITING",
@@ -108,8 +83,9 @@ test.describe("OIDCC RP-Initiated Logout Certification", () => {
       );
 
       const acceptable: string[] = ["PASSED", "REVIEW", "SKIPPED"];
-      if (env.allowWarning) acceptable.push("WARNING");
-      if (MODULES_ALLOWED_TO_WARN.has(moduleName)) acceptable.push("WARNING");
+      if (env.allowWarning || MODULES_ALLOWED_TO_WARN.has(moduleName)) {
+        acceptable.push("WARNING");
+      }
 
       let failureDetail = "";
       if (!acceptable.includes(result ?? "")) {
@@ -139,17 +115,5 @@ test.describe("OIDCC RP-Initiated Logout Certification", () => {
 });
 
 function getStaticModulesForPlan(): string[] {
-  return [
-    "oidcc-rp-initiated-logout-discovery-endpoint-verification",
-    "oidcc-rp-initiated-logout",
-    "oidcc-rp-initiated-logout-bad-post-logout-redirect-uri",
-    "oidcc-rp-initiated-logout-modified-id-token-hint",
-    "oidcc-rp-initiated-logout-no-id-token-hint",
-    "oidcc-rp-initiated-logout-no-params",
-    "oidcc-rp-initiated-logout-no-post-logout-redirect-uri",
-    "oidcc-rp-initiated-logout-no-state",
-    "oidcc-rp-initiated-logout-only-state",
-    "oidcc-rp-initiated-logout-query-added-to-post-logout-redirect-uri",
-    "oidcc-rp-initiated-logout-bad-id-token-hint",
-  ];
+  return ["oidcc-discovery-endpoint-verification"];
 }

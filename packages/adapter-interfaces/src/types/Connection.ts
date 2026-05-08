@@ -26,6 +26,12 @@ export const connectionOptionsSchema = z.object({
   icon_url: z.string().optional(),
   // Email domains that route to this connection via Home Realm Discovery
   domain_aliases: z.array(z.string()).optional(),
+  // Per-connection redirect_uri sent to the upstream IdP. When unset, the
+  // strategy falls back to the legacy `${authUrl}callback`. Lets operators
+  // migrate connections to a new callback path (e.g. `/login/callback`)
+  // gradually — the value must be registered as an allowed redirect URI at
+  // the upstream IdP.
+  callback_url: z.string().optional(),
   // Password policy options for Username-Password-Authentication connections
   passwordPolicy: z
     .enum(["none", "low", "fair", "good", "excellent"])

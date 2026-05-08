@@ -3,7 +3,7 @@ import { Context } from "hono";
 import { Connection } from "@authhero/adapter-interfaces";
 import { nanoid } from "nanoid";
 import { Bindings, Variables } from "../types";
-import { getAuthUrl } from "../variables";
+import { getConnectionCallbackUrl } from "./index";
 
 export const displayName = "Facebook";
 
@@ -20,7 +20,7 @@ export async function getRedirect(
     throw new Error("Missing required authentication parameters");
   }
 
-  const callbackUrl = `${getAuthUrl(ctx.env)}callback`;
+  const callbackUrl = getConnectionCallbackUrl(ctx, connection);
 
   const facebook = new Facebook(
     options.client_id,
@@ -55,7 +55,7 @@ export async function validateAuthorizationCodeAndGetUser(
   const facebook = new Facebook(
     options.client_id,
     options.client_secret,
-    `${getAuthUrl(ctx.env)}callback`,
+    getConnectionCallbackUrl(ctx, connection),
   );
 
   const tokens = await facebook.validateAuthorizationCode(code);

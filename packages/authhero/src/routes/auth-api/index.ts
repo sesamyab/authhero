@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { AuthHeroConfig, Bindings, Variables } from "../../types";
 import { registerComponent } from "../../middlewares/register-component";
 import { createAuthMiddleware } from "../../middlewares/authentication";
-import { callbackRoutes } from "./callback";
+import { callbackRoutes, loginCallbackRoutes } from "./callback";
 import { logoutRoutes } from "./logout";
 import { oidcLogoutRoutes } from "./oidc-logout";
 import { userinfoRoutes } from "./userinfo";
@@ -140,7 +140,8 @@ export default function create(config: AuthHeroConfig) {
     .route("/account", accountRoutes)
     .route("/oidc/register", registerRoutes)
     .route("/connect/start", connectStartRoutes)
-    .route("/callback", callbackRoutes);
+    .route("/callback", callbackRoutes)
+    .route("/login/callback", loginCallbackRoutes);
 
   oauthApp.doc("/spec", {
     openapi: "3.0.0",

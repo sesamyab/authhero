@@ -1,22 +1,8 @@
-// Default to HTTPS — the stricter conformance plans (e.g. RP-initiated logout)
-// reject every endpoint in the discovery document that isn't `https://`.
-const httpsEnabled = parseBoolWithDefault(process.env.HTTPS_ENABLED, true);
-const scheme = httpsEnabled ? "https" : "http";
-
-export const env = {
-  conformanceBaseUrl:
-    process.env.CONFORMANCE_BASE_URL ?? "https://localhost.emobix.co.uk:8443",
-  authheroBaseUrl:
-    process.env.AUTHHERO_BASE_URL ?? `${scheme}://localhost:3000`,
-  authheroIssuer:
-    process.env.AUTHHERO_ISSUER ?? `${scheme}://host.docker.internal:3000/`,
-  username: process.env.CONFORMANCE_USERNAME ?? "admin",
-  password: process.env.CONFORMANCE_PASSWORD ?? "password2",
-  alias: process.env.CONFORMANCE_ALIAS ?? "my-local-test",
-  allowWarning: parseBool(process.env.ALLOW_WARNING),
-  skipSetup: parseBool(process.env.SKIP_SETUP),
-  httpsEnabled,
-} as const;
+// Lazy env reads via getters so values reflect any process.env mutation that
+// happens during prepareAuthServer (e.g. AUTHHERO_ISSUER auto-detection).
+// Without getters, `env.authheroIssuer` is frozen to whatever was in
+// process.env at module-import time, which is too early — playwright.config
+// imports this module before the suite container is up and discoverable.
 
 function parseBool(value: string | undefined): boolean {
   if (!value) return false;
@@ -32,3 +18,43 @@ function parseBoolWithDefault(
   const v = value.toLowerCase();
   return v !== "0" && v !== "false" && v !== "no" && v !== "";
 }
+
+function scheme(): "http" | "https" {
+  return parseBoolWithDefault(process.env.HTTPS_ENABLED, true)
+    ? "https"
+    : "http";
+}
+
+export const env = {
+  get conformanceBaseUrl(): string {
+    return (
+      process.env.CONFORMANCE_BASE_URL ?? "https://localhost.emobix.co.uk:8443"
+    );
+  },
+  get authheroBaseUrl(): string {
+    return process.env.AUTHHERO_BASE_URL ?? `${scheme()}://localhost:3000`;
+  },
+  get authheroIssuer(): string {
+    return (
+      process.env.AUTHHERO_ISSUER ?? `${scheme()}://host.docker.internal:3000/`
+    );
+  },
+  get username(): string {
+    return process.env.CONFORMANCE_USERNAME ?? "admin";
+  },
+  get password(): string {
+    return process.env.CONFORMANCE_PASSWORD ?? "password2";
+  },
+  get alias(): string {
+    return process.env.CONFORMANCE_ALIAS ?? "my-local-test";
+  },
+  get allowWarning(): boolean {
+    return parseBool(process.env.ALLOW_WARNING);
+  },
+  get skipSetup(): boolean {
+    return parseBool(process.env.SKIP_SETUP);
+  },
+  get httpsEnabled(): boolean {
+    return parseBoolWithDefault(process.env.HTTPS_ENABLED, true);
+  },
+};

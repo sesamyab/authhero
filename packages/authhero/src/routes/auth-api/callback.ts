@@ -229,113 +229,121 @@ async function handleCallback(
   }
 }
 
-export const callbackRoutes = new OpenAPIHono<{
-  Bindings: Bindings;
-  Variables: Variables;
-}>()
-  // --------------------------------
-  // GET /callback
-  // --------------------------------
-  .openapi(
-    createRoute({
-      tags: ["oauth2"],
-      method: "get",
-      path: "/",
-      request: {
-        query: z.object({
-          state: z.string(),
-          code: z.string().optional(),
-          scope: z.string().optional(),
-          hd: z.string().optional(),
-          error: z.string().optional(),
-          error_description: z.string().optional(),
-          error_code: z.string().optional(),
-          error_reason: z.string().optional(),
-        }),
+const callbackQuerySchema = z.object({
+  state: z.string(),
+  code: z.string().optional(),
+  scope: z.string().optional(),
+  hd: z.string().optional(),
+  error: z.string().optional(),
+  error_description: z.string().optional(),
+  error_code: z.string().optional(),
+  error_reason: z.string().optional(),
+});
+
+function buildCallbackRoutes(opts: {
+  operationIdPrefix: string;
+  deprecated?: boolean;
+}) {
+  return new OpenAPIHono<{
+    Bindings: Bindings;
+    Variables: Variables;
+  }>()
+    .openapi(
+      createRoute({
+        tags: ["oauth2"],
+        method: "get",
+        path: "/",
+        operationId: `${opts.operationIdPrefix}Get`,
+        deprecated: opts.deprecated,
+        request: {
+          query: callbackQuerySchema,
+        },
+        responses: {
+          302: {
+            description: "Redirect to the client's redirect uri",
+          },
+          400: {
+            description: "Bad Request",
+            content: {
+              "application/json": {
+                schema: z.object({
+                  message: z.string(),
+                }),
+              },
+            },
+          },
+          500: {
+            description: "Internal Server Error",
+            content: {
+              "application/json": {
+                schema: z.object({
+                  message: z.string(),
+                }),
+              },
+            },
+          },
+        },
+      }),
+      async (ctx) => {
+        return handleCallback(ctx, ctx.req.valid("query"));
       },
-      responses: {
-        302: {
-          description: "Redirect to the client's redirect uri",
-        },
-        400: {
-          description: "Bad Request",
-          content: {
-            "application/json": {
-              schema: z.object({
-                message: z.string(),
-              }),
+    )
+    .openapi(
+      createRoute({
+        tags: ["oauth2"],
+        method: "post",
+        path: "/",
+        operationId: `${opts.operationIdPrefix}Post`,
+        deprecated: opts.deprecated,
+        request: {
+          body: {
+            content: {
+              "application/x-www-form-urlencoded": {
+                schema: callbackQuerySchema,
+              },
             },
           },
         },
-        500: {
-          description: "Internal Server Error",
-          content: {
-            "application/json": {
-              schema: z.object({
-                message: z.string(),
-              }),
+        responses: {
+          302: {
+            description: "Redirect to the client's redirect uri",
+          },
+          400: {
+            description: "Bad Request",
+            content: {
+              "application/json": {
+                schema: z.object({
+                  message: z.string(),
+                }),
+              },
+            },
+          },
+          500: {
+            description: "Internal Server Error",
+            content: {
+              "application/json": {
+                schema: z.object({
+                  message: z.string(),
+                }),
+              },
             },
           },
         },
+      }),
+      async (ctx) => {
+        return handleCallback(ctx, ctx.req.valid("form"));
       },
-    }),
-    async (ctx) => {
-      return handleCallback(ctx, ctx.req.valid("query"));
-    },
-  )
-  // --------------------------------
-  // POST /callback
-  // --------------------------------
-  .openapi(
-    createRoute({
-      tags: ["oauth2"],
-      method: "post",
-      path: "/",
-      request: {
-        body: {
-          content: {
-            "application/x-www-form-urlencoded": {
-              schema: z.object({
-                state: z.string(),
-                code: z.string().optional(),
-                scope: z.string().optional(),
-                hd: z.string().optional(),
-                error: z.string().optional(),
-                error_description: z.string().optional(),
-                error_code: z.string().optional(),
-                error_reason: z.string().optional(),
-              }),
-            },
-          },
-        },
-      },
-      responses: {
-        302: {
-          description: "Redirect to the client's redirect uri",
-        },
-        400: {
-          description: "Bad Request",
-          content: {
-            "application/json": {
-              schema: z.object({
-                message: z.string(),
-              }),
-            },
-          },
-        },
-        500: {
-          description: "Internal Server Error",
-          content: {
-            "application/json": {
-              schema: z.object({
-                message: z.string(),
-              }),
-            },
-          },
-        },
-      },
-    }),
-    async (ctx) => {
-      return handleCallback(ctx, ctx.req.valid("form"));
-    },
-  );
+    );
+}
+
+// Deprecated — kept for backwards compatibility with existing redirect URIs
+// registered at upstream identity providers. New deployments should use
+// /login/callback.
+export const callbackRoutes = buildCallbackRoutes({
+  operationIdPrefix: "callback",
+  deprecated: true,
+});
+
+export const loginCallbackRoutes = buildCallbackRoutes({
+  operationIdPrefix: "loginCallback",
+});

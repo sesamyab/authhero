@@ -7,7 +7,7 @@ import {
 import { Context } from "hono";
 import { Connection } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../types";
-import { getAuthUrl } from "../variables";
+import { getConnectionCallbackUrl } from "./index";
 
 export const displayName = "OAuth 2.0";
 
@@ -24,7 +24,7 @@ export async function getRedirect(
     throw new Error("Missing required OAuth2 authentication parameters");
   }
 
-  const callbackUrl = `${getAuthUrl(ctx.env)}callback`;
+  const callbackUrl = getConnectionCallbackUrl(ctx, connection);
 
   const client = new OAuth2Client(
     options.client_id,
@@ -63,7 +63,7 @@ export async function validateAuthorizationCodeAndGetUser(
     throw new Error("Missing required authentication parameters");
   }
 
-  const callbackUrl = `${getAuthUrl(ctx.env)}callback`;
+  const callbackUrl = getConnectionCallbackUrl(ctx, connection);
 
   const client = new OAuth2Client(
     options.client_id,

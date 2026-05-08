@@ -4,12 +4,14 @@ Playwright-driven runner for the OpenID Foundation conformance suite against Aut
 
 ## What it does
 
-1. Brings up the conformance suite (Docker) via `pnpm conformance:start`.
-2. Reseeds `packages/create-authhero/auth-server/db.sqlite` via `pnpm conformance:seed`.
-3. Starts the local auth-server on port 3000 (managed by Playwright's `webServer`).
-4. Creates the `oidcc-basic-certification-test-plan` via the suite's REST API.
-5. Runs every module in the plan as its own Playwright test, driving the AuthHero login form when a test is `WAITING` for browser interaction.
-6. Asserts each module finishes with `PASSED` (or `WARNING` if `ALLOW_WARNING=1`).
+1. **Wipes and re-scaffolds `apps/conformance-auth-server/`** (gitignored) so every run starts from a pristine auth-server. Runs the workspace-root `pnpm install` to wire up `workspace:*` deps.
+2. Pre-generates a self-signed cert into `apps/conformance-auth-server/.certs/` if missing.
+3. Brings up the conformance suite (Docker) via `pnpm conformance:start`.
+4. Reseeds `apps/conformance-auth-server/db.sqlite` via `pnpm conformance:seed`.
+5. Starts the local auth-server on port 3000 (managed by Playwright's `webServer`, never reused — fresh process per run).
+6. Creates each plan via the suite's REST API.
+7. Runs every module in the plan as its own Playwright test, driving the AuthHero login form when a test is `WAITING` for browser interaction.
+8. Asserts each module finishes with `PASSED` (or `WARNING` if `ALLOW_WARNING=1`).
 
 ## One-time setup
 
@@ -37,6 +39,18 @@ Run a single module with `--grep`:
 pnpm conformance:run -- --grep "discovery"
 ```
 
+Run a single plan's tests with Playwright's filename filter:
+
+```sh
+pnpm conformance:run -- tests/oidcc-config.spec.ts
+```
+
+The runner currently drives three plans, each in its own spec file:
+
+- `oidcc-basic-certification-test-plan` ([oidcc-basic.spec.ts](tests/oidcc-basic.spec.ts))
+- `oidcc-rp-initiated-logout-certification-test-plan` ([oidcc-rp-initiated-logout.spec.ts](tests/oidcc-rp-initiated-logout.spec.ts))
+- `oidcc-config-certification-test-plan` ([oidcc-config.spec.ts](tests/oidcc-config.spec.ts)) — pure metadata verification (discovery + JWKS), no browser flow
+
 ## Environment variables
 
 | Var | Default | Notes |
@@ -44,23 +58,34 @@ pnpm conformance:run -- --grep "discovery"
 | `CONFORMANCE_BASE_URL` | `https://localhost.emobix.co.uk:8443` | Suite URL |
 | `AUTHHERO_BASE_URL` | `https://localhost:3000` (or `http://localhost:3000` when `HTTPS_ENABLED=false`) | Auth-server URL (host-side) |
 | `AUTHHERO_ISSUER` | `https://host.docker.internal:3000/` (or `http://...` when `HTTPS_ENABLED=false`) | Issuer published to the suite — must be reachable from inside the suite's Docker container |
-| `HTTPS_ENABLED` | `true` | If `true` (the default), runs the auth-server over HTTPS using a self-signed cert generated into `packages/create-authhero/auth-server/.certs/`. Required by stricter plans (e.g. RP-initiated logout) that mandate `https://` for every endpoint in the discovery document. globalSetup automatically imports the cert into the conformance suite container's JRE truststore (alias `authhero-local`) and restarts the suite container so it trusts the chain. Set to `false` to fall back to plain HTTP. |
+| `HTTPS_ENABLED` | `true` | If `true` (the default), runs the auth-server over HTTPS using a self-signed cert generated into `apps/conformance-auth-server/.certs/`. Required by stricter plans (e.g. RP-initiated logout, config) that mandate `https://` for every endpoint in the discovery document. globalSetup automatically imports the cert into the conformance suite container's JRE truststore (alias `authhero-local`) and restarts the suite container so it trusts the chain. Set to `false` to fall back to plain HTTP. |
 | `CONFORMANCE_USERNAME` | `admin` | Seeded user |
 | `CONFORMANCE_PASSWORD` | `password2` | Seeded password |
 | `CONFORMANCE_ALIAS` | `my-local-test` | Plan alias matching seeded callback URLs |
 | `ALLOW_WARNING` | unset | If set, modules finishing with `WARNING` pass instead of fail |
-| `SKIP_SETUP` | unset | If set, globalSetup skips `conformance:start`/`conformance:seed` (assumes already running). The cert-import step still runs when `HTTPS_ENABLED=true`. |
+| `SKIP_SETUP` | unset | If set, globalSetup skips scaffold + `conformance:start` + `conformance:seed` (assumes the auth-server already exists and the suite is already running). The cert-import step still runs when `HTTPS_ENABLED=true`. |
+
+### Auth-server lifecycle
+
+`apps/conformance-auth-server/` is regenerated from the `create-authhero` `local` template at the start of every run. It is gitignored and exists purely to support the conformance suite. Don't edit it manually — your changes will be wiped on the next run. If the scaffolder itself changes (e.g. a new dep), make sure `pnpm --filter create-authhero build` has been run so `dist/create-authhero.js` is current.
 
 ### HTTPS mode (default)
 
-HTTPS is on by default. The first run generates a self-signed cert, imports it into the suite container's truststore, and restarts the suite container; subsequent runs are idempotent.
+HTTPS is on by default. Because `apps/conformance-auth-server/` is wiped at the start of every run, globalSetup pre-generates a fresh self-signed cert (via `openssl`) on every run, then imports it into the suite container's truststore and restarts the suite container. The truststore comparison short-circuits the docker restart when the on-disk cert matches the stored alias, so back-to-back runs without code changes don't pay the restart cost twice.
 
 ```sh
 # Default — HTTPS enabled:
 pnpm conformance:run
 
-# Opt out (only the OIDC Basic plan; RP-initiated logout plans will fail):
+# Opt out (only the OIDC Basic plan; RP-initiated logout / config plans will fail):
 HTTPS_ENABLED=false pnpm conformance:run
 ```
 
-Regenerate the cert by deleting `packages/create-authhero/auth-server/.certs/` (and removing the `authhero-local` alias from the suite's truststore: `docker exec conformance-suite-server-1 keytool -delete -alias authhero-local -keystore /opt/java/openjdk/lib/security/cacerts -storepass changeit`).
+To force a fresh cert without a full rescaffold, delete `apps/conformance-auth-server/.certs/` and remove the `authhero-local` alias from the suite's truststore:
+
+```sh
+docker exec conformance-suite-server-1 keytool -delete \
+  -alias authhero-local \
+  -keystore /opt/java/openjdk/lib/security/cacerts \
+  -storepass changeit
+```

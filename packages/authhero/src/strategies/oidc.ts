@@ -9,7 +9,7 @@ import { Connection } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../types";
 import { parseJWT } from "oslo/jwt";
 import { idTokenSchema } from "../types/IdToken";
-import { getAuthUrl } from "../variables";
+import { getConnectionCallbackUrl } from "./index";
 
 export const displayName = "OpenID Connect";
 
@@ -26,7 +26,7 @@ export async function getRedirect(
     throw new Error("Missing required OIDC authentication parameters");
   }
 
-  const callbackUrl = `${getAuthUrl(ctx.env)}callback`;
+  const callbackUrl = getConnectionCallbackUrl(ctx, connection);
 
   const client = new OAuth2Client(
     options.client_id,
@@ -62,10 +62,10 @@ export async function validateAuthorizationCodeAndGetUser(
   const { options } = connection;
 
   if (!options?.client_id || !options.token_endpoint) {
-    throw new Error("Missing required authentication parameters");
+    throw new Error("Missing required OIDC authentication parameters");
   }
 
-  const callbackUrl = `${getAuthUrl(ctx.env)}callback`;
+  const callbackUrl = getConnectionCallbackUrl(ctx, connection);
 
   const client = new OAuth2Client(
     options.client_id,

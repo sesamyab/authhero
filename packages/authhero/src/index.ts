@@ -19,6 +19,7 @@ export * from "./types/AuthHeroConfig";
 export * from "./components";
 export * from "./styles";
 export * from "./adapters";
+export * from "./email-services";
 export { waitUntil } from "./helpers/wait-until";
 export {
   cleanupUserSessions,

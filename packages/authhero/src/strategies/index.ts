@@ -9,6 +9,20 @@ import * as microsoft from "./microsoft";
 import * as oidc from "./oidc";
 import * as oauth2 from "./oauth2";
 import { Bindings, Variables } from "../types";
+import { getAuthUrl } from "../variables";
+
+/**
+ * Resolve the redirect_uri that strategies should hand to the upstream IdP.
+ * Falls back to the legacy `${authUrl}callback` when the connection does not
+ * specify one — set `options.callback_url` per connection to migrate to a
+ * different path (e.g. `/login/callback`).
+ */
+export function getConnectionCallbackUrl(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  connection: Connection,
+): string {
+  return connection.options?.callback_url ?? `${getAuthUrl(ctx.env)}callback`;
+}
 
 export type UserInfo = {
   sub: string;
