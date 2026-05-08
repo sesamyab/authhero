@@ -374,10 +374,18 @@ export const authorizeRoutes = new OpenAPIHono<{
 
       // Validate required parameter: response_type (per OIDC Core 3.1.2.1)
       if (!response_type) {
-        // If redirect_uri is valid, deliver the error back via the same
-        // response_mode the client requested (OIDC Core 3.1.2.6):
-        // form_post errors POST to the redirect_uri, not GET.
-        if (sanitizedRedirectUri) {
+        // If redirect_uri is valid AND registered for this client, deliver the
+        // error back via the same response_mode the client requested (OIDC
+        // Core 3.1.2.6): form_post errors POST to the redirect_uri, not GET.
+        // If the redirect_uri is missing or unregistered, never redirect to
+        // it — return a local 400 to avoid acting as an open redirect.
+        const callbackAllowed =
+          !!sanitizedRedirectUri &&
+          isValidRedirectUrl(sanitizedRedirectUri, client.callbacks || [], {
+            allowPathWildcards: true,
+            allowSubDomainWildcards: true,
+          });
+        if (sanitizedRedirectUri && callbackAllowed) {
           const errorParams: Record<string, string> = {
             error: "invalid_request",
             error_description: "Missing required parameter: response_type",
@@ -398,7 +406,7 @@ export const authorizeRoutes = new OpenAPIHono<{
           }
           return ctx.redirect(redirectUrl.toString());
         }
-        // No redirect_uri, throw HTTP exception
+        // No redirect_uri or not registered for this client — throw locally.
         throw new HTTPException(400, {
           message: "Missing required parameter: response_type",
         });

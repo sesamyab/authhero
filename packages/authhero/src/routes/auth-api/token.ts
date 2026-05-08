@@ -350,7 +350,11 @@ export const tokenRoutes = new OpenAPIHono<{
         if (err instanceof Auth0ProxyResponse) {
           return new Response(JSON.stringify(err.body ?? null), {
             status: err.status,
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              "Cache-Control": "no-store",
+              Pragma: "no-cache",
+            },
           });
         }
         throw err;

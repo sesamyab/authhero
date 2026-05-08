@@ -257,6 +257,8 @@ export async function proxyRefreshToken(
     body.set("scope", params.scope);
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
   let response: Response;
   try {
     response = await fetch(params.tokenEndpoint, {
@@ -266,10 +268,13 @@ export async function proxyRefreshToken(
         accept: "application/json",
       },
       body: body.toString(),
+      signal: controller.signal,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "fetch failed";
     throw new Auth0UpstreamError(0, "network_error", message);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const payload = await parseJson(response);

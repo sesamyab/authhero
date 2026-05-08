@@ -207,6 +207,28 @@ export const resetPasswordRoutes = new OpenAPIHono<{
           );
         }
 
+        // Atomically claim the code so it cannot be reused.
+        const consumed = await env.data.codes.consume(
+          client.tenant.id,
+          foundCode.code_id,
+        );
+        if (!consumed) {
+          const codeExpiredMessage = i18next.t(
+            "password_reset_code_expired",
+            "Code not found or expired",
+          );
+          return ctx.html(
+            <ResetPasswordPage
+              error={codeExpiredMessage}
+              theme={theme}
+              branding={branding}
+              client={client}
+              email={loginSession.authParams.username}
+            />,
+            400,
+          );
+        }
+
         // Mark old password as not current (for password history)
         const existingPassword = await env.data.passwords.get(
           client.tenant.id,

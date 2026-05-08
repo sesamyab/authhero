@@ -638,10 +638,18 @@ export const userRoutes = new OpenAPIHono<{
         } else {
           // Find the identity that actually owns the password row — login
           // looks up passwords by the native database provider (auth2 or
-          // auth0 once a tenant is migrated), so prefer that. Fall back to
-          // any Username-Password-Authentication identity for older rows
-          // where the provider wasn't a native database provider.
+          // auth0 once a tenant is migrated), so prefer that. Match the
+          // read path's auth2-first preference (see getUsernamePasswordUser):
+          // when both rows coexist during migration, the bcrypt password
+          // lives under the auth2 row. Fall back to any
+          // Username-Password-Authentication identity for older rows where
+          // the provider wasn't a native database provider.
           passwordIdentity =
+            userToPatch.identities?.find(
+              (i) =>
+                i.connection === Strategy.USERNAME_PASSWORD &&
+                i.provider === "auth2",
+            ) ??
             userToPatch.identities?.find((i) =>
               isUsernamePasswordProvider(i.provider),
             ) ??

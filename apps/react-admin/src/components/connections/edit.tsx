@@ -59,6 +59,7 @@ const NON_HRD_STRATEGIES = new Set<string>([
   Strategy.SAMLP,
   Strategy.WAAD,
   Strategy.ADFS,
+  Strategy.AUTH0,
 ]);
 
 const isHrdEligibleStrategy = (strategy?: string) =>

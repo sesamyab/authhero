@@ -20,7 +20,6 @@ import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { getConfigValue } from "../../utils/runtimeConfig";
 import { createManagementClient } from "../../authProvider";
 import { resolveApiBase } from "../../dataProvider";
-import { useParams } from "react-router-dom";
 
 const triggerChoices = [
   { id: "post-login", name: "Post Login" },
@@ -34,11 +33,12 @@ const SECRET_PLACEHOLDER = "******";
 function DeployButton() {
   const record = useRecordContext();
   const notify = useNotify();
-  const { tenantId } = useParams();
 
   const handleDeploy = async () => {
     if (!record?.id) return;
     try {
+      const tenantId =
+        window.location.pathname.split("/").filter(Boolean)[0] || undefined;
       const domain = getConfigValue("domain") || "";
       const apiDomain = resolveApiBase(domain)
         .replace(/^https?:\/\//, "")

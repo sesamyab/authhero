@@ -367,15 +367,11 @@ export default (
       // Handle singleton resources
       if (resource === "branding") {
         const branding = await managementClient.branding.get();
-        // Also fetch themes to include in branding data
-        const headers = createHeaders(tenantId);
-        let themes = null;
+        let themes: Awaited<
+          ReturnType<typeof managementClient.branding.themes.getDefault>
+        > | null = null;
         try {
-          const themesResponse = await httpClient(
-            `${apiUrl}/api/v2/branding/themes/default`,
-            { headers },
-          );
-          themes = themesResponse.json;
+          themes = await managementClient.branding.themes.getDefault();
         } catch (e) {
           // Themes might not exist yet, that's ok
         }
@@ -398,19 +394,11 @@ export default (
       }
 
       if (resource === "attack-protection") {
-        const headers = createHeaders(tenantId);
-        const sections = [
-          "breached-password-detection",
-          "brute-force-protection",
-          "suspicious-ip-throttling",
-        ] as const;
-        const [bpd, bf, sip] = await Promise.all(
-          sections.map((s) =>
-            httpClient(`${apiUrl}/api/v2/attack-protection/${s}`, {
-              headers,
-            }).then((r) => r.json),
-          ),
-        );
+        const [bpd, bf, sip] = await Promise.all([
+          managementClient.attackProtection.breachedPasswordDetection.get(),
+          managementClient.attackProtection.bruteForceProtection.get(),
+          managementClient.attackProtection.suspiciousIpThrottling.get(),
+        ]);
         return {
           data: [
             {
@@ -456,12 +444,9 @@ export default (
 
       // Handle email-providers singleton resource
       if (resource === "email-providers") {
-        const headers = createHeaders(tenantId);
-        const res = await httpClient(`${apiUrl}/api/v2/emails/provider`, {
-          headers,
-        });
+        const provider = await managementClient.emails.provider.get();
         return {
-          data: [{ ...res.json, id: resource }],
+          data: [{ ...provider, id: resource }],
           total: 1,
         };
       }
@@ -589,18 +574,14 @@ export default (
 
       // Handle stats/daily endpoint
       if (resourcePath === "stats/daily") {
-        const headers = createHeaders(tenantId);
-        const query: any = {};
-        if (params.filter?.from) query.from = params.filter.from;
-        if (params.filter?.to) query.to = params.filter.to;
-
-        const url = `${apiUrl}/api/v2/stats/daily${Object.keys(query).length ? `?${stringify(query)}` : ""}`;
         try {
-          const res = await httpClient(url, { headers });
-          // Stats endpoint returns an array directly
-          const data = Array.isArray(res.json) ? res.json : [];
+          const stats = await managementClient.stats.getDaily({
+            from: params.filter?.from,
+            to: params.filter?.to,
+          });
+          const data = Array.isArray(stats) ? stats : [];
           return {
-            data: data.map((item: any, index: number) => ({
+            data: data.map((item, index) => ({
               id: item.date || index,
               ...item,
             })),
@@ -777,15 +758,11 @@ export default (
       // Handle singleton resources
       if (resource === "branding") {
         const result = await managementClient.branding.get();
-        // Also fetch themes to include in branding data
-        const headers = createHeaders(tenantId);
-        let themes = null;
+        let themes: Awaited<
+          ReturnType<typeof managementClient.branding.themes.getDefault>
+        > | null = null;
         try {
-          const themesResponse = await httpClient(
-            `${apiUrl}/api/v2/branding/themes/default`,
-            { headers },
-          );
-          themes = themesResponse.json;
+          themes = await managementClient.branding.themes.getDefault();
         } catch (e) {
           // Themes might not exist yet, that's ok
         }
@@ -809,19 +786,11 @@ export default (
       }
 
       if (resource === "attack-protection") {
-        const headers = createHeaders(tenantId);
-        const sections = [
-          "breached-password-detection",
-          "brute-force-protection",
-          "suspicious-ip-throttling",
-        ] as const;
-        const [bpd, bf, sip] = await Promise.all(
-          sections.map((s) =>
-            httpClient(`${apiUrl}/api/v2/attack-protection/${s}`, {
-              headers,
-            }).then((r) => r.json),
-          ),
-        );
+        const [bpd, bf, sip] = await Promise.all([
+          managementClient.attackProtection.breachedPasswordDetection.get(),
+          managementClient.attackProtection.bruteForceProtection.get(),
+          managementClient.attackProtection.suspiciousIpThrottling.get(),
+        ]);
         return {
           data: {
             id: resource,
@@ -862,13 +831,10 @@ export default (
 
       // Handle email-providers singleton resource
       if (resource === "email-providers") {
-        const headers = createHeaders(tenantId);
         try {
-          const res = await httpClient(`${apiUrl}/api/v2/emails/provider`, {
-            headers,
-          });
+          const provider = await managementClient.emails.provider.get();
           return {
-            data: { ...res.json, id: resource },
+            data: { ...provider, id: resource },
           };
         } catch (err) {
           // No provider configured yet — render the form with sensible defaults.
@@ -876,8 +842,8 @@ export default (
           if (
             err &&
             typeof err === "object" &&
-            "status" in err &&
-            err.status === 404
+            "statusCode" in err &&
+            err.statusCode === 404
           ) {
             return {
               data: { id: resource, enabled: true, credentials: {} },
@@ -917,13 +883,9 @@ export default (
 
       // Handle stats/active-users endpoint
       if (resource === "stats/active-users") {
-        const headers = createHeaders(tenantId);
         try {
-          const res = await httpClient(`${apiUrl}/api/v2/stats/active-users`, {
-            headers,
-          });
-          // API returns a number directly
-          const count = typeof res.json === "number" ? res.json : 0;
+          const result = await managementClient.stats.getActiveUsersCount();
+          const count = typeof result === "number" ? result : 0;
           return {
             data: {
               id: "count",
@@ -1319,37 +1281,26 @@ export default (
       }
 
       if (resource === "attack-protection") {
-        const headers = createHeaders(tenantId);
-        headers.set("Content-Type", "application/json");
-        const sectionMap = {
-          breached_password_detection: "breached-password-detection",
-          brute_force_protection: "brute-force-protection",
-          suspicious_ip_throttling: "suspicious-ip-throttling",
-        } as const;
-        const responses = await Promise.all(
-          (
-            Object.entries(sectionMap) as [
-              keyof typeof sectionMap,
-              (typeof sectionMap)[keyof typeof sectionMap],
-            ][]
-          ).map(async ([key, path]) => {
-            const body = cleanParams.data[key] ?? {};
-            const res = await httpClient(
-              `${apiUrl}/api/v2/attack-protection/${path}`,
-              {
-                method: "PATCH",
-                headers,
-                body: JSON.stringify(body),
-              },
-            );
-            return [key, res.json] as const;
-          }),
-        );
-        const data: Record<string, unknown> = { id: resource };
-        for (const [key, value] of responses) {
-          data[key] = value;
-        }
-        return { data };
+        const ap = managementClient.attackProtection;
+        const [bpd, bf, sip] = await Promise.all([
+          ap.breachedPasswordDetection.update(
+            cleanParams.data.breached_password_detection ?? {},
+          ),
+          ap.bruteForceProtection.update(
+            cleanParams.data.brute_force_protection ?? {},
+          ),
+          ap.suspiciousIpThrottling.update(
+            cleanParams.data.suspicious_ip_throttling ?? {},
+          ),
+        ]);
+        return {
+          data: {
+            id: resource,
+            breached_password_detection: bpd,
+            brute_force_protection: bf,
+            suspicious_ip_throttling: sip,
+          },
+        };
       }
 
       // Handle prompts singleton resource
@@ -1372,29 +1323,23 @@ export default (
       // PATCH to update, POST to create. PATCH 404s when no row exists yet,
       // so we fall back to POST in that case.
       if (resource === "email-providers") {
-        const epHeaders = createHeaders(tenantId);
-        epHeaders.set("Content-Type", "application/json");
         const { id: _id, ...body } = cleanParams.data;
-        const url = `${apiUrl}/api/v2/emails/provider`;
         try {
-          const res = await httpClient(url, {
-            method: "PATCH",
-            headers: epHeaders,
-            body: JSON.stringify(body),
-          });
+          const updated = await managementClient.emails.provider.update(body);
           return {
-            data: { ...res.json, id: resource },
+            data: { ...updated, id: resource },
           };
         } catch (err: unknown) {
-          const status = (err as { status?: number } | undefined)?.status;
+          const status = (err as { statusCode?: number } | undefined)
+            ?.statusCode;
           if (status !== 404) throw err;
-          const created = await httpClient(url, {
-            method: "POST",
-            headers: epHeaders,
-            body: JSON.stringify(body),
-          });
+          const created = await managementClient.emails.provider.create(
+            body as Parameters<
+              typeof managementClient.emails.provider.create
+            >[0],
+          );
           return {
-            data: { ...created.json, id: resource },
+            data: { ...created, id: resource },
           };
         }
       }
@@ -1761,6 +1706,23 @@ export default (
         };
       }
 
+      // User identity link (Auth0 SDK)
+      const userIdentitiesMatch = resource.match(/^users\/([^/]+)\/identities$/);
+      if (userIdentitiesMatch?.[1]) {
+        const primaryUserId = userIdentitiesMatch[1];
+        const result = await managementClient.users.identities.link(
+          primaryUserId,
+          params.data,
+        );
+        const identities = (result as any).data || (result as any).response || result;
+        return {
+          data: {
+            id: primaryUserId,
+            identities,
+          },
+        };
+      }
+
       // User roles assignment
       const userRolesMatch = resource.match(/^users\/([^/]+)\/roles$/);
       if (userRolesMatch) {
@@ -1844,10 +1806,11 @@ export default (
       // Handle email-providers singleton resource — DELETE returns 204.
       if (resource === "email-providers") {
         try {
-          await del("emails/provider");
+          await managementClient.emails.provider.delete();
         } catch (err: unknown) {
           // 404 means already deleted — treat as success.
-          const status = (err as { status?: number } | undefined)?.status;
+          const status = (err as { statusCode?: number } | undefined)
+            ?.statusCode;
           if (status !== 404) throw err;
         }
         return { data: { id: resource } };
@@ -1927,6 +1890,27 @@ export default (
           params.id as string,
         );
         return { data: { id: params.id } };
+      }
+
+      // User identity unlink (Auth0 SDK)
+      const userIdentityMatch = resource.match(
+        /^users\/([^/]+)\/identities\/([^/]+)$/,
+      );
+      if (userIdentityMatch?.[1] && userIdentityMatch?.[2]) {
+        const [, primaryUserId, provider] = userIdentityMatch;
+        type UnlinkProvider = Parameters<
+          typeof managementClient.users.identities.delete
+        >[1];
+        const result = await managementClient.users.identities.delete(
+          primaryUserId,
+          provider as UnlinkProvider,
+          String(params.id),
+        );
+        const response = (result as { data?: unknown; response?: unknown })
+          .data ??
+          (result as { response?: unknown }).response ??
+          result;
+        return { data: { id: params.id, identities: response } };
       }
 
       // Nested permissions/roles detection

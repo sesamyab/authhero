@@ -167,6 +167,23 @@ export async function attemptUpstreamPasswordFallback(
   }
 
   const { hash, algorithm } = await hashPassword(password);
+
+  // Demote any existing current password row so we don't end up with two
+  // is_current rows for the same user.
+  const existingPassword = await data.passwords.get(
+    client.tenant.id,
+    user.user_id,
+  );
+  if (existingPassword) {
+    await data.passwords.update(client.tenant.id, {
+      id: existingPassword.id,
+      user_id: user.user_id,
+      password: existingPassword.password,
+      algorithm: existingPassword.algorithm,
+      is_current: false,
+    });
+  }
+
   await data.passwords.create(client.tenant.id, {
     user_id: user.user_id,
     password: hash,

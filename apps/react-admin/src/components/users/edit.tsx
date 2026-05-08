@@ -318,12 +318,10 @@ const UnlinkButton = () => {
 
   const handleUnlink = async () => {
     try {
-      // Create the endpoint URL with proper parameters
-      const endpoint = `users/${userId}/identities/${identity.provider}/${identity.user_id}`;
-
-      await dataProvider.delete(endpoint, {
-        id: "stuff",
-      });
+      await dataProvider.delete(
+        `users/${userId}/identities/${identity.provider}`,
+        { id: identity.user_id },
+      );
       notify("Identity unlinked successfully", { type: "success" });
       handleClose();
       refresh();

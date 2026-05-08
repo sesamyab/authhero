@@ -203,7 +203,10 @@ describe("signup validation hooks", () => {
       // Mirrors Auth0: don't reveal that the account exists.
       expect(userResponse.status).toBe(400);
       const error = await userResponse.text();
-      expect(error).toContain("Invalid sign up");
+      expect(error).toMatch(/^Invalid sign up\b/);
+      expect(error).not.toContain("already");
+      expect(error).not.toContain("exists");
+      expect(error).not.toContain("duplicate");
     });
   });
 

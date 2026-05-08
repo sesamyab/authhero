@@ -10,6 +10,7 @@ import { getOrCreateUserByProvider } from "../helpers/users";
 import { createFrontChannelAuthResponse } from "./common";
 import { getEnrichedClient } from "../helpers/client";
 import {
+  getOrCreateUsernamePasswordUser,
   isUsernamePasswordProvider,
   resolveUsernamePasswordProvider,
 } from "../utils/username-password-provider";
@@ -77,14 +78,22 @@ export async function ticketAuth(
       ? StrategyType.DATABASE
       : StrategyType.PASSWORDLESS;
 
-  let user = await getOrCreateUserByProvider(ctx, {
-    username: loginSession.authParams.username,
-    provider,
-    client,
-    connection: realm,
-    isSocial: false,
-    ip: ctx.var.ip,
-  });
+  let user =
+    realm === Strategy.USERNAME_PASSWORD
+      ? await getOrCreateUsernamePasswordUser(ctx, {
+          client,
+          username: loginSession.authParams.username,
+          connection: realm,
+          ip: ctx.var.ip,
+        })
+      : await getOrCreateUserByProvider(ctx, {
+          username: loginSession.authParams.username,
+          provider,
+          client,
+          connection: realm,
+          isSocial: false,
+          ip: ctx.var.ip,
+        });
 
   ctx.set("username", user.email || user.phone_number);
   ctx.set("user_id", user.user_id);

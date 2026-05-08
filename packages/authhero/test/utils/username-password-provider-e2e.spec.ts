@@ -54,7 +54,7 @@ describe("username/password provider migration", () => {
     });
     await env.data.passwords.create("tenantId", {
       user_id: "auth2|legacy-user",
-      password: await bcryptjs.hash("CorrectPassword123!", 10),
+      password: await bcryptjs.hash("CorrectPassword123!", 1),
       algorithm: "bcrypt",
     });
 
