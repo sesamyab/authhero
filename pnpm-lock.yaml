@@ -146,9 +146,6 @@ importers:
       '@authhero/adapter-interfaces':
         specifier: ^0.144.0
         version: 0.144.0(@hono/zod-openapi@0.19.10(hono@4.11.1)(zod@3.25.76))
-      '@authhero/widget':
-        specifier: ^0.19.1
-        version: 0.19.1(@hono/zod-openapi@0.19.10(hono@4.11.1)(zod@3.25.76))
       '@mui/icons-material':
         specifier: ^7.3.9
         version: 7.3.9(@mui/material@7.3.9(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react@19.2.4)
@@ -940,9 +937,6 @@ packages:
     resolution: {integrity: sha512-EjBgim2/kA3o+SBYNfU4yLaya9R5Td6qB5hixKXqe7uvmgfXgLQif4Rnt6M0FauUzAGAgC300CaleFbWL+e5lg==}
     peerDependencies:
       '@hono/zod-openapi': ^0.19.2
-
-  '@authhero/widget@0.19.1':
-    resolution: {integrity: sha512-QP3qwqt2oPyr5oD5UWy1mYWr/JTzE9Kdf8ri/+se0Th+lsugq49GObQsCnpwFrujH+ht4qW8C/PSY0+aAOhjeg==}
 
   '@aws-crypto/sha256-browser@5.2.0':
     resolution: {integrity: sha512-AXfN/lGotSQwu6HNcEsIASo7kWXZ5HYWvfOmSNKDsEqC4OashTp8alTmaz+F7TC2L083SFv5RdB+qU3Vs1kZqw==}
@@ -9708,12 +9702,6 @@ snapshots:
     dependencies:
       '@hono/zod-openapi': 0.19.10(hono@4.11.1)(zod@3.25.76)
       nanoid: 5.1.6
-
-  '@authhero/widget@0.19.1(@hono/zod-openapi@0.19.10(hono@4.11.1)(zod@3.25.76))':
-    dependencies:
-      '@authhero/adapter-interfaces': 0.144.0(@hono/zod-openapi@0.19.10(hono@4.11.1)(zod@3.25.76))
-    transitivePeerDependencies:
-      - '@hono/zod-openapi'
 
   '@aws-crypto/sha256-browser@5.2.0':
     dependencies:

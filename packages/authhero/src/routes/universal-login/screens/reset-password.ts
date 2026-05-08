@@ -8,8 +8,7 @@ import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
 import { LogTypes, Strategy } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import bcryptjs from "bcryptjs";
-import { getUserByProvider } from "../../../helpers/users";
-import { USERNAME_PASSWORD_PROVIDER } from "../../../constants";
+import { getUsernamePasswordUser } from "../../../utils/username-password-provider";
 import { logMessage } from "../../../helpers/logging";
 import {
   getPasswordPolicy,
@@ -35,11 +34,10 @@ export async function executePasswordReset(params: {
   const { env } = ctx;
 
   // Get the user
-  const user = await getUserByProvider({
-    userAdapter: env.data.users,
+  const user = await getUsernamePasswordUser({
+    env,
     tenant_id: client.tenant.id,
     username,
-    provider: USERNAME_PASSWORD_PROVIDER,
   });
 
   if (!user) {

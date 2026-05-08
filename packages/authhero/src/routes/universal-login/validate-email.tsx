@@ -3,9 +3,12 @@ import { LogTypes } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
 import { HTTPException } from "hono/http-exception";
-import { getUserByProvider, getUsersByEmail } from "../../helpers/users";
+import { getUsersByEmail } from "../../helpers/users";
 import { logMessage } from "../../helpers/logging";
-import { USERNAME_PASSWORD_PROVIDER } from "../../constants";
+import {
+  getUsernamePasswordUser,
+  isUsernamePasswordProvider,
+} from "../../utils/username-password-provider";
 import EmailValidatedPage from "../../components/EmailValidatedPage";
 
 export const validateEmailRoutes = new OpenAPIHono<{
@@ -57,11 +60,10 @@ export const validateEmailRoutes = new OpenAPIHono<{
         });
       }
 
-      const user = await getUserByProvider({
-        userAdapter: env.data.users,
+      const user = await getUsernamePasswordUser({
+        env,
         tenant_id: client.tenant.id,
-        username: username,
-        provider: USERNAME_PASSWORD_PROVIDER,
+        username,
       });
       if (!user) {
         logMessage(ctx, client.tenant.id, {
@@ -103,7 +105,7 @@ export const validateEmailRoutes = new OpenAPIHono<{
 
       const usersWithSameEmailButNotUsernamePassword =
         usersWithSameEmail.filter(
-          (user) => user.provider !== USERNAME_PASSWORD_PROVIDER,
+          (user) => !isUsernamePasswordProvider(user.provider),
         );
 
       if (usersWithSameEmailButNotUsernamePassword.length > 0) {

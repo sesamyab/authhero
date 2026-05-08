@@ -2,7 +2,6 @@ import { Context } from "hono";
 import bcryptjs from "bcryptjs";
 import { logMessage } from "../helpers/logging";
 import { JSONHTTPException } from "../errors/json-http-exception";
-import { USERNAME_PASSWORD_PROVIDER } from "../constants";
 import {
   AuthParams,
   LoginSession,
@@ -13,7 +12,10 @@ import {
 } from "@authhero/adapter-interfaces";
 import { EnrichedClient } from "../helpers/client";
 import { Bindings, GrantFlowUserResult, Variables } from "../types";
-import { getOrCreateUserByProvider, getUserByProvider } from "../helpers/users";
+import {
+  getOrCreateUsernamePasswordUser,
+  getUsernamePasswordUser,
+} from "../utils/username-password-provider";
 import { AuthError } from "../types/AuthError";
 import {
   sendResetPassword,
@@ -33,6 +35,12 @@ import {
   getPasswordPolicy,
   hashPassword,
 } from "../helpers/password-policy";
+import {
+  findConnectionByName,
+  findImportModeDbConnection,
+  getAuth0SourceConnection,
+} from "../utils/auth0-source-connection";
+import { attemptUpstreamPasswordFallback } from "./auth0-migration";
 
 async function recordFailedLogin(
   data: Bindings["data"],
@@ -122,25 +130,54 @@ export async function passwordGrant(
     }
   }
 
-  const user = await getUserByProvider({
-    userAdapter: ctx.env.data.users,
+  let user = await getUsernamePasswordUser({
+    env: ctx.env,
     tenant_id: client.tenant.id,
     username,
-    provider: USERNAME_PASSWORD_PROVIDER,
   });
 
+  // Lazy migration: a tenant configured with a `strategy: "auth0"` connection
+  // and at least one DB connection flagged `import_mode: true` will attempt
+  // password verification against upstream Auth0 when the user (or their
+  // password hash) is missing locally. On success, the user/password are
+  // created locally so subsequent logins are served entirely from authhero.
+  const auth0Source = await getAuth0SourceConnection(ctx, client.tenant.id);
+
   if (!user) {
-    logMessage(ctx, client.tenant.id, {
-      type: LogTypes.FAILED_LOGIN_INCORRECT_PASSWORD,
-      description: "Invalid user",
-    });
+    if (auth0Source) {
+      const importModeDbConnection = await findImportModeDbConnection(
+        ctx,
+        client.tenant.id,
+      );
+      if (importModeDbConnection) {
+        const migrated = await attemptUpstreamPasswordFallback({
+          ctx,
+          client,
+          username,
+          password: authParams.password,
+          dbConnection: importModeDbConnection,
+          source: auth0Source,
+          existingUser: null,
+        });
+        if (migrated) {
+          user = migrated;
+        }
+      }
+    }
 
-    // Note: Not marking session as FAILED - user can retry with correct credentials
+    if (!user) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_LOGIN_INCORRECT_PASSWORD,
+        description: "Invalid user",
+      });
 
-    throw new AuthError(403, {
-      message: "User not found",
-      code: "USER_NOT_FOUND",
-    });
+      // Note: Not marking session as FAILED - user can retry with correct credentials
+
+      throw new AuthError(403, {
+        message: "User not found",
+        code: "USER_NOT_FOUND",
+      });
+    }
   }
 
   const primaryUser = user.linked_to
@@ -178,9 +215,36 @@ export async function passwordGrant(
 
   const password = await data.passwords.get(client.tenant.id, user.user_id);
 
-  const valid =
+  let valid =
     password &&
     (await bcryptjs.compare(authParams.password, password.password));
+
+  if (!valid && auth0Source) {
+    // Try upstream lazy migration before recording a failed-login strike.
+    // The user already exists locally; we just don't have a matching
+    // password hash. Use the user's own connection record to read the
+    // import_mode flag — only that connection's name is acceptable as the
+    // upstream realm.
+    const userDbConnection = await findConnectionByName(
+      ctx,
+      client.tenant.id,
+      user.connection,
+    );
+    if (userDbConnection?.options?.import_mode === true) {
+      const migrated = await attemptUpstreamPasswordFallback({
+        ctx,
+        client,
+        username,
+        password: authParams.password,
+        dbConnection: userDbConnection,
+        source: auth0Source,
+        existingUser: primaryUser,
+      });
+      if (migrated) {
+        valid = true;
+      }
+    }
+  }
 
   if (!valid) {
     logMessage(ctx, client.tenant.id, {
@@ -334,12 +398,10 @@ export async function requestPasswordReset(
   verification_method?: "link" | "code",
 ) {
   // Create the user if if doesn't exist. We probably want to wait with this until the user resets the password?
-  await getOrCreateUserByProvider(ctx, {
+  await getOrCreateUsernamePasswordUser(ctx, {
     client,
     username: email,
-    provider: USERNAME_PASSWORD_PROVIDER,
     connection: Strategy.USERNAME_PASSWORD,
-    isSocial: false,
     ip: ctx.var.ip,
   });
 

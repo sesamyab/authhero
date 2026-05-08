@@ -480,13 +480,13 @@ See the [Flows documentation](/features/flows#redirect-actions) for implementati
 
 ## Migration from Auth0
 
-AuthHero makes migration straightforward:
+AuthHero supports several complementary migration mechanisms; pick the ones that match your traffic:
 
-1. **Deploy AuthHero** with your database
-2. **Import users** using the migration API
-3. **Update configuration** (domains, clients)
-4. **Use Auth0 proxy** for gradual migration
-5. **Update SDKs** to native AuthHero (optional)
+1. **Deploy AuthHero** with your database.
+2. **[Lazy migration](./lazy-migration)** — point auth traffic at AuthHero immediately. Password logins fall back to your upstream Auth0 tenant for users not yet stored locally; on success the user/hash is created on the AuthHero side. Active Auth0 sessions keep working via a refresh-token proxy until the next interactive login. No client SDK changes required.
+3. **Bulk import users** via the management API for users you want to materialise up-front.
+4. **[Auth0 proxy app](/apps/auth0-proxy/)** for legacy clients that need an Auth0-shaped HTTP surface during cutover.
+5. **Update SDKs** to native AuthHero once traffic is stable.
 
 ### Migration Benefits
 

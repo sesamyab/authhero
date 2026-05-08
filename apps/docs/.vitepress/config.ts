@@ -554,6 +554,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               link: "/auth0-comparison/account-linking",
             },
             { text: "Hooks", link: "/auth0-comparison/hooks" },
+            {
+              text: "Lazy Migration",
+              link: "/auth0-comparison/lazy-migration",
+            },
             { text: "Multi-Tenant", link: "/auth0-comparison/multi-tenant" },
             {
               text: "Redirect URLs",

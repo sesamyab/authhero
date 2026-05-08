@@ -44,6 +44,10 @@ export function LogType({ type: logType }: { type: LogTypes }) {
       return "Success Exchange Password for Access Token";
     case LogTypes.FAILED_EXCHANGE_PASSWORD_FOR_ACCESS_TOKEN:
       return "Failed Exchange Password for Access Token";
+    case LogTypes.SUCCESS_EXCHANGE_PASSWORD_OTP_FOR_ACCESS_TOKEN:
+      return "Success Exchange Password OTP for Access Token";
+    case LogTypes.INFORMATION:
+      return "Information";
     case LogTypes.SUCCESS_REVOCATION:
       return "Success Revocation";
     case LogTypes.CODE_SENT:

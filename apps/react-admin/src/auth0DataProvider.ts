@@ -457,31 +457,13 @@ export default (
       // Handle email-providers singleton resource
       if (resource === "email-providers") {
         const headers = createHeaders(tenantId);
-        try {
-          const res = await httpClient(`${apiUrl}/api/v2/emails/provider`, {
-            headers,
-          });
-          return {
-            data: [{ ...res.json, id: resource }],
-            total: 1,
-          };
-        } catch (err) {
-          // 404 when no provider is configured yet — return an empty record
-          // so the Edit form can render with default values. Anything else
-          // (401/403/5xx/network) should bubble up.
-          if (
-            err &&
-            typeof err === "object" &&
-            "status" in err &&
-            err.status === 404
-          ) {
-            return {
-              data: [{ id: resource, enabled: true, credentials: {} }],
-              total: 1,
-            };
-          }
-          throw err;
-        }
+        const res = await httpClient(`${apiUrl}/api/v2/emails/provider`, {
+          headers,
+        });
+        return {
+          data: [{ ...res.json, id: resource }],
+          total: 1,
+        };
       }
 
       // Handle custom-text resource (for individual custom text entries)

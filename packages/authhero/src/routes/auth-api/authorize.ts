@@ -20,6 +20,7 @@ import { connectionAuth } from "../../authentication-flows/connection";
 import { resumeLoginSession } from "../../authentication-flows/resume";
 import { getEnrichedClient } from "../../helpers/client";
 import { getIssuer, getUniversalLoginUrl } from "../../variables";
+import { formPostResponse } from "../../utils/form-post";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import {
   verifyRequestObject,
@@ -373,16 +374,27 @@ export const authorizeRoutes = new OpenAPIHono<{
 
       // Validate required parameter: response_type (per OIDC Core 3.1.2.1)
       if (!response_type) {
-        // If redirect_uri is valid, redirect back with error as per OIDC spec
+        // If redirect_uri is valid, deliver the error back via the same
+        // response_mode the client requested (OIDC Core 3.1.2.6):
+        // form_post errors POST to the redirect_uri, not GET.
         if (sanitizedRedirectUri) {
+          const errorParams: Record<string, string> = {
+            error: "invalid_request",
+            error_description: "Missing required parameter: response_type",
+          };
+          if (state) errorParams.state = state;
+
+          if (response_mode === AuthorizationResponseMode.FORM_POST) {
+            return formPostResponse(
+              sanitizedRedirectUri,
+              errorParams,
+              new Headers(),
+            );
+          }
+
           const redirectUrl = new URL(sanitizedRedirectUri);
-          redirectUrl.searchParams.set("error", "invalid_request");
-          redirectUrl.searchParams.set(
-            "error_description",
-            "Missing required parameter: response_type",
-          );
-          if (state) {
-            redirectUrl.searchParams.set("state", state);
+          for (const [k, v] of Object.entries(errorParams)) {
+            redirectUrl.searchParams.set(k, v);
           }
           return ctx.redirect(redirectUrl.toString());
         }

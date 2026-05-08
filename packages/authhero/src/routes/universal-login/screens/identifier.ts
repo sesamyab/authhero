@@ -17,6 +17,7 @@ import {
 } from "../../../helpers/users";
 import { validateSignupEmail } from "../../../hooks";
 import { getConnectionFromIdentifier } from "../../../utils/username";
+import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
 import { getLoginStrategy } from "../common";
 import generateOTP from "../../../utils/otp";
 import { sendCode, sendLink } from "../../../emails";
@@ -443,8 +444,10 @@ export const identifierScreenDefinition: ScreenDefinition = {
 
       // Parse the identifier to get connection type
       const countryCode = ctx.get("countryCode");
-      const { normalized, connectionType, provider } =
-        getConnectionFromIdentifier(username, countryCode);
+      const { normalized, connectionType } = getConnectionFromIdentifier(
+        username,
+        countryCode,
+      );
 
       if (!normalized) {
         const errorMsg = m["invalid-email-format"]();
@@ -496,12 +499,18 @@ export const identifierScreenDefinition: ScreenDefinition = {
               tenant_id: client.tenant.id,
               email: normalized,
             })
-          : await getPrimaryUserByProvider({
-              userAdapter: ctx.env.data.users,
-              tenant_id: client.tenant.id,
-              username: normalized,
-              provider,
-            });
+          : connectionType === "username"
+            ? await getPrimaryUsernamePasswordUser({
+                env: ctx.env,
+                tenant_id: client.tenant.id,
+                username: normalized,
+              })
+            : await getPrimaryUserByProvider({
+                userAdapter: ctx.env.data.users,
+                tenant_id: client.tenant.id,
+                username: normalized,
+                provider: "sms",
+              });
 
       // Check if connection is allowed
       // For "username" connectionType, allow if password connection has username identifier active

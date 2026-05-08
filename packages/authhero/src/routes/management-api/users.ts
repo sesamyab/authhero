@@ -22,7 +22,7 @@ import {
   organizationSchema,
 } from "@authhero/adapter-interfaces";
 import { getProviderFromConnection } from "../../strategies";
-import { USERNAME_PASSWORD_PROVIDER } from "../../constants";
+import { isUsernamePasswordProvider } from "../../utils/username-password-provider";
 
 const IDENTITY_PICK_KEYS = [
   "email",
@@ -517,24 +517,48 @@ export const userRoutes = new OpenAPIHono<{
           provider?: string;
         }) =>
           isPasswordConnection
-            ? u.provider === USERNAME_PASSWORD_PROVIDER
+            ? isUsernamePasswordProvider(u.provider)
             : u.connection === connection;
 
-        if (matchesTarget(userToPatch)) {
+        // For password connections, prefer a linked "auth2" identity over an
+        // "auth0" primary so the bcrypt password row lands where login reads
+        // it from. See username-password-provider.ts for the same auth2-first
+        // rule applied at READ sites.
+        const preferAuth2Linked =
+          isPasswordConnection && userToPatch.provider === "auth0";
+
+        const linkedUsers = preferAuth2Linked
+          ? await data.users.list(ctx.var.tenant_id, {
+              page: 0,
+              per_page: 100,
+              include_totals: false,
+              q: `linked_to:${user_id}`,
+            })
+          : null;
+
+        const auth2Linked = linkedUsers?.users.find(
+          (u) => u.provider === "auth2" && matchesTarget(u),
+        );
+
+        if (auth2Linked) {
+          targetUserId = auth2Linked.user_id;
+          targetUser = auth2Linked;
+        } else if (matchesTarget(userToPatch)) {
           // Target is the primary user
           targetUserId = user_id;
           targetUser = userToPatch;
         } else {
           // Look for a linked user with this connection
-          const linkedUsers = await data.users.list(ctx.var.tenant_id, {
-            page: 0,
-            per_page: 100,
-            include_totals: false,
-            q: `linked_to:${user_id}`,
-          });
+          const linkedList =
+            linkedUsers ??
+            (await data.users.list(ctx.var.tenant_id, {
+              page: 0,
+              per_page: 100,
+              include_totals: false,
+              q: `linked_to:${user_id}`,
+            }));
 
-          const linkedUserWithConnection =
-            linkedUsers.users.find(matchesTarget);
+          const linkedUserWithConnection = linkedList.users.find(matchesTarget);
 
           if (!linkedUserWithConnection) {
             throw new HTTPException(404, {
@@ -613,12 +637,13 @@ export const userRoutes = new OpenAPIHono<{
           }
         } else {
           // Find the identity that actually owns the password row — login
-          // looks up passwords by the auth2 (USERNAME_PASSWORD_PROVIDER) user,
-          // so prefer that. Fall back to any Username-Password-Authentication
-          // identity for older rows where the provider wasn't auth2.
+          // looks up passwords by the native database provider (auth2 or
+          // auth0 once a tenant is migrated), so prefer that. Fall back to
+          // any Username-Password-Authentication identity for older rows
+          // where the provider wasn't a native database provider.
           passwordIdentity =
-            userToPatch.identities?.find(
-              (i) => i.provider === USERNAME_PASSWORD_PROVIDER,
+            userToPatch.identities?.find((i) =>
+              isUsernamePasswordProvider(i.provider),
             ) ??
             userToPatch.identities?.find(
               (i) => i.connection === Strategy.USERNAME_PASSWORD,

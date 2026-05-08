@@ -169,6 +169,22 @@ export type UserLinkingModeResolver = (params: {
 
 export type UserLinkingModeOption = UserLinkingMode | UserLinkingModeResolver;
 
+/**
+ * Resolver for the per-tenant username/password provider value.
+ *
+ * The native database provider has historically been written as `"auth2"`.
+ * Returning `"auth0"` for selected tenants lets you migrate them onto the
+ * `"auth0"` provider value (matching what the legacy Auth0 import format
+ * used) one tenant at a time. Reads always accept both values, so existing
+ * `auth2|*` rows keep resolving during and after the cutover.
+ *
+ * TRANSITIONAL: this resolver and the dual-read fallback can be removed
+ * once every tenant has been migrated to a single value.
+ */
+export type UsernamePasswordProviderResolver = (params: {
+  tenant_id: string;
+}) => "auth0" | "auth2" | Promise<"auth0" | "auth2">;
+
 export interface AuthHeroConfig {
   dataAdapter: DataAdapters;
 
@@ -387,4 +403,17 @@ export interface AuthHeroConfig {
    * @default "builtin"
    */
   userLinkingMode?: UserLinkingModeOption;
+
+  /**
+   * Per-tenant override for the username/password provider value used on
+   * NEW user rows. Returning `"auth0"` for a tenant migrates new signups,
+   * password resets, etc. onto the `auth0|*` user_id format. Existing
+   * `auth2|*` rows keep working — reads accept either value.
+   *
+   * Omit to keep the legacy `"auth2"` value for every tenant.
+   *
+   * TRANSITIONAL: this hook and the dual-read fallback in the password
+   * flows can be removed once all tenants have been backfilled.
+   */
+  usernamePasswordProvider?: UsernamePasswordProviderResolver;
 }

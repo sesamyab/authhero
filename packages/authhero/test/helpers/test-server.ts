@@ -39,6 +39,9 @@ type getEnvParams = {
     onExecuteValidateRegistrationUsername?: OnExecuteValidateRegistrationUsername;
   };
   entityHooks?: EntityHooksConfig;
+  usernamePasswordProvider?: (params: {
+    tenant_id: string;
+  }) => "auth0" | "auth2";
 };
 
 export type TestServer = {
@@ -195,11 +198,18 @@ export async function getTestServer(
     env.outbox = { enabled: true, maxRetries: 1 };
   }
 
+  if (args.usernamePasswordProvider) {
+    env.usernamePasswordProvider = args.usernamePasswordProvider;
+  }
+
   const apps = init({
     dataAdapter: dataWithServices,
     hooks: args.hooks,
     entityHooks: args.entityHooks,
     ...(args.outbox ? { outbox: { enabled: true, maxRetries: 1 } } : {}),
+    ...(args.usernamePasswordProvider
+      ? { usernamePasswordProvider: args.usernamePasswordProvider }
+      : {}),
   });
   return {
     ...apps,

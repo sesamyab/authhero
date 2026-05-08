@@ -4,7 +4,6 @@ import bcryptjs from "bcryptjs";
 import i18next from "i18next";
 import { Strategy } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
-import { USERNAME_PASSWORD_PROVIDER } from "../../constants";
 import { initJSXRoute } from "./common";
 import SignupPage from "../../components/SignUpPage";
 import {
@@ -12,7 +11,10 @@ import {
   validatePasswordPolicy,
   PasswordPolicyError,
 } from "../../helpers/password-policy";
-import { getUserByProvider } from "../../helpers/users";
+import {
+  getUsernamePasswordUser,
+  resolveUsernamePasswordProvider,
+} from "../../utils/username-password-provider";
 import { userIdGenerate } from "../../utils/user-id";
 import MessagePage from "../../components/MessagePage";
 import { sendValidateEmailAddress } from "../../emails";
@@ -227,11 +229,10 @@ export const signupRoutes = new OpenAPIHono<{
             )
           : undefined;
 
-        const existingUser = await getUserByProvider({
-          userAdapter: ctx.env.data.users,
+        const existingUser = await getUsernamePasswordUser({
+          env: ctx.env,
           tenant_id: client.tenant.id,
           username: loginSession.authParams.username,
-          provider: USERNAME_PASSWORD_PROVIDER,
         });
 
         if (existingUser) {
@@ -253,14 +254,18 @@ export const signupRoutes = new OpenAPIHono<{
           emailVerificationSession?.authParams.username ===
           loginSession.authParams.username;
 
-        const user_id = `${USERNAME_PASSWORD_PROVIDER}|${userIdGenerate()}`;
+        const provider = await resolveUsernamePasswordProvider(
+          ctx.env,
+          client.tenant.id,
+        );
+        const user_id = `${provider}|${userIdGenerate()}`;
 
         // This returns the primary user and not necessarily the one that is being created
         const newUser = await env.data.users.create(client.tenant.id, {
           user_id,
           email: loginSession.authParams.username,
           email_verified,
-          provider: USERNAME_PASSWORD_PROVIDER,
+          provider,
           connection,
           is_social: false,
         });

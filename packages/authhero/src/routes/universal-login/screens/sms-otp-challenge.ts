@@ -12,8 +12,7 @@ import { escapeHtml } from "../sanitization-utils";
 import { createTranslation } from "../../../i18n";
 import { passwordlessGrant } from "../../../authentication-flows/passwordless";
 import { createFrontChannelAuthResponse } from "../../../authentication-flows/common";
-import { getPrimaryUserByProvider } from "../../../helpers/users";
-import { USERNAME_PASSWORD_PROVIDER } from "../../../constants";
+import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
 
 /**
  * Create the sms-otp-challenge screen
@@ -267,11 +266,10 @@ export const smsOtpChallengeScreenDefinition: ScreenDefinition = {
         // Check if user has password login available
         let hasPasswordLogin = false;
         try {
-          const passwordUser = await getPrimaryUserByProvider({
-            userAdapter: ctx.env.data.users,
+          const passwordUser = await getPrimaryUsernamePasswordUser({
+            env: ctx.env,
             tenant_id: client.tenant.id,
             username: loginSession.authParams.username,
-            provider: USERNAME_PASSWORD_PROVIDER,
           });
           hasPasswordLogin = !!passwordUser;
         } catch {

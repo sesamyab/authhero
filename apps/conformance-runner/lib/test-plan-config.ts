@@ -17,6 +17,17 @@ export const LOGOUT_PLAN_VARIANT = {
 
 export const CONFIG_PLAN_NAME = "oidcc-config-certification-test-plan";
 
+export const FORM_POST_BASIC_PLAN_NAME =
+  "oidcc-formpost-basic-certification-test-plan";
+
+// Same shape as the basic plan — the form-post profile is encoded in the
+// plan name itself, not a variant. server_metadata + client_registration
+// stay aligned with the rest of the runner's configs.
+export const FORM_POST_BASIC_PLAN_VARIANT = {
+  server_metadata: "discovery",
+  client_registration: "static_client",
+} as const;
+
 // The config plan's only module (oidcc-discovery-endpoint-verification)
 // already pins server_metadata=discovery + client_registration=static_client
 // at the module level, so passing them again as plan-level variants makes
@@ -67,4 +78,8 @@ export function buildLogoutPlanConfig() {
 
 export function buildConfigPlanConfig() {
   return buildSharedClientConfig("OIDC Config");
+}
+
+export function buildFormPostBasicPlanConfig() {
+  return buildSharedClientConfig("OIDC Form Post Basic");
 }

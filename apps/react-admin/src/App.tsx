@@ -321,13 +321,6 @@ export function App(props: AppProps) {
           show={ShowGuesser}
         />
         <Resource
-          icon={SettingsIcon}
-          name="settings"
-          list={SettingsList}
-          edit={SettingsEdit}
-          options={{ hasSingle: true }}
-        />
-        <Resource
           icon={ShieldIcon}
           name="attack-protection"
           list={AttackProtectionList}
@@ -340,6 +333,13 @@ export function App(props: AppProps) {
           list={EmailProvidersList}
           edit={EmailProvidersEdit}
           options={{ hasSingle: true, label: "Email Provider" }}
+        />
+        <Resource
+          icon={SettingsIcon}
+          name="settings"
+          list={SettingsList}
+          edit={SettingsEdit}
+          options={{ hasSingle: true }}
         />
       </Admin>
     </>

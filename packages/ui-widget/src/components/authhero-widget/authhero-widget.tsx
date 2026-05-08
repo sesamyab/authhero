@@ -772,6 +772,18 @@ export class AuthheroWidget {
       });
 
       const contentType = response.headers.get("content-type");
+      if (contentType?.includes("text/html")) {
+        // OAuth 2.0 Form Post Response Mode: the server delivers the
+        // authorization response as a self-submitting HTML form (instead
+        // of a 302 + Location). The fetch response can't be rendered
+        // in-place, so swap our document for it — the form's onload
+        // handler then POSTs to the redirect_uri.
+        const html = await response.text();
+        document.open();
+        document.write(html);
+        document.close();
+        return;
+      }
       if (contentType?.includes("application/json")) {
         const result = await response.json();
 

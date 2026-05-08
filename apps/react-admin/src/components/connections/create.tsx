@@ -28,6 +28,7 @@ export function ConnectionCreate() {
             { id: Strategy.USERNAME_PASSWORD, name: "Password" },
             { id: Strategy.SMS, name: "SMS" },
             { id: Strategy.SAMLP, name: "SAML" },
+            { id: Strategy.AUTH0, name: "Auth0 (migration source)" },
           ]}
         />
       </SimpleForm>

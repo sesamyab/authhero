@@ -39,6 +39,7 @@ import {
 } from "../hooks/templatehooks";
 import { handleCredentialsExchangeCodeHooks } from "../hooks/codehooks";
 import renderAuthIframe from "../utils/authIframe";
+import { formPostResponse } from "../utils/form-post";
 import { calculateScopesAndPermissions } from "../helpers/scopes-permissions";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { GrantType } from "@authhero/adapter-interfaces";
@@ -1724,27 +1725,37 @@ export async function createFrontChannelAuthResponse(
     });
   }
 
-  // Fallback for other redirect-based responses
-  const redirectUri = new URL(authParams.redirect_uri);
-
+  // Build the response parameter set once; query/fragment/form_post all
+  // carry the same params, just transported differently per OIDC §3.1.2.5
+  // and the OAuth 2.0 Form Post Response Mode spec.
+  const responseParams: Record<string, string> = {};
   if ("code" in tokens) {
-    redirectUri.searchParams.set("code", tokens.code);
-    if (tokens.state) {
-      redirectUri.searchParams.set("state", tokens.state);
-    }
+    responseParams.code = tokens.code;
+    if (tokens.state) responseParams.state = tokens.state;
   } else if ("access_token" in tokens) {
-    redirectUri.hash = new URLSearchParams({
-      access_token: tokens.access_token,
-      ...(tokens.id_token && { id_token: tokens.id_token }),
-      token_type: tokens.token_type,
-      expires_in: tokens.expires_in.toString(),
-      ...(authParams.state && { state: authParams.state }),
-      ...(authParams.scope && { scope: authParams.scope }),
-    }).toString();
+    responseParams.access_token = tokens.access_token;
+    if (tokens.id_token) responseParams.id_token = tokens.id_token;
+    responseParams.token_type = tokens.token_type;
+    responseParams.expires_in = tokens.expires_in.toString();
+    if (authParams.state) responseParams.state = authParams.state;
+    if (authParams.scope) responseParams.scope = authParams.scope;
   } else {
     throw new JSONHTTPException(500, {
       message: "Invalid token response for implicit flow.",
     });
+  }
+
+  if (responseMode === AuthorizationResponseMode.FORM_POST) {
+    return formPostResponse(authParams.redirect_uri, responseParams, headers);
+  }
+
+  const redirectUri = new URL(authParams.redirect_uri);
+  if ("code" in tokens) {
+    for (const [k, v] of Object.entries(responseParams)) {
+      redirectUri.searchParams.set(k, v);
+    }
+  } else {
+    redirectUri.hash = new URLSearchParams(responseParams).toString();
   }
 
   headers.set("location", redirectUri.toString());

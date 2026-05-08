@@ -3,12 +3,11 @@ import { HTTPException } from "hono/http-exception";
 import bcryptjs from "bcryptjs";
 import { LogTypes, Strategy } from "@authhero/adapter-interfaces";
 import i18next from "i18next";
-import { USERNAME_PASSWORD_PROVIDER } from "../../constants";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
 import ResetPasswordPage from "../../components/ResetPasswordPage";
 import MessagePage from "../../components/MessagePage";
-import { getUserByProvider } from "../../helpers/users";
+import { getUsernamePasswordUser } from "../../utils/username-password-provider";
 import { logMessage } from "../../helpers/logging";
 import {
   getPasswordPolicy,
@@ -131,11 +130,10 @@ export const resetPasswordRoutes = new OpenAPIHono<{
 
       // Note! we don't use the primary user here. Something to be careful of
       // this means the primary user could have a totally different email address
-      const user = await getUserByProvider({
-        userAdapter: env.data.users,
+      const user = await getUsernamePasswordUser({
+        env,
         tenant_id: client.tenant.id,
         username: loginSession.authParams.username,
-        provider: USERNAME_PASSWORD_PROVIDER,
       });
 
       if (!user) {

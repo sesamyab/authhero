@@ -13,8 +13,10 @@ import { Strategy } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import { getLoginPath } from "./types";
 import { createTranslation } from "../../../i18n";
-import { getUserByProvider } from "../../../helpers/users";
-import { USERNAME_PASSWORD_PROVIDER } from "../../../constants";
+import {
+  getUsernamePasswordUser,
+  resolveUsernamePasswordProvider,
+} from "../../../utils/username-password-provider";
 import {
   getPasswordPolicy,
   validatePasswordPolicy,
@@ -262,11 +264,10 @@ export const signupScreenDefinition: ScreenDefinition = {
       }
 
       // Check if user already exists
-      const existingUser = await getUserByProvider({
-        userAdapter: ctx.env.data.users,
+      const existingUser = await getUsernamePasswordUser({
+        env: ctx.env,
         tenant_id: client.tenant.id,
         username: email,
-        provider: USERNAME_PASSWORD_PROVIDER,
       });
 
       if (existingUser) {
@@ -305,7 +306,11 @@ export const signupScreenDefinition: ScreenDefinition = {
         loginSession,
       );
 
-      const user_id = `${USERNAME_PASSWORD_PROVIDER}|${userIdGenerate()}`;
+      const provider = await resolveUsernamePasswordProvider(
+        ctx.env,
+        client.tenant.id,
+      );
+      const user_id = `${provider}|${userIdGenerate()}`;
 
       // Hash password first
       const { hash, algorithm } = await hashPassword(password);
@@ -318,7 +323,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           user_id,
           email,
           email_verified: false,
-          provider: USERNAME_PASSWORD_PROVIDER,
+          provider,
           connection,
           is_social: false,
           password: { hash, algorithm },
