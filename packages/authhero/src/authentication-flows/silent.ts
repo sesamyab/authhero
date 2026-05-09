@@ -17,6 +17,22 @@ import { createAuthTokens, createCodeData } from "./common";
 import { nanoid } from "nanoid";
 import { calculateScopesAndPermissions } from "../helpers/scopes-permissions";
 
+// OAuth 2.0 Multiple Response Type Encoding Practices §3: the default
+// response_mode is `query` only for `response_type=code`; every other
+// response_type (Implicit `token` / `id_token` / `id_token token`, Hybrid
+// `code id_token` / `code token` / `code id_token token`) defaults to
+// `fragment`. The OIDF check `RejectErrorInUrlQuery` enforces this for error
+// responses too, so we use the same predicate for success and failure paths.
+// An explicit response_mode (query/fragment) on the request always wins.
+function shouldUseFragment(
+  response_type: AuthorizationResponseType,
+  response_mode?: AuthorizationResponseMode,
+): boolean {
+  if (response_mode === AuthorizationResponseMode.QUERY) return false;
+  if (response_mode === AuthorizationResponseMode.FRAGMENT) return true;
+  return response_type !== AuthorizationResponseType.CODE;
+}
+
 interface SilentAuthParams {
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>;
   client: EnrichedClient;
@@ -104,11 +120,7 @@ export async function silentAuth({
     }
 
     const errorUrl = new URL(redirect_uri);
-    const useFragment =
-      response_type === AuthorizationResponseType.TOKEN ||
-      response_type === AuthorizationResponseType.TOKEN_ID_TOKEN;
-
-    if (useFragment) {
+    if (shouldUseFragment(response_type, response_mode)) {
       errorUrl.hash = new URLSearchParams(errorParams).toString();
     } else {
       for (const [k, v] of Object.entries(errorParams)) {
@@ -380,11 +392,7 @@ export async function silentAuth({
   }
 
   const successUrl = new URL(redirect_uri);
-  const useFragment =
-    response_type === AuthorizationResponseType.TOKEN ||
-    response_type === AuthorizationResponseType.TOKEN_ID_TOKEN;
-
-  if (useFragment) {
+  if (shouldUseFragment(response_type, response_mode)) {
     successUrl.hash = new URLSearchParams(successParams).toString();
   } else {
     for (const [k, v] of Object.entries(successParams)) {

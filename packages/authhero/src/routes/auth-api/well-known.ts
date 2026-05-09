@@ -81,9 +81,7 @@ export const wellKnownRoutes = new OpenAPIHono<{
         issuer: getIssuer(ctx.env, customDomain),
         authorization_endpoint: `${getAuthUrl(ctx.env, customDomain)}authorize`,
         token_endpoint: `${getAuthUrl(ctx.env, customDomain)}oauth/token`,
-        device_authorization_endpoint: `${getAuthUrl(ctx.env, customDomain)}oauth/device/code`,
         userinfo_endpoint: `${getAuthUrl(ctx.env, customDomain)}userinfo`,
-        mfa_challenge_endpoint: `${getAuthUrl(ctx.env, customDomain)}mfa/challenge`,
         jwks_uri: `${getAuthUrl(ctx.env, customDomain)}.well-known/jwks.json`,
         ...(dcrEnabled
           ? {
@@ -112,15 +110,7 @@ export const wellKnownRoutes = new OpenAPIHono<{
           "phone",
           "address",
         ],
-        response_types_supported: [
-          "code",
-          "token",
-          "id_token",
-          "code token",
-          "code id_token",
-          "token id_token",
-          "code token id_token",
-        ],
+        response_types_supported: ["code", "token", "id_token", "id_token token"],
         grant_types_supported: [
           "authorization_code",
           "client_credentials",

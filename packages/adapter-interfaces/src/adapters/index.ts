@@ -22,6 +22,7 @@ import { ThemesAdapter } from "./Themes";
 import { LoginSessionsAdapter } from "./LoginSessions";
 import { PromptSettingsAdapter } from "./PromptSettings";
 import { EmailProvidersAdapter } from "./EmailProviders";
+import { EmailTemplatesAdapter } from "./EmailTemplates";
 import { RefreshTokensAdapter } from "./RefreshTokens";
 import { FormsAdapter } from "./Forms";
 import { ResourceServersAdapter } from "./ResourceServers";
@@ -65,6 +66,7 @@ export interface DataAdapters {
   connections: ConnectionsAdapter;
   customDomains: CustomDomainsAdapter;
   emailProviders: EmailProvidersAdapter;
+  emailTemplates: EmailTemplatesAdapter;
   flows: FlowsAdapter;
   forms: FormsAdapter;
   geo?: GeoAdapter;

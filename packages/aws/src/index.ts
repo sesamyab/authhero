@@ -26,6 +26,7 @@ import { createLogsAdapter } from "./adapters/logs";
 import { createThemesAdapter } from "./adapters/themes";
 import { createPromptSettingsAdapter } from "./adapters/promptSettings";
 import { createEmailProvidersAdapter } from "./adapters/emailProviders";
+import { createEmailTemplatesAdapter } from "./adapters/emailTemplates";
 import { createRefreshTokensAdapter } from "./adapters/refreshTokens";
 import { createFormsAdapter } from "./adapters/forms";
 import { createResourceServersAdapter } from "./adapters/resourceServers";
@@ -83,6 +84,7 @@ export default function createAdapters(
     connections: createConnectionsAdapter(ctx),
     customDomains: createCustomDomainsAdapter(ctx),
     emailProviders: createEmailProvidersAdapter(ctx),
+    emailTemplates: createEmailTemplatesAdapter(ctx),
     flows: createFlowsAdapter(ctx),
     forms: createFormsAdapter(ctx),
     hookCode: createHookCodeAdapter(ctx),

@@ -77,6 +77,7 @@ export * from "./User";
 export * from "./Theme";
 export * from "./PromptSetting";
 export * from "./EmailProvider";
+export * from "./EmailTemplate";
 export * from "./RefreshTokens";
 export * from "./SmsProvider";
 export * from "./ResourceServer";

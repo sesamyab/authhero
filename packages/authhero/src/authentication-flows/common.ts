@@ -41,6 +41,7 @@ import { handleCredentialsExchangeCodeHooks } from "../hooks/codehooks";
 import renderAuthIframe from "../utils/authIframe";
 import { formPostResponse } from "../utils/form-post";
 import { calculateScopesAndPermissions } from "../helpers/scopes-permissions";
+import { buildScopeClaims } from "../helpers/scope-claims";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { GrantType } from "@authhero/adapter-interfaces";
 import {
@@ -154,8 +155,29 @@ export async function createAuthTokens(
     organization,
     permissions,
     impersonatingUser,
-    auth_time,
   } = params;
+
+  // OIDC Core §2: auth_time is REQUIRED in the ID Token whenever max_age was
+  // used in the authorization request, and OPTIONAL otherwise. Code-flow and
+  // silent-auth callers compute it themselves and pass it in; the universal-
+  // login implicit/hybrid path goes straight from credential submission into
+  // createAuthTokens without that step. To keep the ID Token compliant for
+  // every flow, fall back to looking up the session's `authenticated_at`
+  // here when no auth_time was supplied. Otherwise the OIDF check
+  // `CheckIdTokenAuthTimeClaimPresentDueToMaxAge` fails for implicit
+  // `max_age` modules.
+  let auth_time = params.auth_time;
+  if (auth_time === undefined && session_id && ctx.var.tenant_id) {
+    const session = await ctx.env.data.sessions.get(
+      ctx.var.tenant_id,
+      session_id,
+    );
+    if (session?.authenticated_at) {
+      auth_time = Math.floor(
+        new Date(session.authenticated_at).getTime() / 1000,
+      );
+    }
+  }
 
   const { signingKeys } = await ctx.env.data.keys.list({
     q: "type:jwt_signing",
@@ -222,23 +244,29 @@ export async function createAuthTokens(
   // Following OIDC Core spec section 5.4 for standard claims
   const scopes = authParams.scope?.split(" ") || [];
   const hasOpenidScope = scopes.includes("openid");
-  const hasProfileScope = scopes.includes("profile");
-  const hasEmailScope = scopes.includes("email");
 
-  // Per OIDC Core section 5.4: Claims requested by profile, email, address, and phone
-  // scopes are returned from the UserInfo Endpoint, EXCEPT for response_type=id_token
-  // where there is no access token issued to access the userinfo endpoint.
+  // Per OIDC Core section 5.4: Claims requested by profile, email, address, and
+  // phone scopes are returned from the UserInfo Endpoint by default. But for
+  // any flow that issues an ID Token directly at the authorization endpoint
+  // (Implicit `id_token` / `id_token token` and Hybrid `code id_token` /
+  // `code id_token token`), the standard Claims for those scopes MUST be
+  // returned in that ID Token — the OIDF conformance suite enforces this via
+  // `VerifyScopesReturnedInAuthorizationEndpointIdToken`.
   //
-  // However, Auth0's behavior differs: it always includes profile/email claims in the
-  // ID token when those scopes are requested, regardless of response_type.
+  // Auth0's behavior differs: it always includes scope claims in the ID Token
+  // when those scopes are requested, regardless of response_type.
   //
-  // We use the client's auth0_conformant flag to determine which behavior to use:
-  // - auth0_conformant=true (default): Auth0-compatible behavior (always include claims in ID token)
-  // - auth0_conformant=false: Strict OIDC 5.4 compliance (claims only in ID token for response_type=id_token)
-  const isIdTokenOnlyFlow =
-    authParams.response_type === AuthorizationResponseType.ID_TOKEN;
-  const shouldIncludeProfileClaimsInIdToken =
-    client.auth0_conformant !== false || isIdTokenOnlyFlow;
+  // We use the client's auth0_conformant flag to choose:
+  // - auth0_conformant=true (default): Auth0-compatible (always include in ID Token)
+  // - auth0_conformant=false: Strict OIDC 5.4 (include only when an ID Token is
+  //   issued at the authorization endpoint)
+  const idTokenIssuedAtAuthorizationEndpoint = (
+    authParams.response_type ?? ""
+  )
+    .split(" ")
+    .includes("id_token");
+  const shouldIncludeScopeClaimsInIdToken =
+    client.auth0_conformant !== false || idTokenIssuedAtAuthorizationEndpoint;
 
   const idTokenPayload =
     user && hasOpenidScope
@@ -260,26 +288,11 @@ export async function createAuthTokens(
           ...(authParams.acr_values
             ? { acr: authParams.acr_values.split(" ")[0] }
             : {}),
-          // Profile scope claims - include based on auth0_conformant setting
-          // For auth0_conformant clients (default): always include when profile scope is requested
-          // For strict OIDC clients: only include for response_type=id_token (per OIDC 5.4)
-          ...(hasProfileScope &&
-            shouldIncludeProfileClaimsInIdToken && {
-              given_name: user.given_name,
-              family_name: user.family_name,
-              nickname: user.nickname,
-              picture: user.picture,
-              locale: user.locale,
-              name: user.name,
-            }),
-          // Email scope claims - include based on auth0_conformant setting
-          // For auth0_conformant clients (default): always include when email scope is requested
-          // For strict OIDC clients: only include for response_type=id_token (per OIDC 5.4)
-          ...(hasEmailScope &&
-            shouldIncludeProfileClaimsInIdToken && {
-              email: user.email,
-              email_verified: user.email_verified,
-            }),
+          // OIDC Core 5.4 scope-driven claims (profile, email, address, phone),
+          // shared with /userinfo via buildScopeClaims so the two stay in sync.
+          ...(shouldIncludeScopeClaimsInIdToken
+            ? buildScopeClaims(user, scopes)
+            : {}),
           act: impersonatingUser
             ? { sub: impersonatingUser.user_id }
             : undefined,

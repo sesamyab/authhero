@@ -3,6 +3,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Bindings, Variables } from "../../types";
 import { JSONHTTPException } from "../../errors/json-http-exception";
 import { validateJwtToken, JwtPayload } from "../../utils/jwt";
+import { buildScopeClaims } from "../../helpers/scope-claims";
 import type { User } from "@authhero/adapter-interfaces";
 
 // OIDC Address Claim schema per OIDC Core 5.1.1
@@ -45,74 +46,13 @@ const userInfoSchema = z.object({
 
 type UserInfoResponse = z.infer<typeof userInfoSchema>;
 
-/**
- * Builds the userinfo response based on the requested scopes per OIDC spec.
- * @param user The user object from the database
- * @param scopes Array of scope strings from the access token
- * @returns Filtered userinfo object containing only claims for requested scopes
- */
 function buildUserInfoResponse(user: User, scopes: string[]) {
-  // sub is the only claim always included (OIDC Core 5.3.2)
-  const userInfo: Record<string, unknown> = {
+  // sub is the only claim always included (OIDC Core 5.3.2). Scope-driven
+  // claims are shared with the ID Token via buildScopeClaims.
+  return {
     sub: user.user_id,
+    ...buildScopeClaims(user, scopes),
   };
-
-  // Add email claims if email scope is present (OIDC Core 5.4)
-  if (scopes.includes("email")) {
-    if (user.email) {
-      userInfo.email = user.email;
-    }
-    // email_verified should only be returned with email scope
-    if (user.email_verified !== undefined) {
-      userInfo.email_verified = user.email_verified;
-    }
-  }
-
-  // Add profile claims if profile scope is present
-  // Per OIDC spec, only include claims with actual values (omit null/undefined/empty)
-  if (scopes.includes("profile")) {
-    if (user.name) userInfo.name = user.name;
-    if (user.family_name) userInfo.family_name = user.family_name;
-    if (user.given_name) userInfo.given_name = user.given_name;
-    if (user.middle_name) userInfo.middle_name = user.middle_name;
-    if (user.nickname) userInfo.nickname = user.nickname;
-    // preferred_username falls back to username if not set
-    const preferredUsername = user.preferred_username || user.username;
-    if (preferredUsername) userInfo.preferred_username = preferredUsername;
-    if (user.profile) userInfo.profile = user.profile;
-    if (user.picture) userInfo.picture = user.picture;
-    if (user.website) userInfo.website = user.website;
-    if (user.gender) userInfo.gender = user.gender;
-    if (user.birthdate) userInfo.birthdate = user.birthdate;
-    if (user.zoneinfo) userInfo.zoneinfo = user.zoneinfo;
-    if (user.locale) userInfo.locale = user.locale;
-    if (user.updated_at) {
-      userInfo.updated_at = Math.floor(
-        new Date(user.updated_at).getTime() / 1000,
-      );
-    }
-  }
-
-  // Add address claim if address scope is present (OIDC Core 5.4)
-  if (scopes.includes("address")) {
-    if (user.address) {
-      userInfo.address = user.address;
-    }
-  }
-
-  // Add phone claims if phone scope is present (OIDC Core 5.4)
-  if (scopes.includes("phone")) {
-    if (user.phone_number) {
-      userInfo.phone_number = user.phone_number;
-    }
-    // phone_number_verified is the OIDC standard claim name (OIDC Core 5.4)
-    // We store it as phone_verified internally
-    if (user.phone_verified !== undefined) {
-      userInfo.phone_number_verified = user.phone_verified;
-    }
-  }
-
-  return userInfo;
 }
 
 const postBodySchema = z.object({

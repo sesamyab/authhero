@@ -19,6 +19,7 @@ import { promptsRoutes } from "./prompts";
 import { registerComponent } from "../../middlewares/register-component";
 import { createAuthMiddleware } from "../../middlewares/authentication";
 import { emailProviderRoutes } from "./emails";
+import { emailTemplatesRoutes } from "./email-templates";
 import { sessionsRoutes } from "./sessions";
 import { refreshTokensRoutes } from "./refresh_tokens";
 import { customDomainRoutes } from "./custom-domains";
@@ -343,6 +344,7 @@ export default function create(config: AuthHeroConfig) {
     .route("/email/providers", emailProviderRoutes)
     // Auth0's official path is /emails/provider — alias so SDKs work.
     .route("/emails/provider", emailProviderRoutes)
+    .route("/email-templates", emailTemplatesRoutes)
     .route("/users", userRoutes)
     .route("/keys", keyRoutes)
     .route("/users-by-email", usersByEmailRoutes)

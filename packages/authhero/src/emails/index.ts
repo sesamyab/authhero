@@ -3,6 +3,7 @@ import { t } from "i18next";
 import { Bindings, Variables } from "../types";
 import {
   AuthParams,
+  EmailTemplateName,
   LogTypes,
   Strategy,
   User,
@@ -12,6 +13,7 @@ import { logMessage } from "../helpers/logging";
 import { getAuthUrl, getUniversalLoginUrl } from "../variables";
 import { getConnectionFromIdentifier } from "../utils/username";
 import { getEnrichedClient } from "../helpers/client";
+import { renderEmailTemplate } from "./render";
 
 export type SendEmailParams = {
   to: string;
@@ -20,6 +22,7 @@ export type SendEmailParams = {
   text?: string;
   template: string;
   data: Record<string, string>;
+  from?: string;
 };
 
 export async function sendEmail(
@@ -42,7 +45,10 @@ export async function sendEmail(
   await emailService.send({
     emailProvider,
     ...params,
-    from: emailProvider.default_from_address || `login@${ctx.env.ISSUER}`,
+    from:
+      params.from ||
+      emailProvider.default_from_address ||
+      `login@${ctx.env.ISSUER}`,
   });
 }
 
@@ -110,6 +116,83 @@ async function buildEmailContext(
   return { tenant, logo, buttonColor, options };
 }
 
+interface SendTemplatedEmailParams {
+  to: string;
+  templateName: EmailTemplateName;
+  /**
+   * Mailgun-side template name preserved for tenants still rendering on the
+   * provider. Passed through to `EmailServiceAdapter.send()` regardless of
+   * whether we render in-process.
+   */
+  legacyTemplate: string;
+  fallbackSubject: string;
+  fallbackHtml: string;
+  tenant: { id: string; friendly_name: string; support_url?: string };
+  branding: { logo: string; primary_color: string };
+  url?: string;
+  code?: string;
+  data: Record<string, string>;
+}
+
+/**
+ * Resolve the tenant's email template (override or bundled default), render
+ * with Liquid, and dispatch via `sendEmail`. Falls back to caller-provided
+ * inline subject/html when no template resolves. Returns false when the
+ * tenant has explicitly disabled the template (caller should treat the send
+ * as suppressed).
+ */
+async function sendTemplatedEmail(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  params: SendTemplatedEmailParams,
+): Promise<boolean> {
+  const provider = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
+  const fallbackFrom =
+    provider?.default_from_address || `login@${ctx.env.ISSUER}`;
+
+  const vars: Record<string, unknown> = {
+    ...params.data,
+    tenant: {
+      id: params.tenant.id,
+      friendly_name: params.tenant.friendly_name,
+      support_url: params.tenant.support_url || "",
+    },
+    branding: {
+      logo: params.branding.logo,
+      primary_color: params.branding.primary_color,
+    },
+    url: params.url,
+    code: params.code,
+  };
+
+  const result = await renderEmailTemplate(
+    ctx,
+    params.templateName,
+    vars,
+    fallbackFrom,
+  );
+
+  if (result.kind === "disabled") {
+    return false;
+  }
+
+  const subject =
+    result.kind === "rendered" ? result.email.subject : params.fallbackSubject;
+  const html =
+    result.kind === "rendered" ? result.email.html : params.fallbackHtml;
+  const from =
+    result.kind === "rendered" ? result.email.from : fallbackFrom;
+
+  await sendEmail(ctx, {
+    to: params.to,
+    subject,
+    html,
+    template: params.legacyTemplate,
+    data: params.data,
+    from,
+  });
+  return true;
+}
+
 export async function sendResetPassword(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   to: string,
@@ -126,29 +209,43 @@ export async function sendResetPassword(
   // the auth0 link looks like this:  https://auth.sesamy.dev/u/reset-verify?ticket={ticket}#
   const passwordResetUrl = `${getUniversalLoginUrl(ctx.env)}reset-password?state=${state}&code=${code}`;
 
-  await sendEmail(ctx, {
+  const data: Record<string, string> = {
+    vendorName: tenant.friendly_name,
+    logo,
+    passwordResetUrl,
+    supportUrl: tenant.support_url || "https://support.sesamy.com",
+    buttonColor,
+    password_reset_title: t("password_reset_title", options),
+    passwordResetTitle: t("password_reset_title", options),
+    reset_password_email_click_to_reset: t(
+      "reset_password_email_click_to_reset",
+      options,
+    ),
+    resetPasswordEmailClickToReset: t(
+      "reset_password_email_click_to_reset",
+      options,
+    ),
+    reset_password_email_reset: t("reset_password_email_reset", options),
+    resetPasswordEmailReset: t("reset_password_email_reset", options),
+    support_info: t("support_info", options),
+    supportInfo: t("support_info", options),
+    contact_us: t("contact_us", options),
+    contactUs: t("contact_us", options),
+    copyright: t("copyright", options),
+    tenantName: tenant.friendly_name,
+    tenantId: tenant.id,
+  };
+
+  await sendTemplatedEmail(ctx, {
     to,
-    subject: t("reset_password_title", options),
-    html: `Click here to reset your password: ${getUniversalLoginUrl(ctx.env)}reset-password?state=${state}&code=${code}`,
-    template: "auth-password-reset",
-    data: {
-      vendorName: tenant.friendly_name,
-      logo,
-      passwordResetUrl,
-      supportUrl: tenant.support_url || "https://support.sesamy.com",
-      buttonColor,
-      passwordResetTitle: t("password_reset_title", options),
-      resetPasswordEmailClickToReset: t(
-        "reset_password_email_click_to_reset",
-        options,
-      ),
-      resetPasswordEmailReset: t("reset_password_email_reset", options),
-      supportInfo: t("support_info", options),
-      contactUs: t("contact_us", options),
-      copyright: t("copyright", options),
-      tenantName: tenant.friendly_name,
-      tenantId: tenant.id,
-    },
+    templateName: "reset_email",
+    legacyTemplate: "auth-password-reset",
+    fallbackSubject: t("reset_password_title", options),
+    fallbackHtml: `Click here to reset your password: ${passwordResetUrl}`,
+    tenant,
+    branding: { logo, primary_color: buttonColor },
+    url: passwordResetUrl,
+    data,
   });
 
   // Log the password reset request
@@ -169,29 +266,44 @@ export async function sendResetPasswordCode(
     language,
   );
 
-  await sendEmail(ctx, {
-    to,
-    subject: t("reset_password_title", options),
-    html: `Your password reset code is: ${code}`,
-    template: "auth-code",
-    data: {
+  const data: Record<string, string> = {
+    code,
+    vendorName: tenant.friendly_name,
+    logo,
+    supportUrl: tenant.support_url || "https://support.sesamy.com",
+    buttonColor,
+    welcomeToYourAccount: t("password_reset_title", options),
+    password_reset_title: t("password_reset_title", options),
+    linkEmailClickToLogin: t("reset_password_email_click_to_reset", options),
+    reset_password_email_click_to_reset: t(
+      "reset_password_email_click_to_reset",
+      options,
+    ),
+    linkEmailLogin: t("reset_password_email_reset", options),
+    reset_password_email_reset: t("reset_password_email_reset", options),
+    linkEmailOrEnterCode: t("link_email_or_enter_code", {
+      ...options,
       code,
-      vendorName: tenant.friendly_name,
-      logo,
-      supportUrl: tenant.support_url || "https://support.sesamy.com",
-      buttonColor,
-      welcomeToYourAccount: t("password_reset_title", options),
-      linkEmailClickToLogin: t("reset_password_email_click_to_reset", options),
-      linkEmailLogin: t("reset_password_email_reset", options),
-      linkEmailOrEnterCode: t("link_email_or_enter_code", {
-        ...options,
-        code,
-      }),
-      codeValid30Mins: t("code_valid_30_minutes", options),
-      supportInfo: t("support_info", options),
-      contactUs: t("contact_us", options),
-      copyright: t("copyright", options),
-    },
+    }),
+    codeValid30Mins: t("code_valid_30_minutes", options),
+    code_valid_30_minutes: t("code_valid_30_minutes", options),
+    support_info: t("support_info", options),
+    supportInfo: t("support_info", options),
+    contact_us: t("contact_us", options),
+    contactUs: t("contact_us", options),
+    copyright: t("copyright", options),
+  };
+
+  await sendTemplatedEmail(ctx, {
+    to,
+    templateName: "reset_email_by_code",
+    legacyTemplate: "auth-code",
+    fallbackSubject: t("reset_password_title", options),
+    fallbackHtml: `Your password reset code is: ${code}`,
+    tenant,
+    branding: { logo, primary_color: buttonColor },
+    code,
+    data,
   });
 
   logMessage(ctx, tenant.id, {
@@ -236,26 +348,40 @@ export async function sendCode(
   };
 
   if (connectionType === "email") {
-    await sendEmail(ctx, {
+    const data: Record<string, string> = {
+      code,
+      vendorName: tenant.friendly_name,
+      logo,
+      supportUrl: tenant.support_url || "",
+      buttonColor,
+      welcomeToYourAccount: t("welcome_to_your_account", options),
+      welcome_to_your_account: t("welcome_to_your_account", options),
+      linkEmailClickToLogin: t("link_email_click_to_login", options),
+      link_email_click_to_login: t("link_email_click_to_login", options),
+      linkEmailLogin: t("link_email_login", options),
+      link_email_login: t("link_email_login", options),
+      linkEmailOrEnterCode: t("link_email_or_enter_code", options),
+      link_email_or_enter_code: t("link_email_or_enter_code", options),
+      codeValid30Mins: t("code_valid_30_minutes", options),
+      code_valid_30_minutes: t("code_valid_30_minutes", options),
+      code_email_subject: t("code_email_subject", options),
+      supportInfo: t("support_info", options),
+      support_info: t("support_info", options),
+      contactUs: t("contact_us", options),
+      contact_us: t("contact_us", options),
+      copyright: t("copyright", options),
+    };
+
+    await sendTemplatedEmail(ctx, {
       to,
-      subject: t("code_email_subject", options),
-      html: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env)}validate-email`,
-      template: "auth-code",
-      data: {
-        code,
-        vendorName: tenant.friendly_name,
-        logo,
-        supportUrl: tenant.support_url || "",
-        buttonColor,
-        welcomeToYourAccount: t("welcome_to_your_account", options),
-        linkEmailClickToLogin: t("link_email_click_to_login", options),
-        linkEmailLogin: t("link_email_login", options),
-        linkEmailOrEnterCode: t("link_email_or_enter_code", options),
-        codeValid30Mins: t("code_valid_30_minutes", options),
-        supportInfo: t("support_info", options),
-        contactUs: t("contact_us", options),
-        copyright: t("copyright", options),
-      },
+      templateName: "verify_email_by_code",
+      legacyTemplate: "auth-code",
+      fallbackSubject: t("code_email_subject", options),
+      fallbackHtml: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env)}validate-email`,
+      tenant,
+      branding: { logo, primary_color: buttonColor },
+      code,
+      data,
     });
   } else if (connectionType === "sms") {
     await sendSms(ctx, {
@@ -330,27 +456,42 @@ export async function sendLink(
   };
 
   if (connectionType === "email") {
-    await sendEmail(ctx, {
+    const data: Record<string, string> = {
+      code,
+      vendorName: tenant.friendly_name,
+      logo,
+      supportUrl: tenant.support_url || "",
+      magicLink: magicLink.toString(),
+      buttonColor,
+      welcomeToYourAccount: t("welcome_to_your_account", options),
+      welcome_to_your_account: t("welcome_to_your_account", options),
+      linkEmailClickToLogin: t("link_email_click_to_login", options),
+      link_email_click_to_login: t("link_email_click_to_login", options),
+      linkEmailLogin: t("link_email_login", options),
+      link_email_login: t("link_email_login", options),
+      linkEmailOrEnterCode: t("link_email_or_enter_code", options),
+      link_email_or_enter_code: t("link_email_or_enter_code", options),
+      codeValid30Mins: t("code_valid_30_minutes", options),
+      code_valid_30_minutes: t("code_valid_30_minutes", options),
+      code_email_subject: t("code_email_subject", options),
+      supportInfo: t("support_info", options),
+      support_info: t("support_info", options),
+      contactUs: t("contact_us", options),
+      contact_us: t("contact_us", options),
+      copyright: t("copyright", options),
+    };
+
+    await sendTemplatedEmail(ctx, {
       to,
-      subject: t("code_email_subject", options),
-      html: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env)}validate-email`,
-      template: "auth-link",
-      data: {
-        code,
-        vendorName: tenant.friendly_name,
-        logo,
-        supportUrl: tenant.support_url || "",
-        magicLink: magicLink.toString(),
-        buttonColor,
-        welcomeToYourAccount: t("welcome_to_your_account", options),
-        linkEmailClickToLogin: t("link_email_click_to_login", options),
-        linkEmailLogin: t("link_email_login", options),
-        linkEmailOrEnterCode: t("link_email_or_enter_code", options),
-        codeValid30Mins: t("code_valid_30_minutes", options),
-        supportInfo: t("support_info", options),
-        contactUs: t("contact_us", options),
-        copyright: t("copyright", options),
-      },
+      templateName: "verify_email",
+      legacyTemplate: "auth-link",
+      fallbackSubject: t("code_email_subject", options),
+      fallbackHtml: `Click here to validate your email: ${magicLink.toString()}`,
+      tenant,
+      branding: { logo, primary_color: buttonColor },
+      url: magicLink.toString(),
+      code,
+      data,
     });
   } else if (connectionType === "sms") {
     // For SMS connection, send the magic link via SMS
@@ -395,23 +536,37 @@ export async function sendValidateEmailAddress(
     lng: language || "en",
   };
 
-  await sendEmail(ctx, {
+  const emailValidationUrl = `${getUniversalLoginUrl(ctx.env)}validate-email`;
+
+  const data: Record<string, string> = {
+    vendorName: tenant.friendly_name,
+    logo,
+    emailValidationUrl,
+    supportUrl: tenant.support_url || "https://support.sesamy.com",
+    buttonColor,
+    welcomeToYourAccount: t("welcome_to_your_account", options),
+    welcome_to_your_account: t("welcome_to_your_account", options),
+    verifyEmailVerify: t("verify_email_verify", options),
+    verify_email_verify: t("verify_email_verify", options),
+    link_email_click_to_login: t("verify_email_verify", options),
+    link_email_login: t("verify_email_verify", options),
+    supportInfo: t("support_info", options),
+    support_info: t("support_info", options),
+    contactUs: t("contact_us", options),
+    contact_us: t("contact_us", options),
+    copyright: t("copyright", options),
+  };
+
+  await sendTemplatedEmail(ctx, {
     to: user.email,
-    subject: t("welcome_to_your_account", options),
-    html: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env)}validate-email`,
-    template: "auth-verify-email",
-    data: {
-      vendorName: tenant.friendly_name,
-      logo,
-      emailValidationUrl: `${getUniversalLoginUrl(ctx.env)}validate-email`,
-      supportUrl: tenant.support_url || "https://support.sesamy.com",
-      buttonColor,
-      welcomeToYourAccount: t("welcome_to_your_account", options),
-      verifyEmailVerify: t("verify_email_verify", options),
-      supportInfo: t("support_info", options),
-      contactUs: t("contact_us", options),
-      copyright: t("copyright", options),
-    },
+    templateName: "verify_email",
+    legacyTemplate: "auth-verify-email",
+    fallbackSubject: t("welcome_to_your_account", options),
+    fallbackHtml: `Click here to validate your email: ${emailValidationUrl}`,
+    tenant,
+    branding: { logo, primary_color: buttonColor },
+    url: emailValidationUrl,
+    data,
   });
 }
 
@@ -438,25 +593,37 @@ export async function sendSignupValidateEmailAddress(
 
   const signupUrl = `${getUniversalLoginUrl(ctx.env)}signup?state=${state}&code=${code}`;
 
-  await sendEmail(ctx, {
+  const data: Record<string, string> = {
+    vendorName: tenant.friendly_name,
+    logo,
+    signupUrl,
+    setPassword: t("set_password", options),
+    registerPasswordAccount: t("register_password_account", options),
+    clickToSignUpDescription: t("click_to_sign_up_description", options),
+    supportUrl: tenant.support_url || "https://support.sesamy.com",
+    buttonColor,
+    welcomeToYourAccount: t("welcome_to_your_account", options),
+    welcome_to_your_account: t("welcome_to_your_account", options),
+    verifyEmailVerify: t("verify_email_verify", options),
+    verify_email_verify: t("verify_email_verify", options),
+    link_email_click_to_login: t("click_to_sign_up_description", options),
+    link_email_login: t("set_password", options),
+    supportInfo: t("support_info", options),
+    support_info: t("support_info", options),
+    contactUs: t("contact_us", options),
+    contact_us: t("contact_us", options),
+    copyright: t("copyright", options),
+  };
+
+  await sendTemplatedEmail(ctx, {
     to,
-    subject: t("register_password_account", options),
-    html: `Click here to register: ${signupUrl}`,
-    template: "auth-pre-signup-verification",
-    data: {
-      vendorName: tenant.friendly_name,
-      logo,
-      signupUrl,
-      setPassword: t("set_password", options),
-      registerPasswordAccount: t("register_password_account", options),
-      clickToSignUpDescription: t("click_to_sign_up_description", options),
-      supportUrl: tenant.support_url || "https://support.sesamy.com",
-      buttonColor,
-      welcomeToYourAccount: t("welcome_to_your_account", options),
-      verifyEmailVerify: t("verify_email_verify", options),
-      supportInfo: t("support_info", options),
-      contactUs: t("contact_us", options),
-      copyright: t("copyright", options),
-    },
+    templateName: "verify_email",
+    legacyTemplate: "auth-pre-signup-verification",
+    fallbackSubject: t("register_password_account", options),
+    fallbackHtml: `Click here to register: ${signupUrl}`,
+    tenant,
+    branding: { logo, primary_color: buttonColor },
+    url: signupUrl,
+    data,
   });
 }

@@ -30,6 +30,7 @@ export type EntityType =
   | "CUSTOM_DOMAIN"
   | "LOG"
   | "EMAIL_PROVIDER"
+  | "EMAIL_TEMPLATE"
   | "PROMPT_SETTING"
   | "REFRESH_TOKEN"
   | "FORM"

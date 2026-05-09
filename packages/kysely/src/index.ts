@@ -24,6 +24,7 @@ import { DataAdapters } from "@authhero/adapter-interfaces";
 import { createLoginAdapter } from "./loginSessions";
 import { createPromptSettingsAdapter } from "./promptSettings";
 import { createEmailProvidersAdapter } from "./emailProvideres";
+import { createEmailTemplatesAdapter } from "./emailTemplates";
 import { createRefreshTokensAdapter } from "./refreshTokens";
 import { createSessionCleanup } from "./cleanup";
 import { createFormsAdapter } from "./forms";
@@ -58,6 +59,7 @@ export default function createAdapters(
     codes: createCodesAdapter(db),
     connections: createConnectionsAdapter(db),
     emailProviders: createEmailProvidersAdapter(db),
+    emailTemplates: createEmailTemplatesAdapter(db),
     customDomains: createCustomDomainsAdapter(db),
     flows: createFlowsAdapter(db),
     forms: createFormsAdapter(db),

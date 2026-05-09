@@ -137,6 +137,13 @@ export const emailProviderKeys = {
   sk: () => "EMAIL_PROVIDER",
 };
 
+// Email template keys (one per (tenant, templateName))
+export const emailTemplateKeys = {
+  pk: (tenantId: string) => `TENANT#${tenantId}`,
+  sk: (templateName: string) => `EMAIL_TEMPLATE#${templateName}`,
+  skPrefix: () => "EMAIL_TEMPLATE#",
+};
+
 // Prompt settings keys (one per tenant)
 export const promptSettingsKeys = {
   pk: (tenantId: string) => `TENANT#${tenantId}`,
