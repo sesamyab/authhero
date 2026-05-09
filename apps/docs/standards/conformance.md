@@ -81,7 +81,7 @@ The conformance suite's `/token` request follows OIDC Core verbatim — no `audi
 
 ## What's covered today
 
-The runner currently drives four plans against AuthHero. Each module below maps 1-to-1 with an upstream conformance suite test (linked from the suite's web UI as `log-detail.html?log=…` on a run).
+The runner currently drives five plans against AuthHero. Each module below maps 1-to-1 with an upstream conformance suite test (linked from the suite's web UI as `log-detail.html?log=…` on a run).
 
 ::: tip
 The status column is the on-the-record outcome from the most recent green CI run. The lists are kept in sync with the spec files themselves — entries removed from a plan's `getStaticModulesForPlan()` should also disappear here, and new entries should land with a one-liner.
@@ -212,13 +212,16 @@ The OIDC RP-Initiated Logout 1.0 plan. Variant: `{ client_registration: "static_
 `pnpm conformance:report` opens the Playwright HTML report. Each row links to the suite's `log-detail.html` page for that test — useful for diagnosing failures where the suite caught a real conformance issue.
 :::
 
+### `oidcc-implicit-certification-test-plan`
+
+Newly wired up — the spec file is at [oidcc-implicit.spec.ts](https://github.com/markusahlstrand/authhero/blob/main/apps/conformance-runner/tests/oidcc-implicit.spec.ts). Variant: `{ server_metadata: "discovery", client_registration: "static_client" }` — the plan pins `response_type` per-module internally (`id_token` for some, `id_token token` for others), so passing `response_type` as a plan-level variant trips the suite's "Variant 'X' has been set by user, but test plan already sets this variant for module ..." 500. The per-module pass/fail table will be filled in once the plan has a green run on CI; until then the spec is best-effort and modules absent from the live plan are skipped via `test.skip`. Triage gaps surface as Playwright failures with the usual `log-detail.html` link.
+
 ### Out of scope (for now)
 
 The runner is structured so adding more plans is just a new spec file with a different `planName`/variant. The following are explicitly not yet wired up:
 
-- `oidcc-implicit-certification-test-plan` (implicit flow)
-- `oidcc-hybrid-certification-test-plan` (hybrid flow)
-- `oidcc-comprehensive-certification-test-plan` (full OP)
+- `oidcc-hybrid-certification-test-plan` (hybrid flow — needs `code id_token`, `code token`, `code id_token token` added to `AuthorizationResponseType`)
+- `oidcc-comprehensive-certification-test-plan` (full OP — superset of basic + implicit + hybrid)
 - `oidcc-frontchannel-rp-initiated-logout-certification-test-plan` and `oidcc-backchannel-rp-initiated-logout-certification-test-plan` (front/back-channel logout — AuthHero only ships RP-Initiated Logout today)
 - FAPI plans (require mTLS, DPoP, or signed request objects beyond the current AuthHero surface)
 

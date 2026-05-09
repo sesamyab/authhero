@@ -11,6 +11,7 @@ import { createConnectionsAdapter } from "./connections";
 import { createCustomDomainsAdapter } from "./customDomains";
 import { createCustomTextAdapter } from "./customText";
 import { createEmailProvidersAdapter } from "./emailProviders";
+import { createEmailTemplatesAdapter } from "./emailTemplates";
 import { createFlowsAdapter } from "./flows";
 import { createFormsAdapter } from "./forms";
 import { createHookCodeAdapter } from "./hookCode";
@@ -58,6 +59,7 @@ export default function createAdapters(
     customDomains: createCustomDomainsAdapter(db),
     customText: createCustomTextAdapter(db),
     emailProviders: createEmailProvidersAdapter(db),
+    emailTemplates: createEmailTemplatesAdapter(db),
     flows: createFlowsAdapter(db),
     forms: createFormsAdapter(db),
     hookCode: createHookCodeAdapter(db),

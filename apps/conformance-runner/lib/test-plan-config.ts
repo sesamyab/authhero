@@ -28,6 +28,20 @@ export const FORM_POST_BASIC_PLAN_VARIANT = {
   client_registration: "static_client",
 } as const;
 
+export const IMPLICIT_PLAN_NAME = "oidcc-implicit-certification-test-plan";
+
+// The implicit plan pins `response_type` per-module internally (each module
+// runs against a fixed response_type — `id_token` or `id_token token` — set
+// at module-registration time inside the suite). Passing `response_type` as
+// a plan-level variant trips the suite's "Variant 'X' has been set by user,
+// but test plan already sets this variant for module ..." 500. Same gotcha
+// the config plan documents above. So: server_metadata + client_registration
+// only, and let the plan choose the response_type.
+export const IMPLICIT_PLAN_VARIANT = {
+  server_metadata: "discovery",
+  client_registration: "static_client",
+} as const;
+
 // The config plan's only module (oidcc-discovery-endpoint-verification)
 // already pins server_metadata=discovery + client_registration=static_client
 // at the module level, so passing them again as plan-level variants makes
@@ -82,4 +96,8 @@ export function buildConfigPlanConfig() {
 
 export function buildFormPostBasicPlanConfig() {
   return buildSharedClientConfig("OIDC Form Post Basic");
+}
+
+export function buildImplicitPlanConfig() {
+  return buildSharedClientConfig("OIDC Implicit");
 }

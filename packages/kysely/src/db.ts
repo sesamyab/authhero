@@ -169,6 +169,21 @@ const sqlEmailProvidersSchema = z.object({
   updated_at: z.string(),
 });
 
+const sqlEmailTemplatesSchema = z.object({
+  tenant_id: z.string(),
+  template: z.string(),
+  body: z.string(),
+  from: z.string(),
+  subject: z.string(),
+  syntax: z.string(),
+  result_url: z.string().nullable().optional(),
+  url_lifetime_in_seconds: z.number().nullable().optional(),
+  include_email_in_redirect: z.number(),
+  enabled: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
 const sqlSessionSchema = sessionSchema
   .omit({
     created_at: true,
@@ -460,6 +475,7 @@ export interface Database {
   connections: z.infer<typeof sqlConnectionSchema>;
   custom_domains: z.infer<typeof sqlCustomDomainSchema>;
   email_providers: z.infer<typeof sqlEmailProvidersSchema>;
+  email_templates: z.infer<typeof sqlEmailTemplatesSchema>;
   forms: z.infer<typeof sqlFormSchema>;
   hook_code: z.infer<typeof sqlHookCodeSchema>;
   hooks: z.infer<typeof sqlHookSchema>;

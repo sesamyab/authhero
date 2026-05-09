@@ -38,6 +38,22 @@ const UI_STRATEGIES: string[] = [
   Strategy.USERNAME_PASSWORD,
 ];
 
+// OIDC Core 3.1.2.1: response_type is a space-separated SET — order doesn't
+// matter. The conformance suite sends the IANA-canonical order (`id_token
+// token`, `code id_token`, etc.); some Auth0-era clients still send the
+// alternate order (`token id_token`). Normalize to canonical form before
+// enum validation so both pass the same validation gate.
+const RESPONSE_TYPE_ORDER = ["code", "id_token", "token"];
+function canonicalizeResponseType(raw: string): string {
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if (tokens.length <= 1) return raw;
+  return [...tokens]
+    .sort(
+      (a, b) => RESPONSE_TYPE_ORDER.indexOf(a) - RESPONSE_TYPE_ORDER.indexOf(b),
+    )
+    .join(" ");
+}
+
 // Schema for the authorize query parameters (shared between query and request JWT)
 const authorizeParamsSchema = z.object({
   client_id: z.string().optional(),
@@ -47,7 +63,10 @@ const authorizeParamsSchema = z.object({
   state: z.string().optional(),
   prompt: z.string().optional(),
   response_mode: z.nativeEnum(AuthorizationResponseMode).optional(),
-  response_type: z.nativeEnum(AuthorizationResponseType).optional(),
+  response_type: z.preprocess(
+    (val) => (typeof val === "string" ? canonicalizeResponseType(val) : val),
+    z.nativeEnum(AuthorizationResponseType).optional(),
+  ),
   audience: z.string().optional(),
   connection: z.string().optional(),
   nonce: z.string().optional(),

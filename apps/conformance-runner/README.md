@@ -45,9 +45,11 @@ Run a single plan's tests with Playwright's filename filter:
 pnpm conformance:run -- tests/oidcc-config.spec.ts
 ```
 
-The runner currently drives three plans, each in its own spec file:
+The runner currently drives five plans, each in its own spec file:
 
 - `oidcc-basic-certification-test-plan` ([oidcc-basic.spec.ts](tests/oidcc-basic.spec.ts))
+- `oidcc-formpost-basic-certification-test-plan` ([oidcc-form-post-basic.spec.ts](tests/oidcc-form-post-basic.spec.ts))
+- `oidcc-implicit-certification-test-plan` ([oidcc-implicit.spec.ts](tests/oidcc-implicit.spec.ts)) — `response_type` is pinned per-module by the plan; status TBD until first green run
 - `oidcc-rp-initiated-logout-certification-test-plan` ([oidcc-rp-initiated-logout.spec.ts](tests/oidcc-rp-initiated-logout.spec.ts))
 - `oidcc-config-certification-test-plan` ([oidcc-config.spec.ts](tests/oidcc-config.spec.ts)) — pure metadata verification (discovery + JWKS), no browser flow
 

@@ -551,7 +551,7 @@ describe("common", () => {
       expect(payload.name).toBeDefined();
     });
 
-    it("should NOT include profile/email claims in id_token when auth0_conformant=false and response_type is TOKEN_ID_TOKEN (strict OIDC 5.4)", async () => {
+    it("should include profile/email claims in id_token when auth0_conformant=false and response_type is TOKEN_ID_TOKEN (OIDC 5.4: id_token issued at the authorization endpoint)", async () => {
       const { env } = await getTestServer();
 
       // Update client to use strict OIDC mode
@@ -580,8 +580,12 @@ describe("common", () => {
         throw new Error("Client or user not found");
       }
 
-      // With auth0_conformant=false and response_type=TOKEN_ID_TOKEN,
-      // claims should NOT be in id_token (strict OIDC 5.4 compliance)
+      // OIDC Core 5.4 + the OIDF conformance check
+      // VerifyScopesReturnedInAuthorizationEndpointIdToken: when an ID Token is
+      // returned directly at the authorization endpoint (Implicit `id_token
+      // token` and `id_token`, Hybrid `code id_token` / `code id_token token`),
+      // the standard Claims for the requested scopes MUST be in that ID Token —
+      // even with auth0_conformant=false.
       const tokens = await createAuthTokens(ctx, {
         authParams: {
           client_id: "clientId",
@@ -598,11 +602,10 @@ describe("common", () => {
       const parsed = parseJWT(tokens.id_token!);
       const payload = parsed?.payload as Record<string, unknown>;
 
-      // Strict OIDC 5.4: claims should NOT be in id_token when access token is issued
-      expect(payload.email).toBeUndefined();
-      expect(payload.email_verified).toBeUndefined();
-      expect(payload.nickname).toBeUndefined();
-      expect(payload.name).toBeUndefined();
+      expect(payload.email).toBeDefined();
+      expect(payload.email_verified).toBeDefined();
+      expect(payload.nickname).toBeDefined();
+      expect(payload.name).toBeDefined();
 
       // Reset client back to default
       await env.data.clients.update("tenantId", "clientId", {

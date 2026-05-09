@@ -86,7 +86,7 @@ describe("tenantMiddleware", () => {
     expect(mockNext).toHaveBeenCalled();
   });
 
-  it("should set tenant_id from host subdomain when it matches a tenant ID", async () => {
+  it("should set tenant_id and custom_domain from host subdomain when it matches a tenant ID", async () => {
     // Arrange
     const host = "tenant123.authhero.com";
     const subdomain = "tenant123";
@@ -108,6 +108,55 @@ describe("tenantMiddleware", () => {
     expect(mockHeaderFn).toHaveBeenCalledWith("host");
     expect(mockGet).toHaveBeenCalledWith(subdomain);
     expect(mockSet).toHaveBeenCalledWith("tenant_id", subdomain);
+    expect(mockSet).toHaveBeenCalledWith("custom_domain", host);
+    expect(mockNext).toHaveBeenCalled();
+  });
+
+  it("should not set custom_domain when subdomain match lands on the canonical ISSUER host", async () => {
+    // Arrange
+    const host = "auth.example.com";
+    const subdomain = "auth";
+    mockCtx.env.ISSUER = "https://auth.example.com/";
+
+    mockHeaderFn.mockImplementation((header) => {
+      if (header === "x-forwarded-host") return null;
+      if (header === "host") return host;
+      return null;
+    });
+
+    mockGetByDomain.mockResolvedValue(null);
+    mockGet.mockResolvedValue({ id: subdomain });
+
+    // Act
+    await tenantMiddleware(mockCtx, mockNext);
+
+    // Assert
+    expect(mockSet).toHaveBeenCalledWith("tenant_id", subdomain);
+    expect(mockSet).not.toHaveBeenCalledWith("custom_domain", host);
+    expect(mockNext).toHaveBeenCalled();
+  });
+
+  it("should treat host vs ISSUER comparison as case-insensitive (RFC 3986)", async () => {
+    // Arrange — request lands on the canonical ISSUER host but with mixed-case host header
+    const host = "Auth.Example.com";
+    const subdomain = "auth";
+    mockCtx.env.ISSUER = "https://auth.example.com/";
+
+    mockHeaderFn.mockImplementation((header) => {
+      if (header === "x-forwarded-host") return null;
+      if (header === "host") return host;
+      return null;
+    });
+
+    mockGetByDomain.mockResolvedValue(null);
+    mockGet.mockResolvedValue({ id: subdomain });
+
+    // Act
+    await tenantMiddleware(mockCtx, mockNext);
+
+    // Assert — must NOT set custom_domain even though host casing differs from ISSUER
+    expect(mockSet).toHaveBeenCalledWith("tenant_id", subdomain);
+    expect(mockSet).not.toHaveBeenCalledWith("custom_domain", host);
     expect(mockNext).toHaveBeenCalled();
   });
 

@@ -33,9 +33,14 @@ export async function tenantMiddleware(
     return await next();
   }
 
-  // Check x-forwarded-host for custom domains (used for proxied requests)
+  // Check x-forwarded-host for custom domains (used for proxied requests).
+  // Per RFC 3986 §3.2.2 the host component is case-insensitive — normalize
+  // before lookups but preserve the original casing in ctx.var.host /
+  // custom_domain so we don't mutate values used in URL string comparisons.
   if (xForwardedHost) {
-    const domain = await ctx.env.data.customDomains.getByDomain(xForwardedHost);
+    const domain = await ctx.env.data.customDomains.getByDomain(
+      xForwardedHost.toLowerCase(),
+    );
     if (domain) {
       ctx.set("tenant_id", domain.tenant_id);
       ctx.set("custom_domain", xForwardedHost);
@@ -45,9 +50,11 @@ export async function tenantMiddleware(
 
   // Check host header for custom domains (when accessed directly, not via proxy)
   if (hostHeader) {
+    const lowerHost = hostHeader.toLowerCase();
+
     // First, check if the full host is a registered custom domain
     const customDomain =
-      await ctx.env.data.customDomains.getByDomain(hostHeader);
+      await ctx.env.data.customDomains.getByDomain(lowerHost);
     if (customDomain) {
       ctx.set("tenant_id", customDomain.tenant_id);
       ctx.set("custom_domain", hostHeader);
@@ -55,13 +62,22 @@ export async function tenantMiddleware(
     }
 
     // Otherwise, check if the subdomain matches a tenant ID
-    const hostParts = hostHeader.split(".");
+    const hostParts = lowerHost.split(".");
     if (hostParts.length > 1 && typeof hostParts[0] === "string") {
       const subdomain = hostParts[0];
       // Check if the subdomain exists as a tenant ID
       const tenant = await ctx.env.data.tenants.get(subdomain);
       if (tenant) {
         ctx.set("tenant_id", subdomain);
+        // When the request lands on a tenant subdomain (not the canonical
+        // ISSUER host), use that host for self-referencing URLs so the iss
+        // claim and openid-configuration match the host the client called.
+        // Host comparison is case-insensitive, but preserve the request's
+        // original casing in custom_domain.
+        const issuerHost = new URL(getIssuer(ctx.env)).host.toLowerCase();
+        if (lowerHost !== issuerHost) {
+          ctx.set("custom_domain", hostHeader);
+        }
       }
     }
   }

@@ -237,6 +237,33 @@ export const emailProviders = sqliteTable("email_providers", {
   updated_at: text("updated_at", { length: 35 }).notNull(),
 });
 
+export const emailTemplates = sqliteTable(
+  "email_templates",
+  {
+    tenant_id: text("tenant_id", { length: 191 })
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    template: text("template", { length: 64 }).notNull(),
+    body: text("body").notNull(),
+    from: text("from", { length: 255 }).notNull(),
+    subject: text("subject", { length: 255 }).notNull(),
+    syntax: text("syntax", { length: 16 }).notNull().default("liquid"),
+    result_url: text("result_url", { length: 2048 }),
+    url_lifetime_in_seconds: integer("url_lifetime_in_seconds"),
+    include_email_in_redirect: integer("include_email_in_redirect", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    created_at: text("created_at", { length: 35 }).notNull(),
+    updated_at: text("updated_at", { length: 35 }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenant_id, table.template] }),
+  ],
+);
+
 export const hooks = sqliteTable(
   "hooks",
   {
