@@ -20,11 +20,24 @@ function nonRevoked(keys: SigningKey[]): SigningKey[] {
     });
 }
 
+// Values are interpolated into a Lucene-style query the kysely adapter
+// tokenizes on whitespace; reject anything that could break out of the
+// `field:value` shape so a crafted tenant_id can't inject extra clauses.
+const SAFE_LUCENE_TERM = /^[A-Za-z0-9._-]+$/;
+
+function assertSafeLuceneTerm(value: string, label: string): void {
+  if (!SAFE_LUCENE_TERM.test(value)) {
+    throw new Error(`Invalid ${label}: must match ${SAFE_LUCENE_TERM}`);
+  }
+}
+
 async function listByTenant(
   keys: KeysAdapter,
   tenantId: string,
   type: string,
 ): Promise<SigningKey[]> {
+  assertSafeLuceneTerm(tenantId, "tenant_id");
+  assertSafeLuceneTerm(type, "type");
   const { signingKeys } = await keys.list({
     q: `type:${type} AND tenant_id:${tenantId}`,
     sort: { sort_by: "created_at", sort_order: "desc" },
@@ -36,6 +49,7 @@ async function listControlPlane(
   keys: KeysAdapter,
   type: string,
 ): Promise<SigningKey[]> {
+  assertSafeLuceneTerm(type, "type");
   const { signingKeys } = await keys.list({
     q: `type:${type} AND -_exists_:tenant_id`,
     sort: { sort_by: "created_at", sort_order: "desc" },
@@ -75,7 +89,14 @@ export async function resolveSigningKeys(
   const mode = await resolveSigningKeyMode(modeOption, tenantId);
 
   if (mode === "control-plane") {
-    return listControlPlane(keys, type);
+    const controlPlaneKeys = await listControlPlane(keys, type);
+    if (opts.purpose === "sign") {
+      // Collapse to a single key so the sign path returns the same shape
+      // (at most one element) regardless of mode.
+      const preferred = controlPlaneKeys[0];
+      return preferred ? [preferred] : [];
+    }
+    return controlPlaneKeys;
   }
 
   // mode === "tenant"

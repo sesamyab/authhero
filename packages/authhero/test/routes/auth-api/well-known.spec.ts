@@ -83,7 +83,13 @@ describe("jwks", () => {
 
     expect(body.keys.length).toBe(2);
 
-    expect(body.keys[1]?.kid).not.toBe(initialKeys.keys[0]?.kid);
+    const initialKid = initialKeys.keys[0]?.kid;
+    const kids = body.keys.map((k) => k.kid);
+    // The original key is still published during its grace period and a
+    // brand-new key was added — assert by membership rather than index so
+    // the test doesn't depend on the publish-side sort.
+    expect(kids).toContain(initialKid);
+    expect(kids.some((k) => k !== initialKid)).toBe(true);
   });
 
   it("should return an openid-configuration with the current issues", async () => {

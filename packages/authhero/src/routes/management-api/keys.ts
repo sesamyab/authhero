@@ -96,7 +96,11 @@ export const keyRoutes = new OpenAPIHono<{
           "tenant-id": z.string().optional(),
         }),
         params: z.object({
-          kid: z.string(),
+          // Restrict to characters that are safe to interpolate into the
+          // Lucene-style q string the kysely adapter parses; thumbprint kids
+          // are base64url so this allows real values while rejecting
+          // injection attempts.
+          kid: z.string().regex(/^[A-Za-z0-9._-]+$/),
         }),
       },
       security: [
@@ -169,23 +173,39 @@ export const keyRoutes = new OpenAPIHono<{
       const scope = await resolveKeyScope(ctx);
       // Only revoke keys in the same scope we're rotating into; otherwise
       // rotating tenant X would also wipe the shared control-plane keys
-      // every other tenant still depends on.
-      const { signingKeys } = await ctx.env.data.keys.list({
-        q: scopedKeysQuery(scope),
-      });
-      for await (const key of signingKeys) {
-        await ctx.env.data.keys.update(key.kid, {
-          revoked_at: new Date(Date.now() + DAY).toISOString(),
+      // every other tenant still depends on. The adapter already filters
+      // out already-revoked rows, so paginate through what remains and
+      // revoke every active key — a bounded per_page would silently leave
+      // older keys signing tokens after a rotation.
+      let page = 0;
+      const perPage = 100;
+      while (true) {
+        const { signingKeys } = await ctx.env.data.keys.list({
+          q: scopedKeysQuery(scope),
+          page,
+          per_page: perPage,
         });
+        for (const key of signingKeys) {
+          await ctx.env.data.keys.update(key.kid, {
+            revoked_at: new Date(Date.now() + DAY).toISOString(),
+          });
+        }
+        if (signingKeys.length < perPage) break;
+        page++;
       }
 
       const signingKey = await createX509Certificate({
         name: `CN=${ctx.env.ORGANIZATION_NAME}`,
       });
 
+      // Stamp `current_since` on the replacement so the resolveSigningKeys
+      // tiebreaker picks it over the still-in-grace older keys; without
+      // this, two unrevoked keys with no current_since fall through to a
+      // kid-desc sort whose order depends on random thumbprint bytes.
       await ctx.env.data.keys.create({
         ...signingKey,
         type: "jwt_signing",
+        current_since: new Date().toISOString(),
         ...(scope === "control-plane" ? {} : { tenant_id: scope.tenantId }),
       });
 
@@ -205,7 +225,11 @@ export const keyRoutes = new OpenAPIHono<{
           "tenant-id": z.string().optional(),
         }),
         params: z.object({
-          kid: z.string(),
+          // Restrict to characters that are safe to interpolate into the
+          // Lucene-style q string the kysely adapter parses; thumbprint kids
+          // are base64url so this allows real values while rejecting
+          // injection attempts.
+          kid: z.string().regex(/^[A-Za-z0-9._-]+$/),
         }),
       },
       security: [
@@ -252,9 +276,12 @@ export const keyRoutes = new OpenAPIHono<{
         name: `CN=${ctx.env.ORGANIZATION_NAME}`,
       });
 
+      // See rotate handler: stamp current_since so the new key sorts ahead
+      // of the just-revoked one in the resolveSigningKeys tiebreaker.
       await ctx.env.data.keys.create({
         ...signingKey,
         type: "jwt_signing",
+        current_since: new Date().toISOString(),
         ...(existing.tenant_id ? { tenant_id: existing.tenant_id } : {}),
       });
 

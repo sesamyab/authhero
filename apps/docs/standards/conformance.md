@@ -190,7 +190,7 @@ The `response_modes_supported` discovery entry includes `form_post`, so AuthHero
 
 ### `oidcc-rp-initiated-logout-certification-test-plan`
 
-The OIDC RP-Initiated Logout 1.0 plan. Variant: `{ client_registration: "static_client", response_type: "code" }`. Requires the per-tenant flag `oidc_logout.rp_logout_end_session_endpoint_discovery` to advertise `end_session_endpoint` — see [OIDC RP-Initiated Logout 1.0](/standards/oidc-rp-initiated-logout).
+The OIDC RP-Initiated Logout 1.0 plan. Variant: `{ client_registration: "static_client", response_type: "code" }`. `end_session_endpoint` is advertised by default; the per-tenant flag `oidc_logout.rp_logout_end_session_endpoint_discovery` is opt-*out* if a tenant needs to hide it — see [OIDC RP-Initiated Logout 1.0](/standards/oidc-rp-initiated-logout).
 
 ::: details All 11 logout modules (all ✅)
 | Module | What it tests | Status |
