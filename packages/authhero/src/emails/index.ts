@@ -22,6 +22,7 @@ export type SendEmailParams = {
   text?: string;
   template: string;
   data: Record<string, string>;
+  from?: string;
 };
 
 export async function sendEmail(
@@ -44,7 +45,10 @@ export async function sendEmail(
   await emailService.send({
     emailProvider,
     ...params,
-    from: emailProvider.default_from_address || `login@${ctx.env.ISSUER}`,
+    from:
+      params.from ||
+      emailProvider.default_from_address ||
+      `login@${ctx.env.ISSUER}`,
   });
 }
 
@@ -175,6 +179,8 @@ async function sendTemplatedEmail(
     result.kind === "rendered" ? result.email.subject : params.fallbackSubject;
   const html =
     result.kind === "rendered" ? result.email.html : params.fallbackHtml;
+  const from =
+    result.kind === "rendered" ? result.email.from : fallbackFrom;
 
   await sendEmail(ctx, {
     to: params.to,
@@ -182,6 +188,7 @@ async function sendTemplatedEmail(
     html,
     template: params.legacyTemplate,
     data: params.data,
+    from,
   });
   return true;
 }

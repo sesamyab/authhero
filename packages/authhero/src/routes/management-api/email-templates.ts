@@ -165,6 +165,11 @@ export const emailTemplatesRoutes = new OpenAPIHono<{
         ctx.var.tenant_id,
         templateName,
       );
+      if (!stored) {
+        throw new HTTPException(500, {
+          message: `Email template not found after upsert (tenant_id=${ctx.var.tenant_id}, template=${templateName})`,
+        });
+      }
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -173,7 +178,7 @@ export const emailTemplatesRoutes = new OpenAPIHono<{
         targetId: templateName,
       });
 
-      return ctx.json(stored ?? body);
+      return ctx.json(stored);
     },
   )
   // --------------------------------

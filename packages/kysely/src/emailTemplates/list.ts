@@ -11,6 +11,7 @@ export function list(db: Kysely<Database>) {
     const rows = await db
       .selectFrom("email_templates")
       .where("tenant_id", "=", tenant_id)
+      .orderBy("template", "asc")
       .selectAll()
       .execute();
 

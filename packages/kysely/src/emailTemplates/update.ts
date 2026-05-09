@@ -14,9 +14,7 @@ export function update(db: Kysely<Database>) {
     templateName: EmailTemplateName,
     patch: Partial<EmailTemplate>,
   ): Promise<boolean> => {
-    const set: UpdateSet = {
-      updated_at: new Date().toISOString(),
-    };
+    const set: UpdateSet = {};
 
     if (patch.body !== undefined) set.body = patch.body;
     if (patch.from !== undefined) set.from = patch.from;
@@ -32,6 +30,18 @@ export function update(db: Kysely<Database>) {
     if (patch.enabled !== undefined) {
       set.enabled = patch.enabled ? 1 : 0;
     }
+
+    if (Object.keys(set).length === 0) {
+      const existing = await db
+        .selectFrom("email_templates")
+        .where("tenant_id", "=", tenant_id)
+        .where("template", "=", templateName)
+        .select("template")
+        .executeTakeFirst();
+      return existing !== undefined;
+    }
+
+    set.updated_at = new Date().toISOString();
 
     const result = await db
       .updateTable("email_templates")

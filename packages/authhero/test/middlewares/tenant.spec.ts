@@ -86,6 +86,30 @@ describe("tenantMiddleware", () => {
     expect(mockNext).toHaveBeenCalled();
   });
 
+  it("should lowercase host for custom-domain lookup but preserve original casing in custom_domain", async () => {
+    // Arrange — RFC 3986 §3.2.2: host is case-insensitive, but we keep
+    // the request's original casing in ctx.var.custom_domain.
+    const host = "Login.Fokus.Se";
+    const tenant_id = "tenant123";
+
+    mockHeaderFn.mockImplementation((header) => {
+      if (header === "x-forwarded-host") return null;
+      if (header === "host") return host;
+      return null;
+    });
+
+    mockGetByDomain.mockResolvedValue({ tenant_id });
+
+    // Act
+    await tenantMiddleware(mockCtx, mockNext);
+
+    // Assert
+    expect(mockGetByDomain).toHaveBeenCalledWith("login.fokus.se");
+    expect(mockSet).toHaveBeenCalledWith("tenant_id", tenant_id);
+    expect(mockSet).toHaveBeenCalledWith("custom_domain", host);
+    expect(mockNext).toHaveBeenCalled();
+  });
+
   it("should set tenant_id and custom_domain from host subdomain when it matches a tenant ID", async () => {
     // Arrange
     const host = "tenant123.authhero.com";
