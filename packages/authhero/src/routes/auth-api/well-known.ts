@@ -6,7 +6,7 @@ import { OpenAPIHono, createRoute } from "@hono/zod-openapi";
 import { JWKS_CACHE_TIMEOUT_IN_SECONDS } from "../../constants";
 import { Bindings, Variables } from "../../types";
 import { getAuthUrl, getIssuer } from "../../variables";
-import { getJwksFromDatabase } from "../../utils/jwks";
+import { getJwksForPublication } from "../../utils/jwks";
 import { SUPPORTED_ID_TOKEN_SIGNING_ALGS } from "../../utils/jwk-alg";
 
 export const wellKnownRoutes = new OpenAPIHono<{
@@ -34,7 +34,11 @@ export const wellKnownRoutes = new OpenAPIHono<{
       },
     }),
     async (ctx) => {
-      const keys = await getJwksFromDatabase(ctx.env.data);
+      const keys = await getJwksForPublication(
+        ctx.env.data,
+        ctx.var.tenant_id,
+        ctx.env.signingKeyMode,
+      );
 
       return ctx.json(
         { keys },
@@ -75,8 +79,12 @@ export const wellKnownRoutes = new OpenAPIHono<{
       const tenant = await ctx.env.data.tenants.get(ctx.var.tenant_id);
       const dcrEnabled =
         tenant?.flags?.enable_dynamic_client_registration === true;
+      // OIDC RP-Initiated Logout 1.0 expects compliant OPs to advertise the
+      // end_session_endpoint via discovery. The flag is treated as opt-*out*
+      // (only `=== false` hides the endpoint) so that a tenant can fall back
+      // to the legacy /v2/logout-only behaviour explicitly if they need to.
       const endSessionEndpointDiscovery =
-        tenant?.oidc_logout?.rp_logout_end_session_endpoint_discovery === true;
+        tenant?.oidc_logout?.rp_logout_end_session_endpoint_discovery !== false;
       const result = openIDConfigurationSchema.parse({
         issuer: getIssuer(ctx.env, customDomain),
         authorization_endpoint: `${getAuthUrl(ctx.env, customDomain)}authorize`,

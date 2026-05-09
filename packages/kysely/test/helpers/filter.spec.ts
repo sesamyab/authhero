@@ -112,6 +112,23 @@ describe("luceneFilter", () => {
     expect(mockQb.where).toHaveBeenCalledWith("field2", "is not", null);
   });
 
+  it("treats a literal AND token as the implicit conjunction (no extra clause)", () => {
+    // Regression: without AND-handling the bare token would fall through to
+    // the free-text branch and emit a `kid LIKE '%AND%' OR …` clause that
+    // never matches a real signing key, breaking queries like
+    // `type:jwt_signing AND -_exists_:tenant_id` used by the per-tenant
+    // signing key resolver.
+    luceneFilter(
+      mockDb,
+      mockQb as any,
+      "type:jwt_signing AND -_exists_:tenant_id",
+      searchableColumns,
+    );
+    expect(mockQb.where).toHaveBeenCalledTimes(2);
+    expect(mockQb.where).toHaveBeenCalledWith("type", "=", "jwt_signing");
+    expect(mockQb.where).toHaveBeenCalledWith("tenant_id", "is", null);
+  });
+
   it('handles query with "=" instead of ":"', () => {
     luceneFilter(mockDb, mockQb as any, "field=value", searchableColumns);
     expect(mockQb.where).toHaveBeenCalledWith("field", "=", "value");

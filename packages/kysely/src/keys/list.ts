@@ -30,6 +30,7 @@ export function list(db: Kysely<Database>) {
     if (q) {
       query = luceneFilter(db, query, q, [
         "kid",
+        "tenant_id",
         "connection",
         "fingerprint",
         "thumbprint",

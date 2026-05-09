@@ -4,6 +4,7 @@ import { Hooks } from "./Hooks";
 import {
   EntityHooksConfig,
   OutboxConfig,
+  SigningKeyModeOption,
   UserLinkingModeOption,
   UsernamePasswordProviderResolver,
   WebhookInvoker,
@@ -82,6 +83,12 @@ export type Bindings = {
   // Returning "auth0" for a tenant migrates that tenant onto the "auth0"
   // provider value. TRANSITIONAL — remove once all tenants are backfilled.
   usernamePasswordProvider?: UsernamePasswordProviderResolver;
+
+  // Per-tenant signing-key bucket selector. When unset, every tenant
+  // uses the shared control-plane keys (legacy behavior). Returning
+  // "tenant" for a tenant_id switches that tenant onto its own keys
+  // with control-plane fallback while a tenant key is provisioned.
+  signingKeyMode?: SigningKeyModeOption;
 
   /**
    * Allow outbound fetches (jwks_uri, request_uri) to localhost / private IP

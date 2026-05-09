@@ -7,9 +7,11 @@ import {
 import { TimeSpan } from "oslo";
 import { createJWT } from "oslo/jwt";
 import { Bindings, Variables } from "../types";
+import { SigningKeyModeOption } from "../types/AuthHeroConfig";
 import { createAuthTokens } from "../authentication-flows/common";
 import { pemToBuffer } from "../utils/crypto";
 import { algForCert } from "../utils/jwk-alg";
+import { resolveSigningKeys } from "./signing-keys";
 
 const AUTH_SERVICE_CLIENT_ID = "auth-service";
 const DEFAULT_EXPIRES_IN_SECONDS = 3600;
@@ -40,6 +42,12 @@ export interface CreateServiceTokenCoreParams {
   issuer: string;
   expiresInSeconds?: number;
   customClaims?: Record<string, unknown>;
+  /**
+   * Optional per-tenant signing-key bucket selector. When unset the
+   * tenant uses the shared control-plane keys (legacy behavior) which
+   * keeps existing outbox/cron callers working without any change.
+   */
+  signingKeyMode?: SigningKeyModeOption;
 }
 
 /**
@@ -74,13 +82,13 @@ export async function createServiceTokenCore(
     }
   }
 
-  const { signingKeys } = await keys.list({
-    q: "type:jwt_signing",
-    sort: { sort_by: "created_at", sort_order: "desc" },
-  });
-  const signingKey = signingKeys.find(
-    (key) => !key.revoked_at || new Date(key.revoked_at) > new Date(),
+  const resolvedKeys = await resolveSigningKeys(
+    keys,
+    tenantId,
+    params.signingKeyMode,
+    { purpose: "sign" },
   );
+  const signingKey = resolvedKeys[0];
   if (!signingKey?.pkcs7 || !signingKey.cert) {
     throw new Error("No signing key available");
   }
@@ -159,6 +167,7 @@ export function makeOutboxServiceTokenFactory(deps: {
   tenants: TenantsDataAdapter;
   keys: KeysAdapter;
   issuer: string;
+  signingKeyMode?: SigningKeyModeOption;
 }) {
   return async (tenantId: string, scope = "webhook"): Promise<string> => {
     const token = await createServiceTokenCore({
@@ -167,6 +176,7 @@ export function makeOutboxServiceTokenFactory(deps: {
       tenantId,
       scope,
       issuer: deps.issuer,
+      signingKeyMode: deps.signingKeyMode,
     });
     return token.access_token;
   };

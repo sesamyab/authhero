@@ -2,6 +2,10 @@ import { z } from "@hono/zod-openapi";
 
 export const signingKeySchema = z.object({
   kid: z.string().openapi({ description: "The key id of the signing key" }),
+  tenant_id: z.string().optional().openapi({
+    description:
+      "The tenant the key belongs to. Omitted means the key is shared / control-plane scoped.",
+  }),
   cert: z
     .string()
     .openapi({ description: "The public certificate of the signing key" }),

@@ -1,17 +1,16 @@
-import { jwksSchema, DataAdapters } from "@authhero/adapter-interfaces";
+import {
+  jwksSchema,
+  DataAdapters,
+  SigningKey,
+} from "@authhero/adapter-interfaces";
 import { X509Certificate } from "@peculiar/x509";
 import { algForJwk } from "./jwk-alg";
+import { resolveSigningKeys } from "../helpers/signing-keys";
+import { SigningKeyModeOption } from "../types/AuthHeroConfig";
 
-/**
- * Helper function to fetch JWKS keys from the database
- * This can be used when JWKS_URL is not available or when running outside Cloudflare
- */
-export async function getJwksFromDatabase(data: DataAdapters) {
-  const { signingKeys } = await data.keys.list({
-    q: "type:jwt_signing",
-  });
-  const keys = await Promise.all(
-    signingKeys.map(async (signingKey: any) => {
+async function signingKeysToJwks(signingKeys: SigningKey[]) {
+  return Promise.all(
+    signingKeys.map(async (signingKey) => {
       const importedCert = new X509Certificate(signingKey.cert);
       const publicKey = await importedCert.publicKey.export();
       const jwkKey = (await crypto.subtle.exportKey(
@@ -31,6 +30,38 @@ export async function getJwksFromDatabase(data: DataAdapters) {
       });
     }),
   );
+}
 
-  return keys;
+/**
+ * Helper function to fetch JWKS keys from the database for token *verification*.
+ *
+ * Returns every non-revoked `jwt_signing` key regardless of tenant scope so a
+ * token signed by any key (control-plane or any tenant) can be matched by kid.
+ * Use `getJwksForPublication` for the public `/.well-known/jwks.json` endpoint.
+ */
+export async function getJwksFromDatabase(data: DataAdapters) {
+  const { signingKeys } = await data.keys.list({
+    q: "type:jwt_signing",
+  });
+  return signingKeysToJwks(signingKeys);
+}
+
+/**
+ * JWKS for publication on a tenant's `/.well-known/jwks.json`. Honors the
+ * configured `signingKeyMode` and, in `"tenant"` mode, returns the union of
+ * the tenant's keys and the control-plane fallback so tokens signed by either
+ * still verify during the per-tenant key rollout.
+ */
+export async function getJwksForPublication(
+  data: DataAdapters,
+  tenantId: string,
+  modeOption: SigningKeyModeOption | undefined,
+) {
+  const signingKeys = await resolveSigningKeys(
+    data.keys,
+    tenantId,
+    modeOption,
+    { purpose: "publish" },
+  );
+  return signingKeysToJwks(signingKeys);
 }

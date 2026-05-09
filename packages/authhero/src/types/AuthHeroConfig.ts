@@ -185,6 +185,32 @@ export type UsernamePasswordProviderResolver = (params: {
   tenant_id: string;
 }) => "auth0" | "auth2" | Promise<"auth0" | "auth2">;
 
+/**
+ * Mode for which signing-key bucket a tenant uses when minting and
+ * publishing JWTs.
+ *
+ * - `"control-plane"` — tenant uses the shared control-plane keys (rows
+ *   with `tenant_id IS NULL`). This matches the legacy single-key-pool
+ *   behavior; existing data needs no migration.
+ * - `"tenant"` — tenant uses its own keys (rows with `tenant_id =
+ *   tenantId`). Falls back to the control-plane bucket if the tenant has
+ *   no non-revoked key yet, so flipping a tenant on is safe even before
+ *   a tenant key has been minted. JWKS for that tenant publishes the
+ *   union of tenant + control-plane keys so tokens signed by either set
+ *   keep verifying during rotation.
+ */
+export type SigningKeyMode = "control-plane" | "tenant";
+
+/**
+ * Resolver form for the per-tenant signing-key mode. Receives the
+ * resolved `tenant_id` and returns which bucket to use. May be async.
+ */
+export type SigningKeyModeResolver = (params: {
+  tenant_id: string;
+}) => SigningKeyMode | Promise<SigningKeyMode>;
+
+export type SigningKeyModeOption = SigningKeyMode | SigningKeyModeResolver;
+
 export interface AuthHeroConfig {
   dataAdapter: DataAdapters;
 
@@ -416,4 +442,22 @@ export interface AuthHeroConfig {
    * flows can be removed once all tenants have been backfilled.
    */
   usernamePasswordProvider?: UsernamePasswordProviderResolver;
+
+  /**
+   * Per-tenant control over which signing-key bucket a tenant uses.
+   *
+   * Accepts either a static value or a resolver that receives
+   * `{ tenant_id }` and returns the mode. Use the resolver form to
+   * migrate tenants onto their own keys one at a time.
+   *
+   * Omit (or set to `"control-plane"`) to preserve the legacy behavior
+   * where every tenant shares the control-plane keys.
+   *
+   * TRANSITIONAL: once every tenant is on `"tenant"` and the
+   * control-plane bucket has been retired, this option and the
+   * fallback path can be removed.
+   *
+   * @default "control-plane"
+   */
+  signingKeyMode?: SigningKeyModeOption;
 }

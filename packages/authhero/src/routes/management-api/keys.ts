@@ -1,12 +1,44 @@
-import { Bindings } from "../../types";
+import { Context } from "hono";
+import { Bindings, Variables } from "../../types";
 import { createX509Certificate } from "../../utils/encryption";
 import { HTTPException } from "hono/http-exception";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { signingKeySchema } from "@authhero/adapter-interfaces";
+import { resolveSigningKeyMode } from "../../helpers/signing-keys";
 
 const DAY = 1000 * 60 * 60 * 24;
 
-export const keyRoutes = new OpenAPIHono<{ Bindings: Bindings }>()
+type KeyScope = "control-plane" | { tenantId: string };
+
+// Resolve which key bucket this management-api request operates on. In the
+// default `signingKeyMode === "control-plane"` mode the tenant-id header is
+// just an auth scope — the keys themselves still live in the shared
+// control-plane bucket — so we ignore it here. Only when the tenant has
+// been switched to `"tenant"` mode do rotate/list/revoke work against the
+// tenant-scoped rows.
+async function resolveKeyScope(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+): Promise<KeyScope> {
+  const tenantId = ctx.var.tenant_id;
+  if (!tenantId) return "control-plane";
+  const mode = await resolveSigningKeyMode(ctx.env.signingKeyMode, tenantId);
+  return mode === "tenant" ? { tenantId } : "control-plane";
+}
+
+// Keys with tenant_id IS NULL are the shared control-plane bucket. The
+// kysely lucene filter matches `-_exists_:tenant_id` to that bucket and
+// `tenant_id:X` to a specific tenant.
+function scopedKeysQuery(scope: KeyScope): string {
+  if (scope === "control-plane") {
+    return "type:jwt_signing AND -_exists_:tenant_id";
+  }
+  return `type:jwt_signing AND tenant_id:${scope.tenantId}`;
+}
+
+export const keyRoutes = new OpenAPIHono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>()
   // --------------------------------
   // GET /keys
   // --------------------------------
@@ -37,13 +69,14 @@ export const keyRoutes = new OpenAPIHono<{ Bindings: Bindings }>()
       },
     }),
     async (ctx) => {
+      const scope = await resolveKeyScope(ctx);
       const { signingKeys } = await ctx.env.data.keys.list({
-        q: "type:jwt_signing",
+        q: scopedKeysQuery(scope),
       });
 
       const keys = signingKeys
-        .filter((key: any) => "cert" in key)
-        .map((key: any) => {
+        .filter((key) => "cert" in key)
+        .map((key) => {
           return key;
         });
 
@@ -86,10 +119,22 @@ export const keyRoutes = new OpenAPIHono<{ Bindings: Bindings }>()
       const { kid } = ctx.req.valid("param");
 
       const { signingKeys } = await ctx.env.data.keys.list({
-        q: "type:jwt_signing",
+        q: `type:jwt_signing AND kid:${kid}`,
       });
-      const key = signingKeys.find((k: any) => k.kid === kid);
+      const key = signingKeys.find((k) => k.kid === kid);
       if (!key) {
+        throw new HTTPException(404, { message: "Key not found" });
+      }
+
+      // Hide keys belonging to other tenants when scoped via tenant-id header.
+      // Keys with no tenant_id are the shared control-plane bucket and remain
+      // visible to all tenants — so an operator can still inspect the
+      // fallback key during a per-tenant rollout.
+      if (
+        ctx.var.tenant_id &&
+        key.tenant_id &&
+        key.tenant_id !== ctx.var.tenant_id
+      ) {
         throw new HTTPException(404, { message: "Key not found" });
       }
 
@@ -121,8 +166,12 @@ export const keyRoutes = new OpenAPIHono<{ Bindings: Bindings }>()
       },
     }),
     async (ctx) => {
+      const scope = await resolveKeyScope(ctx);
+      // Only revoke keys in the same scope we're rotating into; otherwise
+      // rotating tenant X would also wipe the shared control-plane keys
+      // every other tenant still depends on.
       const { signingKeys } = await ctx.env.data.keys.list({
-        q: "type:jwt_signing",
+        q: scopedKeysQuery(scope),
       });
       for await (const key of signingKeys) {
         await ctx.env.data.keys.update(key.kid, {
@@ -134,7 +183,11 @@ export const keyRoutes = new OpenAPIHono<{ Bindings: Bindings }>()
         name: `CN=${ctx.env.ORGANIZATION_NAME}`,
       });
 
-      await ctx.env.data.keys.create({ ...signingKey, type: "jwt_signing" });
+      await ctx.env.data.keys.create({
+        ...signingKey,
+        type: "jwt_signing",
+        ...(scope === "control-plane" ? {} : { tenant_id: scope.tenantId }),
+      });
 
       return ctx.text("OK", { status: 201 });
     },
@@ -168,6 +221,25 @@ export const keyRoutes = new OpenAPIHono<{ Bindings: Bindings }>()
     }),
     async (ctx) => {
       const { kid } = ctx.req.valid("param");
+      const tenantId = ctx.var.tenant_id;
+
+      // Look up the key first so we can mint the replacement in the same
+      // scope (tenant or control-plane) and reject revocation requests for
+      // keys owned by a different tenant.
+      const { signingKeys } = await ctx.env.data.keys.list({
+        q: `type:jwt_signing AND kid:${kid}`,
+      });
+      const existing = signingKeys.find((k) => k.kid === kid);
+      if (!existing) {
+        throw new HTTPException(404, { message: "Key not found" });
+      }
+      if (
+        tenantId &&
+        existing.tenant_id &&
+        existing.tenant_id !== tenantId
+      ) {
+        throw new HTTPException(404, { message: "Key not found" });
+      }
 
       const revoked = await ctx.env.data.keys.update(kid, {
         revoked_at: new Date().toISOString(),
@@ -180,7 +252,11 @@ export const keyRoutes = new OpenAPIHono<{ Bindings: Bindings }>()
         name: `CN=${ctx.env.ORGANIZATION_NAME}`,
       });
 
-      await ctx.env.data.keys.create({ ...signingKey, type: "jwt_signing" });
+      await ctx.env.data.keys.create({
+        ...signingKey,
+        type: "jwt_signing",
+        ...(existing.tenant_id ? { tenant_id: existing.tenant_id } : {}),
+      });
 
       return ctx.text("OK");
     },

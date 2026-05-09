@@ -134,7 +134,7 @@ describe("jwks", () => {
     );
   });
 
-  it("should NOT advertise end_session_endpoint by default (OIDC RP-Initiated Logout discovery flag off)", async () => {
+  it("should advertise end_session_endpoint by default (OIDC RP-Initiated Logout)", async () => {
     const { oauthApp, env } = await getTestServer();
     const client = testClient(oauthApp, env);
 
@@ -152,16 +152,16 @@ describe("jwks", () => {
     expect(response.status).toBe(200);
 
     const body = openIDConfigurationSchema.parse(await response.json());
-    expect(body.end_session_endpoint).toBeUndefined();
+    expect(body.end_session_endpoint).toBe("http://localhost:3000/oidc/logout");
   });
 
-  it("should advertise end_session_endpoint when oidc_logout.rp_logout_end_session_endpoint_discovery is enabled", async () => {
+  it("should hide end_session_endpoint when oidc_logout.rp_logout_end_session_endpoint_discovery is explicitly disabled", async () => {
     const { oauthApp, env } = await getTestServer();
     const client = testClient(oauthApp, env);
 
     await env.data.tenants.update("tenantId", {
       oidc_logout: {
-        rp_logout_end_session_endpoint_discovery: true,
+        rp_logout_end_session_endpoint_discovery: false,
       },
     });
 
@@ -179,7 +179,7 @@ describe("jwks", () => {
     expect(response.status).toBe(200);
 
     const body = openIDConfigurationSchema.parse(await response.json());
-    expect(body.end_session_endpoint).toBe("http://localhost:3000/oidc/logout");
+    expect(body.end_session_endpoint).toBeUndefined();
   });
 
   it("should advertise end_session_endpoint with the custom-domain host when the flag is enabled", async () => {
