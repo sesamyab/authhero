@@ -1,5 +1,64 @@
 # authhero
 
+## 4.114.0
+
+### Minor Changes
+
+- 7dd280c: Add Auth0-compatible email-template management (`/api/v2/email-templates`).
+
+  Tenants can now `POST/GET/PUT/PATCH` template overrides keyed by Auth0's
+  template names (`reset_email`, `verify_email`, `verify_email_by_code`,
+  `reset_email_by_code`, `welcome_email`, etc.). Bodies are HTML+Liquid; at send
+  time the auth flows look up the override (or fall back to a bundled default
+  authored as react-email JSX components and pre-rendered to HTML at build time)
+  and render it with `liquidjs` before handing off to `EmailServiceAdapter.send()`.
+  Tenants on Mailgun-side templates keep working — the legacy template name and
+  `data` dict are still passed through unchanged.
+
+  Schema: new `email_templates` table keyed by `(tenant_id, template)` with the
+  Auth0 fields (`body`, `from`, `subject`, `syntax`, `resultUrl`,
+  `urlLifetimeInSeconds`, `includeEmailInRedirect`, `enabled`). Both the Kysely
+  and Drizzle adapters ship parallel implementations.
+
+- 45f719e: Add opt-in per-tenant signing keys with control-plane fallback.
+  - `SigningKey` gains an optional `tenant_id` field. Existing rows (where `tenant_id IS NULL`) are treated as the shared control-plane bucket — no migration needed.
+  - The kysely keys adapter now exposes `tenant_id` as a filterable lucene field (e.g. `q: "type:jwt_signing AND tenant_id:foo"`, or `-_exists_:tenant_id` for the control-plane bucket).
+  - New `signingKeyMode` config in `init({ ... })` accepts `"control-plane" | "tenant"` or a resolver `({ tenant_id }) => …`. Mirrors the `userLinkingMode` pattern so tenants can be migrated one at a time. Default is `"control-plane"`, preserving the legacy behavior where every tenant shares one key pool.
+  - When a tenant resolves to `"tenant"`, signing prefers the tenant's own key and falls back to the control-plane key if the tenant has no non-revoked key yet. JWKS for that tenant publishes the union of both buckets so tokens minted by either still verify during rollout.
+  - The management API `GET /signing`, `POST /signing/rotate`, `PUT /signing/{kid}/revoke`, and `GET /signing/{kid}` now scope to the `tenant-id` header. Rotating with a tenant header revokes only that tenant's keys and mints the new key with `tenant_id` set; calls without the header continue to operate on the control-plane bucket.
+
+  Transitional: once every tenant has its own key, `signingKeyMode`, the control-plane fallback, and the legacy `tenant_id IS NULL` bucket can be removed.
+
+### Patch Changes
+
+- 7dd280c: Stop advertising endpoints and response types we don't actually implement in `/.well-known/openid-configuration`:
+  - Removed `device_authorization_endpoint` (`/oauth/device/code`) — no device-code route is registered.
+  - Removed `mfa_challenge_endpoint` (`/mfa/challenge`) — Universal-Login MFA lives at `/u2/mfa/*` and is a UI flow, not the headless Auth0 `mfa-challenge` API.
+  - Narrowed `response_types_supported` to `["code", "token", "id_token", "id_token token"]`. The hybrid variants (`code token`, `code id_token`, `code id_token token`) were advertised but never handled; they remain unsupported by design (see the AuthHero vs Auth0 docs for the rationale). Clients should use `code` + PKCE.
+
+  `device_authorization_endpoint` and `mfa_challenge_endpoint` are also dropped from `openIDConfigurationSchema` in `@authhero/adapter-interfaces`.
+
+- 45f719e: Advertise `end_session_endpoint` in `/.well-known/openid-configuration` by default. The `/oidc/logout` route (OIDC RP-Initiated Logout 1.0) is fully implemented and spec-compliant, but discovery used to gate it behind an opt-in flag — meaning RPs that discovered endpoints couldn't find logout at all.
+
+  The `oidc_logout.rp_logout_end_session_endpoint_discovery` tenant flag is now treated as opt-_out_: only `=== false` hides the endpoint from discovery. Existing tenants with the flag set to `true` are unaffected; existing tenants without the flag set will start advertising the endpoint (the route already worked — only its discoverability changes).
+
+  `/v2/logout` is unchanged. RPs that hit it directly continue to work.
+
+- 7dd280c: OIDC implicit-flow correctness fixes uncovered while wiring up the `oidcc-implicit-certification-test-plan`:
+  - Use the IANA-canonical ordering for combined `response_type` values: `AuthorizationResponseType.TOKEN_ID_TOKEN` is now `"id_token token"` (was `"token id_token"`), and `/.well-known/openid-configuration` advertises `response_types_supported` in the canonical OIDC Core 3.2 order. The `/authorize` endpoint canonicalises the order of any incoming `response_type` before validation, so requests using either order continue to be accepted.
+  - For clients with `auth0_conformant: false`, scope-driven claims are now included in the ID Token whenever an ID Token is issued at the authorization endpoint — i.e. for any `response_type` containing `id_token` (Implicit `id_token` / `id_token token`, Hybrid `code id_token` / `code id_token token`). Previously only the bare `id_token` response type qualified, which tripped the OIDF conformance check `VerifyScopesReturnedInAuthorizationEndpointIdToken` for `id_token token` flows.
+  - The OIDC Core 5.4 scope-to-claim mapping (profile/email/address/phone) is now shared between the ID Token and `/userinfo` via a single `buildScopeClaims` helper. Previously the ID Token only emitted a 6-claim subset of profile (`name`, `given_name`, `family_name`, `nickname`, `picture`, `locale`) and skipped address/phone entirely, while `/userinfo` emitted the full set. The ID Token now matches `/userinfo`: `middle_name`, `preferred_username`, `profile`, `website`, `gender`, `birthdate`, `zoneinfo`, `updated_at`, `address`, `phone_number`, `phone_number_verified` are all included when the corresponding scope is requested and the user has the value set.
+  - Silent-auth (`prompt=none`) responses now pick the URL fragment for any non-`code` response_type, not just `token` and `id_token token`. Previously a `prompt=none` request with `response_type=id_token` and no active session returned its `error=login_required` via the URL query, which the OIDF check `RejectErrorInUrlQuery` flags. Same predicate covers the silent-auth success path and is forward-compatible with hybrid response types.
+  - `createAuthTokens` now falls back to looking up the session's `authenticated_at` to populate `auth_time` when the caller hasn't supplied one. Code-flow and silent-auth callers already compute it, but the universal-login implicit/hybrid path went straight from credential submission to `createAuthTokens` without that step, so `oidcc-max-age-1` failed for implicit with "auth_time claim is missing from the id_token, but it is required for a authentication where the max_age parameter was used".
+
+- 7dd280c: When a request is resolved to a tenant via the host subdomain (e.g. `tenant.auth.example.com`), the tenant middleware now also sets `custom_domain` so issued tokens, the `/.well-known/openid-configuration` document, and other self-referencing URLs use the host the client actually called. If the request lands on the canonical `env.ISSUER` host the value is left unset to preserve byte-exact `iss` claims. The host-vs-ISSUER comparison is case-insensitive per RFC 3986 §3.2.2, while the original casing of the request's host header is preserved when `custom_domain` is set.
+- Updated dependencies [7dd280c]
+- Updated dependencies [7dd280c]
+- Updated dependencies [7dd280c]
+- Updated dependencies [45f719e]
+  - @authhero/adapter-interfaces@1.16.0
+  - @authhero/widget@0.32.16
+
 ## 4.113.0
 
 ### Minor Changes
