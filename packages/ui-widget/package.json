@@ -1,6 +1,6 @@
 {
   "name": "@authhero/widget",
-  "version": "0.32.15",
+  "version": "0.32.16",
   "description": "Server-Driven UI widget for AuthHero authentication flows",
   "repository": {
     "type": "git",
