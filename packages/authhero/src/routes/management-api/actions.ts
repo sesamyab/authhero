@@ -23,10 +23,15 @@ const versionsResponseSchema = z.object({
   versions: z.array(actionVersionSchema),
 });
 
+const versionsWithTotalsSchema = totalsSchema.extend({
+  versions: z.array(actionVersionSchema),
+});
+
 function snapshotActionVersion(
   data: DataAdapters,
   tenant_id: string,
   action: Action,
+  deployed: boolean,
 ): Promise<ActionVersion> {
   return data.actionVersions.create(tenant_id, {
     action_id: action.id,
@@ -35,7 +40,7 @@ function snapshotActionVersion(
     secrets: action.secrets,
     dependencies: action.dependencies,
     supported_triggers: action.supported_triggers,
-    deployed: true,
+    deployed,
   });
 }
 
@@ -139,19 +144,32 @@ export const actionsRoutes = new OpenAPIHono<{
 
       const action = await ctx.env.data.actions.create(ctx.var.tenant_id, body);
 
-      // Deploy to execution environment if supported
+      // Deploy to execution environment if supported. Track success so the
+      // snapshot reflects what's actually live in the executor — a failed
+      // deploy must not overwrite a previously-deployed snapshot.
+      let deployed = false;
       if (ctx.env.codeExecutor?.deploy) {
         try {
           await ctx.env.codeExecutor.deploy(action.id, body.code);
+          deployed = true;
         } catch (err) {
           await logMessage(ctx, ctx.var.tenant_id, {
             type: LogTypes.FAILED_HOOK,
             description: `Failed to deploy action ${action.id}: ${err instanceof Error ? err.message : String(err)}`,
           });
         }
+      } else {
+        // No executor configured — treat as deployed since there's nothing
+        // to deploy to and the action row is the source of truth.
+        deployed = true;
       }
 
-      await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, action);
+      await snapshotActionVersion(
+        ctx.env.data,
+        ctx.var.tenant_id,
+        action,
+        deployed,
+      );
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -278,15 +296,22 @@ export const actionsRoutes = new OpenAPIHono<{
       // followed by an explicit POST /deploy, but snapshotting here keeps
       // version history aligned with what's actually live in the executor.
       if (body.code !== undefined && ctx.env.codeExecutor?.deploy) {
+        let deployed = false;
         try {
           await ctx.env.codeExecutor.deploy(id, body.code);
+          deployed = true;
         } catch (err) {
           await logMessage(ctx, ctx.var.tenant_id, {
             type: LogTypes.FAILED_HOOK,
             description: `Failed to deploy action ${id}: ${err instanceof Error ? err.message : String(err)}`,
           });
         }
-        await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, action);
+        await snapshotActionVersion(
+          ctx.env.data,
+          ctx.var.tenant_id,
+          action,
+          deployed,
+        );
       }
 
       await logMessage(ctx, ctx.var.tenant_id, {
@@ -441,7 +466,8 @@ export const actionsRoutes = new OpenAPIHono<{
         deployed_at: new Date().toISOString(),
       });
 
-      await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, action);
+      // Reached only after a successful executor deploy (or none configured).
+      await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, action, true);
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -483,7 +509,10 @@ export const actionsRoutes = new OpenAPIHono<{
         200: {
           content: {
             "application/json": {
-              schema: versionsResponseSchema,
+              schema: z.union([
+                versionsResponseSchema,
+                versionsWithTotalsSchema,
+              ]),
             },
           },
           description: "List of action versions",
@@ -517,12 +546,16 @@ export const actionsRoutes = new OpenAPIHono<{
         },
       );
 
-      return ctx.json({
-        versions: result.versions.map((v) => ({
-          ...v,
-          secrets: v.secrets?.map((s) => ({ name: s.name })),
-        })),
-      });
+      const versions = result.versions.map((v) => ({
+        ...v,
+        secrets: v.secrets?.map((s) => ({ name: s.name })),
+      }));
+
+      if (!include_totals) {
+        return ctx.json({ versions });
+      }
+
+      return ctx.json({ ...result, versions });
     },
   )
   // --------------------------------
@@ -666,7 +699,12 @@ export const actionsRoutes = new OpenAPIHono<{
         throw new HTTPException(404, { message: "Action not found" });
       }
 
-      await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, updated);
+      await snapshotActionVersion(
+        ctx.env.data,
+        ctx.var.tenant_id,
+        updated,
+        true,
+      );
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,

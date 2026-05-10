@@ -57,49 +57,57 @@ export function createActionVersionsAdapter(
     ): Promise<ActionVersion> {
       const now = Date.now();
       const id = generateActionVersionId();
-
-      const latest = await db
-        .selectFrom("action_versions")
-        .where("tenant_id", "=", tenant_id)
-        .where("action_id", "=", version.action_id)
-        .select("number")
-        .orderBy("number", "desc")
-        .limit(1)
-        .executeTakeFirst();
-
-      const nextNumber = (latest?.number ?? 0) + 1;
       const deployed = version.deployed !== false;
 
-      if (deployed) {
-        await db
-          .updateTable("action_versions")
-          .set({ deployed: 0, updated_at_ts: now })
+      // Wrap latest-lookup, deployed-clear, and insert in a single transaction
+      // so concurrent creates serialize on the unique
+      // (tenant_id, action_id, number) index and can't observe a half-applied
+      // state. The unique index still rejects races that beat the read here.
+      const nextNumber = await db.transaction().execute(async (trx) => {
+        const latest = await trx
+          .selectFrom("action_versions")
           .where("tenant_id", "=", tenant_id)
           .where("action_id", "=", version.action_id)
-          .execute();
-      }
+          .select("number")
+          .orderBy("number", "desc")
+          .limit(1)
+          .executeTakeFirst();
 
-      await db
-        .insertInto("action_versions")
-        .values({
-          id,
-          tenant_id,
-          action_id: version.action_id,
-          number: nextNumber,
-          code: version.code,
-          runtime: version.runtime || null,
-          secrets: version.secrets ? JSON.stringify(version.secrets) : null,
-          dependencies: version.dependencies
-            ? JSON.stringify(version.dependencies)
-            : null,
-          supported_triggers: version.supported_triggers
-            ? JSON.stringify(version.supported_triggers)
-            : null,
-          deployed: deployed ? 1 : 0,
-          created_at_ts: now,
-          updated_at_ts: now,
-        })
-        .execute();
+        const next = (latest?.number ?? 0) + 1;
+
+        if (deployed) {
+          await trx
+            .updateTable("action_versions")
+            .set({ deployed: 0, updated_at_ts: now })
+            .where("tenant_id", "=", tenant_id)
+            .where("action_id", "=", version.action_id)
+            .execute();
+        }
+
+        await trx
+          .insertInto("action_versions")
+          .values({
+            id,
+            tenant_id,
+            action_id: version.action_id,
+            number: next,
+            code: version.code,
+            runtime: version.runtime || null,
+            secrets: version.secrets ? JSON.stringify(version.secrets) : null,
+            dependencies: version.dependencies
+              ? JSON.stringify(version.dependencies)
+              : null,
+            supported_triggers: version.supported_triggers
+              ? JSON.stringify(version.supported_triggers)
+              : null,
+            deployed: deployed ? 1 : 0,
+            created_at_ts: now,
+            updated_at_ts: now,
+          })
+          .execute();
+
+        return next;
+      });
 
       return {
         id,

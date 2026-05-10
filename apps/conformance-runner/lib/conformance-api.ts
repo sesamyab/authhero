@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { env } from "./env";
 
 export type TestStatus =
@@ -233,7 +234,7 @@ export class ConformanceClient {
  * The CI workflow uploads this directory as an artifact.
  */
 export const REPORTS_DIR = join(
-  dirname(new URL(import.meta.url).pathname),
+  dirname(fileURLToPath(import.meta.url)),
   "..",
   "conformance-reports",
 );

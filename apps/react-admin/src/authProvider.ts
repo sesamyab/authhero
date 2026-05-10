@@ -225,24 +225,32 @@ export const createManagementClient = async (
     token = await getToken(domainConfig, auth0Client);
   }
 
-  // Pass the full API URL via baseUrl so the SDK uses the correct scheme
-  // (e.g. http://localhost:3000 in local Docker). Pre-v5 used `domain` and
-  // hardcoded https://, which silently broke HTTP-only deployments.
+  // The SDK wrapper hardcodes `https://${domain}/api/v2`, which breaks
+  // HTTP-only deployments (e.g. local Docker on http://localhost:3000).
+  // The underlying Fern client reads `_options.baseUrl` lazily on every
+  // request, so overriding it after super() takes effect for all calls.
+  const url = new URL(apiUrl);
   const managementClient = new ManagementClient({
-    baseUrl: `${apiUrl.replace(/\/$/, "")}/api/v2`,
+    domain: url.host,
     token,
     headers: normalizedTenantId
       ? { "tenant-id": normalizedTenantId }
       : undefined,
   });
+  Object.assign(
+    (managementClient as unknown as { _options: { baseUrl?: string } })
+      ._options,
+    { baseUrl: `${apiUrl.replace(/\/$/, "")}/api/v2` },
+  );
 
   managementClientCache.set(cacheKey, managementClient);
   return managementClient;
 };
 
-// Clear management client cache when token might be expired
-// Note: Clears the entire cache since cache keys use apiDomain[:tenantId]
-// but callers typically only have access to the OAuth domain
+// Clear management client cache when token might be expired.
+// Cache keys are `${oauthKey}|${apiUrl}[|${tenantId}]` (see cacheKey above),
+// so callers that only have an OAuth domain can't selectively invalidate the
+// matching apiUrl/tenant entries. Clear everything instead.
 export const clearManagementClientCache = () => {
   managementClientCache.clear();
   clearOrganizationTokenCache();

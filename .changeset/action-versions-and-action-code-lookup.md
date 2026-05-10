@@ -3,6 +3,7 @@
 "@authhero/adapter-interfaces": minor
 "@authhero/kysely-adapter": minor
 "@authhero/drizzle": patch
+"@authhero/aws-adapter": patch
 ---
 
 Add deployment history for actions and fix the runtime lookup that prevented Auth0-style actions from firing.

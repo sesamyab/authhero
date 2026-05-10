@@ -40,10 +40,8 @@ function DeployButton() {
     if (!record?.id) return;
     try {
       const domain = getConfigValue("domain") || "";
-      const apiDomain = resolveApiBase(domain)
-        .replace(/^https?:\/\//, "")
-        .replace(/\/.*$/, "");
-      const client = await createManagementClient(apiDomain, tenantId, domain);
+      const apiUrl = resolveApiBase(domain);
+      const client = await createManagementClient(apiUrl, tenantId, domain);
       await client.actions.deploy(String(record.id));
       notify("Action deployed successfully", { type: "success" });
     } catch (err: any) {

@@ -62,7 +62,7 @@ sequenceDiagram
 | `apps/conformance-runner/lib/conformance-api.ts` | Typed REST client for the suite (`createPlan`, `createTestFromPlan`, `getInfo`, `getBrowserStatus`, `waitForState`, `getTestLog`). |
 | `apps/conformance-runner/lib/run-browser-flow.ts` | Opens each browser URL the suite hands out, fills the AuthHero universal-login form, and returns when the test is `FINISHED` or `INTERRUPTED`. |
 | `apps/conformance-runner/lib/test-plan-config.ts` | The plan name, variant selection, and inline JSON config sent to the suite (issuer URL, client credentials, alias). |
-| `apps/conformance-runner/tests/*.spec.ts` | One spec per plan (Basic, Form Post Basic, Implicit, Form Post Implicit, RP-Initiated Logout, Config, Dynamic). Each spec generates one Playwright test per module in its plan and drives the lifecycle (`createTestFromPlan` → `waitForState` for `WAITING` → `runBrowserFlow` → `waitForState` for terminal). Asserts `result === "PASSED"` (or `WARNING` if `ALLOW_WARNING=1` or the module is on the per-spec allowlist). |
+| `apps/conformance-runner/tests/*.spec.ts` | One spec per plan (Basic, Form Post Basic, Implicit, Form Post Implicit, RP-Initiated Logout, Config, Dynamic). Each spec generates one Playwright test per module in its plan and drives the lifecycle (`createTestFromPlan` → `waitForState` for `WAITING` → `runBrowserFlow` → `waitForState` for terminal). Asserts `result` is `PASSED`, `REVIEW`, or `SKIPPED` (and additionally `WARNING` if `ALLOW_WARNING=1` or the module is on the per-spec allowlist). |
 
 ### Key configuration
 

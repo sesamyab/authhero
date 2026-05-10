@@ -23,6 +23,15 @@ export async function up(db: Kysely<Database>): Promise<void> {
     .on("action_versions")
     .columns(["tenant_id", "action_id"])
     .execute();
+
+  // Prevents two concurrent creates from racing on the same `latest.number`
+  // and committing duplicate version numbers per action.
+  await db.schema
+    .createIndex("uniq_action_versions_action_number")
+    .on("action_versions")
+    .columns(["tenant_id", "action_id", "number"])
+    .unique()
+    .execute();
 }
 
 export async function down(db: Kysely<Database>): Promise<void> {

@@ -229,11 +229,8 @@ export default (
           "API URL is not configured. Please set restApiUrl in domain configuration or VITE_SIMPLE_REST_URL environment variable.",
         );
       }
-      // Extract API domain from apiUrl
-      const apiDomain = apiUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-      // Pass both API domain and OAuth domain for authentication
       managementClientPromise = createManagementClient(
-        apiDomain,
+        apiUrl,
         tenantId,
         domain,
       );

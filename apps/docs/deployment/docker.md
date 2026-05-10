@@ -36,7 +36,7 @@ If you're working from the monorepo, the root `package.json` exposes a few conve
 | `pnpm docker:logs` | `docker compose logs -f` | Tail container logs |
 
 ::: warning
-`docker:reset` deletes the `authhero-data` volume, which removes all tenants, users, and signing keys. Use it only for local development.
+`pnpm docker:reset` deletes the `authhero-data` volume, which removes all tenants, users, and signing keys. Use it only for local development.
 :::
 
 ## Configuration
