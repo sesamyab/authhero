@@ -150,6 +150,21 @@ export const sqlActionSchema = z.object({
   updated_at_ts: z.number(),
 });
 
+export const sqlActionVersionSchema = z.object({
+  id: z.string(),
+  tenant_id: z.string(),
+  action_id: z.string(),
+  number: z.number(),
+  code: z.string(),
+  runtime: z.string().optional().nullable(),
+  secrets: z.string().optional().nullable(),
+  dependencies: z.string().optional().nullable(),
+  supported_triggers: z.string().optional().nullable(),
+  deployed: z.number(),
+  created_at_ts: z.number(),
+  updated_at_ts: z.number(),
+});
+
 export const sqlHookCodeSchema = z.object({
   id: z.string(),
   tenant_id: z.string(),
@@ -466,6 +481,7 @@ export const sqlAuthenticationMethodSchema = z.object({
 
 export interface Database {
   actions: z.infer<typeof sqlActionSchema>;
+  action_versions: z.infer<typeof sqlActionVersionSchema>;
   flows: z.infer<typeof sqlFlowSchema>;
   branding: z.infer<typeof sqlBrandingSchema>;
   clients: z.infer<typeof sqlClientSchema>;

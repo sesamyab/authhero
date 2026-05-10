@@ -55,6 +55,36 @@ export function replayApiCalls(
   }
 }
 
+type ResolvedCode = {
+  code: string;
+  secrets?: Record<string, string>;
+};
+
+async function loadCodeForHook(
+  data: DataAdapters,
+  tenant_id: string,
+  code_id: string,
+): Promise<ResolvedCode | null> {
+  const action = await data.actions.get(tenant_id, code_id);
+  if (action) {
+    const secrets = action.secrets?.reduce<Record<string, string>>(
+      (acc, secret) => {
+        if (secret.value !== undefined) acc[secret.name] = secret.value;
+        return acc;
+      },
+      {},
+    );
+    return { code: action.code, secrets };
+  }
+
+  const hookCode = await data.hookCode.get(tenant_id, code_id);
+  if (hookCode) {
+    return { code: hookCode.code, secrets: hookCode.secrets };
+  }
+
+  return null;
+}
+
 /**
  * Execute a code hook by fetching the code from the database,
  * running it through the code executor, and replaying API calls.
@@ -77,8 +107,8 @@ export async function handleCodeHook(
     return;
   }
 
-  const hookCode = await data.hookCode.get(tenant_id, hook.code_id);
-  if (!hookCode) {
+  const codeRecord = await loadCodeForHook(data, tenant_id, hook.code_id);
+  if (!codeRecord) {
     logMessage(ctx, tenant_id, {
       type: LogTypes.FAILED_HOOK,
       description: `Code hook ${hook.hook_id}: code_id ${hook.code_id} not found`,
@@ -86,10 +116,10 @@ export async function handleCodeHook(
     return;
   }
 
-  const serializableEvent = buildSerializableEvent(event, hookCode.secrets);
+  const serializableEvent = buildSerializableEvent(event, codeRecord.secrets);
 
   const result = await codeExecutor.execute({
-    code: hookCode.code,
+    code: codeRecord.code,
     hookCodeId: hook.code_id,
     triggerId,
     event: serializableEvent,

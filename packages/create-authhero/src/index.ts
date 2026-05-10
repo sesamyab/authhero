@@ -256,10 +256,19 @@ function generateLocalSeedFileContent(
   // The OIDCC basic test plan calls /token without an audience param. AuthHero
   // requires either an explicit audience or a tenant default_audience to mint
   // an access token, so set one here for the conformance setup.
+  // enable_dynamic_client_registration is required by the OIDCC dynamic plan,
+  // which has the suite register its own client via /oidc/register. Existing
+  // flags (e.g. inherit_global_permissions_in_organizations set by seed for
+  // the control-plane tenant) are merged in so the update doesn't clobber.
+  const existingTenant = await adapters.tenants.get("${tenantId}");
   await adapters.tenants.update("${tenantId}", {
     default_audience: "urn:authhero:management",
+    flags: {
+      ...(existingTenant?.flags ?? {}),
+      enable_dynamic_client_registration: true,
+    },
   });
-  console.log("✅ Set tenant default_audience for conformance");
+  console.log("✅ Set tenant default_audience and enabled DCR for conformance");
 
   const conformanceCallbacks = [
     "https://localhost.emobix.co.uk:8443/test/a/${conformanceAlias}/callback",

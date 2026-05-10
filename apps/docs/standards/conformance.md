@@ -62,7 +62,7 @@ sequenceDiagram
 | `apps/conformance-runner/lib/conformance-api.ts` | Typed REST client for the suite (`createPlan`, `createTestFromPlan`, `getInfo`, `getBrowserStatus`, `waitForState`, `getTestLog`). |
 | `apps/conformance-runner/lib/run-browser-flow.ts` | Opens each browser URL the suite hands out, fills the AuthHero universal-login form, and returns when the test is `FINISHED` or `INTERRUPTED`. |
 | `apps/conformance-runner/lib/test-plan-config.ts` | The plan name, variant selection, and inline JSON config sent to the suite (issuer URL, client credentials, alias). |
-| `apps/conformance-runner/tests/*.spec.ts` | One spec per plan (Basic, Form Post Basic, Implicit, Form Post Implicit, RP-Initiated Logout, Config). Each spec generates one Playwright test per module in its plan and drives the lifecycle (`createTestFromPlan` → `waitForState` for `WAITING` → `runBrowserFlow` → `waitForState` for terminal). Asserts `result === "PASSED"` (or `WARNING` if `ALLOW_WARNING=1` or the module is on the per-spec allowlist). |
+| `apps/conformance-runner/tests/*.spec.ts` | One spec per plan (Basic, Form Post Basic, Implicit, Form Post Implicit, RP-Initiated Logout, Config, Dynamic). Each spec generates one Playwright test per module in its plan and drives the lifecycle (`createTestFromPlan` → `waitForState` for `WAITING` → `runBrowserFlow` → `waitForState` for terminal). Asserts `result` is `PASSED`, `REVIEW`, or `SKIPPED` (and additionally `WARNING` if `ALLOW_WARNING=1` or the module is on the per-spec allowlist). |
 
 ### Key configuration
 
@@ -81,7 +81,7 @@ The conformance suite's `/token` request follows OIDC Core verbatim — no `audi
 
 ## What's covered today
 
-The runner currently drives six plans against AuthHero. Each module below maps 1-to-1 with an upstream conformance suite test (linked from the suite's web UI as `log-detail.html?log=…` on a run).
+The runner currently drives seven plans against AuthHero. Each module below maps 1-to-1 with an upstream conformance suite test (linked from the suite's web UI as `log-detail.html?log=…` on a run).
 
 ::: tip
 The status column is the on-the-record outcome from the most recent green CI run. The lists are kept in sync with the spec files themselves — entries removed from a plan's `getStaticModulesForPlan()` should also disappear here, and new entries should land with a one-liner.
@@ -219,6 +219,10 @@ Newly wired up — the spec file is at [oidcc-implicit.spec.ts](https://github.c
 ### `oidcc-formpost-implicit-certification-test-plan`
 
 Newly wired up — the spec file is at [oidcc-form-post-implicit.spec.ts](https://github.com/markusahlstrand/authhero/blob/main/apps/conformance-runner/tests/oidcc-form-post-implicit.spec.ts). Variant: `{ server_metadata: "discovery", client_registration: "static_client" }` (the `formpost` profile is encoded in the plan name itself, not the variant; same module-level pinning of `response_type` as the plain Implicit plan). Module set mirrors the Implicit plan, but every authorization response is delivered via `response_mode=form_post`. Status TBD until the first green CI run; modules absent from the live plan are filtered via `test.skip`.
+
+### `oidcc-dynamic-certification-test-plan`
+
+Newly wired up — the spec file is at [oidcc-dynamic.spec.ts](https://github.com/markusahlstrand/authhero/blob/main/apps/conformance-runner/tests/oidcc-dynamic.spec.ts). Variant: `{ server_metadata: "discovery", client_registration: "dynamic_client" }`. Same code-flow modules as the Basic plan, but the suite registers its own client via `POST /oidc/register` (RFC 7591) instead of using the seeded `test-client-id`. The conformance tenant has `enable_dynamic_client_registration: true` set automatically by `create-authhero --conformance` so the `registration_endpoint` is advertised in discovery and the open-registration path is allowed (no Initial Access Token required). Status TBD until the first green CI run; modules absent from the live plan are filtered via `test.skip`.
 
 ### Out of scope (for now)
 

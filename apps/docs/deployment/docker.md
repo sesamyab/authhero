@@ -23,6 +23,22 @@ The server will be available at `http://localhost:3000` with:
 - API documentation at `http://localhost:3000/docs`
 - SQLite database persisted in a Docker volume
 
+## pnpm shortcuts
+
+If you're working from the monorepo, the root `package.json` exposes a few convenience scripts that wrap the underlying `docker compose` commands:
+
+| Script | What it runs | When to use |
+| --- | --- | --- |
+| `pnpm docker:build` | `docker compose build` | Rebuild the image without starting it |
+| `pnpm docker:up` | `docker compose up -d --build` | Build and start in the background (most common) |
+| `pnpm docker:down` | `docker compose down` | Stop the container, **keep** the SQLite volume |
+| `pnpm docker:reset` | `docker compose down -v && docker compose up -d --build` | Wipe the SQLite volume and start fresh — re-runs `SEED` |
+| `pnpm docker:logs` | `docker compose logs -f` | Tail container logs |
+
+::: warning
+`pnpm docker:reset` deletes the `authhero-data` volume, which removes all tenants, users, and signing keys. Use it only for local development.
+:::
+
 ## Configuration
 
 All configuration is done through environment variables:

@@ -1,9 +1,23 @@
-import { CreateButton, ExportButton, TopToolbar } from "react-admin";
+import {
+  CreateButton,
+  ExportButton,
+  FilterButton,
+  TopToolbar,
+  useFilterContext,
+} from "react-admin";
 
-export function PostListActions() {
+interface PostListActionsProps {
+  create?: boolean;
+}
+
+export function PostListActions({ create = true }: PostListActionsProps) {
+  const filters = useFilterContext();
+  const hasFilters = Array.isArray(filters) && filters.length > 0;
+
   return (
     <TopToolbar>
-      <CreateButton />
+      {hasFilters && <FilterButton />}
+      {create && <CreateButton />}
       <ExportButton />
     </TopToolbar>
   );

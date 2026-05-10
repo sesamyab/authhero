@@ -3,9 +3,9 @@ import { ConformanceClient, downloadPlanReport } from "../lib/conformance-api";
 import { runBrowserFlow } from "../lib/run-browser-flow";
 import { env } from "../lib/env";
 import {
-  PLAN_NAME,
-  PLAN_VARIANT,
-  buildPlanConfig,
+  DYNAMIC_PLAN_NAME,
+  DYNAMIC_PLAN_VARIANT,
+  buildDynamicPlanConfig,
 } from "../lib/test-plan-config";
 
 const client = new ConformanceClient();
@@ -14,11 +14,15 @@ let planId: string;
 let modules: { testModule: string; variant?: Record<string, string> }[];
 
 test.beforeAll(async () => {
-  const config = buildPlanConfig();
+  const config = buildDynamicPlanConfig();
   console.log(
-    `[conformance-runner] Creating plan ${PLAN_NAME} with alias ${config.alias}`,
+    `[conformance-runner] Creating plan ${DYNAMIC_PLAN_NAME} with alias ${config.alias}`,
   );
-  const plan = await client.createPlan(PLAN_NAME, config, PLAN_VARIANT);
+  const plan = await client.createPlan(
+    DYNAMIC_PLAN_NAME,
+    config,
+    DYNAMIC_PLAN_VARIANT,
+  );
   planId = plan.id;
   modules = plan.modules;
   console.log(
@@ -30,12 +34,9 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await downloadPlanReport(client, PLAN_NAME, planId);
+  await downloadPlanReport(client, DYNAMIC_PLAN_NAME, planId);
 });
 
-// Modules whose WARNING outcome reflects a known unimplemented feature
-// rather than a regression. Each entry should reference the issue tracking
-// the work to make it PASS.
 const MODULES_ALLOWED_TO_WARN = new Set<string>([
   // OIDC `claims` request parameter (essential claims) — issue #781
   "oidcc-claims-essential",
@@ -43,9 +44,7 @@ const MODULES_ALLOWED_TO_WARN = new Set<string>([
 
 test.describe.configure({ mode: "serial" });
 
-test.describe("OIDCC Basic Certification", () => {
-  // The plan is created lazily in beforeAll, so we register one Playwright test
-  // per available module. Module names come from the suite's plan response.
+test.describe("OIDCC Dynamic Certification", () => {
   for (const moduleName of getStaticModulesForPlan()) {
     test(moduleName, async ({ page }) => {
       const moduleEntry = modules.find((m) => m.testModule === moduleName);
@@ -64,11 +63,6 @@ test.describe("OIDCC Basic Certification", () => {
         `[conformance-runner] ${moduleName} -> ${client.baseUrl}/log-detail.html?log=${testId}`,
       );
 
-      // Most OP tests auto-start; some need an explicit start when CONFIGURED.
-      // INTERRUPTED is allowed at every stage so negative modules that move
-      // straight to a terminal state don't crash the runner with a generic
-      // "moved to INTERRUPTED: no detail" — let the result assertion below
-      // surface the actual outcome instead.
       const initial = await client.waitForState(testId, [
         "CONFIGURED",
         "WAITING",
@@ -99,16 +93,6 @@ test.describe("OIDCC Basic Certification", () => {
         `[conformance-runner] ${moduleName} status=${info.status} result=${result ?? "(none)"}`,
       );
 
-      // REVIEW is the suite's outcome when a screenshot placeholder was
-      // uploaded — for unattended runs we auto-fill those, so REVIEW means
-      // "the suite finished and would normally need a human to verify the
-      // screenshot." We treat it as PASSED.
-      // SKIPPED is the suite's outcome when discovery indicates a feature
-      // isn't supported (e.g. unsigned request objects), so the test isn't
-      // applicable. Treat as PASSED.
-      // Per-module WARNING allowlist tracks known-missing features by their
-      // own issues. Drop entries from the set when the underlying feature
-      // lands. env.allowWarning is the global escape hatch for CI debugging.
       const acceptable: string[] = ["PASSED", "REVIEW", "SKIPPED"];
       if (env.allowWarning || MODULES_ALLOWED_TO_WARN.has(moduleName)) {
         acceptable.push("WARNING");
@@ -117,8 +101,6 @@ test.describe("OIDCC Basic Certification", () => {
       let failureDetail = "";
       if (!acceptable.includes(result ?? "")) {
         const log = await client.getTestLog(testId).catch(() => []);
-        // Surface the first FAILURE *and* WARNING from the suite's log so the
-        // assertion message is self-contained — no need to open the web UI.
         const firstFail = log.find((l) => l.result === "FAILURE");
         const firstWarn = log.find((l) => l.result === "WARNING");
         const parts: string[] = [];
@@ -143,11 +125,14 @@ test.describe("OIDCC Basic Certification", () => {
   }
 });
 
-// The basic plan's module list (kept in source to allow `--grep`-style filtering
-// before the suite is contacted). At runtime, modules absent from the live plan
-// are skipped via test.skip above.
+// Starter superset for the dynamic plan — same code-flow modules as the basic
+// plan, plus DCR-specific registration modules. Modules absent from the live
+// plan are skipped via test.skip above, so it's safe to over-list. Status
+// TBD until first green run; expect to trim/expand based on actual plan output.
 function getStaticModulesForPlan(): string[] {
   return [
+    // Inherits from oidcc-basic — these run end-to-end after the suite has
+    // dynamically registered its own client.
     "oidcc-server",
     "oidcc-response-type-missing",
     "oidcc-idtoken-signature",
@@ -186,5 +171,21 @@ function getStaticModulesForPlan(): string[] {
     "oidcc-ensure-request-object-with-redirect-uri",
     "oidcc-refresh-token",
     "oidcc-ensure-request-with-valid-pkce-succeeds",
+    // DCR-specific modules — exercise /oidc/register directly. Names sourced
+    // from the conformance suite's dynamic plan; trim once we see the live
+    // module list. Each one registers a client with specific metadata
+    // (jwks/jwks_uri/logo_uri/policy_uri/tos_uri/sector_identifier_uri) and
+    // verifies the response.
+    "oidcc-registration",
+    "oidcc-registration-jwks",
+    "oidcc-registration-jwks-uri",
+    "oidcc-registration-logo-uri",
+    "oidcc-registration-policy-uri",
+    "oidcc-registration-tos-uri",
+    "oidcc-registration-sector-uri",
+    "oidcc-registration-sector-bad",
+    "oidcc-redirect-uri-query-OK",
+    "oidcc-redirect-uri-query-added",
+    "oidcc-redirect-uri-query-mismatch",
   ];
 }

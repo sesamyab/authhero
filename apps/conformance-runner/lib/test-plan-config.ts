@@ -54,6 +54,17 @@ export const FORM_POST_IMPLICIT_PLAN_VARIANT = {
   client_registration: "static_client",
 } as const;
 
+export const DYNAMIC_PLAN_NAME = "oidcc-dynamic-certification-test-plan";
+
+// Dynamic registration variant — the suite calls /oidc/register itself for
+// each module instead of using the seeded clients. The conformance tenant
+// has `enable_dynamic_client_registration: true` set by create-authhero
+// when --conformance is passed.
+export const DYNAMIC_PLAN_VARIANT = {
+  server_metadata: "discovery",
+  client_registration: "dynamic_client",
+} as const;
+
 // The config plan's only module (oidcc-discovery-endpoint-verification)
 // already pins server_metadata=discovery + client_registration=static_client
 // at the module level, so passing them again as plan-level variants makes
@@ -116,4 +127,13 @@ export function buildImplicitPlanConfig() {
 
 export function buildFormPostImplicitPlanConfig() {
   return buildSharedClientConfig("OIDC Form Post Implicit");
+}
+
+export function buildDynamicPlanConfig() {
+  // The dynamic plan has the suite register its own clients via DCR, so the
+  // hardcoded client_id/client_secret slots aren't actually consulted by the
+  // modules. Reusing the shared config keeps alias/discoveryUrl/consent/browser
+  // aligned with every other plan and is harmless — the suite ignores client
+  // creds for dynamic_client variants.
+  return buildSharedClientConfig("OIDC Dynamic");
 }

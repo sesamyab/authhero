@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ConformanceClient } from "../lib/conformance-api";
+import { ConformanceClient, downloadPlanReport } from "../lib/conformance-api";
 import { runBrowserFlow } from "../lib/run-browser-flow";
 import { env } from "../lib/env";
 import {
@@ -31,6 +31,10 @@ test.beforeAll(async () => {
   console.log(
     `[conformance-runner] Plan detail: ${client.baseUrl}/plan-detail.html?plan=${planId}`,
   );
+});
+
+test.afterAll(async () => {
+  await downloadPlanReport(client, LOGOUT_PLAN_NAME, planId);
 });
 
 // Modules whose WARNING result we accept as a pass. Add entries here when a
