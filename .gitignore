@@ -154,6 +154,7 @@ apps/conformance-runner/playwright-report/
 apps/conformance-runner/test-results/
 apps/conformance-runner/blob-report/
 apps/conformance-runner/playwright/.cache/
+apps/conformance-runner/conformance-reports/
 
 # Claude Code
 .claude/settings.json

@@ -149,24 +149,24 @@ export const createAuth0Client = (domain: string) => {
 
 // Create a Management API client
 export const createManagementClient = async (
-  apiDomain: string,
+  apiUrl: string,
   tenantId?: string,
   oauthDomain?: string,
 ): Promise<ManagementClient> => {
   // Normalize tenant ID to lowercase to avoid casing mismatches
   const normalizedTenantId = tenantId?.toLowerCase();
-  const oauthKey = oauthDomain ? formatDomain(oauthDomain) : apiDomain;
+  const oauthKey = oauthDomain ? formatDomain(oauthDomain) : apiUrl;
   const cacheKey = normalizedTenantId
-    ? `${oauthKey}|${apiDomain}|${normalizedTenantId}`
-    : `${oauthKey}|${apiDomain}`;
+    ? `${oauthKey}|${apiUrl}|${normalizedTenantId}`
+    : `${oauthKey}|${apiUrl}`;
 
   // Check cache first
   if (managementClientCache.has(cacheKey)) {
     return managementClientCache.get(cacheKey)!;
   }
 
-  // Use oauthDomain for finding credentials, fallback to apiDomain
-  const domainForAuth = formatDomain(oauthDomain || apiDomain);
+  // Use oauthDomain for finding credentials, fallback to apiUrl
+  const domainForAuth = formatDomain(oauthDomain || apiUrl);
   const domains = getDomainFromStorage();
   const domainConfig = domains.find(
     (d) => formatDomain(d.url) === domainForAuth,
@@ -225,9 +225,11 @@ export const createManagementClient = async (
     token = await getToken(domainConfig, auth0Client);
   }
 
-  // ManagementClient expects domain WITHOUT protocol (it adds https:// internally)
+  // Pass the full API URL via baseUrl so the SDK uses the correct scheme
+  // (e.g. http://localhost:3000 in local Docker). Pre-v5 used `domain` and
+  // hardcoded https://, which silently broke HTTP-only deployments.
   const managementClient = new ManagementClient({
-    domain: apiDomain,
+    baseUrl: `${apiUrl.replace(/\/$/, "")}/api/v2`,
     token,
     headers: normalizedTenantId
       ? { "tenant-id": normalizedTenantId }

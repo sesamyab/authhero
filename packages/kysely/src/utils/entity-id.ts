@@ -6,6 +6,7 @@ export type EntityType =
   | "organization"
   | "connection"
   | "action"
+  | "action_version"
   | "hook"
   | "hook_code"
   | "rule"
@@ -17,6 +18,7 @@ const ENTITY_PREFIXES: Record<EntityType, string> = {
   organization: "org_",
   connection: "con_",
   action: "act_",
+  action_version: "ver_",
   hook: "h_",
   hook_code: "hc_",
   rule: "rul_",
@@ -62,6 +64,10 @@ export function generateConnectionId(): string {
 
 export function generateActionId(): string {
   return generateEntityId("action");
+}
+
+export function generateActionVersionId(): string {
+  return generateEntityId("action_version");
 }
 
 export function generateHookId(): string {

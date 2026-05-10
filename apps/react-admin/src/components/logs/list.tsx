@@ -117,7 +117,7 @@ export function LogsList() {
 
   return (
     <List
-      actions={<PostListActions create="false" />}
+      actions={<PostListActions create={false} />}
       filters={postFilters}
       sort={{ field: "date", order: "DESC" }}
     >

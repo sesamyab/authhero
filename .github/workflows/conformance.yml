@@ -156,6 +156,15 @@ jobs:
           path: apps/conformance-runner/playwright-report/
           retention-days: 14
 
+      - name: Upload OIDF conformance plan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-reports
+          path: apps/conformance-runner/conformance-reports/
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Upload Playwright traces
         if: failure()
         uses: actions/upload-artifact@v4

@@ -1,8 +1,12 @@
 import { Bindings, Variables } from "../../types";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
+  Action,
+  ActionVersion,
   actionInsertSchema,
   actionSchema,
+  actionVersionSchema,
+  DataAdapters,
   totalsSchema,
   LogTypes,
 } from "@authhero/adapter-interfaces";
@@ -14,6 +18,26 @@ import { HTTPException } from "hono/http-exception";
 const actionsWithTotalsSchema = totalsSchema.extend({
   actions: z.array(actionSchema),
 });
+
+const versionsResponseSchema = z.object({
+  versions: z.array(actionVersionSchema),
+});
+
+function snapshotActionVersion(
+  data: DataAdapters,
+  tenant_id: string,
+  action: Action,
+): Promise<ActionVersion> {
+  return data.actionVersions.create(tenant_id, {
+    action_id: action.id,
+    code: action.code,
+    runtime: action.runtime,
+    secrets: action.secrets,
+    dependencies: action.dependencies,
+    supported_triggers: action.supported_triggers,
+    deployed: true,
+  });
+}
 
 export const actionsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
@@ -126,6 +150,8 @@ export const actionsRoutes = new OpenAPIHono<{
           });
         }
       }
+
+      await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, action);
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -248,7 +274,9 @@ export const actionsRoutes = new OpenAPIHono<{
         throw new HTTPException(404, { message: "Action not found" });
       }
 
-      // Re-deploy if code changed
+      // Re-deploy if code changed. PATCH effectively double-deploys when
+      // followed by an explicit POST /deploy, but snapshotting here keeps
+      // version history aligned with what's actually live in the executor.
       if (body.code !== undefined && ctx.env.codeExecutor?.deploy) {
         try {
           await ctx.env.codeExecutor.deploy(id, body.code);
@@ -258,6 +286,7 @@ export const actionsRoutes = new OpenAPIHono<{
             description: `Failed to deploy action ${id}: ${err instanceof Error ? err.message : String(err)}`,
           });
         }
+        await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, action);
       }
 
       await logMessage(ctx, ctx.var.tenant_id, {
@@ -324,6 +353,8 @@ export const actionsRoutes = new OpenAPIHono<{
       if (!result) {
         throw new HTTPException(404, { message: "Action not found" });
       }
+
+      await ctx.env.data.actionVersions.removeForAction(ctx.var.tenant_id, id);
 
       // Remove from execution environment if supported
       if (ctx.env.codeExecutor?.remove) {
@@ -410,6 +441,8 @@ export const actionsRoutes = new OpenAPIHono<{
         deployed_at: new Date().toISOString(),
       });
 
+      await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, action);
+
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
         description: "Deploy action",
@@ -421,6 +454,230 @@ export const actionsRoutes = new OpenAPIHono<{
         ...action,
         status: "built" as const,
         secrets: action.secrets?.map((s) => ({ name: s.name })),
+      });
+    },
+  )
+  // --------------------------------
+  // GET /api/v2/actions/actions/:actionId/versions
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["actions"],
+      method: "get",
+      path: "/{actionId}/versions",
+      request: {
+        headers: z.object({
+          "tenant-id": z.string().optional(),
+        }),
+        params: z.object({
+          actionId: z.string(),
+        }),
+        query: querySchema,
+      },
+      security: [
+        {
+          Bearer: ["read:actions", "auth:read"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: versionsResponseSchema,
+            },
+          },
+          description: "List of action versions",
+        },
+        404: {
+          description: "Action not found",
+        },
+      },
+    }),
+    async (ctx) => {
+      const { actionId } = ctx.req.valid("param");
+      const { page, per_page, include_totals, sort } =
+        ctx.req.valid("query");
+
+      const action = await ctx.env.data.actions.get(
+        ctx.var.tenant_id,
+        actionId,
+      );
+      if (!action) {
+        throw new HTTPException(404, { message: "Action not found" });
+      }
+
+      const result = await ctx.env.data.actionVersions.list(
+        ctx.var.tenant_id,
+        actionId,
+        {
+          page,
+          per_page,
+          include_totals,
+          sort: parseSort(sort),
+        },
+      );
+
+      return ctx.json({
+        versions: result.versions.map((v) => ({
+          ...v,
+          secrets: v.secrets?.map((s) => ({ name: s.name })),
+        })),
+      });
+    },
+  )
+  // --------------------------------
+  // GET /api/v2/actions/actions/:actionId/versions/:id
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["actions"],
+      method: "get",
+      path: "/{actionId}/versions/{id}",
+      request: {
+        headers: z.object({
+          "tenant-id": z.string().optional(),
+        }),
+        params: z.object({
+          actionId: z.string(),
+          id: z.string(),
+        }),
+      },
+      security: [
+        {
+          Bearer: ["read:actions", "auth:read"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: actionVersionSchema,
+            },
+          },
+          description: "Action version",
+        },
+        404: {
+          description: "Action version not found",
+        },
+      },
+    }),
+    async (ctx) => {
+      const { actionId, id } = ctx.req.valid("param");
+
+      const version = await ctx.env.data.actionVersions.get(
+        ctx.var.tenant_id,
+        actionId,
+        id,
+      );
+      if (!version) {
+        throw new HTTPException(404, {
+          message: "Action version not found",
+        });
+      }
+
+      return ctx.json({
+        ...version,
+        secrets: version.secrets?.map((s) => ({ name: s.name })),
+      });
+    },
+  )
+  // --------------------------------
+  // POST /api/v2/actions/actions/:actionId/versions/:id/deploy
+  // --------------------------------
+  // Rolls the action back to the contents of an earlier version. The version
+  // is re-deployed to the executor and a fresh snapshot is taken so the
+  // history shows the rollback as a new version.
+  .openapi(
+    createRoute({
+      tags: ["actions"],
+      method: "post",
+      path: "/{actionId}/versions/{id}/deploy",
+      request: {
+        headers: z.object({
+          "tenant-id": z.string().optional(),
+        }),
+        params: z.object({
+          actionId: z.string(),
+          id: z.string(),
+        }),
+      },
+      security: [
+        {
+          Bearer: ["update:actions", "auth:write"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: actionSchema,
+            },
+          },
+          description: "The action after rollback",
+        },
+        404: {
+          description: "Action version not found",
+        },
+      },
+    }),
+    async (ctx) => {
+      const { actionId, id } = ctx.req.valid("param");
+
+      const version = await ctx.env.data.actionVersions.get(
+        ctx.var.tenant_id,
+        actionId,
+        id,
+      );
+      if (!version) {
+        throw new HTTPException(404, {
+          message: "Action version not found",
+        });
+      }
+
+      if (ctx.env.codeExecutor?.deploy) {
+        try {
+          await ctx.env.codeExecutor.deploy(actionId, version.code);
+        } catch (err) {
+          await logMessage(ctx, ctx.var.tenant_id, {
+            type: LogTypes.FAILED_HOOK,
+            description: `Failed to roll back action ${actionId} to version ${id}: ${err instanceof Error ? err.message : String(err)}`,
+          });
+          throw new HTTPException(500, {
+            message: `Rollback failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+      }
+
+      await ctx.env.data.actions.update(ctx.var.tenant_id, actionId, {
+        code: version.code,
+        runtime: version.runtime,
+        secrets: version.secrets,
+        dependencies: version.dependencies,
+        supported_triggers: version.supported_triggers,
+        status: "built",
+        deployed_at: new Date().toISOString(),
+      });
+
+      const updated = await ctx.env.data.actions.get(
+        ctx.var.tenant_id,
+        actionId,
+      );
+      if (!updated) {
+        throw new HTTPException(404, { message: "Action not found" });
+      }
+
+      await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, updated);
+
+      await logMessage(ctx, ctx.var.tenant_id, {
+        type: LogTypes.SUCCESS_API_OPERATION,
+        description: `Roll back action to version ${version.number}`,
+        targetType: "action",
+        targetId: actionId,
+      });
+
+      return ctx.json({
+        ...updated,
+        secrets: updated.secrets?.map((s) => ({ name: s.name })),
       });
     },
   );

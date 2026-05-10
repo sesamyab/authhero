@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { env } from "./env";
 
 export type TestStatus =
@@ -137,6 +139,26 @@ export class ConformanceClient {
     return res.json();
   }
 
+  /**
+   * Download the suite's HTML+JSON certification report for a plan as a zip.
+   * Endpoint: GET /api/plan/exporthtml/{id} (produces application/zip).
+   */
+  async exportPlanHtml(planId: string): Promise<ArrayBuffer> {
+    const url = `${this.baseUrl}/api/plan/exporthtml/${planId}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: this.headers,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        `exportPlanHtml(${planId}) -> HTTP ${res.status}: ${text}`,
+      );
+    }
+    return res.arrayBuffer();
+  }
+
   async waitForState(
     testId: string,
     desired: TestStatus[],
@@ -203,5 +225,39 @@ export class ConformanceClient {
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
+  }
+}
+
+/**
+ * Default directory where per-plan HTML certification reports are written.
+ * The CI workflow uploads this directory as an artifact.
+ */
+export const REPORTS_DIR = join(
+  dirname(new URL(import.meta.url).pathname),
+  "..",
+  "conformance-reports",
+);
+
+/**
+ * Pull the suite's HTML certification report for a plan and save it as a zip
+ * under REPORTS_DIR. Safe to call from afterAll — failures are logged, not
+ * thrown, so a flaky export never masks the real test result.
+ */
+export async function downloadPlanReport(
+  client: ConformanceClient,
+  planName: string,
+  planId: string,
+): Promise<void> {
+  if (!planId) return;
+  try {
+    const zip = await client.exportPlanHtml(planId);
+    mkdirSync(REPORTS_DIR, { recursive: true });
+    const dest = join(REPORTS_DIR, `${planName}-${planId}.zip`);
+    writeFileSync(dest, Buffer.from(zip));
+    console.log(`[conformance-runner] Wrote plan report ${dest}`);
+  } catch (err) {
+    console.warn(
+      `[conformance-runner] Failed to export plan ${planName} (${planId}): ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }

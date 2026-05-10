@@ -1,6 +1,10 @@
 import { Kysely, SqliteDialect } from "kysely";
 import SQLite from "better-sqlite3";
-import { DataAdapters, Strategy } from "@authhero/adapter-interfaces";
+import {
+  CodeExecutor,
+  DataAdapters,
+  Strategy,
+} from "@authhero/adapter-interfaces";
 import createAdapters, {
   Database,
   migrateToLatest,
@@ -42,6 +46,7 @@ type getEnvParams = {
   usernamePasswordProvider?: (params: {
     tenant_id: string;
   }) => "auth0" | "auth2";
+  codeExecutor?: CodeExecutor;
 };
 
 export type TestServer = {
@@ -202,6 +207,10 @@ export async function getTestServer(
     env.usernamePasswordProvider = args.usernamePasswordProvider;
   }
 
+  if (args.codeExecutor) {
+    env.codeExecutor = args.codeExecutor;
+  }
+
   const apps = init({
     dataAdapter: dataWithServices,
     hooks: args.hooks,
@@ -210,6 +219,7 @@ export async function getTestServer(
     ...(args.usernamePasswordProvider
       ? { usernamePasswordProvider: args.usernamePasswordProvider }
       : {}),
+    ...(args.codeExecutor ? { codeExecutor: args.codeExecutor } : {}),
   });
   return {
     ...apps,
