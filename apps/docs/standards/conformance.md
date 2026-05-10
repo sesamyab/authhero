@@ -62,7 +62,7 @@ sequenceDiagram
 | `apps/conformance-runner/lib/conformance-api.ts` | Typed REST client for the suite (`createPlan`, `createTestFromPlan`, `getInfo`, `getBrowserStatus`, `waitForState`, `getTestLog`). |
 | `apps/conformance-runner/lib/run-browser-flow.ts` | Opens each browser URL the suite hands out, fills the AuthHero universal-login form, and returns when the test is `FINISHED` or `INTERRUPTED`. |
 | `apps/conformance-runner/lib/test-plan-config.ts` | The plan name, variant selection, and inline JSON config sent to the suite (issuer URL, client credentials, alias). |
-| `apps/conformance-runner/tests/*.spec.ts` | One spec per plan (Basic, Form Post Basic, RP-Initiated Logout, Config). Each spec generates one Playwright test per module in its plan and drives the lifecycle (`createTestFromPlan` → `waitForState` for `WAITING` → `runBrowserFlow` → `waitForState` for terminal). Asserts `result === "PASSED"` (or `WARNING` if `ALLOW_WARNING=1` or the module is on the per-spec allowlist). |
+| `apps/conformance-runner/tests/*.spec.ts` | One spec per plan (Basic, Form Post Basic, Implicit, Form Post Implicit, RP-Initiated Logout, Config). Each spec generates one Playwright test per module in its plan and drives the lifecycle (`createTestFromPlan` → `waitForState` for `WAITING` → `runBrowserFlow` → `waitForState` for terminal). Asserts `result === "PASSED"` (or `WARNING` if `ALLOW_WARNING=1` or the module is on the per-spec allowlist). |
 
 ### Key configuration
 
@@ -81,7 +81,7 @@ The conformance suite's `/token` request follows OIDC Core verbatim — no `audi
 
 ## What's covered today
 
-The runner currently drives five plans against AuthHero. Each module below maps 1-to-1 with an upstream conformance suite test (linked from the suite's web UI as `log-detail.html?log=…` on a run).
+The runner currently drives six plans against AuthHero. Each module below maps 1-to-1 with an upstream conformance suite test (linked from the suite's web UI as `log-detail.html?log=…` on a run).
 
 ::: tip
 The status column is the on-the-record outcome from the most recent green CI run. The lists are kept in sync with the spec files themselves — entries removed from a plan's `getStaticModulesForPlan()` should also disappear here, and new entries should land with a one-liner.
@@ -215,6 +215,10 @@ The OIDC RP-Initiated Logout 1.0 plan. Variant: `{ client_registration: "static_
 ### `oidcc-implicit-certification-test-plan`
 
 Newly wired up — the spec file is at [oidcc-implicit.spec.ts](https://github.com/markusahlstrand/authhero/blob/main/apps/conformance-runner/tests/oidcc-implicit.spec.ts). Variant: `{ server_metadata: "discovery", client_registration: "static_client" }` — the plan pins `response_type` per-module internally (`id_token` for some, `id_token token` for others), so passing `response_type` as a plan-level variant trips the suite's "Variant 'X' has been set by user, but test plan already sets this variant for module ..." 500. The per-module pass/fail table will be filled in once the plan has a green run on CI; until then the spec is best-effort and modules absent from the live plan are skipped via `test.skip`. Triage gaps surface as Playwright failures with the usual `log-detail.html` link.
+
+### `oidcc-formpost-implicit-certification-test-plan`
+
+Newly wired up — the spec file is at [oidcc-form-post-implicit.spec.ts](https://github.com/markusahlstrand/authhero/blob/main/apps/conformance-runner/tests/oidcc-form-post-implicit.spec.ts). Variant: `{ server_metadata: "discovery", client_registration: "static_client" }` (the `formpost` profile is encoded in the plan name itself, not the variant; same module-level pinning of `response_type` as the plain Implicit plan). Module set mirrors the Implicit plan, but every authorization response is delivered via `response_mode=form_post`. Status TBD until the first green CI run; modules absent from the live plan are filtered via `test.skip`.
 
 ### Out of scope (for now)
 

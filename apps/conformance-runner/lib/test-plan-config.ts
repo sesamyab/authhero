@@ -42,6 +42,18 @@ export const IMPLICIT_PLAN_VARIANT = {
   client_registration: "static_client",
 } as const;
 
+export const FORM_POST_IMPLICIT_PLAN_NAME =
+  "oidcc-formpost-implicit-certification-test-plan";
+
+// Same module-level pinning as the implicit plan — `response_type` is fixed
+// per-module by the suite, and `response_mode=form_post` is encoded in the
+// plan name itself. So variants stay limited to server_metadata +
+// client_registration.
+export const FORM_POST_IMPLICIT_PLAN_VARIANT = {
+  server_metadata: "discovery",
+  client_registration: "static_client",
+} as const;
+
 // The config plan's only module (oidcc-discovery-endpoint-verification)
 // already pins server_metadata=discovery + client_registration=static_client
 // at the module level, so passing them again as plan-level variants makes
@@ -100,4 +112,8 @@ export function buildFormPostBasicPlanConfig() {
 
 export function buildImplicitPlanConfig() {
   return buildSharedClientConfig("OIDC Implicit");
+}
+
+export function buildFormPostImplicitPlanConfig() {
+  return buildSharedClientConfig("OIDC Form Post Implicit");
 }

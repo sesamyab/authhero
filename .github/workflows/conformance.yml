@@ -117,6 +117,13 @@ jobs:
       - name: Start conformance suite
         run: pnpm conformance:start
 
+      # Playwright runs on the runner host (not inside Docker), so it needs
+      # to resolve host.docker.internal — the issuer hostname the suite sends
+      # the browser to — back to the local auth-server. Docker Desktop on Mac
+      # adds this entry automatically; Ubuntu runners do not.
+      - name: Map host.docker.internal to localhost on the runner
+        run: echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
+
       - name: Install Playwright Chromium
         run: pnpm --filter @authhero/conformance-runner exec playwright install --with-deps chromium
 
