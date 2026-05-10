@@ -111,11 +111,18 @@ jobs:
           cd ~/conformance-suite
           MAVEN_CACHE=~/.m2 docker compose -f builder-compose.yml run --rm builder
 
-      # The dev-mac compose file already has extra_hosts:
-      # host.docker.internal:host-gateway, which is what we need on Linux too
-      # so the suite container can reach the host's auth-server on port 3000.
+      # Layer a CI-only override on top of the upstream dev-mac compose file so
+      # the suite container gets host.docker.internal:host-gateway in its
+      # /etc/hosts. Docker Desktop on Mac populates that name automatically;
+      # Linux Docker doesn't, so without the override every discovery fetch
+      # fails with "host.docker.internal: Name or service not known".
       - name: Start conformance suite
-        run: pnpm conformance:start
+        working-directory: /home/runner/conformance-suite
+        run: |
+          docker compose \
+            -f docker-compose-dev-mac.yml \
+            -f "$GITHUB_WORKSPACE/apps/conformance-runner/docker-compose-ci-override.yml" \
+            up -d
 
       - name: Install Playwright Chromium
         run: pnpm --filter @authhero/conformance-runner exec playwright install --with-deps chromium

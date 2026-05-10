@@ -42,6 +42,7 @@ import renderAuthIframe from "../utils/authIframe";
 import { formPostResponse } from "../utils/form-post";
 import { calculateScopesAndPermissions } from "../helpers/scopes-permissions";
 import { buildScopeClaims } from "../helpers/scope-claims";
+import { resolveSigningKeys } from "../helpers/signing-keys";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { GrantType } from "@authhero/adapter-interfaces";
 import {
@@ -179,13 +180,17 @@ export async function createAuthTokens(
     }
   }
 
-  const { signingKeys } = await ctx.env.data.keys.list({
-    q: "type:jwt_signing",
-    sort: { sort_by: "created_at", sort_order: "desc" },
-  });
-  const signingKey = signingKeys.find(
-    (key: any) => !key.revoked_at || new Date(key.revoked_at) > new Date(),
+  // Without a tenant_id on the request, there is no per-tenant decision to
+  // make — fall back to the control-plane bucket regardless of the
+  // configured mode.
+  const tenantIdForKeys = ctx.var.tenant_id;
+  const resolvedKeys = await resolveSigningKeys(
+    ctx.env.data.keys,
+    tenantIdForKeys ?? "",
+    tenantIdForKeys ? ctx.env.signingKeyMode : "control-plane",
+    { purpose: "sign" },
   );
+  const signingKey = resolvedKeys[0];
 
   if (!signingKey?.pkcs7 || !signingKey.cert) {
     throw new JSONHTTPException(500, { message: "No signing key available" });

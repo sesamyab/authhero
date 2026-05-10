@@ -80,6 +80,13 @@ export function buildLuceneFilter<T extends SQLiteTableWithColumns<any>>(
   }
 
   const filters = tokens
+    // `AND` is the implicit conjunction in Lucene (operators are uppercase),
+    // so a literal `AND` between clauses is a no-op marker. Without this
+    // drop the token would fall through to the bare-value branch below and
+    // be turned into a `LIKE '%AND%'` free-text search across every
+    // searchable column, silently matching zero rows for queries like
+    // `type:jwt_signing AND -_exists_:tenant_id`.
+    .filter((q) => q !== "AND")
     .map((q) => q.replace(/^([^:]+)=/g, "$1:"))
     .map((filter) => {
       let isNegation = filter.startsWith("-");

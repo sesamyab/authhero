@@ -61,7 +61,7 @@ If only the front-channel cookie is sent (no `id_token_hint.sid`), the cookie's 
 
 ## Discovery
 
-The endpoint is opt-in per tenant. Set the `oidc_logout.rp_logout_end_session_endpoint_discovery` tenant flag to `true` to advertise it:
+The endpoint is advertised by default:
 
 ```json
 {
@@ -69,7 +69,7 @@ The endpoint is opt-in per tenant. Set the `oidc_logout.rp_logout_end_session_en
 }
 ```
 
-This matches Auth0's behavior, which keeps the endpoint hidden until OIDC RP-Initiated Logout is explicitly enabled.
+The `oidc_logout.rp_logout_end_session_endpoint_discovery` tenant flag is treated as opt-*out*: set it to `false` to suppress the entry from `/.well-known/openid-configuration` (e.g. when migrating an existing deployment that depends on `/v2/logout` only). Any other value — including unset — leaves the endpoint advertised.
 
 ## Differences from `/v2/logout`
 
@@ -83,7 +83,7 @@ AuthHero also ships an Auth0-compatible `GET /v2/logout` route. The two endpoint
 | Post-logout redirect | `post_logout_redirect_uri` + echoed `state` | `returnTo` |
 | Bad redirect | `400`, no redirect | `400`, no redirect |
 | Unknown client | `400` | `200 OK` text |
-| Discovery | Advertised when tenant flag is on | Not advertised |
+| Discovery | Advertised by default (opt-out via tenant flag) | Not advertised |
 
 Both endpoints use the same `allowed_logout_urls` registration list on the client.
 

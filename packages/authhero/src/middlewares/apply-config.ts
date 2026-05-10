@@ -56,6 +56,10 @@ export function applyConfigMiddleware(
       ctx.env.usernamePasswordProvider = config.usernamePasswordProvider;
     }
 
+    if (config.signingKeyMode) {
+      ctx.env.signingKeyMode = config.signingKeyMode;
+    }
+
     return next();
   };
 }

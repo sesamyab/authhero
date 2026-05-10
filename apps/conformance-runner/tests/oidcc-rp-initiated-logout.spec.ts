@@ -33,19 +33,17 @@ test.beforeAll(async () => {
   );
 });
 
-// RP-initiated logout depends on `end_session_endpoint` being advertised in
-// the discovery document. Until we wire that up + implement the OIDC logout
-// endpoint, every module is expected to fail. Listed here so they show up as
-// pending work rather than silent skips. Drop entries when each module starts
-// passing.
+// Modules whose WARNING result we accept as a pass. Add entries here when a
+// module is functionally correct but the suite raises an advisory we don't
+// intend to address (matches the pattern used by the other plans).
 const MODULES_ALLOWED_TO_WARN = new Set<string>([]);
 
-// Expected-to-fail modules — marked with test.fail() so the spec passes
-// while still surfacing pending work. If any of these unexpectedly pass
-// (e.g. once end_session_endpoint is implemented), Playwright reports the
-// unexpected pass and you remove the entry. Currently every module in the
-// plan: see comment above.
-const MODULES_EXPECTED_TO_FAIL = new Set<string>(getStaticModulesForPlan());
+// Modules we still expect to fail. The seed now enables
+// `oidc_logout.rp_logout_end_session_endpoint_discovery` and registers the
+// suite's post_logout_redirect URI on the conformance clients, so all modules
+// should at least get past discovery. Entries land here as we discover real
+// gaps — drop them once the underlying behaviour is fixed.
+const MODULES_EXPECTED_TO_FAIL = new Set<string>([]);
 
 test.describe.configure({ mode: "serial" });
 
