@@ -283,46 +283,44 @@ function generateLocalSeedFileContent(
     "https://localhost.emobix.co.uk:8443",
   ];
 
-  try {
-    await adapters.clients.create("${tenantId}", {
+  // Strict OIDC 5.4: scope-driven claims (profile/email/address/phone) belong
+  // in /userinfo whenever an access_token is co-issued at /authorize. The OIDF
+  // suite enforces this via EnsureIdTokenDoesNotContainEmailForScopeEmail;
+  // running the conformance tenant under Auth0-compatible defaults would WARN.
+  const conformanceClientSpecs = [
+    {
       client_id: "conformance-test",
       client_secret: "conformanceTestSecret123",
       name: "Conformance Test Client",
-      callbacks: conformanceCallbacks,
-      allowed_logout_urls: conformanceLogoutUrls,
-      web_origins: conformanceWebOrigins,
-      // Strict OIDC 5.4: scope-driven claims (profile/email/address/phone)
-      // belong in /userinfo whenever an access_token is co-issued at
-      // /authorize. The OIDF suite enforces this via
-      // EnsureIdTokenDoesNotContainEmailForScopeEmail; running the
-      // conformance tenant under Auth0-compatible defaults would WARN.
-      auth0_conformant: false,
-    });
-    console.log("✅ Created conformance-test client");
-  } catch (e: any) {
-    if (e.message?.includes("UNIQUE constraint")) {
-      console.log("ℹ️  conformance-test client already exists");
-    } else {
-      throw e;
-    }
-  }
-
-  try {
-    await adapters.clients.create("${tenantId}", {
+    },
+    {
       client_id: "conformance-test2",
       client_secret: "conformanceTestSecret456",
       name: "Conformance Test Client 2",
+    },
+  ];
+  for (const spec of conformanceClientSpecs) {
+    const desired = {
+      name: spec.name,
+      client_secret: spec.client_secret,
       callbacks: conformanceCallbacks,
       allowed_logout_urls: conformanceLogoutUrls,
       web_origins: conformanceWebOrigins,
       auth0_conformant: false,
-    });
-    console.log("✅ Created conformance-test2 client");
-  } catch (e: any) {
-    if (e.message?.includes("UNIQUE constraint")) {
-      console.log("ℹ️  conformance-test2 client already exists");
+    };
+    // Idempotent reconcile: prior runs may have created the client with stale
+    // callbacks/web_origins after this seed file was changed. Update existing
+    // records in place rather than just logging "already exists".
+    const existing = await adapters.clients.get("${tenantId}", spec.client_id);
+    if (existing) {
+      await adapters.clients.update("${tenantId}", spec.client_id, desired);
+      console.log(\`🔄 Updated \${spec.client_id} client\`);
     } else {
-      throw e;
+      await adapters.clients.create("${tenantId}", {
+        client_id: spec.client_id,
+        ...desired,
+      });
+      console.log(\`✅ Created \${spec.client_id} client\`);
     }
   }
 

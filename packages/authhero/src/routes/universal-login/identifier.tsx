@@ -259,6 +259,7 @@ export const identifierRoutes = new OpenAPIHono<{
       // locally, provided a `strategy: "auth0"` source exists and the client
       // has a DB connection flagged `import_mode: true`. The password flow
       // will verify against upstream Auth0 and create the user on success.
+      let isLazyMigration = false;
       if (!hasValidConnection && connectionType === "email" && username) {
         const hasImportModeDbConnection = client.connections.some(
           (c) =>
@@ -272,6 +273,7 @@ export const identifierRoutes = new OpenAPIHono<{
           );
           if (auth0Source) {
             hasValidConnection = true;
+            isLazyMigration = true;
           }
         }
       }
@@ -293,7 +295,12 @@ export const identifierRoutes = new OpenAPIHono<{
         ctx.set("user_id", user.user_id);
       }
 
-      if (!user) {
+      // Lazy migration attempts skip the signup gate: the user already exists
+      // upstream, so `disable_sign_ups` and signup webhooks (which guard
+      // creation of NEW accounts) must not block them. The upstream password
+      // check is what ultimately decides whether the migrated account is
+      // created locally.
+      if (!user && !isLazyMigration) {
         const validation = await validateSignupEmail(
           ctx,
           client,

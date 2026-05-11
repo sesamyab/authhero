@@ -107,9 +107,17 @@ export function UniversalLoginTab() {
       });
 
       if (response.json?.body) {
-        setTemplate(response.json.body);
-        setOriginalTemplate(response.json.body);
-        setHasTemplate(true);
+        // The GET endpoint returns the AuthHero default body when no custom
+        // template is stored, so a body alone doesn't prove the tenant has
+        // saved one. Compare against the known default to distinguish
+        // "default served by API" from "stored custom template" — this
+        // controls whether the "Delete Template" action is shown and what
+        // `hasChanges` is measured against.
+        const body = response.json.body;
+        const isCustom = body !== DEFAULT_TEMPLATE;
+        setTemplate(body);
+        setOriginalTemplate(body);
+        setHasTemplate(isCustom);
       }
     } catch (err: any) {
       if (err.status === 404) {

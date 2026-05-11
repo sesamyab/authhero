@@ -1724,43 +1724,12 @@ export async function createFrontChannelAuthResponse(
     return tokens;
   }
 
-  if (responseMode === AuthorizationResponseMode.WEB_MESSAGE) {
-    if (!authParams.redirect_uri) {
-      throw new JSONHTTPException(400, {
-        message: "Redirect URI not allowed for WEB_MESSAGE response mode.",
-      });
-    }
-
-    const headers = new Headers();
-    if (session_id) {
-      const authCookies = serializeAuthCookie(
-        client.tenant.id,
-        session_id,
-        ctx.var.host || "",
-      );
-      authCookies.forEach((cookie) => {
-        headers.append("set-cookie", cookie);
-      });
-    } else {
-      console.warn(
-        "Session ID not available for WEB_MESSAGE, cookie will not be set.",
-      );
-    }
-
-    const redirectURL = new URL(authParams.redirect_uri);
-    const originUrl = `${redirectURL.protocol}//${redirectURL.host}`;
-
-    return renderAuthIframe(
-      ctx,
-      originUrl,
-      JSON.stringify({ ...tokens, state: authParams.state }),
-      headers,
-    );
-  }
-
   if (!authParams.redirect_uri) {
     throw new JSONHTTPException(400, {
-      message: "Redirect uri not found for this response mode.",
+      message:
+        responseMode === AuthorizationResponseMode.WEB_MESSAGE
+          ? "Redirect URI not allowed for WEB_MESSAGE response mode."
+          : "Redirect uri not found for this response mode.",
     });
   }
 
@@ -1774,14 +1743,19 @@ export async function createFrontChannelAuthResponse(
     authCookies.forEach((cookie) => {
       headers.append("set-cookie", cookie);
     });
+  } else if (responseMode === AuthorizationResponseMode.WEB_MESSAGE) {
+    console.warn(
+      "Session ID not available for WEB_MESSAGE, cookie will not be set.",
+    );
   }
 
-  // Build the response parameter set once; query/fragment/form_post all
-  // carry the same params, just transported differently per OIDC §3.1.2.5
-  // and the OAuth 2.0 Form Post Response Mode spec. Inclusion is driven by
-  // the response_type set: only fields the client asked for are emitted, even
-  // when completeLogin produces extras (e.g. hybrid `code id_token` won't
-  // expose the internally-issued access_token).
+  // Build the response parameter set once; query/fragment/form_post and
+  // WEB_MESSAGE all carry the same params, just transported differently per
+  // OIDC §3.1.2.5 and the OAuth 2.0 Form Post Response Mode spec. Inclusion
+  // is driven by the response_type set: only fields the client asked for are
+  // emitted, even when completeLogin produces extras (e.g. hybrid `code
+  // id_token` won't expose the internally-issued access_token, and the
+  // refresh_token never reaches the front channel).
   const responseTypeTokens = responseType.split(" ");
   const wantsCode = responseTypeTokens.includes("code");
   const wantsIdToken = responseTypeTokens.includes("id_token");
@@ -1820,6 +1794,17 @@ export async function createFrontChannelAuthResponse(
   if (echoState) responseParams.state = echoState;
   if ((wantsAccessToken || wantsIdToken) && authParams.scope) {
     responseParams.scope = authParams.scope;
+  }
+
+  if (responseMode === AuthorizationResponseMode.WEB_MESSAGE) {
+    const redirectURL = new URL(authParams.redirect_uri);
+    const originUrl = `${redirectURL.protocol}//${redirectURL.host}`;
+    return renderAuthIframe(
+      ctx,
+      originUrl,
+      JSON.stringify(responseParams),
+      headers,
+    );
   }
 
   if (responseMode === AuthorizationResponseMode.FORM_POST) {

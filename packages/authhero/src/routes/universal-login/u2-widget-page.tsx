@@ -384,6 +384,42 @@ export function LegalChip({
 }
 
 // ---------------------------------------------------------------------------
+// Widget container style
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the inline `style` value for the widget container. Custom templates
+ * inject the widget into a tenant-controlled body fragment, so the same CSS
+ * variables (and responsive width clamp) the default layout uses must be
+ * forwarded — otherwise primary-color theming and the responsive width are
+ * lost on the custom-template path.
+ */
+function buildWidgetContainerStyle(
+  branding: WidgetPageProps["branding"],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  theme: any,
+): string {
+  const cssVariables: string[] = [];
+  const primaryColor = sanitizeCssColor(branding?.colors?.primary);
+  if (primaryColor) {
+    cssVariables.push(`--ah-color-primary: ${primaryColor}`);
+  }
+  const effectivePrimaryBtn =
+    sanitizeCssColor(theme?.colors?.primary_button) || primaryColor;
+  if (effectivePrimaryBtn) {
+    const BIAS = 1.35;
+    const whiteContrast = darkContrastRatio(effectivePrimaryBtn, "#ffffff");
+    const blackContrast = darkContrastRatio(effectivePrimaryBtn, "#000000");
+    const textOnPrimary =
+      blackContrast > whiteContrast * BIAS ? "#000000" : "#ffffff";
+    cssVariables.push(`--ah-color-text-on-primary: ${textOnPrimary}`);
+  }
+  return cssVariables.length > 0
+    ? cssVariables.join("; ") + "; width: clamp(320px, 100%, 400px);"
+    : "width: clamp(320px, 100%, 400px);";
+}
+
+// ---------------------------------------------------------------------------
 // Page CSS
 // ---------------------------------------------------------------------------
 
@@ -624,22 +660,10 @@ export function WidgetPage({
 }: WidgetPageProps) {
   const resolvedLogoPosition: LogoPosition =
     logoPosition ?? theme?.page_background?.logo_placement ?? "widget";
-  // ---- Build CSS variables from branding (widget-internal) ----
-  const cssVariables: string[] = [];
+  // Primary color is consumed below by the dark-mode runtime as a fallback
+  // for `theme.colors.primary_button` and by `buildPageCss`. The widget
+  // container's CSS variables are computed by `buildWidgetContainerStyle`.
   const primaryColor = sanitizeCssColor(branding?.colors?.primary);
-  if (primaryColor) {
-    cssVariables.push(`--ah-color-primary: ${primaryColor}`);
-  }
-  const effectivePrimaryBtn =
-    sanitizeCssColor(theme?.colors?.primary_button) || primaryColor;
-  if (effectivePrimaryBtn) {
-    const BIAS = 1.35;
-    const whiteContrast = darkContrastRatio(effectivePrimaryBtn, "#ffffff");
-    const blackContrast = darkContrastRatio(effectivePrimaryBtn, "#000000");
-    const textOnPrimary =
-      blackContrast > whiteContrast * BIAS ? "#000000" : "#ffffff";
-    cssVariables.push(`--ah-color-text-on-primary: ${textOnPrimary}`);
-  }
 
   const pageBackground = buildThemePageBackground(
     themePageBackground,
@@ -681,10 +705,7 @@ export function WidgetPage({
     padding,
   };
 
-  const widgetContainerStyle =
-    cssVariables.length > 0
-      ? cssVariables.join("; ") + "; width: clamp(320px, 100%, 400px);"
-      : "width: clamp(320px, 100%, 400px);";
+  const widgetContainerStyle = buildWidgetContainerStyle(branding, theme);
 
   // ---- HTML element data attrs ----
   // data-mode drives chip light/dark; data-bg drives chip surface on/off;
@@ -999,6 +1020,13 @@ export async function renderWidgetPageResponse(
         availableLanguages: opts.availableLanguages,
         poweredBy: opts.poweredByLogo,
         termsAndConditionsUrl: opts.termsAndConditionsUrl,
+        // Forward the same per-tenant CSS variables and responsive width
+        // clamp the default layout applies, so custom templates don't lose
+        // primary-color theming or the responsive widget width.
+        widgetContainerStyle: buildWidgetContainerStyle(
+          extractBrandingProps(opts.branding),
+          opts.theme,
+        ),
       })
     : undefined;
 

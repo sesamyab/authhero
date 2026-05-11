@@ -246,7 +246,9 @@ export function getAllLocaleDefaults(filter?: {
   language?: string;
   prompt?: string;
 }): LocaleDefaultsEntry[] {
-  const languageFilter = filter?.language?.split("-")[0];
+  // LOCALE_DATA keys are lowercase (derived from `<locale>.json` filenames);
+  // mirror normalizeLocale/isLocaleSupported so an input like "EN-US" matches.
+  const languageFilter = filter?.language?.split("-")[0]?.toLowerCase();
   const entries: LocaleDefaultsEntry[] = [];
 
   for (const [language, prompts] of Object.entries(LOCALE_DATA)) {

@@ -753,12 +753,13 @@ function CustomTextTab() {
                     and the tenant's overrides, so every shipped field
                     appears even when the tenant hasn't overridden it. */}
                 {selectedEntry &&
-                  Array.from(
-                    new Set([
+                  (() => {
+                    const screenNames = new Set([
                       ...Object.keys(defaults),
                       ...Object.keys(editingTexts),
-                    ]),
-                  ).map((screenName) => {
+                    ]);
+                    const showScreenHeader = screenNames.size > 1;
+                    return Array.from(screenNames).map((screenName) => {
                     const screenDefaults = defaults[screenName] || {};
                     const screenTexts = editingTexts[screenName] || {};
                     const entries = Array.from(
@@ -770,11 +771,6 @@ function CustomTextTab() {
                       (k) =>
                         [k, screenTexts[k] ?? ""] as [string, string],
                     );
-                    const screenNames = new Set([
-                      ...Object.keys(defaults),
-                      ...Object.keys(editingTexts),
-                    ]);
-                    const showScreenHeader = screenNames.size > 1;
 
                     // Categorize fields
                     const categories = {
@@ -930,7 +926,8 @@ function CustomTextTab() {
                     }
 
                     return <Box key={screenName}>{content}</Box>;
-                  })}
+                    });
+                  })()}
               </>
             ) : (
               <>
