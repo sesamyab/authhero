@@ -73,16 +73,14 @@ export const DYNAMIC_PLAN_NAME = "oidcc-dynamic-certification-test-plan";
 // has `enable_dynamic_client_registration: true` set by create-authhero
 // when --conformance is passed.
 //
-// `server_metadata` is deliberately omitted: the dynamic plan includes
-// `oidcc-idtoken-rs256`, which pins `server_metadata=discovery` at the
-// module level, so passing it again as a plan-level variant trips the
-// suite's "Variant 'X' has been set by user, but test plan already sets
-// this variant for module ..." rejection. Same gotcha the config plan
-// documents above. Discovery is already the suite's default, so dropping
-// it here doesn't change behavior for the other modules.
-export const DYNAMIC_PLAN_VARIANT = {
-  client_registration: "dynamic_client",
-} as const;
+// No plan-level variant is passed: the dynamic plan includes
+// `oidcc-idtoken-rs256`, which pins both `server_metadata` and
+// `client_registration` at the module level, so passing either as a
+// plan-level variant trips the suite's "Variant 'X' has been set by user,
+// but test plan already sets this variant for module ..." rejection. Same
+// gotcha the config plan documents above. The plan name itself encodes
+// `dynamic_client` as the default for unpinned modules, so omitting the
+// variant doesn't change behavior.
 
 // The config plan's only module (oidcc-discovery-endpoint-verification)
 // already pins server_metadata=discovery + client_registration=static_client
