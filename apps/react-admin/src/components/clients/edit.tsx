@@ -1315,6 +1315,15 @@ const normalizeClient = (record: RaRecord): RaRecord => {
   };
 };
 
+// API schema marks refresh_token.* numeric fields as .optional() (accepts
+// undefined, not null). NumberInput's default parse returns null for cleared
+// fields — override so cleared values become undefined and get omitted from
+// the JSON payload.
+const parseOptionalNumber = (value: unknown) =>
+  value === "" || value === null || Number.isNaN(value)
+    ? undefined
+    : Number(value);
+
 const RefreshTokensTab = () => (
   <Stack spacing={2} sx={{ maxWidth: 600 }}>
     <Typography variant="body2" color="textSecondary">
@@ -1335,6 +1344,7 @@ const RefreshTokensTab = () => (
       label="Reuse-detection leeway (seconds)"
       min={0}
       max={600}
+      parse={parseOptionalNumber}
       helperText="Seconds after a parent token's first rotation during which presenting it again still mints a sibling child instead of triggering reuse-detection. Only applies when rotation is enabled. Defaults to 30s."
     />
     <SelectInput
@@ -1356,6 +1366,7 @@ const RefreshTokensTab = () => (
       label="Absolute lifetime (seconds)"
       min={0}
       max={2592000}
+      parse={parseOptionalNumber}
       helperText="Auth0-compatible. Maximum total lifetime of a refresh token chain."
     />
     <BooleanInput
@@ -1368,6 +1379,7 @@ const RefreshTokensTab = () => (
       label="Idle (sliding) lifetime (seconds)"
       min={0}
       max={2592000}
+      parse={parseOptionalNumber}
       helperText="Auth0-compatible. Inactivity window before a refresh token expires."
     />
   </Stack>
@@ -1395,17 +1407,6 @@ export function ClientEdit() {
       }
 
       transformed.client_metadata = stringifiedMetadata;
-    }
-
-    // NumberInput emits null for cleared fields, but the API schema marks
-    // refresh_token.* numeric fields as .optional() (accepts undefined, not
-    // null). Strip null entries so cleared values become omitted instead.
-    if (isPlainObject(transformed.refresh_token)) {
-      const cleaned: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(transformed.refresh_token)) {
-        if (value !== null) cleaned[key] = value;
-      }
-      transformed.refresh_token = cleaned;
     }
 
     return transformed;

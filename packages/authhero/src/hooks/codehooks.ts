@@ -181,9 +181,16 @@ export async function handleCredentialsExchangeCodeHooks(
     } catch (err) {
       const tenant_id = ctx.var.tenant_id || ctx.req.header("tenant-id");
       if (tenant_id) {
+        const message = err instanceof Error ? err.message : String(err);
         logMessage(ctx, tenant_id, {
           type: LogTypes.FAILED_HOOK,
-          description: `Code hook ${hook.hook_id} threw: ${err instanceof Error ? err.message : String(err)}`,
+          description: `Code hook ${hook.hook_id} threw: ${message}`,
+          details: {
+            hook_id: hook.hook_id,
+            code_id: hook.code_id,
+            trigger_id: "credentials-exchange",
+            error: message,
+          },
         });
       }
     }

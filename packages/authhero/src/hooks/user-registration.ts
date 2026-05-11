@@ -90,9 +90,11 @@ export function createUserHooks(
         if (err instanceof HTTPException) {
           throw err;
         }
+        const message = err instanceof Error ? err.message : String(err);
         logMessage(ctx, tenant_id, {
           type: LogTypes.FAILED_SIGNUP,
-          description: "Pre user registration hook failed",
+          description: `Pre user registration hook failed: ${message}`,
+          details: { error: message },
         });
       }
     }
@@ -140,9 +142,16 @@ export function createUserHooks(
           if (err instanceof HTTPException) {
             throw err;
           }
+          const message = err instanceof Error ? err.message : String(err);
           logMessage(ctx, tenant_id, {
             type: LogTypes.FAILED_SIGNUP,
-            description: `Pre user registration code hook ${hook.hook_id} failed`,
+            description: `Pre user registration code hook ${hook.hook_id} failed: ${message}`,
+            details: {
+              hook_id: hook.hook_id,
+              code_id: hook.code_id,
+              trigger_id: "pre-user-registration",
+              error: message,
+            },
           });
         }
       }
@@ -193,9 +202,11 @@ export function createUserHooks(
             },
           );
         } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
           logMessage(ctx, tenant_id, {
             type: LogTypes.FAILED_SIGNUP,
-            description: "Post user registration hook failed",
+            description: `Post user registration hook failed: ${message}`,
+            details: { error: message },
           });
         }
       }
@@ -223,9 +234,16 @@ export function createUserHooks(
               { user: {} },
             );
           } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
             logMessage(ctx, tenant_id, {
               type: LogTypes.FAILED_SIGNUP,
-              description: `Post user registration code hook ${hook.hook_id} failed`,
+              description: `Post user registration code hook ${hook.hook_id} failed: ${message}`,
+              details: {
+                hook_id: hook.hook_id,
+                code_id: hook.code_id,
+                trigger_id: "post-user-registration",
+                error: message,
+              },
             });
           }
         }
@@ -247,9 +265,15 @@ export function createUserHooks(
               hook.metadata,
             );
           } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
             logMessage(ctx, tenant_id, {
               type: LogTypes.FAILED_SIGNUP,
-              description: `Post user registration template hook ${hook.template_id} failed`,
+              description: `Post user registration template hook ${hook.template_id} failed: ${message}`,
+              details: {
+                template_id: hook.template_id,
+                trigger_id: "post-user-registration",
+                error: message,
+              },
             });
           }
         }
