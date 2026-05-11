@@ -69,8 +69,11 @@ export async function universalAuth({
 
   // OIDC Core 3.1.2.1: prompt=login forces re-authentication, even when a
   // session exists. The prompt parameter is space-delimited and may contain
-  // multiple values (e.g. "login consent").
-  if (authParams.prompt?.split(" ").includes("login")) {
+  // multiple values (e.g. "login consent"). We treat `select_account` the same
+  // as `login` — authhero is single-session per browser, so the only way to
+  // honor "pick another account" is to force re-authentication.
+  const promptValues = authParams.prompt?.split(" ") ?? [];
+  if (promptValues.includes("login") || promptValues.includes("select_account")) {
     session = undefined;
   }
 
@@ -114,7 +117,8 @@ export async function universalAuth({
     }
   }
 
-  // If there's an email connection and a login_hint we redirect to the check-account page. This feels like code that will be duplicated
+  // If the caller specifies the email connection plus a login_hint, send the
+  // user straight to the email OTP challenge with a fresh code.
   if (connection === Strategy.EMAIL && login_hint) {
     const otp = generateOTP();
     await ctx.env.data.codes.create(client.tenant.id, {
@@ -137,12 +141,24 @@ export async function universalAuth({
     );
   }
 
-  // If there is a session we redirect to the check-account page,
-  // unless the caller explicitly asked for the login screen via screen_hint=login.
+  // If there is a session, silently continue the auth flow with the existing
+  // user (Auth0-compatible SSO behavior). Callers wanting to switch accounts
+  // must pass `prompt=login`, `prompt=select_account`, or `screen_hint=login`.
   if (session && screen_hint !== "login") {
-    return ctx.redirect(
-      `${routePrefix}/check-account?state=${loginSession.id}`,
+    const user = await ctx.env.data.users.get(
+      client.tenant.id,
+      session.user_id,
     );
+
+    if (user) {
+      return createFrontChannelAuthResponse(ctx, {
+        client,
+        loginSession,
+        authParams,
+        user,
+        existingSessionIdToLink: session.id,
+      });
+    }
   }
 
   // For u2 routes, check if we should use identifier+password flow

@@ -1,16 +1,4 @@
 {
-  "check-account": {
-    "check-account": {
-      "continueQuestion": "Kontynuować z tym kontem?",
-      "description": "Czy chcesz kontynuować z istniejącym kontem?",
-      "descriptionFallback": "Czy chcesz kontynuować z istniejącym kontem?",
-      "error": "Wystąpił błąd. Spróbuj ponownie.",
-      "loggedInAs": "Jesteś obecnie zalogowany jako ${email}",
-      "noUseAnother": "Nie, chcę użyć innego konta",
-      "title": "Kontynuuj z użytkownikiem",
-      "yesContinue": "Tak, kontynuuj z istniejącym kontem"
-    }
-  },
   "common": {
     "common": {
       "alertListTitle": "Powiadomienia",

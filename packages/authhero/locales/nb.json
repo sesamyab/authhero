@@ -1,16 +1,4 @@
 {
-  "check-account": {
-    "check-account": {
-      "continueQuestion": "Fortsette med denne kontoen?",
-      "description": "Vil du fortsette med din eksisterende konto?",
-      "descriptionFallback": "Vil du fortsette med din eksisterende konto?",
-      "error": "Det oppstod en feil. Vennligst prøv igjen.",
-      "loggedInAs": "Du er for øyeblikket logget inn som ${email}",
-      "noUseAnother": "Nei, jeg vil bruke en annen konto",
-      "title": "Fortsett med bruker",
-      "yesContinue": "Ja, fortsett med eksisterende konto"
-    }
-  },
   "common": {
     "common": {
       "alertListTitle": "Varsler",

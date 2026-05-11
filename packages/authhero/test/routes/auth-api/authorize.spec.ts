@@ -1019,7 +1019,7 @@ describe("authorize", () => {
       expect(location).not.toContain("/check-account");
     });
 
-    it("should still redirect to check-account when a session exists and no screen_hint is provided", async () => {
+    it("should silently complete auth via SSO when a session exists and no screen_hint is provided", async () => {
       const { oauthApp, env } = await getTestServer();
       const oauthClient = testClient(oauthApp, env);
 
@@ -1034,7 +1034,7 @@ describe("authorize", () => {
       });
 
       await env.data.sessions.create("tenantId", {
-        id: "checkAccountSessionId",
+        id: "silentSsoSessionId",
         user_id: "email|userId",
         clients: ["clientId"],
         idle_expires_at: new Date(Date.now() + 1000).toISOString(),
@@ -1063,14 +1063,19 @@ describe("authorize", () => {
         {
           headers: {
             origin: "https://example.com",
-            cookie: "tenantId-auth-token=checkAccountSessionId",
+            cookie: "tenantId-auth-token=silentSsoSessionId",
           },
         },
       );
 
       expect(response.status).toEqual(302);
       const location = response.headers.get("location");
-      expect(location).toContain("/u/check-account");
+      expect(location).not.toContain("/check-account");
+      const redirectUri = new URL(location!);
+      expect(redirectUri.origin + redirectUri.pathname).toBe(
+        "https://example.com/callback",
+      );
+      expect(redirectUri.searchParams.get("code")).toBeTruthy();
     });
   });
 });

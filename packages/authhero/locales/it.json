@@ -1,16 +1,4 @@
 {
-  "check-account": {
-    "check-account": {
-      "continueQuestion": "Continuare con questo account?",
-      "description": "Desideri continuare con il tuo account esistente?",
-      "descriptionFallback": "Desideri continuare con il tuo account esistente?",
-      "error": "Si è verificato un errore. Riprova.",
-      "loggedInAs": "Sei attualmente connesso come ${email}",
-      "noUseAnother": "No, voglio usare un altro account",
-      "title": "Continua con l'utente",
-      "yesContinue": "Sì, continua con l'account esistente"
-    }
-  },
   "common": {
     "common": {
       "alertListTitle": "Avvisi",

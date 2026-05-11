@@ -7,7 +7,6 @@ import { enterPasswordRoutes } from "./enter-password";
 import { signupRoutes } from "./signup";
 import { resetPasswordRoutes } from "./reset-password";
 import { forgotPasswordRoutes } from "./forgot-password";
-import { checkAccountRoutes } from "./check-account";
 import { accountRoutes } from "./account";
 import { accountChangeEmailRoutes } from "./account-change-email";
 import { changeEmailVerifyRoutes } from "./account-change-email-verify";
@@ -145,7 +144,6 @@ export default function create(config: AuthHeroConfig) {
 
   const universalApp = app
     .route("/info", infoRoutes)
-    .route("/check-account", checkAccountRoutes)
     .route("/account", accountRoutes)
     .route("/account/change-email", accountChangeEmailRoutes)
     .route("/account/change-email-verify", changeEmailVerifyRoutes)

@@ -1,16 +1,4 @@
 {
-  "check-account": {
-    "check-account": {
-      "continueQuestion": "Fortsæt med denne konto?",
-      "description": "Vil du fortsætte med din eksisterende konto?",
-      "descriptionFallback": "Vil du fortsætte med din eksisterende konto?",
-      "error": "Der opstod en fejl. Prøv venligst igen.",
-      "loggedInAs": "Du er i øjeblikket logget ind som ${email}",
-      "noUseAnother": "Nej, jeg vil bruge en anden konto",
-      "title": "Fortsæt med bruger",
-      "yesContinue": "Ja, fortsæt med eksisterende konto"
-    }
-  },
   "common": {
     "common": {
       "alertListTitle": "Advarsler",
