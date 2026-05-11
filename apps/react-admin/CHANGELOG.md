@@ -1,5 +1,16 @@
 # @authhero/react-admin
 
+## 0.67.2
+
+### Patch Changes
+
+- e1c52f0: Fix branding URL fields (background image, logo, favicon, font URL) that couldn't be cleared from the admin UI. React-admin's default `TextInput` converts emptied input back to `null`, and `transformBranding` then strips null keys before submitting — so the PATCH body omitted the cleared field, which the server's deep-merge treats as "no change". The cleared value silently persisted. The clearable URL inputs in `branding/edit.tsx` and `branding/ThemesTab.tsx` now emit `""` instead of `null`, matching Auth0's PATCH semantics (omitted key = no change, empty string = clear).
+- de79c2a: Connection callback URLs now match Auth0's default. Previously `getConnectionCallbackUrl` always returned `${env.ISSUER}callback` regardless of the request host. The fallback now returns `${customDomain ?? env.ISSUER}login/callback` — honoring custom domains and using Auth0's `/login/callback` path instead of the legacy `/callback`.
+
+  Existing connections with the legacy `/callback` URL registered at the upstream IdP should be pinned by setting `options.callback_url` to the exact previously-implicit URL (e.g. `https://auth2.example.com/callback`) before deploying — otherwise the upstream IdP will reject the new redirect_uri. For inherited/control-plane connections this only needs to be set once on the control-plane row; child tenants pick it up via settings inheritance. The override is now editable in the react-admin connection form. The legacy `/callback` route remains mounted (deprecated) so pinned URLs keep working.
+
+- e1c52f0: Fix client edit form sending `null` for cleared `refresh_token.leeway`, `refresh_token.token_lifetime`, and `refresh_token.idle_token_lifetime` fields. The API schema marks these as optional numbers (undefined OK, null rejected), so saving a client with any of them empty failed with `Expected number, received null`. The `NumberInput`s now parse empty/cleared values to `undefined` so the keys are omitted from the payload.
+
 ## 0.67.1
 
 ### Patch Changes
