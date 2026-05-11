@@ -551,7 +551,7 @@ describe("common", () => {
       expect(payload.name).toBeDefined();
     });
 
-    it("should include profile/email claims in id_token when auth0_conformant=false and response_type is TOKEN_ID_TOKEN (OIDC 5.4: id_token issued at the authorization endpoint)", async () => {
+    it("should EXCLUDE profile/email claims from id_token when auth0_conformant=false and response_type is TOKEN_ID_TOKEN (OIDC 5.4: access_token co-issued at /authorize → claims belong in /userinfo)", async () => {
       const { env } = await getTestServer();
 
       // Update client to use strict OIDC mode
@@ -580,12 +580,11 @@ describe("common", () => {
         throw new Error("Client or user not found");
       }
 
-      // OIDC Core 5.4 + the OIDF conformance check
-      // VerifyScopesReturnedInAuthorizationEndpointIdToken: when an ID Token is
-      // returned directly at the authorization endpoint (Implicit `id_token
-      // token` and `id_token`, Hybrid `code id_token` / `code id_token token`),
-      // the standard Claims for the requested scopes MUST be in that ID Token —
-      // even with auth0_conformant=false.
+      // OIDC Core 5.4: when an access token is issued from /authorize alongside
+      // the ID Token (Implicit `id_token token`, Hybrid `code id_token token`),
+      // the scope-driven Claims live in /userinfo — NOT the ID Token. The OIDF
+      // suite enforces this via `EnsureIdTokenDoesNotContainEmailForScopeEmail`
+      // and its profile / address / phone siblings.
       const tokens = await createAuthTokens(ctx, {
         authParams: {
           client_id: "clientId",
@@ -602,10 +601,12 @@ describe("common", () => {
       const parsed = parseJWT(tokens.id_token!);
       const payload = parsed?.payload as Record<string, unknown>;
 
-      expect(payload.email).toBeDefined();
-      expect(payload.email_verified).toBeDefined();
-      expect(payload.nickname).toBeDefined();
-      expect(payload.name).toBeDefined();
+      // sub MUST be present per OIDC Core; the scope-driven claims must NOT be.
+      expect(payload.sub).toBeDefined();
+      expect(payload.email).toBeUndefined();
+      expect(payload.email_verified).toBeUndefined();
+      expect(payload.nickname).toBeUndefined();
+      expect(payload.name).toBeUndefined();
 
       // Reset client back to default
       await env.data.clients.update("tenantId", "clientId", {
@@ -613,7 +614,59 @@ describe("common", () => {
       });
     });
 
-    it("should include profile/email claims in id_token when auth0_conformant=false but response_type is ID_TOKEN (strict OIDC 5.4)", async () => {
+    it("should EXCLUDE profile/email claims from id_token when auth0_conformant=false and response_type is CODE_ID_TOKEN (OIDC 5.4: access_token issued via code exchange → claims belong in /userinfo)", async () => {
+      const { env } = await getTestServer();
+
+      await env.data.clients.update("tenantId", "clientId", {
+        auth0_conformant: false,
+      });
+
+      const ctx = {
+        env,
+        var: { tenant_id: "tenantId" },
+      } as Context<{ Bindings: Bindings; Variables: Variables }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+      if (!client || !user) throw new Error("Client or user not found");
+
+      // For hybrid `code id_token`, no access_token is issued at /authorize,
+      // but one IS eventually issued via the code exchange. Per OIDC Core 5.4
+      // the scope-driven Claims therefore live in /userinfo, NOT the ID Token —
+      // the OIDF suite WARNs via EnsureIdTokenDoesNotContainEmailForScopeEmail.
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.CODE_ID_TOKEN,
+          scope: "openid profile email",
+          audience: "https://example.com",
+        },
+        client,
+        user,
+        session_id: "session_id",
+        code: "test-authorization-code",
+      });
+
+      expect(tokens.id_token).toBeDefined();
+      const parsed = parseJWT(tokens.id_token!);
+      const payload = parsed?.payload as Record<string, unknown>;
+
+      expect(payload.sub).toBeDefined();
+      expect(payload.email).toBeUndefined();
+      expect(payload.email_verified).toBeUndefined();
+      expect(payload.nickname).toBeUndefined();
+      expect(payload.name).toBeUndefined();
+
+      await env.data.clients.update("tenantId", "clientId", {
+        auth0_conformant: true,
+      });
+    });
+
+    it("should include profile/email claims in id_token when auth0_conformant=false and response_type is ID_TOKEN (strict OIDC 5.4: no access_token anywhere)", async () => {
       const { env } = await getTestServer();
 
       // Update client to use strict OIDC mode
@@ -793,6 +846,140 @@ describe("common", () => {
           sub: impersonatingUser.user_id,
         });
       }
+    });
+
+    it("should include c_hash in id_token when a code is co-issued (hybrid `code id_token`)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: { tenant_id: "tenantId" },
+      } as Context<{ Bindings: Bindings; Variables: Variables }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+      if (!client || !user) throw new Error("Client or user not found");
+
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.CODE_ID_TOKEN,
+          scope: "openid",
+          audience: "https://example.com",
+        },
+        client,
+        user,
+        session_id: "session_id",
+        code: "test-authorization-code",
+      });
+
+      const idToken = parseJWT(tokens.id_token!);
+      const payload = idToken?.payload as Record<string, unknown>;
+      expect(payload.c_hash).toEqual(expect.any(String));
+      expect(payload.at_hash).toBeUndefined();
+    });
+
+    it("should include both c_hash and at_hash in id_token for hybrid `code id_token token`", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: { tenant_id: "tenantId" },
+      } as Context<{ Bindings: Bindings; Variables: Variables }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+      if (!client || !user) throw new Error("Client or user not found");
+
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.CODE_ID_TOKEN_TOKEN,
+          scope: "openid",
+          audience: "https://example.com",
+        },
+        client,
+        user,
+        session_id: "session_id",
+        code: "test-authorization-code",
+      });
+
+      const idToken = parseJWT(tokens.id_token!);
+      const payload = idToken?.payload as Record<string, unknown>;
+      expect(payload.c_hash).toEqual(expect.any(String));
+      expect(payload.at_hash).toEqual(expect.any(String));
+    });
+
+    it("should include at_hash but no c_hash for implicit `id_token token`", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: { tenant_id: "tenantId" },
+      } as Context<{ Bindings: Bindings; Variables: Variables }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+      if (!client || !user) throw new Error("Client or user not found");
+
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+          scope: "openid",
+          audience: "https://example.com",
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      const idToken = parseJWT(tokens.id_token!);
+      const payload = idToken?.payload as Record<string, unknown>;
+      expect(payload.at_hash).toEqual(expect.any(String));
+      expect(payload.c_hash).toBeUndefined();
+    });
+
+    it("should not include c_hash or at_hash for basic code flow id_token (token endpoint)", async () => {
+      const { env } = await getTestServer();
+      const ctx = {
+        env,
+        var: { tenant_id: "tenantId" },
+      } as Context<{ Bindings: Bindings; Variables: Variables }>;
+
+      const client = await getEnrichedClient(env, "clientId");
+      const user = await getPrimaryUserByEmail({
+        userAdapter: env.data.users,
+        tenant_id: "tenantId",
+        email: "foo@example.com",
+      });
+      if (!client || !user) throw new Error("Client or user not found");
+
+      const tokens = await createAuthTokens(ctx, {
+        authParams: {
+          client_id: "clientId",
+          response_type: AuthorizationResponseType.CODE,
+          scope: "openid",
+          audience: "https://example.com",
+        },
+        client,
+        user,
+        session_id: "session_id",
+      });
+
+      const idToken = parseJWT(tokens.id_token!);
+      const payload = idToken?.payload as Record<string, unknown>;
+      expect(payload.c_hash).toBeUndefined();
+      expect(payload.at_hash).toBeUndefined();
     });
   });
 

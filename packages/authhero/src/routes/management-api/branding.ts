@@ -4,6 +4,10 @@ import { brandingSchema, LogTypes } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
 import { themesRoutes } from "./themes";
 import { DEFAULT_BRANDING } from "../../constants/defaultBranding";
+import {
+  DEFAULT_UNIVERSAL_LOGIN_TEMPLATE,
+  REQUIRED_SLOT,
+} from "../universal-login/universal-login-template";
 import { HTTPException } from "hono/http-exception";
 
 const universalLoginTemplateSchema = z.object({
@@ -134,10 +138,8 @@ export const brandingRoutes = new OpenAPIHono<{
               schema: universalLoginTemplateSchema,
             },
           },
-          description: "Universal login template",
-        },
-        404: {
-          description: "Template not found",
+          description:
+            "Universal login template — tenant-customized when one is stored, otherwise the AuthHero default body that tenants can copy and modify.",
         },
       },
     }),
@@ -146,11 +148,11 @@ export const brandingRoutes = new OpenAPIHono<{
         ctx.var.tenant_id,
       );
 
-      if (!template) {
-        throw new HTTPException(404, { message: "Template not found" });
+      if (template) {
+        return ctx.json(template);
       }
 
-      return ctx.json(template);
+      return ctx.json({ body: DEFAULT_UNIVERSAL_LOGIN_TEMPLATE });
     },
   )
   // --------------------------------
@@ -190,15 +192,11 @@ export const brandingRoutes = new OpenAPIHono<{
     async (ctx) => {
       const template = ctx.req.valid("json");
 
-      // Validate template contains required Liquid tags
-      if (!template.body.includes("{%- auth0:head -%}")) {
+      // Body must mount the widget. Chip slots are optional — omitting one
+      // hides that pill.
+      if (!template.body.includes(REQUIRED_SLOT)) {
         throw new HTTPException(400, {
-          message: "Template must contain {%- auth0:head -%} tag",
-        });
-      }
-      if (!template.body.includes("{%- auth0:widget -%}")) {
-        throw new HTTPException(400, {
-          message: "Template must contain {%- auth0:widget -%} tag",
+          message: `Template must contain ${REQUIRED_SLOT} tag`,
         });
       }
 

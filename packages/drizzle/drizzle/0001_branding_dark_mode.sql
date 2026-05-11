@@ -1,0 +1,1 @@
+ALTER TABLE `branding` ADD `dark_mode` text(8);

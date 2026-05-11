@@ -17,10 +17,8 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
-import { renderWidgetPageResponse } from "./u2-widget-page";
-import type { DarkModePreference } from "./u2-widget-page";
+import { renderWidgetPageResponse, resolveDarkMode } from "./u2-widget-page";
 import { sanitizeUrl } from "./sanitization-utils";
-import { getCookie } from "hono/cookie";
 import {
   getScreen,
   getScreenDefinition,
@@ -610,11 +608,7 @@ screenApiRoutes.use("/:screenId", async (ctx, next) => {
       }),
     });
 
-    const darkModeCookie = getCookie(ctx, "ah-dark-mode");
-    const darkMode: DarkModePreference =
-      darkModeCookie === "dark" || darkModeCookie === "light"
-        ? darkModeCookie
-        : "auto";
+    const darkMode = resolveDarkMode(ctx, branding);
 
     return renderWidgetPageResponse(ctx, {
       screenId: resultScreenId,

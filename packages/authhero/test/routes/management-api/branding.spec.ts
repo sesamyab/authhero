@@ -79,7 +79,7 @@ describe("branding", () => {
   });
 
   describe("universal login templates", () => {
-    it("should return 404 when no template exists", async () => {
+    it("should return the AuthHero default template when no custom template exists", async () => {
       const { managementApp, env } = await getTestServer();
       const managementClient = testClient(managementApp, env);
       const token = await getAdminToken();
@@ -99,7 +99,9 @@ describe("branding", () => {
         },
       );
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.body).toContain("{%- auth0:widget -%}");
     });
 
     it("should set and get universal login template", async () => {
@@ -151,41 +153,13 @@ describe("branding", () => {
       expect(responseBody.body).toBe(template.body);
     });
 
-    it("should return 400 when template is missing auth0:head tag", async () => {
-      const { managementApp, env } = await getTestServer();
-      const managementClient = testClient(managementApp, env);
-      const token = await getAdminToken();
-
-      const template = {
-        body: "<!DOCTYPE html><html><head></head><body>{%- auth0:widget -%}</body></html>",
-      };
-
-      const response = await managementClient.branding.templates[
-        "universal-login"
-      ].$put(
-        {
-          header: {
-            "tenant-id": "tenantId",
-          },
-          json: template,
-        },
-        {
-          headers: {
-            authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      expect(response.status).toBe(400);
-    });
-
     it("should return 400 when template is missing auth0:widget tag", async () => {
       const { managementApp, env } = await getTestServer();
       const managementClient = testClient(managementApp, env);
       const token = await getAdminToken();
 
       const template = {
-        body: "<!DOCTYPE html><html><head>{%- auth0:head -%}</head><body></body></html>",
+        body: "<body></body>",
       };
 
       const response = await managementClient.branding.templates[
@@ -249,7 +223,7 @@ describe("branding", () => {
 
       expect(deleteResponse.status).toBe(204);
 
-      // Verify it's deleted
+      // After deletion the GET falls back to the AuthHero default template.
       const getResponse = await managementClient.branding.templates[
         "universal-login"
       ].$get(
@@ -265,7 +239,9 @@ describe("branding", () => {
         },
       );
 
-      expect(getResponse.status).toBe(404);
+      expect(getResponse.status).toBe(200);
+      const fallbackBody = await getResponse.json();
+      expect(fallbackBody.body).toContain("{%- auth0:widget -%}");
     });
   });
 });

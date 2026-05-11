@@ -7,6 +7,7 @@ import {
   LogTypes,
 } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
+import { getAllLocaleDefaults } from "../../i18n";
 
 export const promptsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
@@ -148,6 +149,53 @@ export const promptsRoutes = new OpenAPIHono<{
     async (ctx) => {
       const entries = await ctx.env.data.customText.list(ctx.var.tenant_id);
       return ctx.json(entries);
+    },
+  )
+  // --------------------------------
+  // GET /api/v2/prompts/custom-text/defaults
+  // Return the bundled default text so the admin UI can render placeholders
+  // and discover which prompt/screen/key forms exist. Auth0 has no equivalent.
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["prompts"],
+      method: "get",
+      path: "/custom-text/defaults",
+      request: {
+        headers: z.object({
+          "tenant-id": z.string().optional(),
+        }),
+        query: z.object({
+          language: z.string().optional(),
+          prompt: z.string().optional(),
+        }),
+      },
+      security: [
+        {
+          Bearer: ["read:prompts", "auth:read"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.array(
+                z.object({
+                  prompt: z.string(),
+                  language: z.string(),
+                  custom_text: customTextSchema,
+                }),
+              ),
+            },
+          },
+          description:
+            "Bundled default text for every prompt/language shipped with authhero. authhero extension; not available in Auth0.",
+        },
+      },
+    }),
+    async (ctx) => {
+      const { language, prompt } = ctx.req.valid("query");
+      return ctx.json(getAllLocaleDefaults({ language, prompt }));
     },
   )
   // --------------------------------

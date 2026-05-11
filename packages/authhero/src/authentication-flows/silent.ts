@@ -314,16 +314,42 @@ export async function silentAuth({
     token_lifetime: calculatedTokenLifetime,
   };
 
-  // Create authentication tokens or code
-  const tokenResponse =
-    response_type === AuthorizationResponseType.CODE
-      ? await createCodeData(ctx, {
-          user,
-          client,
-          authParams: tokenResponseOptions.authParams,
-          login_id: loginSession.id,
-        })
-      : await createAuthTokens(ctx, tokenResponseOptions);
+  // Create authentication tokens, code, or both (hybrid).
+  const responseTypeTokens = response_type.split(" ");
+  const wantsCode = responseTypeTokens.includes("code");
+  const wantsIdToken = responseTypeTokens.includes("id_token");
+  const wantsAccessToken = responseTypeTokens.includes("token");
+  const isHybrid = wantsCode && (wantsIdToken || wantsAccessToken);
+
+  let tokenResponse: Record<string, unknown>;
+  if (response_type === AuthorizationResponseType.CODE) {
+    tokenResponse = await createCodeData(ctx, {
+      user,
+      client,
+      authParams: tokenResponseOptions.authParams,
+      login_id: loginSession.id,
+    });
+  } else if (isHybrid) {
+    // Hybrid: issue the code first so c_hash can be computed inside
+    // createAuthTokens (mirrors completeLogin in common.ts).
+    const codeData = await createCodeData(ctx, {
+      user,
+      client,
+      authParams: tokenResponseOptions.authParams,
+      login_id: loginSession.id,
+    });
+    const tokens = await createAuthTokens(ctx, {
+      ...tokenResponseOptions,
+      code: codeData.code,
+    });
+    tokenResponse = {
+      ...tokens,
+      code: codeData.code,
+      state: codeData.state,
+    };
+  } else {
+    tokenResponse = await createAuthTokens(ctx, tokenResponseOptions);
+  }
 
   // Update session idle timeout using tenant settings
   const newIdleExpiresAt = client.tenant.idle_session_lifetime
@@ -381,11 +407,32 @@ export async function silentAuth({
     );
   }
 
+  // Emit only the fields the requested response_type actually carries — mirrors
+  // createFrontChannelAuthResponse so that, for example, hybrid `code id_token`
+  // doesn't leak the internally-issued access_token into the redirect.
   const successParams: Record<string, string> = {};
-  Object.entries(tokenResponse).forEach(([key, value]) => {
-    if (value !== undefined) successParams[key] = String(value);
-  });
+  const code = tokenResponse.code;
+  const access_token = tokenResponse.access_token;
+  const id_token = tokenResponse.id_token;
+  if (wantsCode && typeof code === "string") {
+    successParams.code = code;
+  }
+  if (typeof access_token === "string") {
+    if (wantsAccessToken) {
+      successParams.access_token = access_token;
+      if (typeof tokenResponse.token_type === "string") {
+        successParams.token_type = tokenResponse.token_type;
+      }
+      if (typeof tokenResponse.expires_in === "number") {
+        successParams.expires_in = String(tokenResponse.expires_in);
+      }
+    }
+    if (wantsIdToken && typeof id_token === "string") {
+      successParams.id_token = id_token;
+    }
+  }
   if (state) successParams.state = state;
+  if ((wantsAccessToken || wantsIdToken) && scope) successParams.scope = scope;
 
   if (response_mode === AuthorizationResponseMode.FORM_POST) {
     return formPostResponse(redirect_uri, successParams, headers);

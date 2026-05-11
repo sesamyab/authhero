@@ -59,24 +59,15 @@ describe("u2 routes", () => {
       const managementClient = testClient(managementApp, env);
       const token = await getAdminToken();
 
-      // Set custom liquid template
-      const customTemplate = `<!DOCTYPE html>
-<html>
-  <head>
-    {%- auth0:head -%}
-    <style>
-      body { background-color: #custom-bg-color; }
-      .custom-class { color: red; }
-    </style>
-  </head>
-  <body>
-    <div class="custom-wrapper">
-      <h1>Custom Login Page</h1>
-      {%- auth0:widget -%}
-      <footer>Custom Footer Content</footer>
-    </div>
-  </body>
-</html>`;
+      // Custom body template — only the widget mount + selected chip slots.
+      // The page shell (html/head/body styles, dark-mode runtime) is fixed.
+      const customTemplate = `<div class="custom-wrapper">
+  <h1>Custom Login Page</h1>
+  {%- auth0:widget -%}
+  {%- authhero:settings -%}
+  {%- authhero:legal -%}
+  <footer>Custom Footer Content</footer>
+</div>`;
 
       const setTemplateResponse = await managementClient.branding.templates[
         "universal-login"
@@ -127,20 +118,25 @@ describe("u2 routes", () => {
       expect(response.status).toBe(200);
       const html = await response.text();
 
-      // Custom template elements should be present
+      // Custom template body should be inserted into the AuthHero shell
       expect(html).toContain("custom-wrapper");
       expect(html).toContain("Custom Login Page");
       expect(html).toContain("Custom Footer Content");
-      expect(html).toContain("#custom-bg-color");
-      expect(html).toContain(".custom-class");
 
-      // auth0:head content should be injected (widget script, styles, etc.)
+      // Shell still provides head plumbing
       expect(html).toContain("/u/widget/authhero-widget.esm.js");
       expect(html).toContain("<meta charSet=");
 
-      // auth0:widget content should be injected
+      // auth0:widget slot expanded into the widget mount
       expect(html).toContain("authhero-widget");
-      expect(html).toContain('id="widget"');
+      expect(html).toContain("data-authhero-widget-container");
+
+      // Slots present in the custom template render their chip element
+      // (the class name also appears in the page CSS, so match the element).
+      expect(html).toMatch(/<div class="ah-chip ah-chip-settings\b/);
+
+      // The powered-by slot was omitted, so no trust-chip element renders
+      expect(html).not.toMatch(/<div class="ah-chip ah-chip-trust\b/);
     });
 
     it("should revert to default template after deleting custom template", async () => {
@@ -152,15 +148,9 @@ describe("u2 routes", () => {
       const managementClient = testClient(managementApp, env);
       const token = await getAdminToken();
 
-      // Set custom liquid template
-      const customTemplate = `<!DOCTYPE html>
-<html>
-  <head>{%- auth0:head -%}</head>
-  <body>
-    <div class="unique-custom-element">UNIQUE_MARKER</div>
-    {%- auth0:widget -%}
-  </body>
-</html>`;
+      // Set custom body template — slot-based.
+      const customTemplate = `<div class="unique-custom-element">UNIQUE_MARKER</div>
+{%- auth0:widget -%}`;
 
       await managementClient.branding.templates["universal-login"].$put(
         {

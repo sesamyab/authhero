@@ -160,6 +160,7 @@ import * as o061_tenants_attack_protection from "./2026-05-06T11:00:00_tenants_a
 import * as o062_tenants_default_client_id from "./2026-05-06T12:00:00_tenants_default_client_id";
 import * as o063_email_templates from "./2026-05-09T00:00:00_email_templates";
 import * as o064_create_action_versions from "./2026-05-10T10:00:00_create_action_versions";
+import * as o065_branding_dark_mode from "./2026-05-11T10:00:00_branding_dark_mode";
 
 // These need to be in alphabetic order
 export default {
@@ -325,4 +326,5 @@ export default {
   o062_tenants_default_client_id,
   o063_email_templates,
   o064_create_action_versions,
+  o065_branding_dark_mode,
 };

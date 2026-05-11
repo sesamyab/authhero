@@ -255,6 +255,9 @@ function CustomTextTab() {
   const [editingTexts, setEditingTexts] = useState<
     Record<string, Record<string, string>>
   >({});
+  const [defaults, setDefaults] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const [newPrompt, setNewPrompt] = useState("");
   const [newLanguage, setNewLanguage] = useState("en");
   const [loading, setLoading] = useState(false);
@@ -299,11 +302,25 @@ function CustomTextTab() {
     async (entry: CustomTextEntry) => {
       setLoading(true);
       try {
-        const result = await dataProvider.getOne("custom-text", {
-          id: `${entry.prompt}:${entry.language}`,
-        });
+        const [overridesResult, defaultsResult] = await Promise.all([
+          dataProvider.getOne("custom-text", {
+            id: `${entry.prompt}:${entry.language}`,
+          }),
+          dataProvider.getList("custom-text-defaults", {
+            filter: { prompt: entry.prompt, language: entry.language },
+            pagination: { page: 1, perPage: 1 },
+            sort: { field: "prompt", order: "ASC" },
+          }),
+        ]);
         setSelectedEntry(entry);
-        const texts = result.data.texts || {};
+        const texts = overridesResult.data.texts || {};
+        const defaultsEntry = defaultsResult.data[0];
+        const defaultsData =
+          (defaultsEntry?.custom_text as Record<
+            string,
+            Record<string, string>
+          >) || {};
+        setDefaults(defaultsData);
         setEditingTexts(texts);
         setJsonValue(JSON.stringify(texts, null, 2));
         setJsonError(null);
@@ -732,13 +749,28 @@ function CustomTextTab() {
                   will be replaced at runtime.
                 </Typography>
 
-                {/* Render per-screen sections */}
+                {/* Render per-screen sections: union of bundled defaults
+                    and the tenant's overrides, so every shipped field
+                    appears even when the tenant hasn't overridden it. */}
                 {selectedEntry &&
-                  Object.keys(editingTexts).map((screenName) => {
+                  (() => {
+                    const screenNames = new Set([
+                      ...Object.keys(defaults),
+                      ...Object.keys(editingTexts),
+                    ]);
+                    const showScreenHeader = screenNames.size > 1;
+                    return Array.from(screenNames).map((screenName) => {
+                    const screenDefaults = defaults[screenName] || {};
                     const screenTexts = editingTexts[screenName] || {};
-                    const entries = Object.entries(screenTexts);
-                    const screenNames = Object.keys(editingTexts);
-                    const showScreenHeader = screenNames.length > 1;
+                    const entries = Array.from(
+                      new Set([
+                        ...Object.keys(screenDefaults),
+                        ...Object.keys(screenTexts),
+                      ]),
+                    ).map(
+                      (k) =>
+                        [k, screenTexts[k] ?? ""] as [string, string],
+                    );
 
                     // Categorize fields
                     const categories = {
@@ -822,7 +854,10 @@ function CustomTextTab() {
                               </AccordionSummary>
                               <AccordionDetails>
                                 <Stack spacing={2}>
-                                  {items.map(([key, value]) => (
+                                  {items.map(([key, value]) => {
+                                    const defaultValue =
+                                      screenDefaults[key];
+                                    return (
                                     <Box
                                       key={key}
                                       display="flex"
@@ -843,7 +878,12 @@ function CustomTextTab() {
                                         multiline
                                         minRows={1}
                                         maxRows={4}
-                                        helperText="Clear to use default value"
+                                        placeholder={defaultValue ?? ""}
+                                        helperText={
+                                          defaultValue
+                                            ? `Default: ${defaultValue}`
+                                            : "Clear to use default value"
+                                        }
                                         InputLabelProps={{
                                           shrink: true,
                                         }}
@@ -859,7 +899,8 @@ function CustomTextTab() {
                                         <DeleteIcon />
                                       </IconButton>
                                     </Box>
-                                  ))}
+                                    );
+                                  })}
                                 </Stack>
                               </AccordionDetails>
                             </Accordion>
@@ -885,7 +926,8 @@ function CustomTextTab() {
                     }
 
                     return <Box key={screenName}>{content}</Box>;
-                  })}
+                    });
+                  })()}
               </>
             ) : (
               <>

@@ -118,7 +118,15 @@ export const wellKnownRoutes = new OpenAPIHono<{
           "phone",
           "address",
         ],
-        response_types_supported: ["code", "token", "id_token", "id_token token"],
+        response_types_supported: [
+          "code",
+          "token",
+          "id_token",
+          "id_token token",
+          "code id_token",
+          "code token",
+          "code id_token token",
+        ],
         grant_types_supported: [
           "authorization_code",
           "client_credentials",

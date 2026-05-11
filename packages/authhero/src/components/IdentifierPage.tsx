@@ -66,10 +66,19 @@ const IdentifierPage: FC<Props> = ({
     Strategy.AUTH0,
   ]);
 
-  // Get all available social/enterprise connections with their configs
+  // Get all available social/enterprise connections with their configs.
+  // HRD-enabled connections (those with domain_aliases) are hidden by default
+  // — they are reached via email-domain routing, not by clicking a button.
+  // An explicit `show_as_button: true` opts back in; `show_as_button: false`
+  // always hides regardless of HRD configuration.
   const socialConnections = client.connections
     .filter((connection) => !formStrategies.has(connection.strategy))
-    .filter((connection) => connection.show_as_button !== false)
+    .filter((connection) => {
+      if (connection.show_as_button === false) return false;
+      if (connection.show_as_button === true) return true;
+      const aliases = connection.options?.domain_aliases;
+      return !(aliases && aliases.length > 0);
+    })
     .map((connection) => {
       const strategy = BUILTIN_STRATEGIES[connection.strategy];
       if (!strategy) return null;

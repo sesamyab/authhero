@@ -23,6 +23,7 @@ import { ulid } from "../utils/ulid";
 import { generateCodeVerifier } from "oslo/oauth2";
 import { pemToBuffer } from "../utils/crypto";
 import { algForCert } from "../utils/jwk-alg";
+import { computeIdTokenHash } from "../utils/id-token-hash";
 import { Bindings, Variables } from "../types";
 import {
   AUTHORIZATION_CODE_EXPIRES_IN_SECONDS,
@@ -90,6 +91,12 @@ export interface CreateAuthTokensParams {
   customClaims?: Record<string, unknown>;
   /** Access token lifetime in seconds, from resource server config */
   token_lifetime?: number;
+  /**
+   * Authorization code co-issued in the same front-channel response (hybrid
+   * flow). When provided AND an id_token is being issued, a `c_hash` claim
+   * covering this code is added to the id_token per OIDC Core 3.3.2.11.
+   */
+  code?: string;
 }
 
 const RESERVED_CLAIMS = ["sub", "iss", "aud", "exp", "nbf", "iat", "jti"];
@@ -250,30 +257,31 @@ export async function createAuthTokens(
   const scopes = authParams.scope?.split(" ") || [];
   const hasOpenidScope = scopes.includes("openid");
 
-  // Per OIDC Core section 5.4: Claims requested by profile, email, address, and
-  // phone scopes are returned from the UserInfo Endpoint by default. But for
-  // any flow that issues an ID Token directly at the authorization endpoint
-  // (Implicit `id_token` / `id_token token` and Hybrid `code id_token` /
-  // `code id_token token`), the standard Claims for those scopes MUST be
-  // returned in that ID Token — the OIDF conformance suite enforces this via
-  // `VerifyScopesReturnedInAuthorizationEndpointIdToken`.
+  // Per OIDC Core 5.4: scope-driven Claims (profile / email / address / phone)
+  // are returned from the UserInfo Endpoint "when a response_type value is
+  // used that results in an Access Token being issued." Only the pure
+  // `id_token` response_type never produces an access_token (no /authorize
+  // access_token, no token-endpoint exchange), so it's the only case where
+  // those Claims MUST live in the ID Token. Every other response_type
+  // — implicit `id_token token`, basic `code`, all three hybrid variants —
+  // eventually yields an access_token (at /authorize or via the code
+  // exchange), so the OIDF suite's `EnsureIdTokenDoesNotContainEmailForScopeEmail`
+  // (and profile/address/phone siblings) WARN if those Claims appear in the
+  // ID Token.
   //
-  // Auth0's behavior differs: it always includes scope claims in the ID Token
-  // when those scopes are requested, regardless of response_type.
-  //
-  // We use the client's auth0_conformant flag to choose:
-  // - auth0_conformant=true (default): Auth0-compatible (always include in ID Token)
-  // - auth0_conformant=false: Strict OIDC 5.4 (include only when an ID Token is
-  //   issued at the authorization endpoint)
-  const idTokenIssuedAtAuthorizationEndpoint = (
-    authParams.response_type ?? ""
-  )
-    .split(" ")
-    .includes("id_token");
+  // Auth0's default behavior diverges: it always includes scope-driven Claims
+  // in the ID Token regardless of response_type. The `auth0_conformant` flag
+  // picks between modes:
+  // - auth0_conformant=true (default): Auth0-compatible (always include)
+  // - auth0_conformant=false: Strict OIDC 5.4 (include only when response_type
+  //   is exactly `id_token`)
+  const isPureIdTokenResponseType =
+    (authParams.response_type ?? "").trim() ===
+    AuthorizationResponseType.ID_TOKEN;
   const shouldIncludeScopeClaimsInIdToken =
-    client.auth0_conformant !== false || idTokenIssuedAtAuthorizationEndpoint;
+    client.auth0_conformant !== false || isPureIdTokenResponseType;
 
-  const idTokenPayload =
+  const idTokenPayload: Record<string, unknown> | undefined =
     user && hasOpenidScope
       ? {
           // The audience for an id token is the client id
@@ -469,6 +477,27 @@ export async function createAuthTokens(
     accessTokenPayload,
     header,
   );
+
+  // OIDC Core 3.3.2.11 — when an id_token is co-issued with a code at the
+  // authorization endpoint (hybrid `code id_token` / `code id_token token`),
+  // include c_hash covering the code. When co-issued with an access_token at
+  // the authorization endpoint (implicit `id_token token` / hybrid `code
+  // id_token token`), include at_hash covering the access_token.
+  if (idTokenPayload) {
+    const responseTypeTokens = (authParams.response_type ?? "").split(" ");
+    if (params.code && responseTypeTokens.includes("code")) {
+      idTokenPayload.c_hash = await computeIdTokenHash(params.code, signingAlg);
+    }
+    if (
+      responseTypeTokens.includes("id_token") &&
+      responseTypeTokens.includes("token")
+    ) {
+      idTokenPayload.at_hash = await computeIdTokenHash(
+        access_token,
+        signingAlg,
+      );
+    }
+  }
 
   const id_token = idTokenPayload
     ? await createJWT(signingAlg, keyBuffer, idTokenPayload, header)
@@ -1638,12 +1667,16 @@ export async function createFrontChannelAuthResponse(
 
   // If a refresh token wasn't passed in (or already set) and 'offline_access' is in the current authParams.scope, create one.
   // Don't create refresh tokens for impersonated users for security reasons.
+  // For any response_type that includes a `code` (basic + hybrid), the code
+  // exchange at /oauth/token will issue the refresh token — skip here to
+  // avoid double-issuance. Pure implicit `token` also skips (refresh tokens
+  // were never intended for the implicit grant).
+  const responseTypeIncludesCode = responseType.split(" ").includes("code");
   if (
     !refresh_token &&
     authParams.scope?.split(" ").includes("offline_access") &&
-    ![AuthorizationResponseType.TOKEN, AuthorizationResponseType.CODE].includes(
-      responseType,
-    ) &&
+    responseType !== AuthorizationResponseType.TOKEN &&
+    !responseTypeIncludesCode &&
     !params.impersonatingUser
   ) {
     const newRefreshToken = await createRefreshToken(ctx, {
@@ -1691,43 +1724,12 @@ export async function createFrontChannelAuthResponse(
     return tokens;
   }
 
-  if (responseMode === AuthorizationResponseMode.WEB_MESSAGE) {
-    if (!authParams.redirect_uri) {
-      throw new JSONHTTPException(400, {
-        message: "Redirect URI not allowed for WEB_MESSAGE response mode.",
-      });
-    }
-
-    const headers = new Headers();
-    if (session_id) {
-      const authCookies = serializeAuthCookie(
-        client.tenant.id,
-        session_id,
-        ctx.var.host || "",
-      );
-      authCookies.forEach((cookie) => {
-        headers.append("set-cookie", cookie);
-      });
-    } else {
-      console.warn(
-        "Session ID not available for WEB_MESSAGE, cookie will not be set.",
-      );
-    }
-
-    const redirectURL = new URL(authParams.redirect_uri);
-    const originUrl = `${redirectURL.protocol}//${redirectURL.host}`;
-
-    return renderAuthIframe(
-      ctx,
-      originUrl,
-      JSON.stringify({ ...tokens, state: authParams.state }),
-      headers,
-    );
-  }
-
   if (!authParams.redirect_uri) {
     throw new JSONHTTPException(400, {
-      message: "Redirect uri not found for this response mode.",
+      message:
+        responseMode === AuthorizationResponseMode.WEB_MESSAGE
+          ? "Redirect URI not allowed for WEB_MESSAGE response mode."
+          : "Redirect uri not found for this response mode.",
     });
   }
 
@@ -1741,39 +1743,85 @@ export async function createFrontChannelAuthResponse(
     authCookies.forEach((cookie) => {
       headers.append("set-cookie", cookie);
     });
+  } else if (responseMode === AuthorizationResponseMode.WEB_MESSAGE) {
+    console.warn(
+      "Session ID not available for WEB_MESSAGE, cookie will not be set.",
+    );
   }
 
-  // Build the response parameter set once; query/fragment/form_post all
-  // carry the same params, just transported differently per OIDC §3.1.2.5
-  // and the OAuth 2.0 Form Post Response Mode spec.
+  // Build the response parameter set once; query/fragment/form_post and
+  // WEB_MESSAGE all carry the same params, just transported differently per
+  // OIDC §3.1.2.5 and the OAuth 2.0 Form Post Response Mode spec. Inclusion
+  // is driven by the response_type set: only fields the client asked for are
+  // emitted, even when completeLogin produces extras (e.g. hybrid `code
+  // id_token` won't expose the internally-issued access_token, and the
+  // refresh_token never reaches the front channel).
+  const responseTypeTokens = responseType.split(" ");
+  const wantsCode = responseTypeTokens.includes("code");
+  const wantsIdToken = responseTypeTokens.includes("id_token");
+  const wantsAccessToken = responseTypeTokens.includes("token");
+
   const responseParams: Record<string, string> = {};
-  if ("code" in tokens) {
+  const hasCode = "code" in tokens && typeof tokens.code === "string";
+  const hasAccessToken =
+    "access_token" in tokens && typeof tokens.access_token === "string";
+
+  if (hasCode && wantsCode) {
     responseParams.code = tokens.code;
-    if (tokens.state) responseParams.state = tokens.state;
-  } else if ("access_token" in tokens) {
-    responseParams.access_token = tokens.access_token;
-    if (tokens.id_token) responseParams.id_token = tokens.id_token;
-    responseParams.token_type = tokens.token_type;
-    responseParams.expires_in = tokens.expires_in.toString();
-    if (authParams.state) responseParams.state = authParams.state;
-    if (authParams.scope) responseParams.scope = authParams.scope;
-  } else {
+  }
+  if (hasAccessToken) {
+    if (wantsAccessToken) {
+      responseParams.access_token = tokens.access_token;
+      responseParams.token_type = tokens.token_type;
+      responseParams.expires_in = tokens.expires_in.toString();
+    }
+    if (wantsIdToken && tokens.id_token) {
+      responseParams.id_token = tokens.id_token;
+    }
+  }
+  if (!hasCode && !hasAccessToken) {
     throw new JSONHTTPException(500, {
-      message: "Invalid token response for implicit flow.",
+      message: "Invalid token response for front-channel flow.",
     });
+  }
+  // `state` echo: code-only responses carry the state on the code object;
+  // every other flow uses authParams.state. Either way echo it when present.
+  const stateOnTokens =
+    "state" in tokens && typeof tokens.state === "string"
+      ? tokens.state
+      : undefined;
+  const echoState = stateOnTokens ?? authParams.state;
+  if (echoState) responseParams.state = echoState;
+  if ((wantsAccessToken || wantsIdToken) && authParams.scope) {
+    responseParams.scope = authParams.scope;
+  }
+
+  if (responseMode === AuthorizationResponseMode.WEB_MESSAGE) {
+    const redirectURL = new URL(authParams.redirect_uri);
+    const originUrl = `${redirectURL.protocol}//${redirectURL.host}`;
+    return renderAuthIframe(
+      ctx,
+      originUrl,
+      JSON.stringify(responseParams),
+      headers,
+    );
   }
 
   if (responseMode === AuthorizationResponseMode.FORM_POST) {
     return formPostResponse(authParams.redirect_uri, responseParams, headers);
   }
 
+  // OIDC Core 3.3.2.5 / 3.2.2.5: any response that carries a front-channel
+  // token (id_token or access_token) goes in the fragment so it never reaches
+  // server logs. Pure code responses use the query.
+  const useFragment = wantsIdToken || wantsAccessToken;
   const redirectUri = new URL(authParams.redirect_uri);
-  if ("code" in tokens) {
+  if (useFragment) {
+    redirectUri.hash = new URLSearchParams(responseParams).toString();
+  } else {
     for (const [k, v] of Object.entries(responseParams)) {
       redirectUri.searchParams.set(k, v);
     }
-  } else {
-    redirectUri.hash = new URLSearchParams(responseParams).toString();
   }
 
   headers.set("location", redirectUri.toString());
@@ -1790,7 +1838,12 @@ export async function completeLogin(
     client: EnrichedClient;
     responseType?: AuthorizationResponseType;
   },
-): Promise<TokenResponse | { code: string; state?: string } | Response> {
+): Promise<
+  | TokenResponse
+  | { code: string; state?: string }
+  | (TokenResponse & { code: string })
+  | Response
+> {
   let { user } = params;
   const responseType = params.responseType || AuthorizationResponseType.TOKEN;
 
@@ -1944,9 +1997,16 @@ export async function completeLogin(
     params.authConnection ||
     ctx.var.connection;
 
-  // Return either code data or tokens based on response type
+  // Return code, tokens, or both (hybrid) based on response_type.
   // Note: completeLoginSession is called AFTER successful creation to avoid
-  // marking session as COMPLETED if token/code creation fails
+  // marking session as COMPLETED if token/code creation fails.
+  const responseTypeTokens = responseType.split(" ");
+  const issuesCode = responseTypeTokens.includes("code");
+  const issuesFrontChannelToken =
+    responseTypeTokens.includes("id_token") ||
+    responseTypeTokens.includes("token");
+  const isHybrid = issuesCode && issuesFrontChannelToken;
+
   if (responseType === AuthorizationResponseType.CODE) {
     if (!user || !params.loginSession) {
       throw new JSONHTTPException(500, {
@@ -1969,6 +2029,37 @@ export async function completeLogin(
     );
 
     return codeData;
+  } else if (isHybrid) {
+    if (!user || !params.loginSession) {
+      throw new JSONHTTPException(500, {
+        message: "User and loginSession is required for hybrid flow",
+      });
+    }
+    // Issue the code first so c_hash can be computed inside createAuthTokens.
+    const codeData = await createCodeData(ctx, {
+      user,
+      client: params.client,
+      authParams: updatedAuthParams,
+      login_id: params.loginSession.id,
+    });
+
+    const tokens = await createAuthTokens(ctx, {
+      ...params,
+      user,
+      authParams: updatedAuthParams,
+      permissions: calculatedPermissions,
+      token_lifetime: calculatedTokenLifetime,
+      code: codeData.code,
+    });
+
+    await completeLoginSession(
+      ctx,
+      params.client.tenant.id,
+      params.loginSession,
+      authConnection,
+    );
+
+    return { ...tokens, code: codeData.code, state: codeData.state };
   } else {
     const tokens = await createAuthTokens(ctx, {
       ...params,

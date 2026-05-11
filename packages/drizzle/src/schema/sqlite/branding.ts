@@ -24,6 +24,7 @@ export const branding = sqliteTable("branding", {
   }),
   colors_page_background_end: text("colors_page_background_end", { length: 8 }),
   colors_page_background_angle_dev: integer("colors_page_background_angle_dev"),
+  dark_mode: text("dark_mode", { length: 8 }),
 });
 
 export const universalLoginTemplates = sqliteTable(
