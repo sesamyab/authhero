@@ -1,5 +1,17 @@
 # @authhero/docker
 
+## 1.3.39
+
+### Patch Changes
+
+- Updated dependencies [47afa9e]
+- Updated dependencies [b221917]
+- Updated dependencies [b0394ff]
+- Updated dependencies [b221917]
+  - authhero@4.117.0
+  - @authhero/widget@0.32.19
+  - @authhero/react-admin@0.67.1
+
 ## 1.3.38
 
 ### Patch Changes

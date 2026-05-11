@@ -1,5 +1,25 @@
 # authhero
 
+## 4.117.0
+
+### Minor Changes
+
+- b0394ff: Remove the `/u/check-account` (and `/u2/check-account`) interstitial screen. When an existing session is found at `/authorize`, the auth flow now silently issues a new authorization response (Auth0-compatible SSO) instead of asking the user to confirm "continue as X".
+
+  Callers that want to force a fresh login still have the same escape hatches:
+  - `prompt=login`
+  - `prompt=select_account` (treated as `prompt=login`; authhero is single-session per browser)
+  - `screen_hint=login`
+
+  The `check-account` route, screen definition, `CheckEmailPage` component, and locale strings have been removed.
+
+### Patch Changes
+
+- 47afa9e: Honor `theme.colors.primary_button_label` unconditionally instead of dropping it when its WCAG contrast against `primary_button` falls below 4.5. Previously, a tenant setting (e.g.) white text on a medium blue button was silently overridden by an auto-picked black, because the contrast ratio sat just under the AA threshold. The tenant's explicit choice now wins; the auto-picker only runs when no label is set.
+- b221917: Screen-based universal login (`/u2/login/identifier`): apply Home Realm Discovery so an email whose domain matches a connection's `options.domain_aliases` is routed to that connection's IdP, matching the legacy `/u/` flow. Also replaced the "Email is not valid." message shown when no connection accepts the entered email with "User account does not exist" — the email itself is valid; the prior message was misleading.
+- Updated dependencies [47afa9e]
+  - @authhero/widget@0.32.19
+
 ## 4.116.0
 
 ### Minor Changes
