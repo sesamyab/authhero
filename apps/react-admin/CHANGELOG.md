@@ -1,5 +1,24 @@
 # @authhero/react-admin
 
+## 0.67.0
+
+### Minor Changes
+
+- 2ea1664: Expose bundled prompt text defaults via `GET /api/v2/prompts/custom-text/defaults`. Optional `language` and `prompt` query parameters narrow the response. The endpoint returns the shipped locale strings as `{ prompt, language, custom_text }` entries so the admin UI can render placeholder values and discover which prompt/screen forms exist without inferring them from per-tenant overrides. This is an authhero extension; Auth0 has no equivalent endpoint.
+
+  The react-admin custom-text editor now consumes this endpoint: opening an entry pre-populates every shipped field for the prompt/language pair, shows the bundled default as the input placeholder and as `helperText`, and renders fields that the tenant hasn't overridden so admins can see the full surface area at a glance.
+
+### Patch Changes
+
+- 2ea1664: Fix org-scoped users getting 403 on tenant-scoped management API calls.
+  - `createManagementClient` now passes the auth0 SDK a token supplier function instead of a captured token, so each SDK request resolves a fresh org-scoped token via `getOrgAccessToken` rather than reusing one captured at construction time.
+  - The `isSingleTenant` sessionStorage check now requires the stored entry's domain prefix to match the current domain. Previously a stale `…|true` flag from any prior domain would steer multi-tenant requests to the non-org token path and pin a non-org token into the management client cache.
+  - The same domain-aware check is applied in `dataProvider.ts` and `UniversalLoginTab.tsx`.
+
+- Updated dependencies [2ea1664]
+- Updated dependencies [2ea1664]
+  - @authhero/adapter-interfaces@1.18.0
+
 ## 0.66.1
 
 ### Patch Changes
