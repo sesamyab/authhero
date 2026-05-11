@@ -1,16 +1,4 @@
 {
-  "check-account": {
-    "check-account": {
-      "continueQuestion": "Continue with this account?",
-      "description": "Would you like to continue with your existing account?",
-      "descriptionFallback": "Would you like to continue with your existing account?",
-      "error": "An error occurred. Please try again.",
-      "loggedInAs": "You are currently logged in as ${email}",
-      "noUseAnother": "No, I want to use another account",
-      "title": "Continue with user",
-      "yesContinue": "Yes, continue with existing account"
-    }
-  },
   "common": {
     "common": {
       "alertListTitle": "Alerts",

@@ -1,16 +1,4 @@
 {
-  "check-account": {
-    "check-account": {
-      "continueQuestion": "Pokračovat s tímto účtem?",
-      "description": "Chcete pokračovat se svým stávajícím účtem?",
-      "descriptionFallback": "Chcete pokračovat se svým stávajícím účtem?",
-      "error": "Došlo k chybě. Zkuste to prosím znovu.",
-      "loggedInAs": "Jste nyní přihlášeni jako ${email}",
-      "noUseAnother": "Ne, chci použít jiný účet",
-      "title": "Pokračovat s uživatelem",
-      "yesContinue": "Ano, pokračovat se stávajícím účtem"
-    }
-  },
   "common": {
     "common": {
       "alertListTitle": "Upozornění",

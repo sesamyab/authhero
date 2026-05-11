@@ -12,7 +12,6 @@ import { signupScreenDefinition } from "./signup";
 import { forgotPasswordScreenDefinition } from "./forgot-password";
 import { resetPasswordScreenDefinition } from "./reset-password";
 import { impersonateScreenDefinition } from "./impersonate";
-import { checkAccountScreenDefinition } from "./check-account";
 import { loginPasswordlessIdentifierScreenDefinition } from "./login-passwordless-identifier";
 import { mfaPhoneEnrollmentScreenDefinition } from "./mfa-phone-enrollment";
 import { mfaPhoneChallengeScreenDefinition } from "./mfa-phone-challenge";
@@ -47,7 +46,6 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["forgot-password", forgotPasswordScreenDefinition],
   ["reset-password", resetPasswordScreenDefinition],
   ["impersonate", impersonateScreenDefinition],
-  ["check-account", checkAccountScreenDefinition],
   [
     "login-passwordless-identifier",
     loginPasswordlessIdentifierScreenDefinition,

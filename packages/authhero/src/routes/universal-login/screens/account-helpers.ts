@@ -11,8 +11,6 @@ import { RedirectException } from "../../../errors/redirect-exception";
 /**
  * Resolve the authenticated user from the session cookie.
  * Used by all account screens that need the current user.
- *
- * Follows the same pattern as check-account.ts for session resolution.
  */
 export async function resolveAccountUser(
   context: ScreenContext,

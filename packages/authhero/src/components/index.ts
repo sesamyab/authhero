@@ -2,7 +2,6 @@
 import AppLogo from "./AppLogo";
 import AuthLayout from "./AuthLayout";
 import Button from "./Button";
-import CheckEmailPage from "./CheckEmailPage";
 import EmailValidatedPage from "./EmailValidatedPage";
 import EnterCodePage from "./EnterCodePage";
 import IdentifierPage from "./IdentifierPage";
@@ -47,7 +46,6 @@ export {
   AppLogo,
   AuthLayout,
   Button,
-  CheckEmailPage,
   EmailValidatedPage,
   EnterCodePage,
   IdentifierPage,

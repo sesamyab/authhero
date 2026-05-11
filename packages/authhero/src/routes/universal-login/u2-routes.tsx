@@ -903,28 +903,6 @@ export const u2Routes = new OpenAPIHono<{
     createScreenPostHandler("impersonate"),
   )
   // --------------------------------
-  // GET /u2/check-account - Check existing session
-  // --------------------------------
-  .openapi(
-    createScreenRoute(
-      "check-account",
-      "/check-account",
-      "Check account screen - allows users to continue with existing session",
-    ),
-    createScreenRouteHandler("check-account"),
-  )
-  // --------------------------------
-  // POST /u2/check-account
-  // --------------------------------
-  .openapi(
-    createScreenPostRoute(
-      "check-account",
-      "/check-account",
-      "Process check-account form submission (no-JS fallback)",
-    ),
-    createScreenPostHandler("check-account"),
-  )
-  // --------------------------------
   // GET /u2/mfa/phone-enrollment - MFA phone enrollment
   // --------------------------------
   .openapi(

@@ -1,16 +1,4 @@
 {
-  "check-account": {
-    "check-account": {
-      "continueQuestion": "Fortsätt med detta konto?",
-      "description": "Vill du fortsätta med ditt befintliga konto?",
-      "descriptionFallback": "Vill du fortsätta med ditt befintliga konto?",
-      "error": "Ett fel uppstod. Försök igen.",
-      "loggedInAs": "Du är för närvarande inloggad som ${email}",
-      "noUseAnother": "Nej, jag vill använda ett annat konto",
-      "title": "Fortsätt med användare",
-      "yesContinue": "Ja, fortsätt med befintligt konto"
-    }
-  },
   "common": {
     "common": {
       "alertListTitle": "Meddelanden",

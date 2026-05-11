@@ -1,16 +1,4 @@
 {
-  "check-account": {
-    "check-account": {
-      "continueQuestion": "Jatketaanko tällä tilillä?",
-      "description": "Haluatko jatkaa olemassa olevalla tililläsi?",
-      "descriptionFallback": "Haluatko jatkaa olemassa olevalla tililläsi?",
-      "error": "Tapahtui virhe. Yritä uudelleen.",
-      "loggedInAs": "Olet tällä hetkellä kirjautuneena sisään käyttäjänä ${email}",
-      "noUseAnother": "Ei, haluan käyttää toista tiliä",
-      "title": "Jatka käyttäjän kanssa",
-      "yesContinue": "Kyllä, jatka olemassa olevalla tilillä"
-    }
-  },
   "common": {
     "common": {
       "alertListTitle": "Ilmoitukset",

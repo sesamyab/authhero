@@ -13,16 +13,33 @@ const nonOrgTokenCache = new Map<
   { token: string; expiresAt: number }
 >();
 
-// Decode the `exp` claim from a JWT for cache TTL (Base64URL → Base64).
-function getTokenExpiryMs(token: string): number {
+// Decode JWT payload (Base64URL → Base64). Used both for cache TTL and for
+// verifying the org_id of a cached entry before we serve it.
+function decodeJwtPayload(token: string): Record<string, unknown> {
   const base64Url = token.split(".")[1]!;
   const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
   const padded = base64.padEnd(
     base64.length + ((4 - (base64.length % 4)) % 4),
     "=",
   );
-  const payload = JSON.parse(atob(padded));
-  return payload.exp * 1000;
+  return JSON.parse(atob(padded));
+}
+
+function getTokenExpiryMs(token: string): number {
+  const payload = decodeJwtPayload(token);
+  return (payload.exp as number) * 1000;
+}
+
+// Whether a cached token's `org_id` matches what we want. Guards against a
+// stale entry (e.g. one populated under the wrong assumptions, or surviving a
+// Vite HMR reload) being served as if it were correct.
+function tokenMatchesOrg(token: string, expectedOrgId: string | undefined): boolean {
+  try {
+    const payload = decodeJwtPayload(token);
+    return (payload.org_id ?? undefined) === expectedOrgId;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -38,8 +55,15 @@ export async function getOrgAccessToken(
   const normalizedOrgId = orgId.toLowerCase();
   const cacheKey = `${domain}|${audience}|${normalizedOrgId}`;
   const cached = orgTokenCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now() + 60_000) {
+  if (
+    cached &&
+    cached.expiresAt > Date.now() + 60_000 &&
+    tokenMatchesOrg(cached.token, normalizedOrgId)
+  ) {
     return cached.token;
+  }
+  if (cached) {
+    orgTokenCache.delete(cacheKey);
   }
 
   const token = await auth0Client.getTokenSilently({
@@ -66,8 +90,15 @@ async function getNonOrgAccessToken(
 ): Promise<string> {
   const cacheKey = `${domain}|${audience}`;
   const cached = nonOrgTokenCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now() + 60_000) {
+  if (
+    cached &&
+    cached.expiresAt > Date.now() + 60_000 &&
+    tokenMatchesOrg(cached.token, undefined)
+  ) {
     return cached.token;
+  }
+  if (cached) {
+    nonOrgTokenCache.delete(cacheKey);
   }
 
   const token = await auth0Client.getTokenSilently({
