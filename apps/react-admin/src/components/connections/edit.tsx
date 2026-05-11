@@ -93,6 +93,12 @@ function ConnectionTabbedFrom() {
                 label="Client Secret"
                 style={{ width: "800px" }}
               />
+              <TextInput
+                source="options.callback_url"
+                label="Callback URL Override"
+                helperText="Optional. Pin the redirect_uri sent to the upstream IdP. Leave blank to use the request's host (custom domain or default). Must be registered as an allowed redirect URI at the upstream IdP."
+                fullWidth
+              />
             </>
           )}
 
