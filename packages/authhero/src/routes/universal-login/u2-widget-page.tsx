@@ -39,8 +39,10 @@ import {
   escapeHtml,
 } from "./sanitization-utils";
 import type { Branding, Theme } from "@authhero/adapter-interfaces";
+import { getCookie } from "hono/cookie";
 import { buildHash } from "../../build-hash";
 import { createTranslation, getLocaleDisplayName } from "../../i18n";
+import { applyUniversalLoginTemplate } from "./universal-login-template";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +50,28 @@ import { createTranslation, getLocaleDisplayName } from "../../i18n";
 
 export type DarkModePreference = "auto" | "light" | "dark";
 export type LogoPosition = "widget" | "chip" | "none";
+
+/**
+ * Resolve the dark-mode preference for the current request.
+ *
+ * Priority: per-user `ah-dark-mode` cookie > tenant `branding.dark_mode` > "auto".
+ * The cookie lets a user override the tenant default for the rest of their session.
+ */
+export function resolveDarkMode(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
+  branding: Branding | null | undefined,
+): DarkModePreference {
+  const cookie = getCookie(ctx, "ah-dark-mode");
+  if (cookie === "dark" || cookie === "light" || cookie === "auto") {
+    return cookie;
+  }
+  const fromBranding = branding?.dark_mode;
+  if (fromBranding === "dark" || fromBranding === "light" || fromBranding === "auto") {
+    return fromBranding;
+  }
+  return "auto";
+}
 
 export type WidgetPageProps = {
   widgetHtml: string;
@@ -96,6 +120,15 @@ export type WidgetPageProps = {
   logoPosition?: LogoPosition;
   /** Optional inline script injected at page level (e.g. WebAuthn ceremony) */
   extraScript?: string;
+  /**
+   * When set, replaces the default body content (widget + chips) with a
+   * pre-expanded HTML fragment. Used by the universal-login custom-template
+   * path: the tenant's template is run through `applyUniversalLoginTemplate`
+   * and the resulting body markup is injected here, while the page shell
+   * (html/head, dark-mode runtime, background tint, body styling) is still
+   * managed by this component.
+   */
+  customBodyHtml?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -173,6 +206,181 @@ function darkModeCssVarRules(selector: string, primaryColor?: string): string {
     .map(([k, v]) => `${k}: ${v} !important`)
     .join("; ");
   return `${selector} { ${props}; }`;
+}
+
+// ---------------------------------------------------------------------------
+// Chip fragments — exported so the Liquid custom-template pipeline can emit
+// the same modern chrome the default JSX path renders. Each function returns
+// a Hono JSX element that callers can either embed inline or `.toString()` to
+// substitute into a template slot.
+// ---------------------------------------------------------------------------
+
+const DARK_MODE_TOGGLE_ONCLICK = `(function(btn){var h=document.documentElement;var cur=h.classList.contains('ah-dark-mode')?'dark':h.classList.contains('ah-light-mode')?'light':'auto';var next=cur==='auto'?'dark':cur==='dark'?'light':'auto';h.classList.remove('ah-dark-mode','ah-light-mode');if(next==='dark'){h.classList.add('ah-dark-mode');h.setAttribute('data-mode','dark')}else if(next==='light'){h.classList.add('ah-light-mode');h.setAttribute('data-mode','light')}else{h.removeAttribute('data-mode')}btn.querySelector('.icon-sun').style.display=next==='light'?'block':'none';btn.querySelector('.icon-moon').style.display=next==='dark'?'block':'none';btn.querySelector('.icon-auto').style.display=next==='auto'?'block':'none';document.cookie='ah-dark-mode='+next+';path=/;max-age=31536000;SameSite=Lax';if(window.__ahDarkMode){window.__ahDarkMode(next)}})(this)`;
+
+const LANGUAGE_PICKER_ONCHANGE = `var p=new URLSearchParams(window.location.search);p.set('ui_locales',this.value);window.location.search=p.toString()`;
+
+export function LogoChip({
+  logoUrl,
+  clientName,
+}: {
+  logoUrl?: string | null;
+  clientName: string;
+}) {
+  const safe = logoUrl ? sanitizeUrl(logoUrl) : null;
+  return (
+    <div class="ah-chip ah-chip-logo" data-ah-slot="top-left">
+      {safe ? (
+        <img src={safe} alt={clientName} />
+      ) : (
+        <span class="ah-logo-text">{clientName}</span>
+      )}
+    </div>
+  );
+}
+
+export function DarkModeToggle({ darkMode }: { darkMode: DarkModePreference }) {
+  return (
+    <button
+      type="button"
+      aria-label="Toggle dark mode"
+      onclick={DARK_MODE_TOGGLE_ONCLICK}
+    >
+      <svg
+        class="icon-auto"
+        width="13" height="13" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"
+        style={darkMode === "auto" ? undefined : "display:none"}
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" />
+      </svg>
+      <svg
+        class="icon-sun"
+        width="13" height="13" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"
+        style={darkMode === "light" ? undefined : "display:none"}
+      >
+        <circle cx="12" cy="12" r="5" />
+        <line x1="12" y1="1" x2="12" y2="3" />
+        <line x1="12" y1="21" x2="12" y2="23" />
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+        <line x1="1" y1="12" x2="3" y2="12" />
+        <line x1="21" y1="12" x2="23" y2="12" />
+      </svg>
+      <svg
+        class="icon-moon"
+        width="13" height="13" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"
+        style={darkMode === "dark" ? undefined : "display:none"}
+      >
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+      </svg>
+    </button>
+  );
+}
+
+export function LanguagePicker({
+  language,
+  availableLanguages,
+}: {
+  language?: string;
+  availableLanguages: string[];
+}) {
+  if (!availableLanguages || availableLanguages.length < 2) return null;
+  return (
+    <div class="ah-lang">
+      <svg
+        width="13" height="13" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M2 12h20" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      </svg>
+      <select aria-label="Language" onchange={LANGUAGE_PICKER_ONCHANGE}>
+        {availableLanguages.map((lang) => (
+          <option value={lang} selected={lang === language}>
+            {getLocaleDisplayName(lang)}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+export function SettingsChip({
+  darkMode,
+  language,
+  availableLanguages,
+}: {
+  darkMode: DarkModePreference;
+  language?: string;
+  availableLanguages?: string[];
+}) {
+  return (
+    <div class="ah-chip ah-chip-settings" data-ah-slot="top-right">
+      <DarkModeToggle darkMode={darkMode} />
+      {availableLanguages && (
+        <LanguagePicker
+          language={language}
+          availableLanguages={availableLanguages}
+        />
+      )}
+    </div>
+  );
+}
+
+export function PoweredByChip({
+  url,
+  href,
+  alt,
+  height,
+}: {
+  url: string;
+  href?: string;
+  alt?: string;
+  height?: number;
+}) {
+  const safeUrl = sanitizeUrl(url);
+  const safeHref = href ? sanitizeUrl(href) : null;
+  if (!safeUrl) return null;
+  const img = (
+    <img src={safeUrl} alt={alt || ""} height={height || 18} />
+  );
+  return (
+    <div class="ah-chip ah-chip-trust" data-ah-slot="bottom-left">
+      {safeHref ? (
+        <a href={safeHref} target="_blank" rel="noopener noreferrer">
+          {img}
+        </a>
+      ) : (
+        img
+      )}
+    </div>
+  );
+}
+
+export function LegalChip({
+  termsAndConditionsUrl,
+  language,
+}: {
+  termsAndConditionsUrl?: string;
+  language?: string;
+}) {
+  if (!termsAndConditionsUrl) return null;
+  const { m: commonT } = createTranslation("common", "common", language || "en");
+  return (
+    <div class="ah-chip-legal" data-ah-slot="bottom-right">
+      <a href={termsAndConditionsUrl} target="_blank" rel="noopener noreferrer">
+        {commonT.termsShortText()}
+      </a>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +620,7 @@ export function WidgetPage({
   darkMode = "auto",
   logoPosition,
   extraScript,
+  customBodyHtml,
 }: WidgetPageProps) {
   const resolvedLogoPosition: LogoPosition =
     logoPosition ?? theme?.page_background?.logo_placement ?? "widget";
@@ -442,14 +651,8 @@ export function WidgetPage({
   const widgetBackground =
     sanitizeCssColor(theme?.colors?.widget_background) || "#ffffff";
 
-  // ---- Sanitize logo / powered-by URLs ----
+  // ---- Sanitize logo URL ----
   const safeLogoUrl = branding?.logo_url ? sanitizeUrl(branding.logo_url) : null;
-  const safePoweredByUrl = poweredByLogo?.url
-    ? sanitizeUrl(poweredByLogo.url)
-    : null;
-  const safePoweredByHref = poweredByLogo?.href
-    ? sanitizeUrl(poweredByLogo.href)
-    : null;
 
   // ---- Page layout (left/center/right) ----
   const pageLayout = themePageBackground?.page_layout || "center";
@@ -532,112 +735,33 @@ export function WidgetPage({
   // logoPosition === "widget".
   // -------------------------------------------------------------------------
 
-  const logoChip = safeLogoUrl ? (
-    <div class="ah-chip ah-chip-logo" data-ah-slot="top-left">
-      <img src={safeLogoUrl} alt={clientName} />
-    </div>
-  ) : (
-    <div class="ah-chip ah-chip-logo" data-ah-slot="top-left">
-      <span class="ah-logo-text">{clientName}</span>
-    </div>
+  const logoChip = (
+    <LogoChip logoUrl={safeLogoUrl} clientName={clientName} />
   );
 
   const settingsChip = (
-    <div class="ah-chip ah-chip-settings" data-ah-slot="top-right">
-      <button
-        type="button"
-        aria-label="Toggle dark mode"
-        onclick={`(function(btn){var h=document.documentElement;var cur=h.classList.contains('ah-dark-mode')?'dark':h.classList.contains('ah-light-mode')?'light':'auto';var next=cur==='auto'?'dark':cur==='dark'?'light':'auto';h.classList.remove('ah-dark-mode','ah-light-mode');if(next==='dark'){h.classList.add('ah-dark-mode');h.setAttribute('data-mode','dark')}else if(next==='light'){h.classList.add('ah-light-mode');h.setAttribute('data-mode','light')}else{h.removeAttribute('data-mode')}btn.querySelector('.icon-sun').style.display=next==='light'?'block':'none';btn.querySelector('.icon-moon').style.display=next==='dark'?'block':'none';btn.querySelector('.icon-auto').style.display=next==='auto'?'block':'none';document.cookie='ah-dark-mode='+next+';path=/;max-age=31536000;SameSite=Lax';if(window.__ahDarkMode){window.__ahDarkMode(next)}})(this)`}
-      >
-        <svg
-          class="icon-auto"
-          width="13" height="13" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2.2"
-          stroke-linecap="round" stroke-linejoin="round"
-          style={darkMode === "auto" ? undefined : "display:none"}
-        >
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" />
-        </svg>
-        <svg
-          class="icon-sun"
-          width="13" height="13" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2.2"
-          stroke-linecap="round" stroke-linejoin="round"
-          style={darkMode === "light" ? undefined : "display:none"}
-        >
-          <circle cx="12" cy="12" r="5" />
-          <line x1="12" y1="1" x2="12" y2="3" />
-          <line x1="12" y1="21" x2="12" y2="23" />
-          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-          <line x1="1" y1="12" x2="3" y2="12" />
-          <line x1="21" y1="12" x2="23" y2="12" />
-        </svg>
-        <svg
-          class="icon-moon"
-          width="13" height="13" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2.2"
-          stroke-linecap="round" stroke-linejoin="round"
-          style={darkMode === "dark" ? undefined : "display:none"}
-        >
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-        </svg>
-      </button>
-      {availableLanguages && availableLanguages.length > 1 && (
-        <div class="ah-lang">
-          <svg
-            width="13" height="13" viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="2.2"
-            stroke-linecap="round" stroke-linejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M2 12h20" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-          </svg>
-          <select
-            aria-label="Language"
-            onchange={`var p=new URLSearchParams(window.location.search);p.set('ui_locales',this.value);window.location.search=p.toString()`}
-          >
-            {availableLanguages.map((lang) => (
-              <option value={lang} selected={lang === language}>
-                {getLocaleDisplayName(lang)}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-    </div>
+    <SettingsChip
+      darkMode={darkMode}
+      language={language}
+      availableLanguages={availableLanguages}
+    />
   );
 
-  const trustChip = safePoweredByUrl ? (
-    <div class="ah-chip ah-chip-trust" data-ah-slot="bottom-left">
-      {safePoweredByHref ? (
-        <a href={safePoweredByHref} target="_blank" rel="noopener noreferrer">
-          <img
-            src={safePoweredByUrl}
-            alt={poweredByLogo?.alt || ""}
-            height={poweredByLogo?.height || 18}
-          />
-        </a>
-      ) : (
-        <img
-          src={safePoweredByUrl}
-          alt={poweredByLogo?.alt || ""}
-          height={poweredByLogo?.height || 18}
-        />
-      )}
-    </div>
+  const trustChip = poweredByLogo ? (
+    <PoweredByChip
+      url={poweredByLogo.url}
+      href={poweredByLogo.href}
+      alt={poweredByLogo.alt}
+      height={poweredByLogo.height}
+    />
   ) : null;
 
-  const { m: commonT } = createTranslation("common", "common", language || "en");
-  const legalChip = termsAndConditionsUrl ? (
-    <div class="ah-chip-legal" data-ah-slot="bottom-right">
-      <a href={termsAndConditionsUrl} target="_blank" rel="noopener noreferrer">
-        {commonT.termsShortText()}
-      </a>
-    </div>
-  ) : null;
+  const legalChip = (
+    <LegalChip
+      termsAndConditionsUrl={termsAndConditionsUrl}
+      language={language}
+    />
+  );
 
   return (
     <html
@@ -662,26 +786,36 @@ export function WidgetPage({
       <body style={bodyStyle}>
         {hasBgImage && <div class="ah-bg-tint" aria-hidden="true" />}
 
-        {/* Widget container — the widget's own shadow DOM renders the logo
-            in its header for the default "widget" position. */}
-        <div
-          class="widget-container"
-          data-authhero-widget-container
-          data-screen={screenId}
-          style={widgetContainerStyle}
-          dangerouslySetInnerHTML={{ __html: widgetHtml }}
-        />
+        {customBodyHtml ? (
+          /* Custom-template path: tenant-controlled body markup. The
+             expanded fragment already contains the widget mount + selected
+             chips. The shell still wraps it for the page CSS, runtime, and
+             bg tint. */
+          <div dangerouslySetInnerHTML={{ __html: customBodyHtml }} />
+        ) : (
+          <>
+            {/* Widget container — the widget's own shadow DOM renders the
+                logo in its header for the default "widget" position. */}
+            <div
+              class="widget-container"
+              data-authhero-widget-container
+              data-screen={screenId}
+              style={widgetContainerStyle}
+              dangerouslySetInnerHTML={{ __html: widgetHtml }}
+            />
+
+            {/* Floating chips. logoChip is hidden by CSS when
+                data-logo-position="widget" (the default). */}
+            {logoChip}
+            {settingsChip}
+            {trustChip}
+            {legalChip}
+          </>
+        )}
 
         {extraScript && (
           <script dangerouslySetInnerHTML={{ __html: extraScript }} />
         )}
-
-        {/* Floating chips. logoChip is hidden by CSS when
-            data-logo-position="widget" (the default). */}
-        {logoChip}
-        {settingsChip}
-        {trustChip}
-        {legalChip}
 
         {/* Dark-mode runtime — applies dark CSS vars to the widget's
             shadow DOM since CSS variables don't pierce shadow boundaries
@@ -826,6 +960,14 @@ export async function renderWidgetPageResponse(
     termsAndConditionsUrl?: string;
     darkMode?: DarkModePreference;
     logoPosition?: LogoPosition;
+    extraScript?: string;
+    /**
+     * Optional tenant-uploaded body template. When provided, the body is
+     * built via `applyUniversalLoginTemplate(customTemplateBody, ...)`
+     * instead of the default chip layout. The shell (html/head, runtime,
+     * bg tint) is unchanged.
+     */
+    customTemplateBody?: string;
   },
 ): Promise<Response> {
   // When placement suppresses the widget's own logo, the SSR'd widget needs
@@ -846,6 +988,20 @@ export async function renderWidgetPageResponse(
     authParamsJson: opts.authParamsJson,
   });
 
+  const customBodyHtml = opts.customTemplateBody
+    ? applyUniversalLoginTemplate(opts.customTemplateBody, {
+        widgetHtml,
+        screenId: opts.screenId,
+        logoUrl: opts.branding?.logo_url,
+        clientName: opts.clientName,
+        darkMode: opts.darkMode ?? "auto",
+        language: opts.language,
+        availableLanguages: opts.availableLanguages,
+        poweredBy: opts.poweredByLogo,
+        termsAndConditionsUrl: opts.termsAndConditionsUrl,
+      })
+    : undefined;
+
   return ctx.html(
     <WidgetPage
       widgetHtml={widgetHtml}
@@ -860,6 +1016,8 @@ export async function renderWidgetPageResponse(
       termsAndConditionsUrl={opts.termsAndConditionsUrl}
       darkMode={opts.darkMode}
       logoPosition={opts.logoPosition ?? derivedPosition}
+      extraScript={opts.extraScript}
+      customBodyHtml={customBodyHtml}
     />,
   );
 }

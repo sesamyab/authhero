@@ -113,6 +113,37 @@ describe("jwks", () => {
     expect(body.issuer).toBe("http://localhost:3000/");
   });
 
+  it("should advertise hybrid response_types in openid-configuration", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const client = testClient(oauthApp, env);
+
+    const response = await client[".well-known"]["openid-configuration"].$get(
+      {
+        param: {},
+      },
+      {
+        headers: {
+          "tenant-id": "tenantId",
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = openIDConfigurationSchema.parse(await response.json());
+    expect(body.response_types_supported).toEqual(
+      expect.arrayContaining([
+        "code",
+        "token",
+        "id_token",
+        "id_token token",
+        "code id_token",
+        "code token",
+        "code id_token token",
+      ]),
+    );
+  });
+
   it("should advertise grant_types_supported including refresh_token in openid-configuration", async () => {
     const { oauthApp, env } = await getTestServer();
     const client = testClient(oauthApp, env);

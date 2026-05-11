@@ -54,6 +54,18 @@ export const FORM_POST_IMPLICIT_PLAN_VARIANT = {
   client_registration: "static_client",
 } as const;
 
+export const HYBRID_PLAN_NAME = "oidcc-hybrid-certification-test-plan";
+
+// Like the implicit plan, the hybrid plan pins `response_type` per-module
+// (`code id_token`, `code token`, `code id_token token`) inside the suite.
+// Passing response_type as a plan-level variant trips the suite's
+// "Variant already set by test plan for module ..." error. So variants stay
+// limited to server_metadata + client_registration.
+export const HYBRID_PLAN_VARIANT = {
+  server_metadata: "discovery",
+  client_registration: "static_client",
+} as const;
+
 export const DYNAMIC_PLAN_NAME = "oidcc-dynamic-certification-test-plan";
 
 // Dynamic registration variant — the suite calls /oidc/register itself for
@@ -127,6 +139,10 @@ export function buildImplicitPlanConfig() {
 
 export function buildFormPostImplicitPlanConfig() {
   return buildSharedClientConfig("OIDC Form Post Implicit");
+}
+
+export function buildHybridPlanConfig() {
+  return buildSharedClientConfig("OIDC Hybrid");
 }
 
 export function buildDynamicPlanConfig() {

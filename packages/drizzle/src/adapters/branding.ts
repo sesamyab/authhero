@@ -4,6 +4,10 @@ import { branding } from "../schema/sqlite";
 import { removeNullProperties } from "../helpers/transform";
 import type { DrizzleDb } from "./types";
 
+function isDarkMode(value: unknown): value is "dark" | "light" | "auto" {
+  return value === "dark" || value === "light" || value === "auto";
+}
+
 export function createBrandingAdapter(db: DrizzleDb) {
   return {
     async get(tenant_id: string): Promise<Branding | null> {
@@ -23,6 +27,7 @@ export function createBrandingAdapter(db: DrizzleDb) {
         colors_page_background_end,
         colors_page_background_angle_dev,
         font_url,
+        dark_mode,
         ...rest
       } = result;
 
@@ -38,11 +43,12 @@ export function createBrandingAdapter(db: DrizzleDb) {
           },
         },
         font: font_url ? { url: font_url } : undefined,
+        dark_mode: isDarkMode(dark_mode) ? dark_mode : undefined,
       });
     },
 
     async set(tenant_id: string, data: Branding): Promise<void> {
-      const { colors, font, ...rest } = data;
+      const { colors, font, dark_mode, ...rest } = data;
 
       // Auth0 allows page_background to be either a hex string or a gradient
       // object. Persist gradient fields only when an object is provided.
@@ -52,31 +58,23 @@ export function createBrandingAdapter(db: DrizzleDb) {
           ? pageBackground
           : undefined;
 
-      const values = {
+      const flatValues = {
         ...rest,
-        tenant_id,
         colors_primary: colors?.primary,
         colors_page_background_type: gradient?.type,
         colors_page_background_start: gradient?.start,
         colors_page_background_end: gradient?.end,
         colors_page_background_angle_dev: gradient?.angle_deg,
         font_url: font?.url,
+        dark_mode,
       };
 
       await db
         .insert(branding)
-        .values(values)
+        .values({ tenant_id, ...flatValues })
         .onConflictDoUpdate({
           target: branding.tenant_id,
-          set: {
-            ...rest,
-            colors_primary: colors?.primary,
-            colors_page_background_type: gradient?.type,
-            colors_page_background_start: gradient?.start,
-            colors_page_background_end: gradient?.end,
-            colors_page_background_angle_dev: gradient?.angle_deg,
-            font_url: font?.url,
-          },
+          set: flatValues,
         });
     },
   };

@@ -27,6 +27,10 @@ export const brandingSchema = z.object({
       url: z.string(),
     })
     .optional(),
+  // AuthHero-specific: default color scheme for the universal login page.
+  // Auth0 has no equivalent. Per-user toggle (ah-dark-mode cookie) still
+  // overrides this at runtime.
+  dark_mode: z.enum(["dark", "light", "auto"]).optional(),
 });
 
 export type Branding = z.infer<typeof brandingSchema>;

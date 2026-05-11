@@ -14,6 +14,7 @@ import { useNotify } from "react-admin";
 import {
   authorizedHttpClient,
   createOrganizationHttpClient,
+  isSingleTenantForDomain,
 } from "../../authProvider";
 import {
   getDomainFromStorage,
@@ -35,22 +36,15 @@ function getTenantIdFromPath(): string {
   return pathSegments[0] || "";
 }
 
-// Default template with required Liquid tags
-const DEFAULT_TEMPLATE = `<!DOCTYPE html>
-<html>
-  <head>
-    {%- auth0:head -%}
-  </head>
-  <body>
-    <main id="auth-container">
-      {%- auth0:widget -%}
-    </main>
-
-    <footer>
-      {%- auth0:footer -%}
-    </footer>
-  </body>
-</html>`;
+// Default body template — only the slot tokens. The page shell (html/head,
+// CSS, dark-mode runtime, background tint) is fixed by AuthHero. Customize
+// the body by removing slots to hide chips, or reordering them.
+const DEFAULT_TEMPLATE = `{%- auth0:widget -%}
+{%- authhero:logo -%}
+{%- authhero:settings -%}
+{%- authhero:powered-by -%}
+{%- authhero:legal -%}
+`;
 
 function getApiUrl(): string {
   const domains = getDomainFromStorage();
@@ -74,13 +68,10 @@ function getApiUrl(): string {
 }
 
 function getHttpClient(tenantId: string) {
-  // Check single-tenant mode at request time
-  const storedFlag = sessionStorage.getItem("isSingleTenant");
-  const isSingleTenant = storedFlag?.endsWith("|true") || storedFlag === "true";
-
+  const formattedDomain = formatDomain(getSelectedDomainFromStorage());
   // In single-tenant mode, use the regular authorized client without organization scope
   // In multi-tenant mode, use organization-scoped client for proper access control
-  if (isSingleTenant) {
+  if (isSingleTenantForDomain(formattedDomain)) {
     return authorizedHttpClient;
   } else {
     return createOrganizationHttpClient(tenantId);
@@ -142,11 +133,7 @@ export function UniversalLoginTab() {
   const handleSave = async () => {
     if (!tenantId) return;
 
-    // Validate template
-    if (!template.includes("{%- auth0:head -%}")) {
-      notify("Template must contain {%- auth0:head -%} tag", { type: "error" });
-      return;
-    }
+    // Body must mount the widget; chip slots are optional.
     if (!template.includes("{%- auth0:widget -%}")) {
       notify("Template must contain {%- auth0:widget -%} tag", {
         type: "error",
@@ -237,23 +224,41 @@ export function UniversalLoginTab() {
       </Typography>
 
       <Typography variant="body2" sx={{ mb: 3, color: "text.secondary" }}>
-        Customize the HTML template for your Universal Login page. The template
-        uses Liquid templating syntax and must include the required{" "}
-        <code>{"{%- auth0:head -%}"}</code> and{" "}
-        <code>{"{%- auth0:widget -%}"}</code> tags.
+        Customize the Universal Login body. The page shell (CSS, dark-mode
+        runtime, layout) is fixed by AuthHero — your template only controls
+        which corner chips render. Delete a slot to hide that pill.
       </Typography>
 
       <Alert severity="info" sx={{ mb: 3 }}>
         <Typography variant="body2">
-          <strong>Required tags:</strong>
+          <strong>Slots:</strong>
           <ul style={{ margin: "8px 0", paddingLeft: "20px" }}>
             <li>
-              <code>{"{%- auth0:head -%}"}</code> - Must be placed in the{" "}
-              <code>&lt;head&gt;</code> section
+              <code>{"{%- auth0:widget -%}"}</code> — login widget mount
+              (required)
             </li>
             <li>
-              <code>{"{%- auth0:widget -%}"}</code> - Must be placed in the{" "}
-              <code>&lt;body&gt;</code> section where you want the login widget
+              <code>{"{%- authhero:logo -%}"}</code> — top-left logo chip
+            </li>
+            <li>
+              <code>{"{%- authhero:settings -%}"}</code> — top-right settings
+              chip (dark-mode toggle + language picker)
+            </li>
+            <li>
+              <code>{"{%- authhero:dark-mode-toggle -%}"}</code> — dark-mode
+              button only
+            </li>
+            <li>
+              <code>{"{%- authhero:language-picker -%}"}</code> — language
+              picker only
+            </li>
+            <li>
+              <code>{"{%- authhero:powered-by -%}"}</code> — bottom-left
+              powered-by chip
+            </li>
+            <li>
+              <code>{"{%- authhero:legal -%}"}</code> — bottom-right legal
+              chip
             </li>
           </ul>
           <Link

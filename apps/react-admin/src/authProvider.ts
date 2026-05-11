@@ -147,6 +147,21 @@ export const createAuth0Client = (domain: string) => {
   return auth0Client;
 };
 
+// Reads the `isSingleTenant` sessionStorage flag, but only honors it when the
+// stored entry is for the same domain we're calling. The flag is written as
+// `${domain}|${bool}`; a stale entry from a previously visited domain would
+// otherwise steer multi-tenant requests to the non-org token path and pin a
+// non-org token into managementClientCache for that tenant key.
+export const isSingleTenantForDomain = (domain: string): boolean => {
+  const storedFlag = sessionStorage.getItem("isSingleTenant");
+  if (!storedFlag) return false;
+  const sep = storedFlag.lastIndexOf("|");
+  if (sep < 0) return false;
+  const storedDomain = storedFlag.slice(0, sep);
+  const storedValue = storedFlag.slice(sep + 1);
+  return formatDomain(storedDomain) === domain && storedValue === "true";
+};
+
 // Create a Management API client
 export const createManagementClient = async (
   apiUrl: string,
@@ -178,52 +193,56 @@ export const createManagementClient = async (
     );
   }
 
-  let token: string;
+  // Pass the SDK a token supplier instead of a captured string. This way the
+  // single-tenant flag and the org-vs-non-org decision are re-evaluated on
+  // every request, and the underlying getOrgAccessToken/getNonOrgAccessToken
+  // helpers handle their own short-TTL caching. Capturing a single token at
+  // construction meant a non-org token (taken when the flag was momentarily
+  // wrong) stuck around for the lifetime of the cached client.
+  const tokenSupplier = async (): Promise<string> => {
+    if (
+      normalizedTenantId &&
+      !isSingleTenantForDomain(domainForAuth)
+    ) {
+      if (domainConfig.connectionMethod === "login") {
+        const auth0Client = createAuth0Client(domainForAuth);
+        const audience =
+          getConfigValue("audience") || "urn:authhero:management";
 
-  // Check if we're in single-tenant mode
-  const storedFlag = sessionStorage.getItem("isSingleTenant");
-  const isSingleTenant = storedFlag?.endsWith("|true") || storedFlag === "true";
-
-  if (normalizedTenantId && !isSingleTenant) {
-    // When accessing tenant-specific resources in MULTI-TENANT mode, use org-scoped token
-    if (domainConfig.connectionMethod === "login") {
-      const auth0Client = createAuth0Client(domainForAuth);
-      const audience = getConfigValue("audience") || "urn:authhero:management";
-
-      try {
-        token = await getOrgAccessToken(
-          auth0Client,
-          normalizedTenantId,
-          audience,
-          domainForAuth,
-        );
-      } catch (error) {
-        const user = await auth0Client.getUser().catch(() => null);
-        await auth0Client.loginWithRedirect({
-          authorizationParams: {
-            organization: normalizedTenantId,
-            login_hint: user?.email,
-          },
-          appState: {
-            returnTo: window.location.pathname,
-          },
-        });
-        throw new Error(
-          `Redirecting to login for organization ${normalizedTenantId}`,
-        );
+        try {
+          return await getOrgAccessToken(
+            auth0Client,
+            normalizedTenantId,
+            audience,
+            domainForAuth,
+          );
+        } catch (error) {
+          const user = await auth0Client.getUser().catch(() => null);
+          await auth0Client.loginWithRedirect({
+            authorizationParams: {
+              organization: normalizedTenantId,
+              login_hint: user?.email,
+            },
+            appState: {
+              returnTo: window.location.pathname,
+            },
+          });
+          throw new Error(
+            `Redirecting to login for organization ${normalizedTenantId}`,
+          );
+        }
       }
-    } else {
       // For token/client_credentials, use getOrganizationToken
-      token = await getOrganizationToken(domainConfig, normalizedTenantId);
+      return await getOrganizationToken(domainConfig, normalizedTenantId);
     }
-  } else {
-    // No tenantId - get non-org-scoped token for tenant management endpoints
+
+    // No tenantId or single-tenant - non-org token
     let auth0Client: Auth0Client | undefined;
     if (domainConfig.connectionMethod === "login") {
       auth0Client = createAuth0Client(domainForAuth);
     }
-    token = await getToken(domainConfig, auth0Client);
-  }
+    return await getToken(domainConfig, auth0Client);
+  };
 
   // The SDK wrapper hardcodes `https://${domain}/api/v2`, which breaks
   // HTTP-only deployments (e.g. local Docker on http://localhost:3000).
@@ -232,7 +251,7 @@ export const createManagementClient = async (
   const url = new URL(apiUrl);
   const managementClient = new ManagementClient({
     domain: url.host,
-    token,
+    token: tokenSupplier,
     headers: normalizedTenantId
       ? { "tenant-id": normalizedTenantId }
       : undefined,

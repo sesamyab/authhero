@@ -248,6 +248,49 @@ describe("prompts", () => {
     expect(entriesAfterDelete).toHaveLength(2);
   });
 
+  it("should list bundled custom-text defaults with filters", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const allResponse = await managementClient.prompts["custom-text"][
+      "defaults"
+    ].$get(
+      {
+        header: { "tenant-id": "tenantId" },
+        query: {},
+      },
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    expect(allResponse.status).toBe(200);
+    const allEntries = await allResponse.json();
+    expect(allEntries.length).toBeGreaterThan(0);
+    const distinctLanguages = new Set(allEntries.map((e) => e.language));
+    expect(distinctLanguages.size).toBeGreaterThan(1);
+
+    const enLoginResponse = await managementClient.prompts["custom-text"][
+      "defaults"
+    ].$get(
+      {
+        header: { "tenant-id": "tenantId" },
+        query: { language: "en", prompt: "login" },
+      },
+      {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    expect(enLoginResponse.status).toBe(200);
+    const enLogin = await enLoginResponse.json();
+    expect(enLogin).toHaveLength(1);
+    expect(enLogin[0]?.prompt).toBe("login");
+    expect(enLogin[0]?.language).toBe("en");
+    expect(Object.keys(enLogin[0]?.custom_text ?? {}).length).toBeGreaterThan(
+      0,
+    );
+  });
+
   it("should validate prompt screen type", async () => {
     const { managementApp, env } = await getTestServer();
     const managementClient = testClient(managementApp, env);

@@ -5,6 +5,9 @@ export enum AuthorizationResponseType {
   ID_TOKEN = "id_token",
   TOKEN_ID_TOKEN = "id_token token",
   CODE = "code",
+  CODE_ID_TOKEN = "code id_token",
+  CODE_TOKEN = "code token",
+  CODE_ID_TOKEN_TOKEN = "code id_token token",
 }
 
 export enum AuthorizationResponseMode {

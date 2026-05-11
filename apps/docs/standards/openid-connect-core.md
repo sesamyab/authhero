@@ -13,7 +13,7 @@ OpenID Connect Core layers identity semantics on top of OAuth 2.0: ID tokens, th
 ## Implemented
 
 - **Authorization Code Flow** — `response_type=code`, with an ID token returned from the token endpoint.
-- **Hybrid Flow** — `code id_token`, `code token`, `code token id_token`.
+- **Hybrid Flow** — `code id_token`, `code token`, `code id_token token`. The ID Token issued at `/authorize` carries `c_hash` (always) and `at_hash` (when an access token is co-issued) per OIDC Core §3.3.2.11; the code is exchanged at `/oauth/token`.
 - **Implicit Flow response types** — `id_token` and `token id_token` are accepted, though direct implicit is discouraged.
 - **ID Token** — signed JWT containing `iss`, `sub`, `aud`, `exp`, `iat`, `auth_time`, `nonce`, `acr` when requested. Signed with the tenant's `jwt_signing` key; RS256 is the default and EC keys produce ES256/ES384/ES512 depending on the curve.
 - **Nonce** — round-tripped and validated to prevent replay.

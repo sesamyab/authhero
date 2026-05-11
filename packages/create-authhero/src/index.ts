@@ -291,6 +291,12 @@ function generateLocalSeedFileContent(
       callbacks: conformanceCallbacks,
       allowed_logout_urls: conformanceLogoutUrls,
       web_origins: conformanceWebOrigins,
+      // Strict OIDC 5.4: scope-driven claims (profile/email/address/phone)
+      // belong in /userinfo whenever an access_token is co-issued at
+      // /authorize. The OIDF suite enforces this via
+      // EnsureIdTokenDoesNotContainEmailForScopeEmail; running the
+      // conformance tenant under Auth0-compatible defaults would WARN.
+      auth0_conformant: false,
     });
     console.log("✅ Created conformance-test client");
   } catch (e: any) {
@@ -309,6 +315,7 @@ function generateLocalSeedFileContent(
       callbacks: conformanceCallbacks,
       allowed_logout_urls: conformanceLogoutUrls,
       web_origins: conformanceWebOrigins,
+      auth0_conformant: false,
     });
     console.log("✅ Created conformance-test2 client");
   } catch (e: any) {

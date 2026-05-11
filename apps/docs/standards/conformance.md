@@ -224,11 +224,14 @@ Newly wired up — the spec file is at [oidcc-form-post-implicit.spec.ts](https:
 
 Newly wired up — the spec file is at [oidcc-dynamic.spec.ts](https://github.com/markusahlstrand/authhero/blob/main/apps/conformance-runner/tests/oidcc-dynamic.spec.ts). Variant: `{ server_metadata: "discovery", client_registration: "dynamic_client" }`. Same code-flow modules as the Basic plan, but the suite registers its own client via `POST /oidc/register` (RFC 7591) instead of using the seeded `test-client-id`. The conformance tenant has `enable_dynamic_client_registration: true` set automatically by `create-authhero --conformance` so the `registration_endpoint` is advertised in discovery and the open-registration path is allowed (no Initial Access Token required). Status TBD until the first green CI run; modules absent from the live plan are filtered via `test.skip`.
 
+### `oidcc-hybrid-certification-test-plan`
+
+Newly wired up — the spec file is at [oidcc-hybrid.spec.ts](https://github.com/markusahlstrand/authhero/blob/main/apps/conformance-runner/tests/oidcc-hybrid.spec.ts). Variant: `{ server_metadata: "discovery", client_registration: "static_client" }` (the hybrid plan pins `response_type` per-module: `code id_token`, `code token`, `code id_token token`). The OP returns a code on every flow plus an `id_token` and/or `access_token` in the redirect fragment; the code is exchanged at `/oauth/token` afterwards. The id_token issued from `/authorize` carries `c_hash` (always) and `at_hash` (when an access_token is co-issued), per OIDC Core 3.3.2.11. Status TBD until the first green CI run; modules absent from the live plan are filtered via `test.skip`.
+
 ### Out of scope (for now)
 
 The runner is structured so adding more plans is just a new spec file with a different `planName`/variant. The following are explicitly not yet wired up:
 
-- `oidcc-hybrid-certification-test-plan` (hybrid flow — needs `code id_token`, `code token`, `code id_token token` added to `AuthorizationResponseType`)
 - `oidcc-comprehensive-certification-test-plan` (full OP — superset of basic + implicit + hybrid)
 - `oidcc-frontchannel-rp-initiated-logout-certification-test-plan` and `oidcc-backchannel-rp-initiated-logout-certification-test-plan` (front/back-channel logout — AuthHero only ships RP-Initiated Logout today)
 - FAPI plans (require mTLS, DPoP, or signed request objects beyond the current AuthHero surface)

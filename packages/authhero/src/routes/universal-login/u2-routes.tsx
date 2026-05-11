@@ -24,7 +24,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
-import { buildHash } from "../../build-hash";
 import {
   getScreen,
   getScreenDefinition,
@@ -34,21 +33,14 @@ import type { ScreenContext } from "./screens/types";
 import { HTTPException } from "hono/http-exception";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
-import {
-  sanitizeUrl,
-  sanitizeCssColor,
-  buildThemePageBackground,
-} from "./sanitization-utils";
+import { sanitizeUrl } from "./sanitization-utils";
 import type { PromptScreen, CustomText } from "@authhero/adapter-interfaces";
 import {
-  WidgetPage,
-  renderWidgetSSR,
-  extractBrandingProps,
   derivePageLogoPlacement,
-  type DarkModePreference,
+  renderWidgetPageResponse,
+  resolveDarkMode,
 } from "./u2-widget-page";
-import { getCookie } from "hono/cookie";
-import { getLocaleDisplayName, locales } from "../../i18n";
+import { locales } from "../../i18n";
 
 // Mutable copy of the readonly `locales` tuple — handlers expect string[].
 const availableLocales: string[] = [...locales];
@@ -109,15 +101,6 @@ function getPromptScreenForScreen(screenId: string): PromptScreen | undefined {
   return SCREEN_TO_PROMPT_MAP[screenId];
 }
 
-/**
- * Read the dark mode preference from the ah-dark-mode cookie.
- * Returns "auto" if no cookie is set or the value is invalid.
- */
-function getDarkModeFromCookie(ctx: any): DarkModePreference {
-  const value = getCookie(ctx, "ah-dark-mode");
-  if (value === "dark" || value === "light") return value;
-  return "auto";
-}
 
 /**
  * Detect language from ui_locales parameter or Accept-Language header
@@ -205,613 +188,6 @@ async function fetchCustomText(
   }
 }
 
-/**
- * Props for generating head content
- */
-type HeadContentProps = {
-  clientName: string;
-  branding?: {
-    colors?: {
-      primary?: string;
-      page_background?:
-        | string
-        | { type?: string; start?: string; end?: string; angle_deg?: number };
-    };
-    logo_url?: string;
-    favicon_url?: string;
-    font?: { url?: string };
-  };
-  themePageBackground?: {
-    background_color?: string;
-    background_image_url?: string;
-    page_layout?: string;
-  };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  theme?: any;
-};
-
-/**
- * Head content component for liquid template substitution
- */
-function HeadContent({
-  clientName,
-  branding,
-  themePageBackground,
-  theme,
-}: HeadContentProps) {
-  const faviconUrl = sanitizeUrl(branding?.favicon_url);
-  const fontUrl = sanitizeUrl(branding?.font?.url);
-  const primaryColor = sanitizeCssColor(branding?.colors?.primary);
-  const pageBackground = buildThemePageBackground(
-    themePageBackground,
-    branding?.colors?.page_background,
-  );
-
-  // Get widget background color for mobile view
-  const widgetBackground =
-    sanitizeCssColor(theme?.colors?.widget_background) || "#ffffff";
-
-  // Build CSS variables from branding
-  const cssVariables: string[] = [];
-  if (primaryColor) {
-    cssVariables.push(`--ah-color-primary: ${primaryColor}`);
-  }
-
-  // Determine justify-content based on page_layout
-  const pageLayout = themePageBackground?.page_layout || "center";
-  const justifyContent =
-    pageLayout === "left"
-      ? "flex-start"
-      : pageLayout === "right"
-        ? "flex-end"
-        : "center";
-  // Adjust padding based on page_layout
-  const padding =
-    pageLayout === "left"
-      ? "20px 20px 20px 80px"
-      : pageLayout === "right"
-        ? "20px 80px 20px 20px"
-        : "20px";
-
-  const styleContent = `
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    
-    body {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: ${justifyContent};
-      background: ${pageBackground};
-      font-family: ${fontUrl ? "'Inter', system-ui, sans-serif" : "system-ui, -apple-system, sans-serif"};
-      padding: ${padding};
-    }
-    
-    .widget-container {
-      display: flex;
-      flex-direction: column;
-      width: 400px;
-    }
-    
-    authhero-widget {
-      ${cssVariables.join(";\n      ")};
-      width: 100%;
-    }
-    
-    .loading {
-      text-align: center;
-      padding: 40px;
-      color: #666;
-    }
-    
-    .error {
-      background: #fee2e2;
-      border: 1px solid #ef4444;
-      color: #dc2626;
-      padding: 16px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-    }
-    
-    .powered-by {
-      margin-top: 16px;
-      opacity: 0.7;
-      transition: opacity 0.2s;
-    }
-    
-    .powered-by:hover {
-      opacity: 1;
-    }
-    
-    .powered-by img {
-      display: block;
-    }
-
-    .powered-by .powered-by-dark {
-      display: none;
-    }
-
-    .page-footer {
-      position: fixed;
-      bottom: 16px;
-      right: 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      z-index: 10;
-    }
-    
-    .language-picker {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(255, 255, 255, 0.9);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      border-radius: 8px;
-      padding: 6px 10px;
-      font-size: 13px;
-      color: #555;
-      cursor: pointer;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    
-    .language-picker:hover {
-      border-color: rgba(0, 0, 0, 0.2);
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-    }
-    
-    .language-icon {
-      flex-shrink: 0;
-      opacity: 0.6;
-    }
-    
-    .language-select {
-      appearance: none;
-      -webkit-appearance: none;
-      background: none;
-      border: none;
-      font: inherit;
-      color: inherit;
-      cursor: pointer;
-      padding-right: 2px;
-      outline: none;
-    }
-    
-    .dark-mode-toggle {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(255, 255, 255, 0.9);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      border-radius: 8px;
-      padding: 7px;
-      color: #555;
-      cursor: pointer;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    
-    .dark-mode-toggle:hover {
-      border-color: rgba(0, 0, 0, 0.2);
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-    }
-    
-    /* Explicit dark mode */
-    html.ah-dark-mode body {
-      background: #111827 !important;
-    }
-
-    html.ah-dark-mode .widget-container {
-      position: relative;
-      z-index: 1;
-    }
-
-    html.ah-dark-mode .page-footer-left {
-      z-index: 10;
-    }
-
-    html.ah-dark-mode .page-footer {
-      z-index: 10;
-    }
-
-    html.ah-dark-mode .page-footer .language-picker,
-    html.ah-dark-mode .page-footer .dark-mode-toggle {
-      background: rgba(30, 30, 50, 0.9);
-      border-color: rgba(255, 255, 255, 0.15);
-      color: #ccc;
-    }
-
-    html.ah-dark-mode .page-footer .language-picker:hover,
-    html.ah-dark-mode .page-footer .dark-mode-toggle:hover {
-      border-color: rgba(255, 255, 255, 0.3);
-    }
-
-    html.ah-dark-mode .powered-by .powered-by-light {
-      display: none;
-    }
-    html.ah-dark-mode .powered-by .powered-by-dark {
-      display: block;
-    }
-
-    /* Auto mode: follow system preference, unless explicitly set to light */
-    @media (prefers-color-scheme: dark) {
-      html:not(.ah-light-mode) body {
-        background: #111827 !important;
-      }
-      html:not(.ah-light-mode) .widget-container {
-        position: relative;
-        z-index: 1;
-      }
-      html:not(.ah-light-mode) .page-footer-left {
-        z-index: 10;
-      }
-      html:not(.ah-light-mode) .page-footer {
-        z-index: 10;
-      }
-      html:not(.ah-light-mode) .page-footer .language-picker,
-      html:not(.ah-light-mode) .page-footer .dark-mode-toggle {
-        background: rgba(30, 30, 50, 0.9);
-        border-color: rgba(255, 255, 255, 0.15);
-        color: #ccc;
-      }
-      html:not(.ah-light-mode) .page-footer .language-picker:hover,
-      html:not(.ah-light-mode) .page-footer .dark-mode-toggle:hover {
-        border-color: rgba(255, 255, 255, 0.3);
-      }
-      html:not(.ah-light-mode) .powered-by .powered-by-light {
-        display: none;
-      }
-      html:not(.ah-light-mode) .powered-by .powered-by-dark {
-        display: block;
-      }
-    }
-
-    @media (max-width: 560px) {
-      body {
-        justify-content: center !important;
-        padding: 20px !important;
-      }
-    }
-
-    @media (max-width: 480px) {
-      body {
-        background: ${widgetBackground} !important;
-        padding: 0 !important;
-      }
-
-      html.ah-dark-mode body {
-        background: #111827 !important;
-      }
-
-      .widget-container {
-        width: 100%;
-      }
-    }
-
-    @media (max-width: 480px) and (prefers-color-scheme: dark) {
-      html:not(.ah-light-mode) body {
-        background: #111827 !important;
-      }
-    }
-  `;
-
-  return (
-    <>
-      <meta charSet="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Sign in - {clientName}</title>
-      {faviconUrl && <link rel="icon" href={faviconUrl} />}
-      {fontUrl && <link rel="stylesheet" href={fontUrl} />}
-      <style dangerouslySetInnerHTML={{ __html: styleContent }} />
-      <script
-        type="module"
-        src={`/u/widget/authhero-widget.esm.js?v=${buildHash}`}
-      />
-    </>
-  );
-}
-
-/**
- * Generate the <head> content string for liquid template substitution
- */
-function generateHeadContent(options: HeadContentProps): string {
-  return (<HeadContent {...options} />).toString();
-}
-
-/**
- * Props for widget content
- */
-type WidgetContentProps = {
-  state: string;
-  screenId: string;
-  authParams: {
-    client_id: string;
-    redirect_uri?: string;
-    scope?: string;
-    audience?: string;
-    nonce?: string;
-    response_type?: string;
-  };
-  screenJson: string;
-  brandingJson?: string;
-  themeJson?: string;
-  widgetHtml?: string;
-  extraScript?: string;
-  poweredByLogo?: {
-    url: string;
-    darkUrl?: string;
-    alt: string;
-    href?: string;
-    height?: number;
-  };
-};
-
-/**
- * Widget content component for liquid template substitution
- */
-function WidgetContent({
-  state,
-  screenId,
-  authParams,
-  screenJson,
-  brandingJson,
-  themeJson,
-  widgetHtml,
-  extraScript,
-  poweredByLogo,
-}: WidgetContentProps) {
-  // Note: We don't need to call escapeHtml() on these values because
-  // Hono's JSX automatically escapes attribute values when calling .toString().
-  // Manual escaping would result in double-escaping (e.g., < becomes &amp;lt;)
-  const authParamsJson = JSON.stringify(authParams);
-
-  // Sanitize powered-by logo URLs
-  const safePoweredByUrl = poweredByLogo?.url
-    ? sanitizeUrl(poweredByLogo.url)
-    : null;
-  const safePoweredByDarkUrl = poweredByLogo?.darkUrl
-    ? sanitizeUrl(poweredByLogo.darkUrl)
-    : null;
-  const safePoweredByHref = poweredByLogo?.href
-    ? sanitizeUrl(poweredByLogo.href)
-    : null;
-
-  // Build widget element - either SSR output or empty shell for client-side hydration
-  // Note: data-screen is on the outer widget-container div (with data-authhero-widget-container),
-  // which the widget updates during client-side navigation via updateDataScreenAttribute().
-  const widgetElement = widgetHtml ? (
-    <div dangerouslySetInnerHTML={{ __html: widgetHtml }} />
-  ) : (
-    <div>
-      <authhero-widget
-        id="widget"
-        screen={screenJson}
-        branding={brandingJson}
-        theme={themeJson}
-        state={state}
-        auth-params={authParamsJson}
-        auto-submit="true"
-        auto-navigate="true"
-      />
-    </div>
-  );
-
-  return (
-    <div
-      class="widget-container"
-      data-authhero-widget-container
-      data-screen={screenId}
-    >
-      {widgetElement}
-      {extraScript && (
-        <script dangerouslySetInnerHTML={{ __html: extraScript }} />
-      )}
-      {safePoweredByUrl && (
-        <div class="powered-by">
-          {(() => {
-            const alt = poweredByLogo?.alt || "";
-            const height = poweredByLogo?.height || 20;
-            const imgs = safePoweredByDarkUrl ? (
-              <>
-                <img
-                  class="powered-by-light"
-                  src={safePoweredByUrl}
-                  alt={alt}
-                  height={height}
-                />
-                <img
-                  class="powered-by-dark"
-                  src={safePoweredByDarkUrl}
-                  alt=""
-                  aria-hidden="true"
-                  height={height}
-                />
-              </>
-            ) : (
-              <img src={safePoweredByUrl} alt={alt} height={height} />
-            );
-            return safePoweredByHref ? (
-              <a
-                href={safePoweredByHref}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {imgs}
-              </a>
-            ) : (
-              imgs
-            );
-          })()}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Generate the widget content string for liquid template substitution
- */
-function generateWidgetContent(options: WidgetContentProps): string {
-  return (<WidgetContent {...options} />).toString();
-}
-
-/**
- * Props for footer content
- */
-type FooterContentProps = {
-  language: string;
-  availableLanguages?: string[];
-  darkMode?: DarkModePreference;
-};
-
-/**
- * Footer content component for liquid template substitution.
- * Renders a language picker and other page-level footer items.
- *
- * NOTE: this is the legacy footer chrome (`.page-footer`,
- * `.dark-mode-toggle`, `.language-picker`) used only when a tenant has set
- * a custom Liquid template. The default SSR path renders the new chip/pill
- * chrome from `WidgetPage` (see `u2-widget-page.tsx`). Tenants on a custom
- * template will not pick up the new UI until they migrate their template.
- */
-function FooterContent({
-  language,
-  availableLanguages,
-  darkMode = "auto",
-}: FooterContentProps) {
-  const langs =
-    availableLanguages && availableLanguages.length > 1
-      ? availableLanguages
-      : undefined;
-
-  return (
-    <div class="page-footer">
-      <button
-        class="dark-mode-toggle"
-        type="button"
-        aria-label="Toggle dark mode"
-        onclick={`(function(btn){var h=document.documentElement;var cur=h.classList.contains('ah-dark-mode')?'dark':h.classList.contains('ah-light-mode')?'light':'auto';var next=cur==='auto'?'dark':cur==='dark'?'light':'auto';h.classList.remove('ah-dark-mode','ah-light-mode');if(next==='dark')h.classList.add('ah-dark-mode');else if(next==='light')h.classList.add('ah-light-mode');btn.querySelector('.icon-sun').style.display=next==='light'?'block':'none';btn.querySelector('.icon-moon').style.display=next==='dark'?'block':'none';btn.querySelector('.icon-auto').style.display=next==='auto'?'block':'none';document.cookie='ah-dark-mode='+next+';path=/;max-age=31536000;SameSite=Lax'})(this)`}
-      >
-        {/* Auto icon (half circle - system preference) */}
-        <svg
-          class="icon-auto"
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          style={darkMode === "auto" ? undefined : "display:none"}
-        >
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" />
-        </svg>
-        {/* Sun icon (light mode) */}
-        <svg
-          class="icon-sun"
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          style={darkMode === "light" ? undefined : "display:none"}
-        >
-          <circle cx="12" cy="12" r="5" />
-          <line x1="12" y1="1" x2="12" y2="3" />
-          <line x1="12" y1="21" x2="12" y2="23" />
-          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-          <line x1="1" y1="12" x2="3" y2="12" />
-          <line x1="21" y1="12" x2="23" y2="12" />
-          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-        </svg>
-        {/* Moon icon (dark mode) */}
-        <svg
-          class="icon-moon"
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          style={darkMode === "dark" ? undefined : "display:none"}
-        >
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-        </svg>
-      </button>
-      {langs && (
-        <div class="language-picker">
-          <svg
-            class="language-icon"
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M2 12h20" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-          </svg>
-          <select
-            class="language-select"
-            onchange={`var p=new URLSearchParams(window.location.search);p.set('ui_locales',this.value);window.location.search=p.toString()`}
-          >
-            {langs.map((lang) => (
-              <option value={lang} selected={lang === language}>
-                {getLocaleDisplayName(lang)}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Generate the footer content string for liquid template substitution
- */
-function generateFooterContent(options: FooterContentProps): string {
-  return (<FooterContent {...options} />).toString();
-}
-
-/**
- * Apply a Liquid template by replacing auth0:head, auth0:widget, and auth0:footer tags
- */
-function applyLiquidTemplate(
-  template: string,
-  headContent: string,
-  widgetContent: string,
-  footerContent?: string,
-): string {
-  let result = template
-    .replace("{%- auth0:head -%}", headContent)
-    .replace("{%- auth0:widget -%}", widgetContent);
-  if (footerContent) {
-    result = result.replace("{%- auth0:footer -%}", footerContent);
-  }
-  return result;
-}
 
 /**
  * Create a route handler for a specific screen with SSR + hydration
@@ -1017,77 +393,29 @@ function createScreenRouteHandler(screenId: string) {
       ? JSON.stringify(themeForWidget)
       : undefined;
 
-    // Attempt SSR for the widget
-    const widgetHtml = await renderWidgetSSR({
+    const darkMode = resolveDarkMode(ctx, branding);
+
+    return renderWidgetPageResponse(ctx, {
       screenId,
       screenJson,
       brandingJson,
       themeJson,
       state,
       authParamsJson,
+      branding,
+      theme,
+      clientName: client.name || "AuthHero",
+      poweredByLogo: ctx.env.poweredByLogo,
+      language,
+      availableLanguages: availableLocales,
+      termsAndConditionsUrl: sanitizeUrl(
+        client.client_metadata?.termsAndConditionsUrl,
+      ),
+      darkMode,
+      logoPosition: pageLogoPosition,
+      extraScript: result.extraScript,
+      customTemplateBody: customTemplate?.body,
     });
-
-    const darkMode = getDarkModeFromCookie(ctx);
-
-    // If there's a custom template, use liquid template rendering with SSR content
-    if (customTemplate) {
-      const brandingProps = extractBrandingProps(branding);
-
-      const headContent = generateHeadContent({
-        clientName: client.name || "AuthHero",
-        branding: brandingProps,
-        themePageBackground: theme?.page_background,
-        theme,
-      });
-
-      const widgetContent = generateWidgetContent({
-        state,
-        screenId,
-        authParams,
-        screenJson,
-        brandingJson,
-        themeJson,
-        widgetHtml,
-        extraScript: result.extraScript,
-        poweredByLogo: ctx.env.poweredByLogo,
-      });
-
-      const footerContent = generateFooterContent({
-        language,
-        availableLanguages: availableLocales,
-        darkMode,
-      });
-
-      const renderedHtml = applyLiquidTemplate(
-        customTemplate.body,
-        headContent,
-        widgetContent,
-        footerContent,
-      );
-
-      return ctx.html(renderedHtml);
-    }
-
-    // Default: return SSR widget page directly
-    return ctx.html(
-      <WidgetPage
-        widgetHtml={widgetHtml}
-        screenId={screenId}
-        branding={extractBrandingProps(branding)}
-        theme={theme}
-        themePageBackground={theme?.page_background}
-        clientName={client.name || "AuthHero"}
-        poweredByLogo={ctx.env.poweredByLogo}
-        language={language}
-        availableLanguages={availableLocales}
-        termsAndConditionsUrl={sanitizeUrl(
-          client.client_metadata?.termsAndConditionsUrl,
-        )}
-        darkMode={darkMode}
-        logoPosition={pageLogoPosition}
-        extraScript={result.extraScript}
-      />,
-    );
   };
 }
 
@@ -1332,75 +660,29 @@ function createScreenPostHandler(screenId: string) {
     // Get screen name for data-screen attribute (falls back to original screenId if not set)
     const resultScreenId = screenResult.screen.name || screenId;
 
-    // Attempt SSR
-    const widgetHtml = await renderWidgetSSR({
+    const darkMode = resolveDarkMode(ctx, branding);
+
+    return renderWidgetPageResponse(ctx, {
       screenId: resultScreenId,
       screenJson,
       brandingJson,
       themeJson,
       state,
       authParamsJson,
+      branding,
+      theme,
+      clientName: client.name || "AuthHero",
+      poweredByLogo: ctx.env.poweredByLogo,
+      language,
+      availableLanguages: availableLocales,
+      termsAndConditionsUrl: sanitizeUrl(
+        client.client_metadata?.termsAndConditionsUrl,
+      ),
+      darkMode,
+      logoPosition: pageLogoPosition,
+      extraScript: screenResult.extraScript,
+      customTemplateBody: customTemplate?.body,
     });
-
-    const darkMode = getDarkModeFromCookie(ctx);
-
-    // If there's a custom template, use it
-    if (customTemplate) {
-      const brandingProps = extractBrandingProps(branding);
-
-      const headContent = generateHeadContent({
-        clientName: client.name || "AuthHero",
-        branding: brandingProps,
-        themePageBackground: theme?.page_background,
-        theme,
-      });
-
-      const widgetContent = generateWidgetContent({
-        state,
-        screenId: resultScreenId,
-        authParams,
-        screenJson,
-        brandingJson,
-        themeJson,
-        widgetHtml,
-        extraScript: screenResult.extraScript,
-        poweredByLogo: ctx.env.poweredByLogo,
-      });
-
-      const renderedHtml = applyLiquidTemplate(
-        customTemplate.body,
-        headContent,
-        widgetContent,
-        generateFooterContent({
-          language,
-          availableLanguages: availableLocales,
-          darkMode,
-        }),
-      );
-
-      return ctx.html(renderedHtml);
-    }
-
-    // Default: return SSR widget page
-    return ctx.html(
-      <WidgetPage
-        widgetHtml={widgetHtml}
-        screenId={resultScreenId}
-        branding={extractBrandingProps(branding)}
-        theme={theme}
-        themePageBackground={theme?.page_background}
-        clientName={client.name || "AuthHero"}
-        poweredByLogo={ctx.env.poweredByLogo}
-        language={language}
-        availableLanguages={availableLocales}
-        termsAndConditionsUrl={sanitizeUrl(
-          client.client_metadata?.termsAndConditionsUrl,
-        )}
-        darkMode={darkMode}
-        logoPosition={pageLogoPosition}
-        extraScript={screenResult.extraScript}
-      />,
-    );
   };
 }
 

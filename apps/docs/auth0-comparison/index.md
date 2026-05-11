@@ -308,20 +308,6 @@ AuthHero provides a per-client `auth0_conformant` flag (default: `true`) to ensu
 - Configure a `default_audience` on each tenant, OR
 - Update your token requests to include an explicit `audience` parameter
 
-### OIDC Hybrid Response Types Not Supported
-
-**Auth0 Behavior**: Auth0's discovery document advertises — and Auth0 supports — the OIDC hybrid response types `code token`, `code id_token`, and `code id_token token`. These flows return access tokens and/or ID tokens directly from the `/authorize` endpoint (via URL fragment) alongside an authorization code.
-
-**AuthHero Behavior**: AuthHero supports only `code`, `token`, `id_token`, and `id_token token`. The three hybrid variants are not implemented and are not advertised in `/.well-known/openid-configuration`.
-
-**Why the difference?**
-
-- **Industry direction**: OAuth 2.1 deprecates the implicit flow, and the OAuth 2.0 [Browser-Based Apps BCP](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps) recommends authorization code + PKCE for SPAs. The hybrid flows were a workaround from before PKCE was widely available, and PKCE has since made them unnecessary.
-- **Security**: Hybrid flows deliver tokens in the URL fragment, which carries the same leakage exposure (referer headers, browser history, accidental server-side logging) that motivated the move away from implicit.
-- **SDK reality**: Auth0's own SPA SDK has defaulted to `response_type=code` with PKCE for years, so applications using current Auth0 SDKs are unaffected.
-
-**Migration impact**: If a client is configured with a hybrid `response_type`, switch it to `code` and enable PKCE. If you have a genuine need for one of the hybrid variants, please open an issue describing the use case.
-
 ## Feature Comparison
 
 ### Authentication Methods
@@ -491,6 +477,39 @@ This gives you fine-grained control over the authentication experience, addressi
 - **Flexibility**: Easy to configure without writing custom code
 
 See the [Flows documentation](/features/flows#redirect-actions) for implementation details.
+
+### Prompt Default Text Discovery
+
+**Auth0 Limitation**: Auth0's `GET /api/v2/prompts/{prompt}/custom-text/{language}` endpoint returns only the tenant's overrides — never the default text that ships with the universal login UI. Admin UIs that want to render placeholder values, or surface which prompt/screen/key forms even exist, have to maintain their own copy of Auth0's default-text catalog.
+
+**AuthHero Solution**: Adds `GET /api/v2/prompts/custom-text/defaults`, which returns the bundled default text for every shipped locale as a flat list:
+
+```http
+GET /api/v2/prompts/custom-text/defaults?language=en&prompt=login
+```
+
+```json
+[
+  {
+    "prompt": "login",
+    "language": "en",
+    "custom_text": {
+      "login": {
+        "title": "Welcome",
+        "buttonText": "Continue",
+        "description": "Log in to ${clientName} to continue."
+      }
+    }
+  }
+]
+```
+
+- Both `language` and `prompt` query parameters are optional; omit them to enumerate every prompt × language combination shipped with AuthHero
+- `language` is matched on the base locale (e.g. `en-US` resolves to `en`)
+- The response payload is identical across tenants, so it's safe to cache aggressively in the UI
+- The per-tenant `GET /api/v2/prompts/{prompt}/custom-text/{language}` endpoint still returns overrides only (preserving PUT/GET symmetry for Terraform's `auth0/auth0` provider) — the new endpoint is a separate, read-only manifest
+
+This is an AuthHero extension and is not present in Auth0.
 
 ## Migration from Auth0
 

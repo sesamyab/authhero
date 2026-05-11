@@ -228,3 +228,34 @@ export function getLocaleDefaults(
 
   return LOCALE_DATA[baseLang]?.[prompt] ?? LOCALE_DATA["en"]?.[prompt] ?? {};
 }
+
+export interface LocaleDefaultsEntry {
+  prompt: string;
+  language: string;
+  custom_text: Record<string, Record<string, string>>;
+}
+
+/**
+ * Enumerate every bundled locale default as a flat list of
+ * `{ prompt, language, custom_text }` entries, optionally filtered by
+ * language and/or prompt. Powers the `/api/v2/prompts/custom-text/defaults`
+ * endpoint so the admin UI can render placeholders and discover which
+ * forms exist without round-tripping per (prompt, language) pair.
+ */
+export function getAllLocaleDefaults(filter?: {
+  language?: string;
+  prompt?: string;
+}): LocaleDefaultsEntry[] {
+  const languageFilter = filter?.language?.split("-")[0];
+  const entries: LocaleDefaultsEntry[] = [];
+
+  for (const [language, prompts] of Object.entries(LOCALE_DATA)) {
+    if (languageFilter && language !== languageFilter) continue;
+    for (const [prompt, screens] of Object.entries(prompts)) {
+      if (filter?.prompt && prompt !== filter.prompt) continue;
+      entries.push({ prompt, language, custom_text: screens });
+    }
+  }
+
+  return entries;
+}

@@ -2,6 +2,7 @@ import { UpdateParams, withLifecycleCallbacks } from "react-admin";
 import {
   authorizedHttpClient,
   createOrganizationHttpClient,
+  isSingleTenantForDomain,
 } from "./authProvider";
 import auth0DataProvider from "./auth0DataProvider";
 import { getConfigValue } from "./utils/runtimeConfig";
@@ -82,17 +83,14 @@ export function getDataproviderForTenant(
   // Ensure apiUrl doesn't end with a slash
   apiUrl = apiUrl.replace(/\/$/, "");
 
+  const formattedDomain = auth0Domain ? formatDomain(auth0Domain) : "";
+
   // Create a dynamic httpClient that checks single-tenant mode at REQUEST TIME
   // This is important because the mode may not be known when the dataProvider is created
   const dynamicHttpClient = (url: string, options?: any) => {
-    // Check single-tenant mode at request time, not at creation time
-    const storedFlag = sessionStorage.getItem("isSingleTenant");
-    const isSingleTenant =
-      storedFlag?.endsWith("|true") || storedFlag === "true";
-
     // In single-tenant mode, use the regular authorized client without organization scope
     // In multi-tenant mode, use organization-scoped client for proper access control
-    if (isSingleTenant) {
+    if (isSingleTenantForDomain(formattedDomain)) {
       return authorizedHttpClient(url, options);
     } else {
       return createOrganizationHttpClient(tenantId)(url, options);

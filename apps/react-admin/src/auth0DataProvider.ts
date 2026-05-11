@@ -493,6 +493,42 @@ export default (
         }
       }
 
+      // Handle custom-text-defaults: bundled default text shipped with
+      // authhero. Backs placeholder rendering and field discovery in the
+      // admin UI. Auth0 has no equivalent.
+      if (resource === "custom-text-defaults") {
+        const headers = createHeaders(tenantId);
+        const defaultsQuery: Record<string, string> = {};
+        if (params.filter?.language) defaultsQuery.language = params.filter.language;
+        if (params.filter?.prompt) defaultsQuery.prompt = params.filter.prompt;
+        const qs = stringify(defaultsQuery);
+        const url = qs
+          ? `${apiUrl}/api/v2/prompts/custom-text/defaults?${qs}`
+          : `${apiUrl}/api/v2/prompts/custom-text/defaults`;
+        try {
+          const res = await httpClient(url, { headers });
+          const entries = res.json || [];
+          return {
+            data: entries.map(
+              (e: {
+                prompt: string;
+                language: string;
+                custom_text: Record<string, Record<string, string>>;
+              }) => ({
+                id: `${e.prompt}:${e.language}`,
+                prompt: e.prompt,
+                language: e.language,
+                custom_text: e.custom_text,
+              }),
+            ),
+            total: entries.length,
+          };
+        } catch (error) {
+          console.error("Error fetching custom-text defaults:", error);
+          return { data: [], total: 0 };
+        }
+      }
+
       // Handle clients with client-side paging and search (fetch all, filter locally)
       if (resource === "clients" && !resourcePath.includes("/")) {
         const result = await managementClient.clients.list({

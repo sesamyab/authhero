@@ -20,6 +20,7 @@ import { sendCode, sendLink } from "../../emails";
 import { OTP_EXPIRATION_TIME } from "../../constants";
 import { getConnectionFromIdentifier } from "../../utils/username";
 import { findHrdConnection } from "../../helpers/hrd";
+import { getAuth0SourceConnection } from "../../utils/auth0-source-connection";
 import { connectionAuth } from "../../authentication-flows/connection";
 import { HTTPException } from "hono/http-exception";
 
@@ -249,10 +250,31 @@ export const identifierRoutes = new OpenAPIHono<{
       // 1. There's a matching connection on the client, OR
       // 2. User already exists (can login regardless of how they signed up), OR
       // 3. connectionType is "username" and password connection has username identifier active
-      const hasValidConnection =
+      let hasValidConnection =
         client.connections.find((c) => c.strategy === connectionType) ||
         (connectionType === "username" && requiresUsername) ||
         user;
+
+      // Auth0 lazy migration: accept the email even when the user is unknown
+      // locally, provided a `strategy: "auth0"` source exists and the client
+      // has a DB connection flagged `import_mode: true`. The password flow
+      // will verify against upstream Auth0 and create the user on success.
+      if (!hasValidConnection && connectionType === "email" && username) {
+        const hasImportModeDbConnection = client.connections.some(
+          (c) =>
+            c.strategy === Strategy.USERNAME_PASSWORD &&
+            c.options?.import_mode === true,
+        );
+        if (hasImportModeDbConnection) {
+          const auth0Source = await getAuth0SourceConnection(
+            ctx,
+            client.tenant.id,
+          );
+          if (auth0Source) {
+            hasValidConnection = true;
+          }
+        }
+      }
 
       if (!hasValidConnection || !username) {
         return ctx.html(

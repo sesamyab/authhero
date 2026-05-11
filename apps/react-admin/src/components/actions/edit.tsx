@@ -11,6 +11,7 @@ import {
   DateField,
   TextField,
   SaveButton,
+  DeleteButton,
   useRecordContext,
   useNotify,
   Button,
@@ -70,6 +71,7 @@ function TopActionBar() {
     >
       <SaveButton />
       <DeployButton />
+      <DeleteButton mutationMode="pessimistic" />
     </Box>
   );
 }
