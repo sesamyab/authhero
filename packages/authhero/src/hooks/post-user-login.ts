@@ -384,9 +384,15 @@ export async function postUserLoginHook(
         hook.metadata,
       );
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       logMessage(ctx, tenant_id, {
         type: LogTypes.FAILED_HOOK,
-        description: `Failed to execute template hook: ${hook.template_id}`,
+        description: `Failed to execute template hook ${hook.template_id}: ${message}`,
+        details: {
+          template_id: hook.template_id,
+          trigger_id: "post-user-login",
+          error: message,
+        },
       });
     }
   }
@@ -417,9 +423,16 @@ export async function postUserLoginHook(
         {},
       );
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       logMessage(ctx, tenant_id, {
         type: LogTypes.FAILED_HOOK,
-        description: `Failed to execute code hook: ${hook.hook_id}`,
+        description: `Failed to execute code hook ${hook.hook_id}: ${message}`,
+        details: {
+          hook_id: hook.hook_id,
+          code_id: hook.code_id,
+          trigger_id: "post-user-login",
+          error: message,
+        },
       });
     }
   }

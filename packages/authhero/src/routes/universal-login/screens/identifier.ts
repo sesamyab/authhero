@@ -49,12 +49,22 @@ function buildSocialButtons(
 ): FormNodeComponent[] {
   const { connections } = context;
 
-  const socialConnections = connections.filter(
-    (c) =>
-      c.strategy !== Strategy.EMAIL &&
-      c.strategy !== Strategy.SMS &&
-      c.strategy !== Strategy.USERNAME_PASSWORD,
-  );
+  const socialConnections = connections.filter((c) => {
+    if (
+      c.strategy === Strategy.EMAIL ||
+      c.strategy === Strategy.SMS ||
+      c.strategy === Strategy.USERNAME_PASSWORD
+    ) {
+      return false;
+    }
+    // HRD-only by default: connections with domain_aliases are routed via
+    // email-domain matching and hidden from the button row unless the
+    // tenant explicitly opts in with show_as_button.
+    if (c.options?.domain_aliases?.length && c.show_as_button !== true) {
+      return false;
+    }
+    return true;
+  });
 
   if (socialConnections.length === 0) {
     return [];

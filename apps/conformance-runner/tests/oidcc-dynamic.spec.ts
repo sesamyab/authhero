@@ -4,6 +4,7 @@ import { runBrowserFlow } from "../lib/run-browser-flow";
 import { env } from "../lib/env";
 import {
   DYNAMIC_PLAN_NAME,
+  DYNAMIC_PLAN_VARIANT,
   buildDynamicPlanConfig,
 } from "../lib/test-plan-config";
 
@@ -17,8 +18,11 @@ test.beforeAll(async () => {
   console.log(
     `[conformance-runner] Creating plan ${DYNAMIC_PLAN_NAME} with alias ${config.alias}`,
   );
-  // No plan-level variant — see DYNAMIC_PLAN_NAME comment in test-plan-config.
-  const plan = await client.createPlan(DYNAMIC_PLAN_NAME, config);
+  const plan = await client.createPlan(
+    DYNAMIC_PLAN_NAME,
+    config,
+    DYNAMIC_PLAN_VARIANT,
+  );
   planId = plan.id;
   modules = plan.modules;
   console.log(

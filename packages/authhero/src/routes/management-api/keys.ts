@@ -54,7 +54,7 @@ export const keyRoutes = new OpenAPIHono<{
       },
       security: [
         {
-          Bearer: ["read:keys", "auth:read"],
+          Bearer: ["read:signing_keys", "auth:read"],
         },
       ],
       responses: {
@@ -105,7 +105,7 @@ export const keyRoutes = new OpenAPIHono<{
       },
       security: [
         {
-          Bearer: ["read:keys", "auth:read"],
+          Bearer: ["read:signing_keys", "auth:read"],
         },
       ],
       responses: {
@@ -160,7 +160,7 @@ export const keyRoutes = new OpenAPIHono<{
       },
       security: [
         {
-          Bearer: ["create:keys", "auth:write"],
+          Bearer: ["create:signing_keys", "auth:write"],
         },
       ],
       responses: {
@@ -234,7 +234,7 @@ export const keyRoutes = new OpenAPIHono<{
       },
       security: [
         {
-          Bearer: ["update:keys", "auth:write"],
+          Bearer: ["update:signing_keys", "auth:write"],
         },
       ],
       responses: {

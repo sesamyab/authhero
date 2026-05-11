@@ -7,6 +7,10 @@ import { ThemesTab } from "./ThemesTab";
 import { BrandingPreview } from "./BrandingPreview";
 import { UniversalLoginTab } from "./UniversalLoginTab";
 
+// Emit "" instead of null when cleared, matching Auth0's PATCH semantics:
+// an omitted key means "no change", an empty string clears the value.
+const keepEmptyString = (v: string | null | undefined) => v ?? "";
+
 // Helper to recursively remove null values and empty objects from data
 // This is needed because react-admin sends null for empty form fields,
 // but the server schema expects fields to be omitted rather than null
@@ -173,8 +177,16 @@ function BrandingFormContent() {
           <TabbedForm.Tab label="Style">
             <ColorInput source="colors.primary" label="Primary Color" />
             <PageBackgroundInput source="colors.page_background" />
-            <TextInput source="favicon_url" label="Favicon URL" />
-            <TextInput source="logo_url" label="Logo URL" />
+            <TextInput
+              source="favicon_url"
+              label="Favicon URL"
+              parse={keepEmptyString}
+            />
+            <TextInput
+              source="logo_url"
+              label="Logo URL"
+              parse={keepEmptyString}
+            />
             <TextInput source="font.url" label="Font URL" />
             <SelectInput
               source="dark_mode"
