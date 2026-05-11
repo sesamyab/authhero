@@ -210,6 +210,14 @@ async function fetchSingleton(
   }
 }
 
+// Extended data provider surface for non-CRUD actions (e.g. signing-key
+// rotation/revocation) that don't map cleanly to react-admin's standard verbs.
+// Consumers call these via useDataProvider<AuthHeroDataProvider>().
+export interface AuthHeroDataProvider extends DataProvider {
+  rotateSigningKeys: () => Promise<void>;
+  revokeSigningKey: (kid: string) => Promise<void>;
+}
+
 /**
  * Maps react-admin queries to the auth0 management api
  * Uses HTTP client for all API calls with custom headers for tenant isolation
@@ -219,7 +227,7 @@ export default (
   httpClient = fetchUtils.fetchJson,
   tenantId?: string,
   domain?: string,
-): DataProvider => {
+): AuthHeroDataProvider => {
   // Get or create management client for SDK calls
   let managementClientPromise: Promise<ManagementClient> | null = null;
   const getManagementClient = async () => {
@@ -566,6 +574,30 @@ export default (
           sortOrder: order,
           searchQuery: params.filter?.q,
           searchFields: ["name", "display_name"],
+          idKey: "id",
+        });
+      }
+
+      // Signing keys are served at /api/v2/keys/signing and use `kid` as their
+      // identifier (no `id` field). The endpoint returns a plain array with no
+      // pagination, so we fetch everything and let clientSideListHandler paginate.
+      if (resource === "signing-keys") {
+        const headers = createHeaders(tenantId);
+        const res = await httpClient(`${apiUrl}/api/v2/keys/signing`, {
+          headers,
+        });
+        const items: Array<Record<string, unknown>> = Array.isArray(res.json)
+          ? (res.json as Array<Record<string, unknown>>)
+          : [];
+        const withIds = items.map((item) => ({ id: item.kid, ...item }));
+        return clientSideListHandler({
+          data: withIds,
+          page,
+          perPage: perPage || 25,
+          sortField: field,
+          sortOrder: order,
+          searchQuery: params.filter?.q,
+          searchFields: ["kid", "thumbprint", "fingerprint"],
           idKey: "id",
         });
       }
@@ -2095,6 +2127,23 @@ export default (
       }
 
       return { data: deletedIds };
+    },
+
+    rotateSigningKeys: async () => {
+      await httpClient(`${apiUrl}/api/v2/keys/signing/rotate`, {
+        method: "POST",
+        headers: createHeaders(tenantId),
+      });
+    },
+
+    revokeSigningKey: async (kid: string) => {
+      await httpClient(
+        `${apiUrl}/api/v2/keys/signing/${encodeURIComponent(kid)}/revoke`,
+        {
+          method: "PUT",
+          headers: createHeaders(tenantId),
+        },
+      );
     },
   };
 };

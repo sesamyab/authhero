@@ -1397,6 +1397,17 @@ export function ClientEdit() {
       transformed.client_metadata = stringifiedMetadata;
     }
 
+    // NumberInput emits null for cleared fields, but the API schema marks
+    // refresh_token.* numeric fields as .optional() (accepts undefined, not
+    // null). Strip null entries so cleared values become omitted instead.
+    if (isPlainObject(transformed.refresh_token)) {
+      const cleaned: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(transformed.refresh_token)) {
+        if (value !== null) cleaned[key] = value;
+      }
+      transformed.refresh_token = cleaned;
+    }
+
     return transformed;
   };
 

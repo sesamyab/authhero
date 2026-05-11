@@ -63,6 +63,8 @@ import {
   AttackProtectionEdit,
 } from "./components/attack-protection";
 import ShieldIcon from "@mui/icons-material/Shield";
+import VpnKeyIcon from "@mui/icons-material/VpnKey";
+import { SigningKeysList } from "./components/signing-keys";
 import { CertificateErrorDialog } from "./components/CertificateErrorDialog";
 import { ActivityDashboard } from "./components/activity";
 import { buildUrlWithProtocol } from "./utils/domainUtils";
@@ -327,6 +329,12 @@ export function App(props: AppProps) {
           list={AttackProtectionList}
           edit={AttackProtectionEdit}
           options={{ hasSingle: true, label: "Attack Protection" }}
+        />
+        <Resource
+          icon={VpnKeyIcon}
+          name="signing-keys"
+          list={SigningKeysList}
+          options={{ label: "Signing Keys" }}
         />
         <Resource
           icon={EmailIcon}
