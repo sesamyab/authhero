@@ -1,4 +1,4 @@
-import { Edit, TextInput, TabbedForm } from "react-admin";
+import { Edit, TextInput, TabbedForm, SelectInput } from "react-admin";
 import { ColorInput } from "react-admin-color-picker";
 import { useInput, useRecordContext } from "react-admin";
 import { useState, useEffect } from "react";
@@ -176,6 +176,16 @@ function BrandingFormContent() {
             <TextInput source="favicon_url" label="Favicon URL" />
             <TextInput source="logo_url" label="Logo URL" />
             <TextInput source="font.url" label="Font URL" />
+            <SelectInput
+              source="dark_mode"
+              label="Dark Mode"
+              choices={[
+                { id: "auto", name: "Auto (follow system)" },
+                { id: "light", name: "Light" },
+                { id: "dark", name: "Dark" },
+              ]}
+              helperText="Default color scheme for the universal login page. The per-user ah-dark-mode cookie still overrides this at runtime."
+            />
             {/* Preview inside the form context */}
             <Box
               sx={{

@@ -18,6 +18,8 @@ import {
 import { validateSignupEmail } from "../../../hooks";
 import { getConnectionFromIdentifier } from "../../../utils/username";
 import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
+import { findHrdConnection } from "../../../helpers/hrd";
+import { connectionAuth } from "../../../authentication-flows/connection";
 import { getLoginStrategy } from "../common";
 import generateOTP from "../../../utils/otp";
 import { sendCode, sendLink } from "../../../emails";
@@ -461,6 +463,39 @@ export const identifierScreenDefinition: ScreenDefinition = {
         };
       }
 
+      // Home Realm Discovery: route to enterprise/social IdP by email domain.
+      if (connectionType === "email") {
+        const hrdConnection = findHrdConnection(
+          normalized,
+          client.connections,
+          ctx.env.STRATEGIES,
+        );
+        if (hrdConnection) {
+          const loginSession = await ctx.env.data.loginSessions.get(
+            client.tenant.id,
+            state,
+          );
+          if (loginSession) {
+            loginSession.authParams.username = normalized;
+            await ctx.env.data.loginSessions.update(
+              client.tenant.id,
+              loginSession.id,
+              loginSession,
+            );
+            const authResult = await connectionAuth(
+              ctx,
+              client,
+              hrdConnection.name,
+              loginSession.authParams,
+            );
+            const location = authResult.headers.get("location");
+            const cookies = authResult.headers.getSetCookie?.() || [];
+            if (location) return { redirect: location, cookies };
+            return { response: authResult };
+          }
+        }
+      }
+
       // Validate username length when connectionType is "username"
       if (connectionType === "username" && requiresUsername) {
         const minLength = identifierConfig.usernameMinLength;
@@ -520,7 +555,7 @@ export const identifierScreenDefinition: ScreenDefinition = {
         user;
 
       if (!hasValidConnection) {
-        const errorMsg = m["invalid-email-format"]();
+        const errorMsg = m.userAccountDoesNotExist();
         return {
           error: errorMsg,
           screen: await identifierScreen({
