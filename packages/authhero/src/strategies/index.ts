@@ -13,11 +13,11 @@ import { getAuthUrl } from "../variables";
 
 /**
  * Resolve the redirect_uri that strategies should hand to the upstream IdP.
- * Defaults to `${authUrl}callback` on the request's host (custom domain if
- * present, otherwise the default issuer). Set `options.callback_url` per
- * connection to pin an explicit URL — required when an upstream IdP has the
- * legacy default-domain callback registered and you don't want it to flip
- * when the request comes in via a custom domain.
+ * Defaults to `${authUrl}login/callback` on the request's host (custom domain
+ * if present, otherwise the default issuer) — matching Auth0's default. Set
+ * `options.callback_url` per connection to pin an explicit URL — required
+ * when an upstream IdP has the legacy `/callback` URL registered and you
+ * don't want it to flip when the request comes in via a custom domain.
  */
 export function getConnectionCallbackUrl(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
@@ -25,7 +25,7 @@ export function getConnectionCallbackUrl(
 ): string {
   return (
     connection.options?.callback_url ??
-    `${getAuthUrl(ctx.env, ctx.var.custom_domain)}callback`
+    `${getAuthUrl(ctx.env, ctx.var.custom_domain)}login/callback`
   );
 }
 
