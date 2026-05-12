@@ -55,10 +55,11 @@ export function getStandardClaim(
       return user.zoneinfo || undefined;
     case "locale":
       return user.locale || undefined;
-    case "updated_at":
-      return user.updated_at
-        ? Math.floor(new Date(user.updated_at).getTime() / 1000)
-        : undefined;
+    case "updated_at": {
+      if (!user.updated_at) return undefined;
+      const ts = new Date(user.updated_at).getTime();
+      return Number.isFinite(ts) ? Math.floor(ts / 1000) : undefined;
+    }
     case "address":
       return user.address || undefined;
     case "phone_number":

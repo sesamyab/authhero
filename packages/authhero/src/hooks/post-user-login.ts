@@ -111,7 +111,9 @@ async function buildEnhancedEventObject(
   }
 
   // Get countryCode from context (set by clientInfoMiddleware)
-  const countryCode = ctx.get("countryCode");
+  const countryCode = ctx.var?.countryCode;
+  const ip = ctx.var?.ip;
+  const userAgent = ctx.var?.useragent;
 
   return {
     // AuthHero specific
@@ -122,8 +124,8 @@ async function buildEnhancedEventObject(
     user: stripInternalUserFields(user),
     request: {
       asn: undefined, // ASN not available in current context variables
-      ip: ctx.get("ip") || "",
-      user_agent: ctx.get("useragent"),
+      ip: ip || "",
+      user_agent: userAgent,
       method: ctx.req.method,
       url: ctx.req.url,
       geoip: {
@@ -194,10 +196,10 @@ async function buildEnhancedEventObject(
         },
       ],
       device: {
-        initial_ip: ctx.get("ip"),
-        initial_user_agent: ctx.get("useragent"),
-        last_ip: user.last_ip || ctx.get("ip"),
-        last_user_agent: ctx.get("useragent"),
+        initial_ip: ip,
+        initial_user_agent: userAgent,
+        last_ip: user.last_ip || ip,
+        last_user_agent: userAgent,
       },
     },
   };

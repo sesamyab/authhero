@@ -141,13 +141,13 @@ export function createHooksAdapter(db: DrizzleDb) {
 
       let query = db.select().from(hooks).where(whereClause).$dynamic();
 
-      if (sort?.sort_by) {
-        const col = (hooks as any)[sort.sort_by];
-        if (col) {
-          query = query.orderBy(
-            sort.sort_order === "desc" ? desc(col) : asc(col),
-          );
-        }
+      const sortCol = sort?.sort_by
+        ? (hooks as any)[sort.sort_by]
+        : undefined;
+      if (sortCol) {
+        query = query.orderBy(
+          sort?.sort_order === "desc" ? desc(sortCol) : asc(sortCol),
+        );
       } else {
         query = query.orderBy(desc(hooks.priority), asc(hooks.created_at_ts));
       }

@@ -12,7 +12,7 @@ export function list(db: Kysely<Database>) {
     tenant_id: string,
     params: ListParams = {},
   ): Promise<ListHooksResponse> => {
-    const { page = 0, per_page = 50, include_totals = false, q } = params;
+    const { page = 0, per_page = 50, include_totals = false, sort, q } = params;
 
     let query = db.selectFrom("hooks").where("hooks.tenant_id", "=", tenant_id);
 
@@ -25,11 +25,16 @@ export function list(db: Kysely<Database>) {
       ]);
     }
 
-    const filteredQuery = query
-      .orderBy("priority", "desc")
-      .orderBy("created_at_ts", "asc")
-      .offset(page * per_page)
-      .limit(per_page);
+    if (sort?.sort_by) {
+      const { ref } = db.dynamic;
+      query = query.orderBy(ref(sort.sort_by), sort.sort_order);
+    } else {
+      query = query
+        .orderBy("priority", "desc")
+        .orderBy("created_at_ts", "asc");
+    }
+
+    const filteredQuery = query.offset(page * per_page).limit(per_page);
 
     const results = await filteredQuery.selectAll().execute();
 

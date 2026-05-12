@@ -83,22 +83,32 @@ const authorizeParamsSchema = z.object({
   login_hint: z.string().optional(),
   screen_hint: z.string().optional(),
   ui_locales: z.string().optional(),
-  // OIDC Core 5.5 — JSON-encoded `claims` request parameter.
-  claims: z.string().optional(),
+  // OIDC Core 5.5 — JSON-encoded `claims` request parameter. Inside a signed
+  // Request Object (RFC 9101 §4) the value is a JSON object, not a string —
+  // accept both shapes so verified request payloads pass schema validation.
+  claims: z.union([z.string(), z.record(z.any())]).optional(),
 });
 
-// Parse + validate the raw `claims` query-string value. Returns the parsed
-// request, or throws HTTPException(400) per OIDC Core 5.5 when the value
-// is not a valid JSON object matching the claims-request schema.
-function parseClaimsParam(raw: string | undefined): ClaimsRequest | undefined {
-  if (!raw) return undefined;
+// Parse + validate the raw `claims` value. Accepts either a JSON-encoded
+// string (query-string form) or a decoded object (Request Object form per
+// RFC 9101 §4). Returns the parsed request, or throws HTTPException(400)
+// per OIDC Core 5.5 when the value is not a valid claims-request shape.
+function parseClaimsParam(
+  raw: string | Record<string, unknown> | undefined,
+): ClaimsRequest | undefined {
+  if (raw === undefined || raw === null) return undefined;
   let decoded: unknown;
-  try {
-    decoded = JSON.parse(raw);
-  } catch {
-    throw new HTTPException(400, {
-      message: "invalid claims parameter: not valid JSON",
-    });
+  if (typeof raw === "string") {
+    if (!raw) return undefined;
+    try {
+      decoded = JSON.parse(raw);
+    } catch {
+      throw new HTTPException(400, {
+        message: "invalid claims parameter: not valid JSON",
+      });
+    }
+  } else {
+    decoded = raw;
   }
   const result = claimsRequestSchema.safeParse(decoded);
   if (!result.success) {
@@ -369,9 +379,7 @@ export const authorizeRoutes = new OpenAPIHono<{
       // OIDC Core 5.5 — decode the `claims` request parameter once, here.
       // Throws HTTPException(400) on malformed JSON / shape; we want that
       // error to surface before any further processing.
-      let parsedClaims: ClaimsRequest | undefined = parseClaimsParam(
-        typeof rawClaims === "string" ? rawClaims : undefined,
-      );
+      let parsedClaims: ClaimsRequest | undefined = parseClaimsParam(rawClaims);
 
       // Reuse the client we already fetched while verifying the request object
       // when client_id matches; otherwise fetch fresh.

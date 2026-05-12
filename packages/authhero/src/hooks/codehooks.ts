@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import {
   ActionExecutionResult,
   ActionExecutionStatus,
@@ -255,11 +256,12 @@ export async function handleCredentialsExchangeCodeHooks(
   const tenant_id = ctx.var.tenant_id || ctx.req.header("tenant-id");
   if (!tenant_id) return null;
 
-  const codeHooks = hooks.filter((h: any) => h.enabled && isCodeHook(h));
+  const codeHooks: CodeHook[] = (hooks as Hook[]).filter(
+    (h): h is CodeHook => !!(h as any).enabled && isCodeHook(h),
+  );
   const outcomes: HandleCodeHookOutcome[] = [];
 
   for (const hook of codeHooks) {
-    if (!isCodeHook(hook)) continue;
     try {
       const outcome = await handleCodeHook(
         ctx,
@@ -272,15 +274,21 @@ export async function handleCredentialsExchangeCodeHooks(
       if (outcome) outcomes.push(outcome);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      // api.access.deny throws HTTPException — record as denied so the
+      // execution is persisted as "canceled" rather than "partial".
+      const denied = err instanceof HTTPException;
       outcomes.push({
         result: {
           action_name: hook.code_id,
-          error: { id: "execution_threw", msg: message },
+          error: {
+            id: denied ? "access_denied" : "execution_threw",
+            msg: message,
+          },
           started_at: new Date().toISOString(),
           ended_at: new Date().toISOString(),
         },
         logs: [],
-        denied: false,
+        denied,
       });
     }
   }
