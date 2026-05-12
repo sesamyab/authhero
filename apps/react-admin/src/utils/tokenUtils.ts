@@ -7,10 +7,17 @@ import { getConfigValue } from "./runtimeConfig";
 // for a later request that wanted no org (or a different org). We maintain our
 // own caches and force `cacheMode: "off"` to bypass the SDK cache for both
 // org-scoped and non-org-scoped tokens.
-const orgTokenCache = new Map<string, { token: string; expiresAt: number }>();
+//
+// Entries hold the in-flight promise (not just the resolved token) so that N
+// parallel callers on a cold cache share a single refresh-token exchange
+// instead of each firing their own.
+const orgTokenCache = new Map<
+  string,
+  { promise: Promise<string>; expiresAt: number }
+>();
 const nonOrgTokenCache = new Map<
   string,
-  { token: string; expiresAt: number }
+  { promise: Promise<string>; expiresAt: number }
 >();
 
 // Decode JWT payload (Base64URL → Base64). Used both for cache TTL and for
@@ -30,13 +37,22 @@ function getTokenExpiryMs(token: string): number {
   return (payload.exp as number) * 1000;
 }
 
-// Whether a cached token's `org_id` matches what we want. Guards against a
+// Whether a cached token's organization matches what we want. Guards against a
 // stale entry (e.g. one populated under the wrong assumptions, or surviving a
 // Vite HMR reload) being served as if it were correct.
-function tokenMatchesOrg(token: string, expectedOrgId: string | undefined): boolean {
+//
+// Callers pass the slug they used as `organization` in the token request — the
+// server resolves slug → id and stamps `org_id` (the id) and `org_name` (the
+// slug) into the JWT. So accept a match on either claim.
+function tokenMatchesOrg(token: string, expectedOrg: string | undefined): boolean {
   try {
     const payload = decodeJwtPayload(token);
-    return (payload.org_id ?? undefined) === expectedOrgId;
+    if (expectedOrg === undefined) {
+      return payload.org_id === undefined && payload.org_name === undefined;
+    }
+    return (
+      payload.org_id === expectedOrg || payload.org_name === expectedOrg
+    );
   } catch {
     return false;
   }
@@ -55,27 +71,37 @@ export async function getOrgAccessToken(
   const normalizedOrgId = orgId.toLowerCase();
   const cacheKey = `${domain}|${audience}|${normalizedOrgId}`;
   const cached = orgTokenCache.get(cacheKey);
-  if (
-    cached &&
-    cached.expiresAt > Date.now() + 60_000 &&
-    tokenMatchesOrg(cached.token, normalizedOrgId)
-  ) {
-    return cached.token;
-  }
-  if (cached) {
+  if (cached && cached.expiresAt > Date.now() + 60_000) {
+    const token = await cached.promise;
+    if (tokenMatchesOrg(token, normalizedOrgId)) {
+      return token;
+    }
+    orgTokenCache.delete(cacheKey);
+  } else if (cached) {
     orgTokenCache.delete(cacheKey);
   }
 
-  const token = await auth0Client.getTokenSilently({
+  const promise = auth0Client.getTokenSilently({
     cacheMode: "off" as const,
     authorizationParams: { audience, organization: normalizedOrgId },
   });
-
+  // Optimistic expiry so concurrent callers reuse this in-flight promise;
+  // tightened to the JWT's real exp once resolved.
   orgTokenCache.set(cacheKey, {
-    token,
-    expiresAt: getTokenExpiryMs(token),
+    promise,
+    expiresAt: Date.now() + 5 * 60_000,
   });
-  return token;
+  try {
+    const token = await promise;
+    orgTokenCache.set(cacheKey, {
+      promise: Promise.resolve(token),
+      expiresAt: getTokenExpiryMs(token),
+    });
+    return token;
+  } catch (err) {
+    orgTokenCache.delete(cacheKey);
+    throw err;
+  }
 }
 
 /**
@@ -90,27 +116,35 @@ async function getNonOrgAccessToken(
 ): Promise<string> {
   const cacheKey = `${domain}|${audience}`;
   const cached = nonOrgTokenCache.get(cacheKey);
-  if (
-    cached &&
-    cached.expiresAt > Date.now() + 60_000 &&
-    tokenMatchesOrg(cached.token, undefined)
-  ) {
-    return cached.token;
-  }
-  if (cached) {
+  if (cached && cached.expiresAt > Date.now() + 60_000) {
+    const token = await cached.promise;
+    if (tokenMatchesOrg(token, undefined)) {
+      return token;
+    }
+    nonOrgTokenCache.delete(cacheKey);
+  } else if (cached) {
     nonOrgTokenCache.delete(cacheKey);
   }
 
-  const token = await auth0Client.getTokenSilently({
+  const promise = auth0Client.getTokenSilently({
     cacheMode: "off" as const,
     authorizationParams: { audience, organization: undefined },
   });
-
   nonOrgTokenCache.set(cacheKey, {
-    token,
-    expiresAt: getTokenExpiryMs(token),
+    promise,
+    expiresAt: Date.now() + 5 * 60_000,
   });
-  return token;
+  try {
+    const token = await promise;
+    nonOrgTokenCache.set(cacheKey, {
+      promise: Promise.resolve(token),
+      expiresAt: getTokenExpiryMs(token),
+    });
+    return token;
+  } catch (err) {
+    nonOrgTokenCache.delete(cacheKey);
+    throw err;
+  }
 }
 
 async function fetchTokenWithClientCredentials(

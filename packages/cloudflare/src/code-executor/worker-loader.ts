@@ -18,14 +18,13 @@ interface WorkerCode {
   compatibilityDate: string;
   mainModule: string;
   modules: Record<string, string>;
-  globalOutbound?: null;
 }
 
 interface WorkerStub {
   getEntrypoint(): { fetch(request: Request): Promise<Response> };
 }
 
-interface CloudflareCodeExecutorOptions {
+interface WorkerLoaderCodeExecutorOptions {
   loader: WorkerLoader;
   compatibilityDate?: string;
 }
@@ -181,19 +180,28 @@ export default {
 }
 
 /**
- * Cloudflare Dynamic Workers code executor.
- * Spins up isolated Workers on demand via the Worker Loader binding
- * to execute user-authored hook code in a sandboxed environment.
+ * Cloudflare Dynamic Workers code executor (Worker Loader binding).
+ * Spins up isolated Workers on demand from in-memory code to execute
+ * user-authored hook code in a sandboxed v8 isolate.
  *
  * Uses `env.LOADER.get(id, callback)` to cache workers by hookCodeId + code hash,
  * so the same code stays warm across requests while code updates get a fresh worker.
- * Network access is blocked via `globalOutbound: null`.
+ *
+ * User code can make outbound `fetch()` calls. The Worker Loader still provides
+ * process isolation (separate v8 isolate, no access to the parent worker's
+ * bindings or env), so this only widens the network boundary, not the host
+ * boundary. Plan: a future AI/static-analysis layer inspects action code on
+ * upload to flag exfiltration patterns before they reach the executor.
+ *
+ * Contrast with `DispatchNamespaceCodeExecutor`, which uses Workers for
+ * Platforms dispatch namespaces and requires user code to be pre-deployed
+ * as individual worker scripts via the Cloudflare API.
  */
-export class CloudflareCodeExecutor implements CodeExecutor {
+export class WorkerLoaderCodeExecutor implements CodeExecutor {
   private loader: WorkerLoader;
   private compatibilityDate: string;
 
-  constructor(options: CloudflareCodeExecutorOptions) {
+  constructor(options: WorkerLoaderCodeExecutorOptions) {
     this.loader = options.loader;
     this.compatibilityDate = options.compatibilityDate || "2025-01-01";
   }
@@ -219,7 +227,6 @@ export class CloudflareCodeExecutor implements CodeExecutor {
         compatibilityDate: this.compatibilityDate,
         mainModule: "hook.js",
         modules: { "hook.js": workerScript },
-        globalOutbound: null,
       };
 
       // Use get() with a hash-based cache key when hookCodeId is available,
