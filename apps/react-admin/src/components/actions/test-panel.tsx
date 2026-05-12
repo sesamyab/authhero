@@ -1,8 +1,5 @@
 import { useState } from "react";
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Box,
   Button,
   CircularProgress,
@@ -11,7 +8,6 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { useNotify, useRecordContext } from "react-admin";
 import {
@@ -180,107 +176,100 @@ export function ActionTestPanel() {
   };
 
   return (
-    <Accordion sx={{ mt: 2 }}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Typography variant="subtitle1">Test action</Typography>
-      </AccordionSummary>
-      <AccordionDetails>
-        <Stack spacing={2}>
-          <TextField
-            select
-            label="Trigger"
-            value={trigger}
-            onChange={(e) => handleTriggerChange(e.target.value)}
-            fullWidth
+    <Stack spacing={2} sx={{ width: "100%" }}>
+      <TextField
+        select
+        label="Trigger"
+        value={trigger}
+        onChange={(e) => handleTriggerChange(e.target.value)}
+        fullWidth
+      >
+        {Object.keys(EXAMPLE_EVENTS).map((t) => (
+          <MenuItem key={t} value={t}>
+            {t}
+          </MenuItem>
+        ))}
+      </TextField>
+      <TextField
+        label="Event payload (JSON)"
+        value={payload}
+        onChange={(e) => setPayload(e.target.value)}
+        multiline
+        minRows={16}
+        fullWidth
+        sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
+      />
+      <Box>
+        <Button
+          variant="contained"
+          startIcon={
+            running ? <CircularProgress size={16} /> : <PlayArrowIcon />
+          }
+          onClick={handleRun}
+          disabled={running}
+        >
+          Run
+        </Button>
+      </Box>
+      {result && (
+        <Stack spacing={1}>
+          <Typography
+            variant="subtitle2"
+            color={result.success ? "success.main" : "error.main"}
           >
-            {Object.keys(EXAMPLE_EVENTS).map((t) => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            label="Event payload (JSON)"
-            value={payload}
-            onChange={(e) => setPayload(e.target.value)}
-            multiline
-            minRows={10}
-            fullWidth
-            sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
-          />
-          <Box>
-            <Button
-              variant="contained"
-              startIcon={
-                running ? <CircularProgress size={16} /> : <PlayArrowIcon />
-              }
-              onClick={handleRun}
-              disabled={running}
-            >
-              Run
-            </Button>
-          </Box>
-          {result && (
-            <Stack spacing={1}>
-              <Typography
-                variant="subtitle2"
-                color={result.success ? "success.main" : "error.main"}
+            {result.success ? "Success" : "Failed"} in {result.duration_ms}
+            ms
+          </Typography>
+          {result.error && (
+            <Typography variant="body2" color="error.main">
+              {result.error}
+            </Typography>
+          )}
+          {result.api_calls.length > 0 && (
+            <Box>
+              <Typography variant="subtitle2">API calls</Typography>
+              <Box
+                component="pre"
+                sx={{
+                  bgcolor: "background.default",
+                  p: 1,
+                  borderRadius: 1,
+                  overflow: "auto",
+                  maxHeight: 240,
+                }}
               >
-                {result.success ? "Success" : "Failed"} in {result.duration_ms}
-                ms
-              </Typography>
-              {result.error && (
-                <Typography variant="body2" color="error.main">
-                  {result.error}
-                </Typography>
-              )}
-              {result.api_calls.length > 0 && (
-                <Box>
-                  <Typography variant="subtitle2">API calls</Typography>
-                  <Box
-                    component="pre"
-                    sx={{
-                      bgcolor: "background.default",
-                      p: 1,
-                      borderRadius: 1,
-                      overflow: "auto",
-                      maxHeight: 240,
-                    }}
-                  >
-                    {result.api_calls
-                      .map(
-                        (c) =>
-                          `${c.method}(${c.args
-                            .map((a) => JSON.stringify(a))
-                            .join(", ")})`,
-                      )
-                      .join("\n")}
-                  </Box>
-                </Box>
-              )}
-              {result.logs.length > 0 && (
-                <Box>
-                  <Typography variant="subtitle2">Console output</Typography>
-                  <Box
-                    component="pre"
-                    sx={{
-                      bgcolor: "background.default",
-                      p: 1,
-                      borderRadius: 1,
-                      overflow: "auto",
-                      maxHeight: 240,
-                    }}
-                  >
-                    {result.logs
-                      .map((l) => `[${l.level}] ${l.message}`)
-                      .join("\n")}
-                  </Box>
-                </Box>
-              )}
-            </Stack>
+                {result.api_calls
+                  .map(
+                    (c) =>
+                      `${c.method}(${c.args
+                        .map((a) => JSON.stringify(a))
+                        .join(", ")})`,
+                  )
+                  .join("\n")}
+              </Box>
+            </Box>
+          )}
+          {result.logs.length > 0 && (
+            <Box>
+              <Typography variant="subtitle2">Console output</Typography>
+              <Box
+                component="pre"
+                sx={{
+                  bgcolor: "background.default",
+                  p: 1,
+                  borderRadius: 1,
+                  overflow: "auto",
+                  maxHeight: 240,
+                }}
+              >
+                {result.logs
+                  .map((l) => `[${l.level}] ${l.message}`)
+                  .join("\n")}
+              </Box>
+            </Box>
           )}
         </Stack>
-      </AccordionDetails>
-    </Accordion>
+      )}
+    </Stack>
   );
 }

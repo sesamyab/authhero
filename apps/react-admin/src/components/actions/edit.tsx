@@ -1,6 +1,7 @@
 import {
   Edit,
-  SimpleForm,
+  TabbedForm,
+  FormTab,
   TextInput,
   SelectInput,
   required,
@@ -23,6 +24,7 @@ import { createManagementClient } from "../../authProvider";
 import { resolveApiBase } from "../../dataProvider";
 import { useTenantId } from "../../TenantContext";
 import { ActionTestPanel } from "./test-panel";
+import { ActionVersionsPanel } from "./versions-panel";
 
 const triggerChoices = [
   { id: "post-login", name: "Post Login" },
@@ -116,53 +118,60 @@ export function ActionEdit() {
         };
       }}
     >
-      <SimpleForm toolbar={false}>
-        <TopActionBar />
-        <TextInput source="name" validate={[required()]} fullWidth />
-        <SelectInput
-          source="trigger_id"
-          label="Trigger"
-          choices={triggerChoices}
-          fullWidth
-          format={(value: any) => {
-            if (!value) {
-              return undefined;
-            }
-            return value;
-          }}
-        />
-        <TextInput
-          source="code"
-          validate={[required()]}
-          fullWidth
-          multiline
-          minRows={10}
-          sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
-        />
-        <TextInput source="runtime" fullWidth />
-        <ArrayInput source="secrets">
-          <SimpleFormIterator inline>
-            <TextInput source="name" label="Name" />
-            <TextInput source="value" label="Value" />
-          </SimpleFormIterator>
-        </ArrayInput>
-        <ArrayInput source="dependencies">
-          <SimpleFormIterator inline>
-            <TextInput source="name" label="Package" />
-            <TextInput source="version" label="Version" />
-          </SimpleFormIterator>
-        </ArrayInput>
-        <Labeled label={<FieldTitle source="status" />}>
-          <TextField source="status" />
-        </Labeled>
-        <Labeled label={<FieldTitle source="created_at" />}>
-          <DateField source="created_at" showTime />
-        </Labeled>
-        <Labeled label={<FieldTitle source="updated_at" />}>
-          <DateField source="updated_at" showTime />
-        </Labeled>
-        <ActionTestPanel />
-      </SimpleForm>
+      <TabbedForm toolbar={false}>
+        <FormTab label="Settings">
+          <TopActionBar />
+          <TextInput source="name" validate={[required()]} fullWidth />
+          <SelectInput
+            source="trigger_id"
+            label="Trigger"
+            choices={triggerChoices}
+            fullWidth
+            format={(value: any) => {
+              if (!value) {
+                return undefined;
+              }
+              return value;
+            }}
+          />
+          <TextInput
+            source="code"
+            validate={[required()]}
+            fullWidth
+            multiline
+            minRows={10}
+            sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
+          />
+          <TextInput source="runtime" fullWidth />
+          <ArrayInput source="secrets">
+            <SimpleFormIterator inline>
+              <TextInput source="name" label="Name" />
+              <TextInput source="value" label="Value" />
+            </SimpleFormIterator>
+          </ArrayInput>
+          <ArrayInput source="dependencies">
+            <SimpleFormIterator inline>
+              <TextInput source="name" label="Package" />
+              <TextInput source="version" label="Version" />
+            </SimpleFormIterator>
+          </ArrayInput>
+          <Labeled label={<FieldTitle source="status" />}>
+            <TextField source="status" />
+          </Labeled>
+          <Labeled label={<FieldTitle source="created_at" />}>
+            <DateField source="created_at" showTime />
+          </Labeled>
+          <Labeled label={<FieldTitle source="updated_at" />}>
+            <DateField source="updated_at" showTime />
+          </Labeled>
+        </FormTab>
+        <FormTab label="Test" path="test">
+          <ActionTestPanel />
+        </FormTab>
+        <FormTab label="Versions" path="versions">
+          <ActionVersionsPanel />
+        </FormTab>
+      </TabbedForm>
     </Edit>
   );
 }

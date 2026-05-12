@@ -19,6 +19,14 @@ const actionsWithTotalsSchema = totalsSchema.extend({
   actions: z.array(actionSchema),
 });
 
+const AUTH0_TO_INTERNAL_TRIGGER: Record<string, string> = {
+  "post-login": "post-user-login",
+};
+
+function toInternalTriggerId(triggerId: string): string {
+  return AUTH0_TO_INTERNAL_TRIGGER[triggerId] || triggerId;
+}
+
 const versionsResponseSchema = z.object({
   versions: z.array(actionVersionSchema),
 });
@@ -803,8 +811,9 @@ export const actionsRoutes = new OpenAPIHono<{
         throw new HTTPException(404, { message: "Action not found" });
       }
 
-      const triggerId =
+      const rawTriggerId =
         body.trigger_id ?? action.supported_triggers?.[0]?.id ?? "post-login";
+      const triggerId = toInternalTriggerId(rawTriggerId);
 
       const secrets = action.secrets?.reduce<Record<string, string>>(
         (acc, s) => {

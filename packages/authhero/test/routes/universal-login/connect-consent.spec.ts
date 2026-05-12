@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getTestServer } from "../../helpers/test-server";
 import { hashRegistrationToken } from "../../../src/helpers/dcr/mint-token";
+import { MANAGEMENT_API_AUDIENCE } from "../../../src/middlewares/authentication";
 import type { Bindings } from "../../../src/types";
 
 /**
@@ -64,6 +65,28 @@ async function createUserSession(env: Bindings, tenantId = "tenantId") {
   return session;
 }
 
+async function grantTenantAdmin(
+  env: Bindings,
+  userId: string,
+  organizationId: string,
+  roleName = "Tenant Admin",
+  permission = "create:clients",
+) {
+  const role = await env.data.roles.create("tenantId", {
+    name: roleName,
+    description: "DCR test role",
+  });
+  await env.data.rolePermissions.assign("tenantId", role.id, [
+    {
+      role_id: role.id,
+      resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+      permission_name: permission,
+    },
+  ]);
+  await env.data.userRoles.create("tenantId", userId, role.id, organizationId);
+  return role;
+}
+
 async function provisionControlPlane(env: Bindings) {
   // Mark the existing tenant as the control plane and create a child tenant.
   // The org name on the control plane intentionally matches the child tenant
@@ -98,6 +121,10 @@ async function provisionControlPlane(env: Bindings) {
     user_id: "email|userId",
     organization_id: org.id,
   });
+  // Mirror what the multi-tenancy provisioning hook does for the tenant
+  // creator: assign a role on the new org granting Management API permissions
+  // (here just the one DCR needs).
+  await grantTenantAdmin(env, "email|userId", org.id);
   return org;
 }
 
@@ -475,5 +502,206 @@ describe("/u2/connect/start — control-plane mode (multi-tenancy)", () => {
     const location = response.headers.get("location")!;
     expect(location).not.toContain("/connect/select-tenant");
     expect(location).toContain("/login");
+  });
+});
+
+describe("/u2/connect/start — picker permission gating", () => {
+  it("hides a tenant the user is a member of but lacks create:clients on", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await provisionControlPlane(env);
+
+    // Second child the user is a member of, but with no role granting
+    // create:clients. The picker must omit it.
+    await env.data.tenants.create({
+      id: "viewer_tenant",
+      friendly_name: "Viewer Workspace",
+      audience: "urn:authhero:tenant:viewer_tenant",
+      sender_email: "login@example.com",
+      sender_name: "SenderName",
+    });
+    const viewerOrg = await env.data.organizations.create("tenantId", {
+      name: "viewer_tenant",
+      display_name: "Viewer Workspace",
+    });
+    await env.data.userOrganizations.create("tenantId", {
+      user_id: "email|userId",
+      organization_id: viewerOrg.id,
+    });
+    // Grant a role with read:clients only — not enough for DCR.
+    await grantTenantAdmin(
+      env,
+      "email|userId",
+      viewerOrg.id,
+      "Viewer",
+      "read:clients",
+    );
+
+    const stateId = await startConnectFlow(oauthApp, env);
+    const session = await createUserSession(env);
+
+    const response = await u2App.request(
+      `/connect/select-tenant?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "GET",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+        },
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    // The widget serializes screen components as JSON inside an HTML
+    // attribute, so component ids appear entity-encoded.
+    // The Tenant Admin org is shown, the viewer-only org is not.
+    expect(body).toContain("&quot;id&quot;:&quot;tenant_child_tenant&quot;");
+    expect(body).not.toContain(
+      "&quot;id&quot;:&quot;tenant_viewer_tenant&quot;",
+    );
+  });
+
+  it("hides the control plane self-org even if the user is a member with create:clients", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await provisionControlPlane(env);
+
+    // The user is a self-member of the control plane org with create:clients
+    // — still must not be offered as a DCR target.
+    const cpOrg = await env.data.organizations.create("tenantId", {
+      name: "tenantId",
+      display_name: "Control Plane",
+    });
+    await env.data.userOrganizations.create("tenantId", {
+      user_id: "email|userId",
+      organization_id: cpOrg.id,
+    });
+    await grantTenantAdmin(env, "email|userId", cpOrg.id, "CP Admin");
+
+    const stateId = await startConnectFlow(oauthApp, env);
+    const session = await createUserSession(env);
+
+    const response = await u2App.request(
+      `/connect/select-tenant?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "GET",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+        },
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).not.toContain("&quot;id&quot;:&quot;tenant_tenantId&quot;");
+    expect(body).toContain("&quot;id&quot;:&quot;tenant_child_tenant&quot;");
+  });
+
+  it("rejects POST for a tenant the user has membership but no create:clients on", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await provisionControlPlane(env);
+
+    await env.data.tenants.create({
+      id: "viewer_tenant",
+      friendly_name: "Viewer Workspace",
+      audience: "urn:authhero:tenant:viewer_tenant",
+      sender_email: "login@example.com",
+      sender_name: "SenderName",
+    });
+    const viewerOrg = await env.data.organizations.create("tenantId", {
+      name: "viewer_tenant",
+      display_name: "Viewer Workspace",
+    });
+    await env.data.userOrganizations.create("tenantId", {
+      user_id: "email|userId",
+      organization_id: viewerOrg.id,
+    });
+    await grantTenantAdmin(
+      env,
+      "email|userId",
+      viewerOrg.id,
+      "Viewer",
+      "read:clients",
+    );
+
+    const stateId = await startConnectFlow(oauthApp, env);
+    const session = await createUserSession(env);
+
+    const response = await u2App.request(
+      `/connect/select-tenant?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "tenant_viewer_tenant=Viewer+Workspace",
+      },
+      env,
+    );
+    // Re-renders the picker — nothing persisted.
+    expect(response.status).toBe(200);
+    const updated = await env.data.loginSessions.get("tenantId", stateId);
+    const stateData = JSON.parse(updated!.state_data!);
+    expect(stateData.connect.target_tenant_id).toBeUndefined();
+  });
+
+  it("admin:organizations global role lets the user pick a tenant they're not a member of", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    await provisionControlPlane(env);
+
+    // Tenant the user has zero membership in — but they hold a global
+    // admin:organizations role, so the picker should still list it.
+    await env.data.tenants.create({
+      id: "stranger_tenant",
+      friendly_name: "Stranger Workspace",
+      audience: "urn:authhero:tenant:stranger_tenant",
+      sender_email: "login@example.com",
+      sender_name: "SenderName",
+    });
+
+    const globalRole = await env.data.roles.create("tenantId", {
+      name: "Platform Admin",
+      description: "Has global admin:organizations",
+    });
+    await env.data.rolePermissions.assign("tenantId", globalRole.id, [
+      {
+        role_id: globalRole.id,
+        resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+        permission_name: "admin:organizations",
+      },
+    ]);
+    await env.data.userRoles.create(
+      "tenantId",
+      "email|userId",
+      globalRole.id,
+      "",
+    );
+
+    const stateId = await startConnectFlow(oauthApp, env);
+    const session = await createUserSession(env);
+
+    const response = await u2App.request(
+      `/connect/select-tenant?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "GET",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+        },
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("&quot;id&quot;:&quot;tenant_child_tenant&quot;");
+    expect(body).toContain("&quot;id&quot;:&quot;tenant_stranger_tenant&quot;");
+    // Control plane itself is still excluded.
+    expect(body).not.toContain("&quot;id&quot;:&quot;tenant_tenantId&quot;");
   });
 });

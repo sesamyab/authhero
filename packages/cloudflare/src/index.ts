@@ -33,13 +33,21 @@ export type { CloudflareRateLimitBinding, CloudflareRateLimitBindings };
 export { createCloudflareRateLimitAdapter } from "./rate-limit";
 export type { CloudflareConfig };
 
-// Code executor for Workers for Platforms
+// Code executors. Two flavours are exposed:
+//   - `DispatchNamespaceCodeExecutor` (Workers for Platforms): user code is
+//     pre-deployed as worker scripts and invoked via a dispatch namespace.
+//   - `WorkerLoaderCodeExecutor` (Worker Loader): isolates are spun up on the
+//     fly from in-memory code; no separate deploy step.
+// `CloudflareCodeExecutor` is kept as a deprecated alias of the dispatch one.
 export {
+  DispatchNamespaceCodeExecutor,
+  type DispatchNamespaceCodeExecutorConfig,
+  type DispatchNamespace,
   CloudflareCodeExecutor,
   type CloudflareCodeExecutorConfig,
-  type DispatchNamespace,
 } from "./code-executor";
 export { generateWorkerScript } from "./code-executor/worker-template";
+export { WorkerLoaderCodeExecutor } from "./code-executor/worker-loader";
 
 // Re-export adapters for direct usage
 export { createAnalyticsEngineLogsAdapter } from "./analytics-engine-logs";

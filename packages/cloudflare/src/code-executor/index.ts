@@ -24,7 +24,7 @@ export interface DispatchNamespace {
   };
 }
 
-export interface CloudflareCodeExecutorConfig {
+export interface DispatchNamespaceCodeExecutorConfig {
   /** Cloudflare account ID */
   accountId: string;
 
@@ -56,15 +56,20 @@ export interface CloudflareCodeExecutorConfig {
 }
 
 /**
- * Code executor that uses Cloudflare Workers for Platforms.
+ * Code executor that uses Cloudflare Workers for Platforms dispatch namespaces.
  *
- * User code is deployed as individual worker scripts in a dispatch namespace.
- * At execution time, the pre-deployed worker is invoked via the dispatch
- * namespace binding (in-worker) or via HTTP (external fallback).
+ * User code is deployed as individual worker scripts in a dispatch namespace
+ * (via the `deploy()` method, which calls the Cloudflare API). At execution
+ * time, the pre-deployed worker is invoked via the dispatch namespace binding
+ * (in-worker) or via HTTP (external fallback).
+ *
+ * Contrast with `WorkerLoaderCodeExecutor`, which creates isolates on the fly
+ * from in-memory code via the Worker Loader binding and does not require
+ * pre-deployment.
  *
  * Usage:
  * ```typescript
- * const codeExecutor = new CloudflareCodeExecutor({
+ * const codeExecutor = new DispatchNamespaceCodeExecutor({
  *   accountId: env.CF_ACCOUNT_ID,
  *   apiToken: env.CF_API_TOKEN,
  *   dispatchNamespace: "authhero-hooks",
@@ -74,10 +79,10 @@ export interface CloudflareCodeExecutorConfig {
  * const { app } = init({ dataAdapter, codeExecutor });
  * ```
  */
-export class CloudflareCodeExecutor implements CodeExecutor {
-  private config: CloudflareCodeExecutorConfig;
+export class DispatchNamespaceCodeExecutor implements CodeExecutor {
+  private config: DispatchNamespaceCodeExecutorConfig;
 
-  constructor(config: CloudflareCodeExecutorConfig) {
+  constructor(config: DispatchNamespaceCodeExecutorConfig) {
     this.config = config;
   }
 
@@ -100,7 +105,7 @@ export class CloudflareCodeExecutor implements CodeExecutor {
     if (!params.hookCodeId) {
       return {
         success: false,
-        error: "CloudflareCodeExecutor requires hookCodeId",
+        error: "DispatchNamespaceCodeExecutor requires hookCodeId",
         durationMs: Date.now() - start,
         apiCalls: [],
       };
@@ -239,3 +244,14 @@ export class CloudflareCodeExecutor implements CodeExecutor {
     }
   }
 }
+
+/**
+ * @deprecated Renamed to `DispatchNamespaceCodeExecutor` to disambiguate from
+ * `WorkerLoaderCodeExecutor` (also Cloudflare-based, but using the Worker
+ * Loader binding instead of Workers for Platforms). This alias will be removed
+ * in the next major.
+ */
+export const CloudflareCodeExecutor = DispatchNamespaceCodeExecutor;
+
+/** @deprecated Use `DispatchNamespaceCodeExecutorConfig`. */
+export type CloudflareCodeExecutorConfig = DispatchNamespaceCodeExecutorConfig;
