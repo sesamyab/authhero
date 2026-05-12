@@ -14,53 +14,116 @@ import type { User } from "@authhero/adapter-interfaces";
 //   underlying boolean is set, regardless of value (including `false`).
 // - `preferred_username` falls back to `username` for back-compat with users
 //   created before the dedicated `preferred_username` field existed.
+
+// Pulls a single OIDC Core 5.1 standard claim from a User row. Returns
+// `undefined` when the underlying attribute is missing (so callers can
+// spread the result without emitting explicit nulls). Shared by
+// buildScopeClaims and buildRequestedClaims (OIDC Core 5.5 `claims`
+// request parameter) so the two paths stay in lockstep.
+export function getStandardClaim(
+  user: User,
+  claim: string,
+): unknown | undefined {
+  switch (claim) {
+    case "email":
+      return user.email || undefined;
+    case "email_verified":
+      return user.email_verified !== undefined ? user.email_verified : undefined;
+    case "name":
+      return user.name || undefined;
+    case "family_name":
+      return user.family_name || undefined;
+    case "given_name":
+      return user.given_name || undefined;
+    case "middle_name":
+      return user.middle_name || undefined;
+    case "nickname":
+      return user.nickname || undefined;
+    case "preferred_username":
+      return user.preferred_username || user.username || undefined;
+    case "profile":
+      return user.profile || undefined;
+    case "picture":
+      return user.picture || undefined;
+    case "website":
+      return user.website || undefined;
+    case "gender":
+      return user.gender || undefined;
+    case "birthdate":
+      return user.birthdate || undefined;
+    case "zoneinfo":
+      return user.zoneinfo || undefined;
+    case "locale":
+      return user.locale || undefined;
+    case "updated_at": {
+      if (!user.updated_at) return undefined;
+      const ts = new Date(user.updated_at).getTime();
+      return Number.isFinite(ts) ? Math.floor(ts / 1000) : undefined;
+    }
+    case "address":
+      return user.address || undefined;
+    case "phone_number":
+      return user.phone_number || undefined;
+    // `phone_number_verified` is the OIDC standard claim name; we store it
+    // internally as `phone_verified`.
+    case "phone_number_verified":
+      return user.phone_verified !== undefined ? user.phone_verified : undefined;
+    default:
+      return undefined;
+  }
+}
+
+const SCOPE_TO_CLAIMS: Record<string, readonly string[]> = {
+  email: ["email", "email_verified"],
+  profile: [
+    "name",
+    "family_name",
+    "given_name",
+    "middle_name",
+    "nickname",
+    "preferred_username",
+    "profile",
+    "picture",
+    "website",
+    "gender",
+    "birthdate",
+    "zoneinfo",
+    "locale",
+    "updated_at",
+  ],
+  address: ["address"],
+  phone: ["phone_number", "phone_number_verified"],
+};
+
 export function buildScopeClaims(
   user: User,
   scopes: string[],
 ): Record<string, unknown> {
   const claims: Record<string, unknown> = {};
-
-  if (scopes.includes("email")) {
-    if (user.email) claims.email = user.email;
-    if (user.email_verified !== undefined) {
-      claims.email_verified = user.email_verified;
+  for (const scope of scopes) {
+    const claimNames = SCOPE_TO_CLAIMS[scope];
+    if (!claimNames) continue;
+    for (const name of claimNames) {
+      const value = getStandardClaim(user, name);
+      if (value !== undefined) claims[name] = value;
     }
   }
-
-  if (scopes.includes("profile")) {
-    if (user.name) claims.name = user.name;
-    if (user.family_name) claims.family_name = user.family_name;
-    if (user.given_name) claims.given_name = user.given_name;
-    if (user.middle_name) claims.middle_name = user.middle_name;
-    if (user.nickname) claims.nickname = user.nickname;
-    const preferredUsername = user.preferred_username || user.username;
-    if (preferredUsername) claims.preferred_username = preferredUsername;
-    if (user.profile) claims.profile = user.profile;
-    if (user.picture) claims.picture = user.picture;
-    if (user.website) claims.website = user.website;
-    if (user.gender) claims.gender = user.gender;
-    if (user.birthdate) claims.birthdate = user.birthdate;
-    if (user.zoneinfo) claims.zoneinfo = user.zoneinfo;
-    if (user.locale) claims.locale = user.locale;
-    if (user.updated_at) {
-      claims.updated_at = Math.floor(
-        new Date(user.updated_at).getTime() / 1000,
-      );
-    }
-  }
-
-  if (scopes.includes("address")) {
-    if (user.address) claims.address = user.address;
-  }
-
-  if (scopes.includes("phone")) {
-    if (user.phone_number) claims.phone_number = user.phone_number;
-    // `phone_number_verified` is the OIDC standard claim name; we store it
-    // internally as `phone_verified`.
-    if (user.phone_verified !== undefined) {
-      claims.phone_number_verified = user.phone_verified;
-    }
-  }
-
   return claims;
+}
+
+// OIDC Core 5.5 — additively emit standard claims requested via the `claims`
+// parameter, regardless of scope. The spec lets the OP ignore non-essential
+// requests and even ignore essentials it can't satisfy; we use the
+// "include-if-available" policy because the conformance suite's
+// `oidcc-claims-essential` test asserts presence.
+export function buildRequestedClaims(
+  user: User,
+  claimNames: Iterable<string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const name of claimNames) {
+    const value = getStandardClaim(user, name);
+    if (value !== undefined) out[name] = value;
+  }
+  return out;
 }

@@ -42,7 +42,7 @@ import { handleCredentialsExchangeCodeHooks } from "../hooks/codehooks";
 import renderAuthIframe from "../utils/authIframe";
 import { formPostResponse } from "../utils/form-post";
 import { calculateScopesAndPermissions } from "../helpers/scopes-permissions";
-import { buildScopeClaims } from "../helpers/scope-claims";
+import { buildScopeClaims, buildRequestedClaims } from "../helpers/scope-claims";
 import { resolveSigningKeys } from "../helpers/signing-keys";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { GrantType } from "@authhero/adapter-interfaces";
@@ -221,6 +221,15 @@ export async function createAuthTokens(
     });
   }
 
+  // OIDC Core 5.5 — when the original /authorize request carried a `claims`
+  // parameter with a `userinfo` member, the requested claim names need to
+  // survive to /userinfo time. /userinfo only sees the access token, so we
+  // stash the list as a custom claim. Key list (no essential/value markers)
+  // is sufficient because we use the "include-if-available" emission policy.
+  const requestedUserinfoClaims = authParams.claims?.userinfo
+    ? Object.keys(authParams.claims.userinfo)
+    : undefined;
+
   const accessTokenPayload: Record<string, unknown> = {
     aud: audience,
     scope: authParams.scope || "",
@@ -230,6 +239,10 @@ export async function createAuthTokens(
     sid: session_id,
     act: impersonatingUser ? { sub: impersonatingUser.user_id } : undefined, // RFC 8693 act claim for impersonation
     org_id: organization ? organization.id : undefined,
+    // Surface requested userinfo claims so /userinfo can additively emit
+    // them. Omitted when no `claims` param was sent (keeps tokens small for
+    // the common case).
+    requested_userinfo_claims: requestedUserinfoClaims,
     // Include org_name in access token if tenant has allow_organization_name_in_authentication_api enabled
     // Auth0 SDK validates org_name case-insensitively by lowercasing the expected value,
     // so we lowercase the org_name to match the validation behavior
@@ -305,6 +318,26 @@ export async function createAuthTokens(
           // shared with /userinfo via buildScopeClaims so the two stay in sync.
           ...(shouldIncludeScopeClaimsInIdToken
             ? buildScopeClaims(user, scopes)
+            : {}),
+          // OIDC Core 5.5 — additively include any individual claims the RP
+          // requested via `claims.id_token`, regardless of scope. Listed
+          // after scope-claims so requested values can override (in practice
+          // they're identical lookups, but the order matches the spec's
+          // "Requested Claims" precedence guidance).
+          ...(authParams.claims?.id_token
+            ? buildRequestedClaims(user, Object.keys(authParams.claims.id_token))
+            : {}),
+          // OIDC Core 5.5 / 5.3.2 — when no Access Token is issued (pure
+          // `id_token` response_type), there is no /userinfo to query, so
+          // claims requested under `claims.userinfo` must fall through into
+          // the ID Token. The conformance suite's `EnsureIdTokenContainsName`
+          // module asserts exactly this for the implicit `id_token` and
+          // form-post-implicit `id_token` variants.
+          ...(isPureIdTokenResponseType && authParams.claims?.userinfo
+            ? buildRequestedClaims(
+                user,
+                Object.keys(authParams.claims.userinfo),
+              )
             : {}),
           act: impersonatingUser
             ? { sub: impersonatingUser.user_id }
@@ -429,7 +462,7 @@ export async function createAuthTokens(
       idTokenPayload,
     );
 
-    await handleCredentialsExchangeCodeHooks(
+    const executionId = await handleCredentialsExchangeCodeHooks(
       ctx,
       hooks,
       {
@@ -456,6 +489,9 @@ export async function createAuthTokens(
       },
       codeHookApi,
     );
+    if (executionId) {
+      ctx.set("action_execution_id", executionId);
+    }
   }
 
   // Default: 86400s (24h), overridden by resource server config, 3600s (1h) for impersonation

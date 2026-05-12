@@ -29,6 +29,8 @@ export function getByClientId(db: Kysely<Database>) {
       require_pushed_authorization_requests:
         !!client.require_pushed_authorization_requests,
       require_proof_of_possession: !!client.require_proof_of_possession,
+      disable_sign_ups: !!client.disable_sign_ups,
+      hide_sign_up_disabled_error: !!client.hide_sign_up_disabled_error,
       // Parse JSON string fields back to objects/arrays
       callbacks: JSON.parse(client.callbacks),
       allowed_origins: JSON.parse(client.allowed_origins),

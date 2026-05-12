@@ -469,11 +469,15 @@ export const tokenRoutes = new OpenAPIHono<{
 
       const successLogType = successLogTypeForGrant(body.grant_type);
       if (successLogType) {
+        const executionId = ctx.var.action_execution_id;
         logMessage(ctx, grantResult.client.tenant.id, {
           type: successLogType,
           userId: grantResult.user?.user_id,
           scope: grantResult.authParams.scope,
           audience: grantResult.authParams.audience,
+          ...(executionId
+            ? { details: { execution_id: executionId } }
+            : {}),
         });
       }
 

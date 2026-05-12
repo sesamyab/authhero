@@ -1,9 +1,13 @@
 import { Strategy } from "../../src/strategies";
 
 export const mockStrategy: Strategy = {
-  getRedirect: async () => {
+  getRedirect: async (_ctx, _connection, loginHint?: string) => {
+    const redirectUrl = new URL("https://example.com/authorize");
+    if (loginHint) {
+      redirectUrl.searchParams.set("login_hint", loginHint);
+    }
     return {
-      redirectUrl: "https://example.com/authorize",
+      redirectUrl: redirectUrl.href,
       code: "code",
     };
   },

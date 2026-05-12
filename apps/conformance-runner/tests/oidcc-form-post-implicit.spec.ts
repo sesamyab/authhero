@@ -37,10 +37,7 @@ test.afterAll(async () => {
   await downloadPlanReport(client, FORM_POST_IMPLICIT_PLAN_NAME, planId);
 });
 
-const MODULES_ALLOWED_TO_WARN = new Set<string>([
-  // OIDC `claims` request parameter (essential claims) — issue #781
-  "oidcc-claims-essential",
-]);
+const MODULES_ALLOWED_TO_WARN = new Set<string>([]);
 
 test.describe.configure({ mode: "serial" });
 

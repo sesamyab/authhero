@@ -70,7 +70,11 @@ export async function connectionAuth(
 
   const strategy = getStrategy(ctx, connection.strategy);
 
-  const result = await strategy.getRedirect(ctx, connection);
+  const result = await strategy.getRedirect(
+    ctx,
+    connection,
+    authParams.username,
+  );
 
   await ctx.env.data.codes.create(client.tenant.id, {
     login_id: loginSession.id,

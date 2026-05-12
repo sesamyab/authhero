@@ -17,6 +17,7 @@ export const logoDataUri =
 export async function getRedirect(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   connection: Connection,
+  loginHint?: string,
 ) {
   const { options } = connection;
 
@@ -40,6 +41,10 @@ export async function getRedirect(
     code_verifier,
     options.scope?.split(" ") ?? ["email", "profile"],
   );
+
+  if (loginHint) {
+    authorizationUrl.searchParams.set("login_hint", loginHint);
+  }
 
   return {
     redirectUrl: authorizationUrl.href,

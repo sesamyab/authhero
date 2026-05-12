@@ -164,6 +164,10 @@ export const wellKnownRoutes = new OpenAPIHono<{
         ],
         request_uri_parameter_supported: true,
         request_parameter_supported: true,
+        // OIDC Core 5.5 — we honor the `claims` request parameter for
+        // standard claims listed in `claims_supported` (individual claim
+        // requests for /userinfo and the ID Token).
+        claims_parameter_supported: true,
         request_object_signing_alg_values_supported: [
           "RS256",
           "RS384",

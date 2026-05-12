@@ -718,4 +718,116 @@ export const actionsRoutes = new OpenAPIHono<{
         secrets: updated.secrets?.map((s) => ({ name: s.name })),
       });
     },
+  )
+  // --------------------------------
+  // POST /api/v2/actions/actions/:id/test
+  // AuthHero-specific. Runs the action's current code through the executor
+  // with the caller-supplied `event` payload and returns the result. Does
+  // NOT replay api calls, does NOT persist an execution record. Used by the
+  // admin UI to validate an action before deploying.
+  // --------------------------------
+  .openapi(
+    createRoute({
+      tags: ["actions"],
+      method: "post",
+      path: "/{id}/test",
+      request: {
+        headers: z.object({
+          "tenant-id": z.string().optional(),
+        }),
+        params: z.object({ id: z.string() }),
+        body: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                trigger_id: z.string().optional(),
+                event: z.record(z.unknown()).optional(),
+              }),
+            },
+          },
+        },
+      },
+      security: [
+        {
+          Bearer: ["update:actions", "auth:write"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                success: z.boolean(),
+                error: z.string().optional(),
+                duration_ms: z.number(),
+                api_calls: z.array(
+                  z.object({
+                    method: z.string(),
+                    args: z.array(z.unknown()),
+                  }),
+                ),
+                logs: z.array(
+                  z.object({
+                    level: z.enum([
+                      "log",
+                      "info",
+                      "warn",
+                      "error",
+                      "debug",
+                    ]),
+                    message: z.string(),
+                  }),
+                ),
+              }),
+            },
+          },
+          description: "Test run result",
+        },
+        404: { description: "Action not found" },
+        503: { description: "Code executor not configured" },
+      },
+    }),
+    async (ctx) => {
+      const { id } = ctx.req.valid("param");
+      const body = ctx.req.valid("json");
+
+      const codeExecutor = ctx.env.codeExecutor;
+      if (!codeExecutor) {
+        throw new HTTPException(503, {
+          message: "Code executor not configured",
+        });
+      }
+
+      const action = await ctx.env.data.actions.get(ctx.var.tenant_id, id);
+      if (!action) {
+        throw new HTTPException(404, { message: "Action not found" });
+      }
+
+      const triggerId =
+        body.trigger_id ?? action.supported_triggers?.[0]?.id ?? "post-login";
+
+      const secrets = action.secrets?.reduce<Record<string, string>>(
+        (acc, s) => {
+          if (s.value !== undefined) acc[s.name] = s.value;
+          return acc;
+        },
+        {},
+      );
+
+      const result = await codeExecutor.execute({
+        code: action.code,
+        hookCodeId: action.id,
+        triggerId,
+        event: { ...(body.event ?? {}), secrets: secrets ?? {} },
+        timeoutMs: 5000,
+      });
+
+      return ctx.json({
+        success: result.success,
+        error: result.error,
+        duration_ms: result.durationMs,
+        api_calls: result.apiCalls,
+        logs: result.logs ?? [],
+      });
+    },
   );

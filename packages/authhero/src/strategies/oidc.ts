@@ -1,5 +1,4 @@
 import {
-  OAuth2Client,
   generateState,
   generateCodeVerifier,
   CodeChallengeMethod,
@@ -10,6 +9,7 @@ import { Bindings, Variables } from "../types";
 import { parseJWT } from "oslo/jwt";
 import { idTokenSchema } from "../types/IdToken";
 import { getConnectionCallbackUrl } from "./index";
+import { ExtendedOAuth2Client } from "./internal-oauth2";
 
 export const displayName = "OpenID Connect";
 
@@ -19,6 +19,7 @@ export const logoDataUri =
 export async function getRedirect(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   connection: Connection,
+  loginHint?: string,
 ) {
   const { options } = connection;
 
@@ -28,10 +29,11 @@ export async function getRedirect(
 
   const callbackUrl = getConnectionCallbackUrl(ctx, connection);
 
-  const client = new OAuth2Client(
+  const client = new ExtendedOAuth2Client(
     options.client_id,
     options.client_secret || null,
     callbackUrl,
+    options.token_endpoint_auth_method,
   );
 
   const state = generateState();
@@ -45,6 +47,10 @@ export async function getRedirect(
     codeVerifier,
     scopes,
   );
+
+  if (loginHint) {
+    authorizationUrl.searchParams.set("login_hint", loginHint);
+  }
 
   return {
     redirectUrl: authorizationUrl.href,
@@ -67,10 +73,11 @@ export async function validateAuthorizationCodeAndGetUser(
 
   const callbackUrl = getConnectionCallbackUrl(ctx, connection);
 
-  const client = new OAuth2Client(
+  const client = new ExtendedOAuth2Client(
     options.client_id,
     options.client_secret || null,
     callbackUrl,
+    options.token_endpoint_auth_method,
   );
 
   const tokens = await client.validateAuthorizationCode(
@@ -80,7 +87,6 @@ export async function validateAuthorizationCodeAndGetUser(
   );
 
   // Try to get user info from ID token first
-  // Check if id_token exists before calling idToken() which throws if missing
   const tokenData = tokens.data as { id_token?: string };
   if (tokenData.id_token) {
     const idToken = parseJWT(tokens.idToken());

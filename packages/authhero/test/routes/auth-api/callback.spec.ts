@@ -36,9 +36,7 @@ describe("callback", () => {
 
     // Update the client to disable signups
     await env.data.clients.update("tenantId", "clientId", {
-      client_metadata: {
-        disable_sign_ups: "true",
-      },
+      disable_sign_ups: true,
     });
 
     // Create a connection to test against
@@ -98,9 +96,7 @@ describe("callback", () => {
 
     // Update the client to disable signups
     await env.data.clients.update("tenantId", "clientId", {
-      client_metadata: {
-        disable_sign_ups: "true",
-      },
+      disable_sign_ups: true,
     });
 
     // Create a connection to test against

@@ -41,9 +41,7 @@ describe("signup validation hooks", () => {
 
       // Update the client to disable signups
       await env.data.clients.update("tenantId", "clientId", {
-        client_metadata: {
-          disable_sign_ups: "true",
-        },
+        disable_sign_ups: true,
       });
 
       const client = testClient(oauthApp, env);
@@ -90,9 +88,7 @@ describe("signup validation hooks", () => {
 
       // Update the client to disable signups
       await env.data.clients.update("tenantId", "clientId", {
-        client_metadata: {
-          disable_sign_ups: "true",
-        },
+        disable_sign_ups: true,
       });
 
       const client = testClient(oauthApp, env);
@@ -125,9 +121,7 @@ describe("signup validation hooks", () => {
 
       // Update the client to disable signups
       await env.data.clients.update("tenantId", "clientId", {
-        client_metadata: {
-          disable_sign_ups: "true",
-        },
+        disable_sign_ups: true,
       });
 
       const client = testClient(oauthApp, env);
@@ -177,9 +171,7 @@ describe("signup validation hooks", () => {
       });
 
       await env.data.clients.update("tenantId", "clientId", {
-        client_metadata: {
-          disable_sign_ups: "true",
-        },
+        disable_sign_ups: true,
       });
 
       const client = testClient(oauthApp, env);
@@ -216,9 +208,7 @@ describe("signup validation hooks", () => {
 
       // Update the client to disable signups
       await env.data.clients.update("tenantId", "clientId", {
-        client_metadata: {
-          disable_sign_ups: "true",
-        },
+        disable_sign_ups: true,
       });
 
       const client = testClient(oauthApp, env);

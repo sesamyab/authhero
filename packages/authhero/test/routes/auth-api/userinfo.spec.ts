@@ -66,6 +66,62 @@ describe("userinfo", () => {
 
       expect(response.status).toBe(403);
     });
+
+    // OIDC Core 5.5 — `claims` request parameter (essential claims). The
+    // access token carries the requested userinfo claim names; /userinfo
+    // additively emits them regardless of scope.
+    it("should return individually requested claims (claims.userinfo) regardless of scope", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const client = testClient(oauthApp, env);
+
+      const accessToken = await createToken({
+        userId: "email|userId",
+        tenantId: "tenantId",
+        scope: "openid", // no `profile` scope — `name` only comes via claims param
+        requestedUserinfoClaims: ["name"],
+      });
+
+      const response = await client.userinfo.$get(
+        {},
+        {
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toEqual({
+        sub: "email|userId",
+        name: "Test User",
+      });
+    });
+
+    it("should ignore unknown requested claim names", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const client = testClient(oauthApp, env);
+
+      const accessToken = await createToken({
+        userId: "email|userId",
+        tenantId: "tenantId",
+        scope: "openid",
+        requestedUserinfoClaims: ["not_a_standard_claim"],
+      });
+
+      const response = await client.userinfo.$get(
+        {},
+        {
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toEqual({ sub: "email|userId" });
+    });
   });
 
   describe("POST /userinfo", () => {

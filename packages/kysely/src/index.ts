@@ -1,5 +1,6 @@
 import { Kysely } from "kysely";
 import { createActionsAdapter } from "./actions";
+import { createActionExecutionsAdapter } from "./actionExecutions";
 import { createActionVersionsAdapter } from "./actionVersions";
 import { createUsersAdapter } from "./users";
 import { createFlowsAdapter } from "./flows";
@@ -52,6 +53,7 @@ export default function createAdapters(
 ): DataAdapters {
   const adapters: DataAdapters = {
     actions: createActionsAdapter(db),
+    actionExecutions: createActionExecutionsAdapter(db),
     actionVersions: createActionVersionsAdapter(db),
     branding: createBrandingAdapter(db),
     clients: createClientsAdapter(db),

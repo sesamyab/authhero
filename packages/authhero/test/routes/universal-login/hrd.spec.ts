@@ -50,9 +50,11 @@ describe("Home Realm Discovery (HRD)", () => {
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe(
-      "https://example.com/authorize",
-    );
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe("https://example.com/authorize");
+    expect(url.searchParams.get("login_hint")).toBe("alice@acme.com");
   });
 
   it("matches domain_aliases case-insensitively", async () => {
@@ -78,9 +80,12 @@ describe("Home Realm Discovery (HRD)", () => {
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe(
-      "https://example.com/authorize",
-    );
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe("https://example.com/authorize");
+    // login_hint is the normalized lowercase email.
+    expect(url.searchParams.get("login_hint")).toBe("alice@acme.com");
   });
 
   it("falls through to OTP flow when no domain_aliases match", async () => {
@@ -177,8 +182,10 @@ describe("Home Realm Discovery (HRD)", () => {
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe(
-      "https://example.com/authorize",
-    );
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe("https://example.com/authorize");
+    expect(url.searchParams.get("login_hint")).toBe("alice@acme.com");
   });
 });

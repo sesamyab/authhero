@@ -43,6 +43,7 @@ export type StrategyHandler = {
   getRedirect: (
     ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
     connection: Connection,
+    loginHint?: string,
   ) => Promise<{ redirectUrl: string; code: string; codeVerifier?: string }>;
   validateAuthorizationCodeAndGetUser: (
     ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
