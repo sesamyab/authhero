@@ -36,10 +36,7 @@ test.afterAll(async () => {
 // Modules whose WARNING outcome reflects a known unimplemented feature
 // rather than a regression. Each entry should reference the issue tracking
 // the work to make it PASS.
-const MODULES_ALLOWED_TO_WARN = new Set<string>([
-  // OIDC `claims` request parameter (essential claims) — issue #781
-  "oidcc-claims-essential",
-]);
+const MODULES_ALLOWED_TO_WARN = new Set<string>([]);
 
 test.describe.configure({ mode: "serial" });
 

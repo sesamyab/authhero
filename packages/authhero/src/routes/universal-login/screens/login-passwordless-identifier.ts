@@ -287,7 +287,10 @@ export const loginPasswordlessIdentifierScreenDefinition: ScreenDefinition = {
               provider: "sms",
             });
 
-      // Validate signup if user doesn't exist
+      // Validate signup if user doesn't exist. In enumeration-safe mode the
+      // screen behaves as if the account existed and the OTP challenge fails
+      // generically.
+      let silentSignupStub = false;
       if (!user) {
         const validation = await validateSignupEmail(
           ctx,
@@ -298,15 +301,19 @@ export const loginPasswordlessIdentifierScreenDefinition: ScreenDefinition = {
         );
 
         if (!validation.allowed) {
-          const errorMsg = validation.reason || m.userAccountDoesNotExist();
-          return {
-            error: errorMsg,
-            screen: await loginPasswordlessIdentifierScreen({
-              ...context,
-              prefill: { username },
-              errors: { username: errorMsg },
-            }),
-          };
+          if (client.hide_sign_up_disabled_error === true) {
+            silentSignupStub = true;
+          } else {
+            const errorMsg = validation.reason || m.userAccountDoesNotExist();
+            return {
+              error: errorMsg,
+              screen: await loginPasswordlessIdentifierScreen({
+                ...context,
+                prefill: { username },
+                errors: { username: errorMsg },
+              }),
+            };
+          }
         }
       }
 
@@ -335,73 +342,77 @@ export const loginPasswordlessIdentifierScreenDefinition: ScreenDefinition = {
         loginSession,
       );
 
-      // Generate OTP
-      let code_id = generateOTP();
-      let existingCode = await ctx.env.data.codes.get(
-        client.tenant.id,
-        code_id,
-        "otp",
-      );
-
-      while (existingCode) {
-        code_id = generateOTP();
-        existingCode = await ctx.env.data.codes.get(
-          client.tenant.id,
-          code_id,
-          "otp",
-        );
-      }
-
-      await ctx.env.data.codes.create(client.tenant.id, {
-        code_id,
-        code_type: "otp",
-        login_id: loginSession.id,
-        expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
-        redirect_uri: loginSession.authParams.redirect_uri,
-      });
-
       // Extract language from ui_locales
       const language = loginSession.authParams?.ui_locales
         ?.split(" ")
         ?.map((locale: string) => locale.split("-")[0])[0];
 
-      try {
-        if (
-          connectionType === "email" &&
-          connection?.options?.authentication_method === "magic_link"
-        ) {
-          await sendLink(ctx, {
-            to: normalized,
-            code: code_id,
-            authParams: loginSession.authParams,
-            language,
-          });
-        } else {
-          await sendCode(ctx, {
-            to: normalized,
-            code: code_id,
-            language,
-          });
+      // Generate OTP. Skipped in the enumeration-safe stub path so we don't
+      // deliver an email/SMS to an unknown address — the challenge screen
+      // still renders, but submitted codes will fail to verify.
+      if (!silentSignupStub) {
+        let code_id = generateOTP();
+        let existingCode = await ctx.env.data.codes.get(
+          client.tenant.id,
+          code_id,
+          "otp",
+        );
+
+        while (existingCode) {
+          code_id = generateOTP();
+          existingCode = await ctx.env.data.codes.get(
+            client.tenant.id,
+            code_id,
+            "otp",
+          );
         }
-      } catch (err) {
-        const safeErr =
-          err instanceof Error
-            ? { name: err.name, message: err.message }
-            : { name: "UnknownError" };
-        console.error("Failed to send verification code:", safeErr);
 
-        // Clean up the created code on delivery failure
-        await ctx.env.data.codes.remove(client.tenant.id, code_id);
+        await ctx.env.data.codes.create(client.tenant.id, {
+          code_id,
+          code_type: "otp",
+          login_id: loginSession.id,
+          expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
+          redirect_uri: loginSession.authParams.redirect_uri,
+        });
 
-        const errorMsg = m.invalidIdentifier();
-        return {
-          error: errorMsg,
-          screen: await loginPasswordlessIdentifierScreen({
-            ...context,
-            prefill: { username },
-            errors: { username: errorMsg },
-          }),
-        };
+        try {
+          if (
+            connectionType === "email" &&
+            connection?.options?.authentication_method === "magic_link"
+          ) {
+            await sendLink(ctx, {
+              to: normalized,
+              code: code_id,
+              authParams: loginSession.authParams,
+              language,
+            });
+          } else {
+            await sendCode(ctx, {
+              to: normalized,
+              code: code_id,
+              language,
+            });
+          }
+        } catch (err) {
+          const safeErr =
+            err instanceof Error
+              ? { name: err.name, message: err.message }
+              : { name: "UnknownError" };
+          console.error("Failed to send verification code:", safeErr);
+
+          // Clean up the created code on delivery failure
+          await ctx.env.data.codes.remove(client.tenant.id, code_id);
+
+          const errorMsg = m.invalidIdentifier();
+          return {
+            error: errorMsg,
+            screen: await loginPasswordlessIdentifierScreen({
+              ...context,
+              prefill: { username },
+              errors: { username: errorMsg },
+            }),
+          };
+        }
       }
 
       // Build context for next screen

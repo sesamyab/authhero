@@ -33,6 +33,10 @@ export interface CreateTokenParams {
   tenantId?: string;
   scope?: string;
   permissions?: string[];
+  // OIDC Core 5.5 — list of claim names the original /authorize request
+  // asked for under `claims.userinfo`. Tests use this to exercise the
+  // `requested_userinfo_claims` access-token slot end-to-end.
+  requestedUserinfoClaims?: string[];
 }
 
 export async function createToken(params?: CreateTokenParams) {
@@ -48,6 +52,9 @@ export async function createToken(params?: CreateTokenParams) {
       sub: params?.userId || "userId",
       iss: "test.example.com",
       tenant_id: params?.tenantId,
+      ...(params?.requestedUserinfoClaims
+        ? { requested_userinfo_claims: params.requestedUserinfoClaims }
+        : {}),
     },
     {
       includeIssuedTimestamp: true,

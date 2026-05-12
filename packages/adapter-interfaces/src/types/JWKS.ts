@@ -77,6 +77,7 @@ export const openIDConfigurationSchema = z.object({
   claims_supported: z.array(z.string()),
   request_uri_parameter_supported: z.boolean(),
   request_parameter_supported: z.boolean(),
+  claims_parameter_supported: z.boolean().optional(),
   request_object_signing_alg_values_supported: z.array(z.string()).optional(),
   token_endpoint_auth_signing_alg_values_supported: z.array(z.string()),
 });

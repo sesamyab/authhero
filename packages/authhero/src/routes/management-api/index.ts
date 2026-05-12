@@ -3,6 +3,7 @@ import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables, AuthHeroConfig } from "../../types";
 import { actionsRoutes } from "./actions";
+import { actionExecutionsRoutes } from "./action-executions";
 import { actionTriggersRoutes } from "./action-triggers";
 import { brandingRoutes } from "./branding";
 import { userRoutes } from "./users";
@@ -338,6 +339,7 @@ export default function create(config: AuthHeroConfig) {
 
   const managementApp = app
     .route("/actions/actions", actionsRoutes)
+    .route("/actions/executions", actionExecutionsRoutes)
     .route("/actions/triggers", actionTriggersRoutes)
     .route("/branding", brandingRoutes)
     .route("/custom-domains", customDomainRoutes)

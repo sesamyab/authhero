@@ -5,9 +5,11 @@ import {
   AuthParams,
   AuthorizationResponseMode,
   AuthorizationResponseType,
+  ClaimsRequest,
   CodeChallengeMethod,
   LoginSessionState,
   Strategy,
+  claimsRequestSchema,
   tokenResponseSchema,
 } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
@@ -81,7 +83,40 @@ const authorizeParamsSchema = z.object({
   login_hint: z.string().optional(),
   screen_hint: z.string().optional(),
   ui_locales: z.string().optional(),
+  // OIDC Core 5.5 — JSON-encoded `claims` request parameter.
+  claims: z.string().optional(),
 });
+
+// Parse + validate the raw `claims` query-string value. Returns the parsed
+// request, or throws HTTPException(400) per OIDC Core 5.5 when the value
+// is not a valid JSON object matching the claims-request schema.
+function parseClaimsParam(raw: string | undefined): ClaimsRequest | undefined {
+  if (!raw) return undefined;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(raw);
+  } catch {
+    throw new HTTPException(400, {
+      message: "invalid claims parameter: not valid JSON",
+    });
+  }
+  const result = claimsRequestSchema.safeParse(decoded);
+  if (!result.success) {
+    throw new HTTPException(400, {
+      message: "invalid claims parameter: must be an object with optional `userinfo` and `id_token` members",
+    });
+  }
+  // Drop empty top-level members so downstream code can rely on
+  // `claims.userinfo` / `claims.id_token` being present-and-nonempty when set.
+  const out: ClaimsRequest = {};
+  if (result.data.userinfo && Object.keys(result.data.userinfo).length > 0) {
+    out.userinfo = result.data.userinfo;
+  }
+  if (result.data.id_token && Object.keys(result.data.id_token).length > 0) {
+    out.id_token = result.data.id_token;
+  }
+  return out.userinfo || out.id_token ? out : undefined;
+}
 
 // Content types we accept for a request_uri payload. RFC 9101 §6.2 specifies
 // `application/oauth-authz-req+jwt`; `application/jwt` is the historical OIDC
@@ -316,6 +351,7 @@ export const authorizeRoutes = new OpenAPIHono<{
         login_hint,
         ui_locales,
         organization,
+        claims: rawClaims,
       } = { ...queryParams, ...requestParams };
       const {
         client_id,
@@ -329,6 +365,13 @@ export const authorizeRoutes = new OpenAPIHono<{
       } = { ...queryParams, ...requestParams };
 
       ctx.set("log", "authorize");
+
+      // OIDC Core 5.5 — decode the `claims` request parameter once, here.
+      // Throws HTTPException(400) on malformed JSON / shape; we want that
+      // error to surface before any further processing.
+      let parsedClaims: ClaimsRequest | undefined = parseClaimsParam(
+        typeof rawClaims === "string" ? rawClaims : undefined,
+      );
 
       // Reuse the client we already fetched while verifying the request object
       // when client_id matches; otherwise fetch fresh.
@@ -371,6 +414,12 @@ export const authorizeRoutes = new OpenAPIHono<{
           login_hint = login_hint ?? stored.username;
           ui_locales = ui_locales ?? stored.ui_locales;
           organization = organization ?? stored.organization;
+          // `claims` on the stored session is already a parsed
+          // ClaimsRequest object — preserve it directly when the caller
+          // didn't re-send `claims`.
+          if (!parsedClaims && stored.claims) {
+            parsedClaims = stored.claims;
+          }
         }
       }
 
@@ -454,6 +503,7 @@ export const authorizeRoutes = new OpenAPIHono<{
         organization,
         max_age: max_age ? parseInt(max_age, 10) : undefined,
         acr_values,
+        claims: parsedClaims,
       };
 
       if (authParams.redirect_uri) {

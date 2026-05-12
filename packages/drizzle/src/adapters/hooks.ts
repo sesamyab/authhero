@@ -148,6 +148,8 @@ export function createHooksAdapter(db: DrizzleDb) {
             sort.sort_order === "desc" ? desc(col) : asc(col),
           );
         }
+      } else {
+        query = query.orderBy(desc(hooks.priority), asc(hooks.created_at_ts));
       }
 
       const results = await query.offset(page * per_page).limit(per_page);

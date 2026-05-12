@@ -293,8 +293,8 @@ export async function loginScreen(
     }
   }
 
-  // Check if signups are disabled via client metadata or screen_hint=login
-  const signupsDisabled = client.client_metadata?.disable_sign_ups === "true";
+  // Check if signups are disabled via client flag or screen_hint=login
+  const signupsDisabled = client.disable_sign_ups === true;
   const authorizeUrl = context.ctx.var.loginSession?.authorization_url;
   const screenHintLogin =
     authorizeUrl &&
@@ -616,7 +616,10 @@ export const loginScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Validate signup if user doesn't exist
+      // Validate signup if user doesn't exist. In enumeration-safe mode we
+      // skip the explicit error and let loginWithPassword below fail with
+      // the standard wrong-credentials message, masking that the email is
+      // unknown.
       if (!user) {
         const validation = await validateSignupEmail(
           ctx,
@@ -626,7 +629,7 @@ export const loginScreenDefinition: ScreenDefinition = {
           connectionType,
         );
 
-        if (!validation.allowed) {
+        if (!validation.allowed && client.hide_sign_up_disabled_error !== true) {
           const errorMsg = m.userAccountDoesNotExist();
           return {
             error: errorMsg,

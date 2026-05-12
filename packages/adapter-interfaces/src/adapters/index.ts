@@ -1,4 +1,5 @@
 import { ActionsAdapter } from "./Actions";
+import { ActionExecutionsAdapter } from "./ActionExecutions";
 import { ActionVersionsAdapter } from "./ActionVersions";
 import { FlowsAdapter } from "./Flows";
 import { CacheAdapter } from "./Cache";
@@ -57,6 +58,7 @@ export interface SessionCleanupParams {
 
 export interface DataAdapters {
   actions: ActionsAdapter;
+  actionExecutions: ActionExecutionsAdapter;
   actionVersions: ActionVersionsAdapter;
   branding: BrandingAdapter;
   cache?: CacheAdapter;
@@ -132,6 +134,7 @@ export interface DataAdapters {
 }
 
 export * from "./Actions";
+export * from "./ActionExecutions";
 export * from "./ActionVersions";
 export * from "./Flows";
 export * from "./Cache";

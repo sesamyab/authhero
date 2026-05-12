@@ -778,11 +778,17 @@ const ClientMetadataInput = ({ source }: { source: string }) => {
   useEffect(() => {
     if (value && typeof value === "object") {
       // Reserved keys with dedicated controls above; keep them out of the
-      // free-form key/value list.
-      const preservedFields = ["disable_sign_ups", "email_validation"];
+      // free-form key/value list. `disable_sign_ups` was historically stored
+      // here but is now a typed top-level field — filter the legacy key out
+      // so it doesn't show twice during a partial migration.
+      const preservedFields = ["email_validation"];
+      const legacyFields = ["disable_sign_ups"];
 
       const array = Object.entries(value)
-        .filter(([key]) => !preservedFields.includes(key))
+        .filter(
+          ([key]) =>
+            !preservedFields.includes(key) && !legacyFields.includes(key),
+        )
         .map(([key, val]) => ({
           key,
           value: String(val),
@@ -822,7 +828,7 @@ const ClientMetadataInput = ({ source }: { source: string }) => {
 
   const updateFormData = (array: Array<{ key: string; value: string }>) => {
     // Fields managed by other inputs (BooleanInput, SelectInput, etc.)
-    const preservedFields = ["disable_sign_ups", "email_validation"];
+    const preservedFields = ["email_validation"];
 
     // Start with preserved fields from current value
     const newObject: Record<string, any> = {};
@@ -849,9 +855,6 @@ const ClientMetadataInput = ({ source }: { source: string }) => {
     typeof currentValue.email_validation === "string"
       ? currentValue.email_validation
       : "disabled";
-  const disableSignUps =
-    currentValue.disable_sign_ups === "true" ||
-    currentValue.disable_sign_ups === true;
 
   const updatePreservedField = (key: string, newValue: unknown) => {
     onChange({ ...currentValue, [key]: newValue });
@@ -874,20 +877,6 @@ const ClientMetadataInput = ({ source }: { source: string }) => {
           <MenuItem value="enabled">Enabled</MenuItem>
           <MenuItem value="enforced">Enforced</MenuItem>
         </MuiTextField>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={disableSignUps}
-              onChange={(e) =>
-                updatePreservedField(
-                  "disable_sign_ups",
-                  e.target.checked ? "true" : "false",
-                )
-              }
-            />
-          }
-          label="Disable sign ups"
-        />
       </Box>
       <Typography variant="h6" sx={{ mb: 1 }}>
         Application Metadata
@@ -1299,9 +1288,18 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 // a path used by nested inputs (e.g. addons.samlp.audience). Stored records
 // sometimes omit these or return null, which trips RHF's nested register().
 const normalizeClient = (record: RaRecord): RaRecord => {
-  const client_metadata = isPlainObject(record.client_metadata)
+  const rawMetadata = isPlainObject(record.client_metadata)
     ? record.client_metadata
     : {};
+  // Hoist the legacy `client_metadata.disable_sign_ups` string into the typed
+  // top-level boolean for records that pre-date the kysely migration. Strip
+  // the legacy key so a subsequent save doesn't write it back.
+  const { disable_sign_ups: legacyDisableSignUps, ...client_metadata } =
+    rawMetadata;
+  const disable_sign_ups =
+    typeof record.disable_sign_ups === "boolean"
+      ? record.disable_sign_ups
+      : legacyDisableSignUps === "true" || legacyDisableSignUps === true;
   const addons = isPlainObject(record.addons) ? record.addons : {};
   const samlp = isPlainObject(addons.samlp) ? addons.samlp : {};
   const refresh_token = isPlainObject(record.refresh_token)
@@ -1310,6 +1308,7 @@ const normalizeClient = (record: RaRecord): RaRecord => {
   return {
     ...record,
     client_metadata,
+    disable_sign_ups,
     addons: { ...addons, samlp },
     refresh_token,
   };
@@ -1431,6 +1430,16 @@ export function ClientEdit() {
             label="Auth0 Conformant Mode"
             helperText="Enable Auth0-compatible behavior. Disable for strict OIDC compliance."
             defaultValue={true}
+          />
+          <BooleanInput
+            source="disable_sign_ups"
+            label="Disable sign ups"
+            helperText="Block new sign-ups. Existing users can still sign in."
+          />
+          <BooleanInput
+            source="hide_sign_up_disabled_error"
+            label="Hide sign-up-disabled error (enumeration-safe)"
+            helperText="When sign-ups are disabled, suppress the explicit account-does-not-exist error and let the OTP/password challenge fail generically. Mitigates email enumeration at the cost of UX clarity."
           />
           <ClientMetadataInput source="client_metadata" />
           <GrantTypesInput source="grant_types" />

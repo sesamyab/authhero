@@ -73,6 +73,10 @@ export const clients = sqliteTable(
     require_proof_of_possession: integer("require_proof_of_possession")
       .notNull()
       .default(0),
+    disable_sign_ups: integer("disable_sign_ups").notNull().default(0),
+    hide_sign_up_disabled_error: integer("hide_sign_up_disabled_error")
+      .notNull()
+      .default(0),
     signed_request_object: text("signed_request_object").notNull(),
     compliance_level: text("compliance_level", { length: 64 }),
     par_request_expiry: integer("par_request_expiry"),

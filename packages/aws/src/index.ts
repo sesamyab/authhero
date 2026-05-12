@@ -4,6 +4,7 @@ import { DynamoDBConfig, DynamoDBContext } from "./types";
 
 // Import adapters
 import { createActionsAdapter } from "./adapters/actions";
+import { createActionExecutionsAdapter } from "./adapters/actionExecutions";
 import { createActionVersionsAdapter } from "./adapters/actionVersions";
 import { createFlowsAdapter } from "./adapters/flows";
 import { createTenantsAdapter } from "./adapters/tenants";
@@ -76,6 +77,7 @@ export default function createAdapters(
 
   const adapters: DataAdapters = {
     actions: createActionsAdapter(),
+    actionExecutions: createActionExecutionsAdapter(),
     actionVersions: createActionVersionsAdapter(),
     branding: createBrandingAdapter(ctx),
     clients: createClientsAdapter(ctx),

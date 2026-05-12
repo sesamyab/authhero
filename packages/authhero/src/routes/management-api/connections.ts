@@ -4,6 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { logMessage } from "../../helpers/logging";
 import { querySchema } from "../../types";
 import {
+  Connection,
   connectionInsertSchema,
   connectionSchema,
   totalsSchema,
@@ -15,6 +16,17 @@ import { generateConnectionId } from "../../utils/entity-id";
 const connectionsWithTotalsSchema = totalsSchema.extend({
   connections: z.array(connectionSchema),
 });
+
+// Auth0 omits secret fields from connection responses — callers must POST/PATCH
+// to set them, and a missing value means "keep existing". Mirror that contract.
+function stripConnectionSecrets(connection: Connection): Connection {
+  if (!connection.options) return connection;
+  const options = { ...connection.options };
+  delete options.client_secret;
+  delete options.app_secret;
+  delete options.twilio_token;
+  return { ...connection, options };
+}
 
 // Schema for the connection clients response
 const connectionClientsResponseSchema = z.object({
@@ -89,11 +101,13 @@ export const connectionRoutes = new OpenAPIHono<{
         q,
       });
 
+      const connections = result.connections.map(stripConnectionSecrets);
+
       if (!include_totals) {
-        return ctx.json(result.connections);
+        return ctx.json(connections);
       }
 
-      return ctx.json(result);
+      return ctx.json({ ...result, connections });
     },
   )
   // --------------------------------
@@ -141,7 +155,7 @@ export const connectionRoutes = new OpenAPIHono<{
         throw new HTTPException(404);
       }
 
-      return ctx.json(connection);
+      return ctx.json(stripConnectionSecrets(connection));
     },
   )
   // --------------------------------
@@ -263,7 +277,7 @@ export const connectionRoutes = new OpenAPIHono<{
         body,
       });
 
-      return ctx.json(connection);
+      return ctx.json(stripConnectionSecrets(connection));
     },
   )
   // --------------------------------
@@ -322,7 +336,7 @@ export const connectionRoutes = new OpenAPIHono<{
         targetId: connection.id,
       });
 
-      return ctx.json(connection, { status: 201 });
+      return ctx.json(stripConnectionSecrets(connection), { status: 201 });
     },
   )
   // --------------------------------

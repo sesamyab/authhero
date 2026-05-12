@@ -25,7 +25,11 @@ export function list(db: Kysely<Database>) {
       ]);
     }
 
-    const filteredQuery = query.offset(page * per_page).limit(per_page);
+    const filteredQuery = query
+      .orderBy("priority", "desc")
+      .orderBy("created_at_ts", "asc")
+      .offset(page * per_page)
+      .limit(per_page);
 
     const results = await filteredQuery.selectAll().execute();
 

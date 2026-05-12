@@ -1,4 +1,5 @@
 export * from "./Action";
+export * from "./ActionExecution";
 export * from "./ActionVersion";
 export * from "./AuditEvent";
 export * from "./Flow";
