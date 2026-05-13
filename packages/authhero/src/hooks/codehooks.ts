@@ -102,9 +102,14 @@ async function loadCodeForHook(
       data.multiTenancyConfig?.controlPlaneTenantId &&
       data.multiTenancyConfig.controlPlaneTenantId !== tenant_id
     ) {
+      // Escape backslashes and quotes so the quoted phrase survives names
+      // containing punctuation (colons, parens, etc. are fine inside a
+      // quoted Lucene phrase; only `\` and `"` need escaping). We still
+      // exact-match the result client-side as a defensive backstop.
+      const quoted = action.name.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       const { actions: matches } = await data.actions.list(
         data.multiTenancyConfig.controlPlaneTenantId,
-        { q: `name:"${action.name.replace(/"/g, "")}"`, per_page: 5 },
+        { q: `name:"${quoted}"`, per_page: 5 },
       );
       const upstream = matches.find((a) => a.name === action.name && a.is_system);
       if (upstream) {

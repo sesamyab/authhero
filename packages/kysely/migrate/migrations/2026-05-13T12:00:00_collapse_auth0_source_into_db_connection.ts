@@ -50,21 +50,47 @@ export async function up(db: Kysely<Database>): Promise<void> {
     .where("strategy", "=", "auth0")
     .execute();
 
+  // Group source rows by tenant so we can refuse to merge when a tenant has
+  // more than one `strategy: "auth0"` row — picking one arbitrarily would
+  // silently drop the other tenant's upstream credentials.
+  const sourcesByTenant = new Map<string, typeof auth0Connections>();
   for (const source of auth0Connections) {
+    const bucket = sourcesByTenant.get(source.tenant_id) ?? [];
+    bucket.push(source);
+    sourcesByTenant.set(source.tenant_id, bucket);
+  }
+
+  const ambiguousTenants = [...sourcesByTenant.entries()].filter(
+    ([, rows]) => rows.length !== 1,
+  );
+  if (ambiguousTenants.length > 0) {
+    const summary = ambiguousTenants
+      .map(
+        ([tenantId, rows]) =>
+          `${tenantId} (${rows.length} rows: ${rows.map((r) => r.id).join(", ")})`,
+      )
+      .join("; ");
+    throw new Error(
+      `[collapse_auth0_source] cannot proceed: the following tenants have more than one strategy="auth0" connection — resolve manually before re-running the migration: ${summary}`,
+    );
+  }
+
+  for (const [tenantId, rows] of sourcesByTenant) {
+    const source = rows[0]!;
     const dbConnections = await db
       .selectFrom("connections")
       .select(["id", "name", "options"])
-      .where("tenant_id", "=", source.tenant_id)
+      .where("tenant_id", "=", tenantId)
       .where("strategy", "=", "Username-Password-Authentication")
       .execute();
 
     if (dbConnections.length === 0) {
       console.warn(
-        `[collapse_auth0_source] tenant=${source.tenant_id}: auth0 connection ${source.id} has no DB connection to merge into; deleting it`,
+        `[collapse_auth0_source] tenant=${tenantId}: auth0 connection ${source.id} has no DB connection to merge into; deleting it`,
       );
       await db
         .deleteFrom("connections")
-        .where("tenant_id", "=", source.tenant_id)
+        .where("tenant_id", "=", tenantId)
         .where("id", "=", source.id)
         .execute();
       continue;
@@ -72,7 +98,7 @@ export async function up(db: Kysely<Database>): Promise<void> {
 
     if (dbConnections.length > 1) {
       console.warn(
-        `[collapse_auth0_source] tenant=${source.tenant_id}: ${dbConnections.length} DB connections found; skipping merge — resolve manually before next deploy`,
+        `[collapse_auth0_source] tenant=${tenantId}: ${dbConnections.length} DB connections found; skipping merge — resolve manually before next deploy`,
       );
       continue;
     }
@@ -97,13 +123,13 @@ export async function up(db: Kysely<Database>): Promise<void> {
     await db
       .updateTable("connections")
       .set({ options: JSON.stringify(targetOptions) })
-      .where("tenant_id", "=", source.tenant_id)
+      .where("tenant_id", "=", tenantId)
       .where("id", "=", target.id)
       .execute();
 
     await db
       .deleteFrom("connections")
-      .where("tenant_id", "=", source.tenant_id)
+      .where("tenant_id", "=", tenantId)
       .where("id", "=", source.id)
       .execute();
   }

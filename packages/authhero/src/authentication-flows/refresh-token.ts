@@ -84,9 +84,15 @@ export async function refreshTokenGrant(
   }
 
   if (!refreshToken) {
-    // Upstream refresh-token migration was removed in the auth0-source
-    // connection collapse. Re-mint replacement is tracked in
-    // https://github.com/markusahlstrand/authhero/issues/833.
+    // No local row matches the presented token. Earlier versions forwarded
+    // unknown refresh tokens to upstream Auth0; that proxy was removed when
+    // the `strategy: "auth0"` source connection was collapsed into the DB
+    // connection. Clients presenting an Auth0-issued (or otherwise unknown)
+    // token now receive `invalid_grant` and must re-authenticate
+    // interactively — see apps/docs/auth0-comparison/lazy-migration.md and
+    // https://github.com/markusahlstrand/authhero/issues/833 (re-mint).
+    // The FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN log below is the
+    // signal operators should watch during a cutover.
     appendLog(ctx, "Invalid refresh token");
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,

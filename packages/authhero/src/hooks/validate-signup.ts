@@ -32,9 +32,28 @@ export async function validateSignupEmail(
   // Check the disable_signup flag on the connection being used. The connection
   // is resolved by name; falling back to strategy lets the caller pass a bare
   // strategy ("email", "sms") when no explicit connection name is known.
-  const connectionRecord =
-    client.connections.find((c) => c.name === connection) ??
-    client.connections.find((c) => c.strategy === connection);
+  let connectionRecord = client.connections.find((c) => c.name === connection);
+  if (!connectionRecord) {
+    const strategyMatches = client.connections.filter(
+      (c) => c.strategy === connection,
+    );
+    if (strategyMatches.length > 1) {
+      // Picking one arbitrarily could apply the wrong disable_signup flag —
+      // require the caller to pass an explicit connection name instead.
+      return {
+        allowed: false,
+        reason: `Ambiguous connection: client has ${strategyMatches.length} connections with strategy "${connection}" (${strategyMatches
+          .map((c) => c.name)
+          .join(", ")}). Pass an explicit connection name.`,
+      };
+    }
+    if (strategyMatches.length === 1) {
+      connectionRecord = strategyMatches[0];
+      console.warn(
+        `[validate-signup] resolved connection by strategy fallback: strategy="${connection}" matched "${connectionRecord!.name}"`,
+      );
+    }
+  }
   if (connectionRecord?.options?.disable_signup) {
     const authorizeUrl = ctx.var.loginSession?.authorization_url;
 
