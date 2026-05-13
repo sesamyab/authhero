@@ -4,7 +4,8 @@ export const idTokenSchema = z
   .object({
     iss: z.string().url(),
     sub: z.string(),
-    aud: z.string(),
+    // OIDC Core §2: `aud` is either a string or an array of strings.
+    aud: z.union([z.string(), z.array(z.string())]),
     exp: z.number(),
     email: z.string().optional(),
     given_name: z.string().optional(),
