@@ -1,22 +1,17 @@
 import { OAuth2Client, OAuth2Tokens, OAuth2RequestError } from "arctic";
 
 /**
- * Extends arctic's `OAuth2Client` to support `client_secret_post` at the token
- * endpoint. Arctic only supports `client_secret_basic` (HTTP Basic), which is
- * rejected by providers like JumpCloud that require POST-body credentials.
- *
- * The auth-URL builder, PKCE handling, and `OAuth2Tokens` shape are inherited
- * unchanged. Only `validateAuthorizationCode` is overridden — and only when
- * `client_secret_post` is requested with a non-null client password.
+ * Extends arctic's `OAuth2Client` so we own the token-endpoint exchange. We
+ * support both `client_secret_basic` (HTTP Basic) and `client_secret_post`
+ * (credentials in form body), and always surface the upstream response body in
+ * thrown errors — arctic discards it, which makes diagnosing `invalid_client`
+ * from providers like JumpCloud nearly impossible.
  */
 export type TokenEndpointAuthMethod =
   | "client_secret_basic"
   | "client_secret_post";
 
 export class ExtendedOAuth2Client extends OAuth2Client {
-  // Arctic marks its fields as private in d.ts, so we track our own copies for
-  // the override path. The base class still has the same values for its own
-  // basic-auth path via super().
   private readonly _clientId: string;
   private readonly _clientPassword: string | null;
   private readonly _redirectURI: string | null;
@@ -40,17 +35,6 @@ export class ExtendedOAuth2Client extends OAuth2Client {
     code: string,
     codeVerifier: string | null,
   ): Promise<OAuth2Tokens> {
-    if (
-      this._clientPassword === null ||
-      this.tokenEndpointAuthMethod === "client_secret_basic"
-    ) {
-      return super.validateAuthorizationCode(
-        tokenEndpoint,
-        code,
-        codeVerifier,
-      );
-    }
-
     const body = new URLSearchParams();
     body.set("grant_type", "authorization_code");
     body.set("code", code);
@@ -60,30 +44,44 @@ export class ExtendedOAuth2Client extends OAuth2Client {
     if (codeVerifier !== null) {
       body.set("code_verifier", codeVerifier);
     }
-    body.set("client_id", this._clientId);
-    body.set("client_secret", this._clientPassword);
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    };
+
+    if (
+      this._clientPassword !== null &&
+      this.tokenEndpointAuthMethod === "client_secret_post"
+    ) {
+      body.set("client_id", this._clientId);
+      body.set("client_secret", this._clientPassword);
+    } else if (this._clientPassword !== null) {
+      const credentials = btoa(`${this._clientId}:${this._clientPassword}`);
+      headers.Authorization = `Basic ${credentials}`;
+    } else {
+      body.set("client_id", this._clientId);
+    }
 
     const response = await fetch(tokenEndpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
-      },
+      headers,
       body: body.toString(),
     });
 
+    const rawBody = await response.text();
     let data: unknown;
     try {
-      data = await response.json();
+      data = JSON.parse(rawBody);
     } catch {
       throw new Error(
-        `Token endpoint returned non-JSON response (${response.status})`,
+        `Token endpoint returned non-JSON response (${response.status}): ${rawBody}`,
       );
     }
 
     if (typeof data !== "object" || data === null) {
       throw new Error(
-        `Token endpoint returned unexpected body (${response.status})`,
+        `Token endpoint returned unexpected body (${response.status}): ${rawBody}`,
       );
     }
 
@@ -92,9 +90,9 @@ export class ExtendedOAuth2Client extends OAuth2Client {
       const errorCode =
         typeof err.error === "string" ? err.error : `http_${response.status}`;
       const description =
-        typeof err.error_description === "string"
-          ? err.error_description
-          : null;
+        typeof err.error_description === "string" && err.error_description
+          ? `${err.error_description} (body: ${rawBody})`
+          : rawBody;
       throw new OAuth2RequestError(errorCode, description, null, null);
     }
 

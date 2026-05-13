@@ -19,12 +19,18 @@ const connectionsWithTotalsSchema = totalsSchema.extend({
 
 // Auth0 omits secret fields from connection responses — callers must POST/PATCH
 // to set them, and a missing value means "keep existing". Mirror that contract.
+const SECRET_OPTION_FIELDS = [
+  "client_secret",
+  "app_secret",
+  "twilio_token",
+] as const;
+
 function stripConnectionSecrets(connection: Connection): Connection {
   if (!connection.options) return connection;
   const options = { ...connection.options };
-  delete options.client_secret;
-  delete options.app_secret;
-  delete options.twilio_token;
+  for (const field of SECRET_OPTION_FIELDS) {
+    delete options[field];
+  }
   return { ...connection, options };
 }
 
@@ -252,7 +258,30 @@ export const connectionRoutes = new OpenAPIHono<{
 
       const connectionBefore = await ctx.env.data.connections.get(tenantId, id);
 
-      const result = await ctx.env.data.connections.update(tenantId, id, body);
+      // GET responses strip secrets, so a read→edit→PATCH round-trip would
+      // otherwise wipe them. Preserve existing secret fields when the caller
+      // didn't send a new value, matching Auth0's "missing = keep" contract.
+      // Build a separate patch payload so the original `body` stays free of
+      // backfilled secrets for audit logging.
+      let patchBody = body;
+      if (body.options && connectionBefore?.options) {
+        const mergedOptions = { ...body.options };
+        for (const field of SECRET_OPTION_FIELDS) {
+          if (
+            mergedOptions[field] === undefined &&
+            connectionBefore.options[field] !== undefined
+          ) {
+            mergedOptions[field] = connectionBefore.options[field];
+          }
+        }
+        patchBody = { ...body, options: mergedOptions };
+      }
+
+      const result = await ctx.env.data.connections.update(
+        tenantId,
+        id,
+        patchBody,
+      );
       if (!result) {
         throw new HTTPException(404, {
           message: "Connection not found",

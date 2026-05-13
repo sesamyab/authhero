@@ -1408,6 +1408,21 @@ export function ClientEdit() {
       transformed.client_metadata = stringifiedMetadata;
     }
 
+    // Strip null values from refresh_token. The numeric fields (leeway,
+    // token_lifetime, idle_token_lifetime) are .optional() on the server —
+    // null is rejected. NumberInput's parse only fires on user input, so
+    // untouched fields that were null in the stored record round-trip back
+    // as null on submit.
+    if (isPlainObject(transformed.refresh_token)) {
+      const cleaned: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(transformed.refresh_token)) {
+        if (value !== null) {
+          cleaned[key] = value;
+        }
+      }
+      transformed.refresh_token = cleaned;
+    }
+
     return transformed;
   };
 
