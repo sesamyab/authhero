@@ -19,12 +19,18 @@ const connectionsWithTotalsSchema = totalsSchema.extend({
 
 // Auth0 omits secret fields from connection responses — callers must POST/PATCH
 // to set them, and a missing value means "keep existing". Mirror that contract.
+const SECRET_OPTION_FIELDS = [
+  "client_secret",
+  "app_secret",
+  "twilio_token",
+] as const;
+
 function stripConnectionSecrets(connection: Connection): Connection {
   if (!connection.options) return connection;
   const options = { ...connection.options };
-  delete options.client_secret;
-  delete options.app_secret;
-  delete options.twilio_token;
+  for (const field of SECRET_OPTION_FIELDS) {
+    delete options[field];
+  }
   return { ...connection, options };
 }
 
@@ -251,6 +257,20 @@ export const connectionRoutes = new OpenAPIHono<{
       const tenantId = ctx.var.tenant_id;
 
       const connectionBefore = await ctx.env.data.connections.get(tenantId, id);
+
+      // GET responses strip secrets, so a read→edit→PATCH round-trip would
+      // otherwise wipe them. Preserve existing secret fields when the caller
+      // didn't send a new value, matching Auth0's "missing = keep" contract.
+      if (body.options && connectionBefore?.options) {
+        for (const field of SECRET_OPTION_FIELDS) {
+          if (
+            body.options[field] === undefined &&
+            connectionBefore.options[field] !== undefined
+          ) {
+            body.options[field] = connectionBefore.options[field];
+          }
+        }
+      }
 
       const result = await ctx.env.data.connections.update(tenantId, id, body);
       if (!result) {
