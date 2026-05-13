@@ -1,5 +1,39 @@
 # authhero
 
+## 4.120.0
+
+### Minor Changes
+
+- 0539c2a: Move the Worker Loader code executor into `@authhero/cloudflare-adapter` and rename both Cloudflare code executors so the naming reflects which Cloudflare primitive each one uses.
+  - New: `WorkerLoaderCodeExecutor` in `@authhero/cloudflare-adapter` — uses the Worker Loader binding to create isolates on the fly from in-memory code. Previously exported as `CloudflareCodeExecutor` from `authhero`.
+  - Renamed: `CloudflareCodeExecutor` → `DispatchNamespaceCodeExecutor` in `@authhero/cloudflare-adapter` — uses a Workers for Platforms dispatch namespace and requires user code to be pre-deployed as worker scripts.
+  - Deprecated alias: `CloudflareCodeExecutor` / `CloudflareCodeExecutorConfig` remain exported from `@authhero/cloudflare-adapter` as aliases of the dispatch-namespace executor, to be removed in the next major.
+  - `authhero` no longer re-exports `CloudflareCodeExecutor`. Import the executor from `@authhero/cloudflare-adapter` instead. `LocalCodeExecutor` continues to be exported from `authhero` since it is platform-agnostic.
+
+  Migration:
+
+  ```ts
+  // Before
+  import { CloudflareCodeExecutor } from "authhero";
+  const exec = new CloudflareCodeExecutor({ loader: env.LOADER });
+
+  // After
+  import { WorkerLoaderCodeExecutor } from "@authhero/cloudflare-adapter";
+  const exec = new WorkerLoaderCodeExecutor({ loader: env.LOADER });
+  ```
+
+  In the same change, `globalOutbound: null` is removed from the Worker Loader executor's `WorkerCode`, so user actions can now make outbound `fetch()` calls (Slack webhooks, email APIs, etc.). The Worker Loader still provides v8-level isolation from the parent worker's bindings — this only widens the network boundary, not the host boundary. Previously, any `fetch()` from action code failed with _"This worker is not permitted to access the internet via global functions like fetch()"_.
+
+### Patch Changes
+
+- 0539c2a: Fix `POST /api/v2/actions/actions/:id/test` returning `Unknown trigger: post-login`. The endpoint now maps the Auth0-style `post-login` trigger id to the internal `post-user-login` before invoking the code executor, matching the mapping already applied by the trigger-bindings routes.
+- 0539c2a: Gate the DCR consent tenant picker (`/u2/connect/select-tenant`) by Management API permission instead of bare org membership. The picker now only lists a child tenant when the consenting user holds `create:clients` on `urn:authhero:management` via a role scoped to that tenant's control-plane org. The control plane itself is never offered as a registration target, even if the user is a member of its self-org. Users with a global (non-org-scoped) role granting `admin:organizations` continue to bypass the membership check, mirroring `@authhero/multi-tenancy`'s provisioning escape hatch.
+- 0539c2a: Fix management-api writes not invalidating the cache used by u2/auth-api/universal-login/saml. The management-api was always constructing its own `createInMemoryCache(...)` (and on every request), so cache-wrapper invalidation ran against an isolated empty cache while the other apps continued serving stale entries from the shared `config.dataAdapter.cache` for up to 300s. The most visible symptom was toggling client flags such as `hide_sign_up_disabled_error` or `disable_sign_ups` not taking effect on the login flow until the TTL aged out. Management-api now reuses `config.dataAdapter.cache` when provided so writes invalidate the same cache other apps read from, and the fallback in-memory adapter is hoisted out of the per-request middleware.
+- 024222e: Fix OIDC connections with providers that require `client_secret_post` (e.g. JumpCloud) and accept arrays for the `aud` claim:
+  - `PATCH /api/v2/connections/:id` now preserves existing secret fields (`client_secret`, `app_secret`, `twilio_token`) when the request body omits them, matching Auth0's "missing = keep existing" contract. GET responses strip these, so a read→edit→PATCH round-trip from the admin UI no longer silently wipes them.
+  - The upstream OAuth2 token exchange in `ExtendedOAuth2Client` now handles both `client_secret_basic` and `client_secret_post` directly (instead of falling through to arctic for Basic) and surfaces the raw upstream response body in thrown errors so `invalid_client` failures from providers like JumpCloud are diagnosable from logs.
+  - `idTokenSchema.aud` now accepts a string or an array of strings, per OIDC Core §2.
+
 ## 4.119.0
 
 ### Minor Changes
