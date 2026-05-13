@@ -261,18 +261,27 @@ export const connectionRoutes = new OpenAPIHono<{
       // GET responses strip secrets, so a read→edit→PATCH round-trip would
       // otherwise wipe them. Preserve existing secret fields when the caller
       // didn't send a new value, matching Auth0's "missing = keep" contract.
+      // Build a separate patch payload so the original `body` stays free of
+      // backfilled secrets for audit logging.
+      let patchBody = body;
       if (body.options && connectionBefore?.options) {
+        const mergedOptions = { ...body.options };
         for (const field of SECRET_OPTION_FIELDS) {
           if (
-            body.options[field] === undefined &&
+            mergedOptions[field] === undefined &&
             connectionBefore.options[field] !== undefined
           ) {
-            body.options[field] = connectionBefore.options[field];
+            mergedOptions[field] = connectionBefore.options[field];
           }
         }
+        patchBody = { ...body, options: mergedOptions };
       }
 
-      const result = await ctx.env.data.connections.update(tenantId, id, body);
+      const result = await ctx.env.data.connections.update(
+        tenantId,
+        id,
+        patchBody,
+      );
       if (!result) {
         throw new HTTPException(404, {
           message: "Connection not found",
