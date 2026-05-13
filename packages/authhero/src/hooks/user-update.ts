@@ -27,6 +27,16 @@ export function createUserUpdateHooks(
   data: DataAdapters,
 ): UserDataAdapter["update"] {
   return async (tenant_id, user_id, updates) => {
+    // Reject self-links unconditionally — a user pointing `linked_to` at its
+    // own user_id corrupts identity resolution (the row becomes both primary
+    // and secondary). Guard above the fast-path so direct writes via
+    // `users.update({ linked_to })` are caught too.
+    if ("linked_to" in updates && updates.linked_to === user_id) {
+      throw new JSONHTTPException(400, {
+        message: "Cannot link a user to itself",
+      });
+    }
+
     // If we're only updating linked_to, skip all hooks to avoid recursion
     if (Object.keys(updates).length === 1 && "linked_to" in updates) {
       return data.users.update(tenant_id, user_id, updates);
@@ -181,10 +191,20 @@ export function createUserUpdateHooks(
                 hook.metadata,
               );
             } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              const stack = err instanceof Error ? err.stack : undefined;
+              const errorName = err instanceof Error ? err.name : undefined;
               logMessage(ctx, tenant_id, {
                 type: LogTypes.ACTIONS_EXECUTION_FAILED,
-                description: `Post user update template hook ${hook.template_id} failed`,
+                description: `Post user update template hook ${hook.template_id} failed: ${message}`,
                 userId: user_id,
+                details: {
+                  template_id: hook.template_id,
+                  trigger_id: "post-user-update",
+                  error: message,
+                  error_name: errorName,
+                  error_stack: stack,
+                },
               });
             }
           }

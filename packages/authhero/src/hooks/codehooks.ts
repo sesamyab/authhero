@@ -76,6 +76,16 @@ type ResolvedCode = {
   secrets?: Record<string, string>;
 };
 
+function secretsToMap(
+  secrets: Array<{ name: string; value?: string }> | undefined,
+): Record<string, string> {
+  if (!secrets) return {};
+  return secrets.reduce<Record<string, string>>((acc, secret) => {
+    if (secret.value !== undefined) acc[secret.name] = secret.value;
+    return acc;
+  }, {});
+}
+
 async function loadCodeForHook(
   data: DataAdapters,
   tenant_id: string,
@@ -83,14 +93,33 @@ async function loadCodeForHook(
 ): Promise<ResolvedCode | null> {
   const action = await data.actions.get(tenant_id, code_id);
   if (action) {
-    const secrets = action.secrets?.reduce<Record<string, string>>(
-      (acc, secret) => {
-        if (secret.value !== undefined) acc[secret.name] = secret.value;
-        return acc;
-      },
-      {},
-    );
-    return { code: action.code, name: action.name, secrets };
+    // Inherited stub: read `code` from the control-plane system action that
+    // matches by name. Local secrets win; upstream secrets fill in any names
+    // the tenant hasn't overridden. If the upstream lookup fails, the local
+    // `code` (which may be a stale snapshot or empty) is used as-is.
+    if (
+      action.inherit &&
+      data.multiTenancyConfig?.controlPlaneTenantId &&
+      data.multiTenancyConfig.controlPlaneTenantId !== tenant_id
+    ) {
+      const { actions: matches } = await data.actions.list(
+        data.multiTenancyConfig.controlPlaneTenantId,
+        { q: `name:"${action.name.replace(/"/g, "")}"`, per_page: 5 },
+      );
+      const upstream = matches.find((a) => a.name === action.name && a.is_system);
+      if (upstream) {
+        return {
+          code: upstream.code,
+          name: action.name,
+          secrets: { ...secretsToMap(upstream.secrets), ...secretsToMap(action.secrets) },
+        };
+      }
+    }
+    return {
+      code: action.code,
+      name: action.name,
+      secrets: secretsToMap(action.secrets),
+    };
   }
 
   const hookCode = await data.hookCode.get(tenant_id, code_id);

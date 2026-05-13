@@ -772,6 +772,12 @@ export const userRoutes = new OpenAPIHono<{
 
       const link_with = "link_with" in body ? body.link_with : body.user_id;
 
+      if (link_with === user_id) {
+        throw new HTTPException(400, {
+          message: "Cannot link a user to itself.",
+        });
+      }
+
       const user = await ctx.env.data.users.get(ctx.var.tenant_id, user_id);
       if (!user) {
         throw new HTTPException(400, {

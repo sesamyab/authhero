@@ -163,7 +163,7 @@ describe("connections", () => {
       {
         json: {
           name: "test-connection",
-          strategy: "auth0",
+          strategy: "oidc",
         },
         header: {
           "tenant-id": "tenantId",

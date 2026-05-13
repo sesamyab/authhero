@@ -13,10 +13,12 @@ import {
   TextField,
   SaveButton,
   DeleteButton,
+  BooleanInput,
   useRecordContext,
   useNotify,
   Button,
 } from "react-admin";
+import { useWatch } from "react-hook-form";
 import { Box } from "@mui/material";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { getConfigValue } from "../../utils/runtimeConfig";
@@ -34,6 +36,26 @@ const triggerChoices = [
 ];
 
 const SECRET_PLACEHOLDER = "******";
+
+function CodeInputForInherit() {
+  const inherit = useWatch({ name: "inherit" });
+  return (
+    <TextInput
+      source="code"
+      validate={inherit ? [] : [required()]}
+      fullWidth
+      multiline
+      minRows={10}
+      disabled={!!inherit}
+      helperText={
+        inherit
+          ? "Code is read from the control-plane action with the same name at execute time. Clear `Inherit` to edit a local copy."
+          : undefined
+      }
+      sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
+    />
+  );
+}
 
 function DeployButton() {
   const record = useRecordContext();
@@ -134,15 +156,18 @@ export function ActionEdit() {
               return value;
             }}
           />
-          <TextInput
-            source="code"
-            validate={[required()]}
-            fullWidth
-            multiline
-            minRows={10}
-            sx={{ "& .MuiInputBase-input": { fontFamily: "monospace" } }}
-          />
+          <CodeInputForInherit />
           <TextInput source="runtime" fullWidth />
+          <BooleanInput
+            source="is_system"
+            label="Is system action"
+            helperText="Mark this action as a shared template owned by the control-plane tenant. Other tenants can opt in by creating a row with the same name and turning on `Inherit`."
+          />
+          <BooleanInput
+            source="inherit"
+            label="Inherit from control-plane"
+            helperText="Read `code` at execute time from the control-plane action with the same name. Local secrets still override upstream secrets by name."
+          />
           <ArrayInput source="secrets">
             <SimpleFormIterator inline>
               <TextInput source="name" label="Name" />

@@ -6,6 +6,7 @@ import {
   required,
   ArrayInput,
   SimpleFormIterator,
+  BooleanInput,
 } from "react-admin";
 
 const triggerChoices = [
@@ -63,6 +64,16 @@ export function ActionCreate() {
             <TextInput source="version" label="Version" />
           </SimpleFormIterator>
         </ArrayInput>
+        <BooleanInput
+          source="is_system"
+          label="Is system action"
+          helperText="Mark as a shared template (only meaningful on the control-plane tenant)."
+        />
+        <BooleanInput
+          source="inherit"
+          label="Inherit from control-plane"
+          helperText="Read `code` from the control-plane action with the same name at execute time."
+        />
       </SimpleForm>
     </Create>
   );

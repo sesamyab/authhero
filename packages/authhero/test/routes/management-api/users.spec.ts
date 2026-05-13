@@ -1928,6 +1928,41 @@ describe("users management API endpoint", () => {
         },
       ]);
     });
+
+    it("should reject linking a user to itself with a 400", async () => {
+      const token = await getAdminToken();
+
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+
+      await env.data.users.create("tenantId", {
+        user_id: `${USERNAME_PASSWORD_PROVIDER}|self`,
+        email: "self@example.com",
+        email_verified: true,
+        provider: USERNAME_PASSWORD_PROVIDER,
+        connection: Strategy.USERNAME_PASSWORD,
+        is_social: false,
+      });
+
+      const linkUserResponse = await managementClient.users[
+        ":user_id"
+      ].identities.$post(
+        {
+          param: { user_id: `${USERNAME_PASSWORD_PROVIDER}|self` },
+          json: { link_with: `${USERNAME_PASSWORD_PROVIDER}|self` },
+          header: { "tenant-id": "tenantId" },
+        },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+      expect(linkUserResponse.status).toBe(400);
+
+      const after = await env.data.users.get(
+        "tenantId",
+        `${USERNAME_PASSWORD_PROVIDER}|self`,
+      );
+      expect(after?.linked_to).toBeUndefined();
+    });
   });
 
   describe("get by id", () => {

@@ -34,12 +34,7 @@ describe("callback", () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
 
-    // Update the client to disable signups
-    await env.data.clients.update("tenantId", "clientId", {
-      disable_sign_ups: true,
-    });
-
-    // Create a connection to test against
+    // Create the connection with signup disabled
     await env.data.connections.create("tenantId", {
       id: "connectionId",
       name: "mock-strategy",
@@ -47,6 +42,7 @@ describe("callback", () => {
       options: {
         client_id: "clientId",
         client_secret: "clientSecret",
+        disable_signup: true,
       },
     });
 
@@ -94,12 +90,7 @@ describe("callback", () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
 
-    // Update the client to disable signups
-    await env.data.clients.update("tenantId", "clientId", {
-      disable_sign_ups: true,
-    });
-
-    // Create a connection to test against
+    // Create the connection with signup disabled
     await env.data.connections.create("tenantId", {
       id: "connectionId",
       name: "mock-strategy",
@@ -107,6 +98,7 @@ describe("callback", () => {
       options: {
         client_id: "clientId",
         client_secret: "clientSecret",
+        disable_signup: true,
       },
     });
 

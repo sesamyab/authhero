@@ -78,6 +78,15 @@ describe("extractCandidateUsernames", () => {
     });
     expect(candidates).toEqual(["valid"]);
   });
+
+  it("strips email domain from name/nickname when they look like emails", () => {
+    const candidates = extractCandidateUsernames({
+      nickname: "john.doe@hotmail.com",
+      name: "john.doe@hotmail.com",
+      email: "john.doe@hotmail.com",
+    });
+    expect(candidates).toEqual(["john-doe"]);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -122,4 +122,58 @@ describe("handleCodeHook code resolution", () => {
 
     expect(calls).toHaveLength(0);
   });
+
+  it("reads through to the control-plane system action when inherit=true", async () => {
+    const { executor, calls } = makeRecordingExecutor();
+    const server = await getTestServer({ codeExecutor: executor });
+
+    // The kysely adapter doesn't set multiTenancyConfig on its own; the
+    // production runtime wraps adapters via withRuntimeFallback. For the
+    // test we set the pointer directly so loadCodeForHook sees a configured
+    // control plane.
+    (server.env.data as any).multiTenancyConfig = {
+      controlPlaneTenantId: "control_plane",
+    };
+
+    await server.env.data.tenants.create({
+      id: "control_plane",
+      friendly_name: "Control Plane",
+    });
+
+    await server.env.data.actions.create("control_plane", {
+      name: "Shared notifier",
+      code: "// from control plane",
+      is_system: true,
+      secrets: [
+        { name: "WEBHOOK_URL", value: "https://upstream.example/hook" },
+        { name: "SHARED", value: "upstream-value" },
+      ],
+    });
+
+    const localStub = await server.env.data.actions.create("tenantId", {
+      name: "Shared notifier",
+      code: "// stale local snapshot",
+      inherit: true,
+      // Local secret with the same name as upstream wins; SHARED falls
+      // through to upstream.
+      secrets: [{ name: "WEBHOOK_URL", value: "https://local.example/hook" }],
+    });
+
+    await runHandleCodeHook(server, {
+      code_id: localStub.id,
+      hook_id: "hk_inherit",
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      code: "// from control plane",
+      hookCodeId: localStub.id,
+    });
+    expect(calls[0]!.event).toMatchObject({
+      secrets: {
+        WEBHOOK_URL: "https://local.example/hook",
+        SHARED: "upstream-value",
+      },
+    });
+  });
 });

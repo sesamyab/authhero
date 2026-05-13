@@ -29,8 +29,13 @@ export async function validateSignupEmail(
   email: string,
   connection: string = "email",
 ): Promise<{ allowed: boolean; reason?: string }> {
-  // Check the disabled flag on the client
-  if (client.disable_sign_ups) {
+  // Check the disable_signup flag on the connection being used. The connection
+  // is resolved by name; falling back to strategy lets the caller pass a bare
+  // strategy ("email", "sms") when no explicit connection name is known.
+  const connectionRecord =
+    client.connections.find((c) => c.name === connection) ??
+    client.connections.find((c) => c.strategy === connection);
+  if (connectionRecord?.options?.disable_signup) {
     const authorizeUrl = ctx.var.loginSession?.authorization_url;
 
     // Check if screen_hint=signup was specified in the authorization URL
@@ -182,7 +187,7 @@ export async function preUserSignupHook(
     });
 
     throw new JSONHTTPException(400, {
-      message: validation.reason || "Signups are disabled for this client",
+      message: validation.reason || "Signups are disabled for this connection",
     });
   }
 

@@ -26,7 +26,6 @@ const BOOLEAN_FIELDS = [
   "custom_login_page_on",
   "require_pushed_authorization_requests",
   "require_proof_of_possession",
-  "disable_sign_ups",
   "hide_sign_up_disabled_error",
 ] as const;
 

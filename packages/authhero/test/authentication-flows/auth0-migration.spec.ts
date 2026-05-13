@@ -21,45 +21,37 @@ function jsonResponse(status: number, body: unknown): Response {
 
 interface MigrationServerOptions {
   importModeOnDb?: boolean;
-  importModeOnAuth0?: boolean;
-  withAuth0Source?: boolean;
+  withConfiguration?: boolean;
 }
 
 async function makeMigrationServer(options: MigrationServerOptions = {}) {
-  const {
-    importModeOnDb = true,
-    importModeOnAuth0 = true,
-    withAuth0Source = true,
-  } = options;
+  const { importModeOnDb = true, withConfiguration = true } = options;
   const server = await getTestServer();
   const { env } = server;
 
+  // The DB connection holds both the `import_mode` flag and the upstream
+  // credentials under `options.configuration` (Auth0-faithful shape).
   // The default fixture creates the DB connection with the wrong strategy
-  // value ("auth2" — the legacy provider value). Force-update it to the real
-  // strategy + import_mode so the migration code path is exercised.
+  // value ("auth2" — the legacy provider value). Force-update it to the
+  // real strategy with the migration options inline so the code path is
+  // exercised.
+  const dbOptions: Record<string, unknown> = { import_mode: importModeOnDb };
+  if (withConfiguration) {
+    dbOptions.configuration = {
+      client_id: "upstream-cid",
+      client_secret: "upstream-csecret",
+      token_endpoint: UPSTREAM_TOKEN_ENDPOINT,
+      userinfo_endpoint: UPSTREAM_USERINFO_ENDPOINT,
+    };
+  }
   await env.data.connections.update(
     TENANT_ID,
     "Username-Password-Authentication",
     {
       strategy: Strategy.USERNAME_PASSWORD,
-      options: { import_mode: importModeOnDb },
+      options: dbOptions,
     },
   );
-
-  if (withAuth0Source) {
-    await env.data.connections.create(TENANT_ID, {
-      id: "auth0-source",
-      name: "auth0-source",
-      strategy: Strategy.AUTH0,
-      options: {
-        client_id: "upstream-cid",
-        client_secret: "upstream-csecret",
-        token_endpoint: UPSTREAM_TOKEN_ENDPOINT,
-        userinfo_endpoint: UPSTREAM_USERINFO_ENDPOINT,
-        import_mode: importModeOnAuth0,
-      },
-    });
-  }
 
   return server;
 }
@@ -249,9 +241,9 @@ describe("auth0 migration: password fallback", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("does NOT call upstream when no auth0-source connection exists", async () => {
+  it("does NOT call upstream when DB connection has no options.configuration", async () => {
     const { oauthApp, env } = await makeMigrationServer({
-      withAuth0Source: false,
+      withConfiguration: false,
     });
     const oauthClient = testClient(oauthApp, env);
 
