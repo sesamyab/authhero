@@ -1126,9 +1126,9 @@ const { app } = init({
 });
 ```
 
-#### `CloudflareCodeExecutor`
+#### `WorkerLoaderCodeExecutor`
 
-Uses [Cloudflare Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) to spin up isolated Workers on demand. Each hook execution runs in its own sandboxed Worker with **no network access** (`globalOutbound: null`).
+Uses [Cloudflare Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) to spin up isolated Workers on demand. Each hook execution runs in its own sandboxed v8 isolate with no access to the parent worker's bindings or env. Outbound `fetch()` is allowed, so user actions can call Slack, email APIs, etc.
 
 Workers are cached by `hookCodeId` + code hash via `env.LOADER.get()`, so the same code stays warm across requests while code updates automatically get a fresh Worker.
 
@@ -1142,15 +1142,18 @@ binding = "LOADER"
 **Usage:**
 
 ```typescript
-import { init, CloudflareCodeExecutor } from "authhero";
+import { init } from "authhero";
+import { WorkerLoaderCodeExecutor } from "@authhero/cloudflare-adapter";
 
 const { app } = init({
   dataAdapter,
-  codeExecutor: new CloudflareCodeExecutor({
+  codeExecutor: new WorkerLoaderCodeExecutor({
     loader: env.LOADER,
   }),
 });
 ```
+
+> Previously exported as `CloudflareCodeExecutor` from the `authhero` package. That export has been removed — import `WorkerLoaderCodeExecutor` from `@authhero/cloudflare-adapter` instead.
 
 ### User Code Format
 

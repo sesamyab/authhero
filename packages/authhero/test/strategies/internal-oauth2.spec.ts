@@ -79,7 +79,7 @@ describe("ExtendedOAuth2Client", () => {
       );
     });
 
-    it("defaults to client_secret_basic (delegates to arctic)", async () => {
+    it("defaults to client_secret_basic (Authorization: Basic header)", async () => {
       const client = new ExtendedOAuth2Client(
         "client-id",
         "s3cret",
@@ -94,7 +94,7 @@ describe("ExtendedOAuth2Client", () => {
       expect(captured).toHaveLength(1);
       const [req] = captured;
       expect(req.method).toBe("POST");
-      // Arctic uses HTTP Basic auth — the credentials live in the Authorization header.
+      // Credentials must be in the Authorization header, not in the body.
       expect(req.headers["authorization"]).toBe(
         `Basic ${btoa("client-id:s3cret")}`,
       );
@@ -128,7 +128,7 @@ describe("ExtendedOAuth2Client", () => {
       expect(req.body.get("code_verifier")).toBe("verifier");
     });
 
-    it("delegates to arctic for public clients regardless of auth method", async () => {
+    it("sends client_id in body and no Authorization header for public clients", async () => {
       const client = new ExtendedOAuth2Client(
         "public-client",
         null,
@@ -149,15 +149,57 @@ describe("ExtendedOAuth2Client", () => {
   });
 
   describe("validateAuthorizationCode errors", () => {
-    it("throws OAuth2RequestError on RFC-6749 error response", async () => {
-      captureFetch(
-        jsonResponse(
-          {
-            error: "invalid_client",
-            error_description: "Client authentication failed",
-          },
-          401,
-        ),
+    it("throws OAuth2RequestError with raw body appended to description", async () => {
+      const responseBody = {
+        error: "invalid_client",
+        error_description: "Client authentication failed",
+        error_hint: "method 'client_secret_basic' was requested",
+      };
+      captureFetch(jsonResponse(responseBody, 401));
+
+      const client = new ExtendedOAuth2Client(
+        "client-id",
+        "s3cret",
+        "https://app/callback",
+        "client_secret_post",
+      );
+      const err = await client
+        .validateAuthorizationCode("https://idp/token", "code", null)
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(OAuth2RequestError);
+      const oauthErr = err as OAuth2RequestError;
+      expect(oauthErr.code).toBe("invalid_client");
+      // Description preserves the upstream error_description AND the full body
+      // so non-standard fields like `error_hint` survive into logs.
+      expect(oauthErr.description).toContain("Client authentication failed");
+      expect(oauthErr.description).toContain("client_secret_basic");
+    });
+
+    it("falls back to raw body when error_description is missing", async () => {
+      captureFetch(jsonResponse({ error: "invalid_request" }, 400));
+
+      const client = new ExtendedOAuth2Client(
+        "client-id",
+        "s3cret",
+        "https://app/callback",
+        "client_secret_post",
+      );
+      const err = (await client
+        .validateAuthorizationCode("https://idp/token", "code", null)
+        .catch((e: unknown) => e)) as OAuth2RequestError;
+
+      expect(err).toBeInstanceOf(OAuth2RequestError);
+      expect(err.code).toBe("invalid_request");
+      expect(err.description).toContain("invalid_request");
+    });
+
+    it("throws a descriptive error for non-JSON responses", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("<html>Bad Gateway</html>", {
+          status: 502,
+          headers: { "content-type": "text/html" },
+        }),
       );
 
       const client = new ExtendedOAuth2Client(
@@ -168,7 +210,7 @@ describe("ExtendedOAuth2Client", () => {
       );
       await expect(
         client.validateAuthorizationCode("https://idp/token", "code", null),
-      ).rejects.toBeInstanceOf(OAuth2RequestError);
+      ).rejects.toThrow(/Bad Gateway/);
     });
   });
 });

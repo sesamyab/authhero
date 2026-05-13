@@ -103,24 +103,26 @@ This option is different from `powered_by_logo_url` in the branding API. The `po
 
 A code executor for running user-authored code hooks in a sandboxed environment. If not provided, code hooks are silently skipped.
 
-AuthHero ships two implementations:
+AuthHero ships three implementations:
 
-- **`LocalCodeExecutor`** — Uses `new Function()`, suitable for local development only (no isolation)
-- **`CloudflareCodeExecutor`** — Uses [Cloudflare Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) for isolated, sandboxed execution
+- **`LocalCodeExecutor`** (from `authhero`) — Uses `new Function()`, suitable for local development only (no isolation)
+- **`WorkerLoaderCodeExecutor`** (from `@authhero/cloudflare-adapter`) — Uses [Cloudflare Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) (Worker Loader binding) for isolated, sandboxed execution from in-memory code. No separate deploy step.
+- **`DispatchNamespaceCodeExecutor`** (from `@authhero/cloudflare-adapter`) — Uses [Workers for Platforms](https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/) dispatch namespaces. User code is pre-deployed as individual worker scripts.
 
 ```typescript
-import { init, CloudflareCodeExecutor } from "authhero";
+import { init } from "authhero";
+import { WorkerLoaderCodeExecutor } from "@authhero/cloudflare-adapter";
 
 // Cloudflare Workers environment
 const config: AuthHeroConfig = {
   dataAdapter: adapter,
-  codeExecutor: new CloudflareCodeExecutor({
+  codeExecutor: new WorkerLoaderCodeExecutor({
     loader: env.LOADER, // Worker Loader binding
   }),
 };
 ```
 
-The executor requires a `worker_loaders` binding in your `wrangler.toml`:
+The Worker Loader executor requires a `worker_loaders` binding in your `wrangler.toml`:
 
 ```toml
 [[worker_loaders]]

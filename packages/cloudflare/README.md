@@ -905,26 +905,53 @@ import type {
 } from "@authhero/cloudflare-adapter";
 ```
 
-## Code Executor (Dynamic Workers)
+## Code Executors
 
-For user-authored code hooks (Actions), AuthHero provides a `CloudflareCodeExecutor` in the core `authhero` package that uses [Cloudflare Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) for isolated code execution. This is separate from the cloudflare-adapter but typically used alongside it.
+For user-authored code hooks (Actions), `@authhero/cloudflare-adapter` ships two code executors. Pick one based on how you want user code deployed:
+
+### `WorkerLoaderCodeExecutor` — Dynamic Workers
+
+Spins up isolated workers on demand from in-memory code via the [Worker Loader binding](https://developers.cloudflare.com/dynamic-workers/). No separate deploy step — the code stored in your `actions`/`hookCode` table is loaded into a fresh isolate per hook invocation (with a hash-based cache so the same code stays warm).
 
 ```typescript
-import { CloudflareCodeExecutor, init } from "authhero";
+import { WorkerLoaderCodeExecutor } from "@authhero/cloudflare-adapter";
+import { init } from "authhero";
 
 // Requires a worker_loaders binding in wrangler.toml:
 // [[worker_loaders]]
 // binding = "LOADER"
 
-const codeExecutor = new CloudflareCodeExecutor({
+const codeExecutor = new WorkerLoaderCodeExecutor({
   loader: env.LOADER,
 });
 
-const { app } = init({
-  dataAdapter,
-  codeExecutor,
-});
+const { app } = init({ dataAdapter, codeExecutor });
 ```
+
+### `DispatchNamespaceCodeExecutor` — Workers for Platforms
+
+Invokes user workers that have been pre-deployed as separate scripts in a [dispatch namespace](https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/). The executor's `deploy()` method uploads a script via the Cloudflare API; `execute()` invokes it via the namespace binding.
+
+```typescript
+import { DispatchNamespaceCodeExecutor } from "@authhero/cloudflare-adapter";
+import { init } from "authhero";
+
+// Requires a dispatch_namespaces binding in wrangler.toml:
+// [[dispatch_namespaces]]
+// binding = "DISPATCHER"
+// namespace = "authhero-hooks"
+
+const codeExecutor = new DispatchNamespaceCodeExecutor({
+  accountId: env.CF_ACCOUNT_ID,
+  apiToken: env.CF_API_TOKEN,
+  dispatchNamespace: "authhero-hooks",
+  dispatcher: env.DISPATCHER,
+});
+
+const { app } = init({ dataAdapter, codeExecutor });
+```
+
+> Previously exported as `CloudflareCodeExecutor` from the `authhero` and `@authhero/cloudflare-adapter` packages. That name is still re-exported as a deprecated alias of `DispatchNamespaceCodeExecutor` and will be removed in the next major.
 
 See the [Hooks Guide](https://www.authhero.net/features/hooks#code-executors) for details.
 

@@ -1,5 +1,14 @@
 # @authhero/react-admin
 
+## 0.67.4
+
+### Patch Changes
+
+- 92774c8: Strip null values from `refresh_token` in the client edit form before PATCHing. The numeric fields (`leeway`, `token_lifetime`, `idle_token_lifetime`) are optional on the server and reject null — untouched fields that were null in the stored record were round-tripping back as null on submit and failing validation.
+- 0539c2a: Fix repeated refresh-token calls on every navigation:
+  - Dedupe in-flight access-token requests so concurrent API calls on a cold token cache share a single refresh-token exchange instead of each firing their own.
+  - Fix the cached-token org-match check, which compared the org slug passed as `organization` against the JWT's `org_id` (the resolved id, not the slug). Every cache hit failed the guard and was evicted, forcing a refresh on every click. Now matches against either `org_id` or `org_name`.
+
 ## 0.67.3
 
 ### Patch Changes

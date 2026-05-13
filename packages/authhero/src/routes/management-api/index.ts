@@ -259,18 +259,24 @@ export default function create(config: AuthHeroConfig) {
 
   registerComponent(app);
 
+  // Share the cache adapter with the other apps (u2/auth-api/universal-login/saml)
+  // so management-api writes invalidate entries those apps may have cached.
+  // Without this, a PATCH to /api/v2/clients/:id would update the row but leave
+  // u2/auth-api serving the stale enriched client for up to 300s.
+  const cacheAdapter =
+    config.dataAdapter.cache ||
+    createInMemoryCache({
+      defaultTtlSeconds: 0,
+      maxEntries: 100,
+      cleanupIntervalMs: 0,
+    });
+
   // Apply decorator chain (hooks, caching, timing) on top of base adapters
   const applyDecorators = (
     ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
     data: DataAdapters,
   ): DataAdapters => {
     const dataWithHooks = addDataHooks(ctx, data);
-
-    const cacheAdapter = createInMemoryCache({
-      defaultTtlSeconds: 0,
-      maxEntries: 100,
-      cleanupIntervalMs: 0,
-    });
 
     const cachedData = addCaching(dataWithHooks, {
       defaultTtl: 0,

@@ -134,7 +134,7 @@ Create `src/index.ts`:
 ```typescript
 import { initMultiTenant } from "@authhero/multi-tenancy";
 import { createCloudflareD1Adapter } from "@authhero/cloudflare";
-import { CloudflareCodeExecutor } from "authhero";
+import { WorkerLoaderCodeExecutor } from "@authhero/cloudflare-adapter";
 
 interface Env {
   AUTH_DB: D1Database;
@@ -144,11 +144,11 @@ interface Env {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const dataAdapter = createCloudflareD1Adapter(env.AUTH_DB);
-    
+
     const { app } = initMultiTenant({
       dataAdapter,
       // Enable user-authored code hooks via Dynamic Workers
-      codeExecutor: new CloudflareCodeExecutor({
+      codeExecutor: new WorkerLoaderCodeExecutor({
         loader: env.LOADER,
       }),
     });

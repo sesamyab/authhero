@@ -13,6 +13,7 @@ import type {
   UiScreen,
   FormNodeComponent,
   Organization,
+  Tenant,
 } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import { getLoginPath } from "./types";
@@ -20,6 +21,12 @@ import { getAuthCookie } from "../../../utils/cookies";
 import { RedirectException } from "../../../errors/redirect-exception";
 import { escapeHtml } from "../sanitization-utils";
 import { fetchAll } from "../../../utils/fetchAll";
+import { MANAGEMENT_API_AUDIENCE } from "../../../middlewares/authentication";
+
+// Permission required on a child tenant's control-plane org for the user to
+// register a DCR client against that tenant. Mirrors the Management API
+// scope a caller would need to POST /clients directly.
+const DCR_REGISTER_PERMISSION = "create:clients";
 
 interface ConnectConsentData {
   integration_type?: string;
@@ -71,26 +78,121 @@ function buildReturn(
   return url.toString();
 }
 
+async function roleGrantsManagementPermission(
+  context: ScreenContext,
+  roleId: string,
+  permissionName: string,
+  audience: string | null,
+): Promise<boolean> {
+  const { ctx, tenant } = context;
+  const permissions = await ctx.env.data.rolePermissions.list(
+    tenant.id,
+    roleId,
+    { per_page: 1000 },
+  );
+  return permissions.some(
+    (p) =>
+      p.permission_name === permissionName &&
+      (audience === null || p.resource_server_identifier === audience),
+  );
+}
+
+// Mirrors @authhero/multi-tenancy's escape hatch: a user holding
+// `admin:organizations` on a global (non-org-scoped) role can act on any
+// tenant without being a member of its control-plane org.
+async function userHasGlobalOrgAdmin(
+  context: ScreenContext,
+  userId: string,
+): Promise<boolean> {
+  const { ctx, tenant } = context;
+  const globalRoles = await ctx.env.data.userRoles.list(
+    tenant.id,
+    userId,
+    undefined,
+    "",
+  );
+  for (const role of globalRoles) {
+    if (
+      await roleGrantsManagementPermission(
+        context,
+        role.id,
+        "admin:organizations",
+        null,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function userCanRegisterOnOrg(
+  context: ScreenContext,
+  userId: string,
+  organizationId: string,
+): Promise<boolean> {
+  const { ctx, tenant } = context;
+  const roles = await ctx.env.data.userRoles.list(
+    tenant.id,
+    userId,
+    undefined,
+    organizationId,
+  );
+  for (const role of roles) {
+    if (
+      await roleGrantsManagementPermission(
+        context,
+        role.id,
+        DCR_REGISTER_PERMISSION,
+        MANAGEMENT_API_AUDIENCE,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function listUserTenantOptions(
   context: ScreenContext,
   userId: string,
 ): Promise<TenantOption[]> {
   const { ctx, tenant } = context;
+  const controlPlaneTenantId = tenant.id;
+
+  // Global escape hatch — see userHasGlobalOrgAdmin. List every tenant
+  // (minus the control plane itself) since the user can register on any.
+  if (await userHasGlobalOrgAdmin(context, userId)) {
+    const allTenants = await fetchAll<Tenant>(
+      (params) => ctx.env.data.tenants.list(params),
+      "tenants",
+    );
+    return allTenants
+      .filter((t) => t.id !== controlPlaneTenantId)
+      .map((t) => ({ id: t.id, display_name: t.friendly_name || t.id }));
+  }
+
   const organizations = await fetchAll<Organization>(
     (params) =>
       ctx.env.data.userOrganizations.listUserOrganizations(
-        tenant.id,
+        controlPlaneTenantId,
         userId,
         params,
       ),
     "organizations",
   );
 
-  // Org name maps 1:1 to a child tenant id (see provisioning hooks).
+  // Org name maps 1:1 to a child tenant id (see provisioning hooks). DCR
+  // targets child tenants only, so the control plane itself is never a valid
+  // pick — even if the user happens to be a member of its self-org. For the
+  // rest, require the same Management API permission a direct POST /clients
+  // would need, scoped to the user's role on that org.
   const resolved = await Promise.all(
     organizations.map(async (org): Promise<TenantOption | null> => {
+      if (org.name === controlPlaneTenantId) return null;
       const childTenant = await ctx.env.data.tenants.get(org.name);
       if (!childTenant) return null;
+      if (!(await userCanRegisterOnOrg(context, userId, org.id))) return null;
       return {
         id: org.name,
         display_name: org.display_name || childTenant.friendly_name || org.name,

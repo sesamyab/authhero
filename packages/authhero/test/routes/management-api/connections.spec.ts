@@ -426,4 +426,71 @@ describe("connections", () => {
       expect(conn.options?.twilio_token).toBeUndefined();
     }
   });
+
+  it("should preserve existing secrets when PATCH omits them", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+
+    const token = await getAdminToken();
+
+    const createResponse = await managementClient.connections.$post(
+      {
+        json: {
+          name: "jumpcloud",
+          strategy: "oidc",
+          options: {
+            client_id: "jc-client",
+            client_secret: "jc-secret",
+            app_secret: "app-secret",
+            twilio_token: "twilio-secret",
+            token_endpoint_auth_method: "client_secret_post",
+          },
+        },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(createResponse.status).toBe(201);
+    const created = (await createResponse.json()) as Connection;
+
+    // PATCH with options but no secret fields — secrets must survive.
+    const patchResponse = await managementClient.connections[":id"].$patch(
+      {
+        param: { id: created.id },
+        json: {
+          options: {
+            client_id: "jc-client",
+            token_endpoint_auth_method: "client_secret_basic",
+          },
+        },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(patchResponse.status).toBe(200);
+
+    const stored = await env.data.connections.get("tenantId", created.id);
+    expect(stored?.options?.client_secret).toBe("jc-secret");
+    expect(stored?.options?.app_secret).toBe("app-secret");
+    expect(stored?.options?.twilio_token).toBe("twilio-secret");
+    expect(stored?.options?.token_endpoint_auth_method).toBe(
+      "client_secret_basic",
+    );
+
+    // PATCH that explicitly sets a new secret must overwrite the old one.
+    const rotateResponse = await managementClient.connections[":id"].$patch(
+      {
+        param: { id: created.id },
+        json: { options: { client_secret: "rotated" } },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(rotateResponse.status).toBe(200);
+
+    const rotated = await env.data.connections.get("tenantId", created.id);
+    expect(rotated?.options?.client_secret).toBe("rotated");
+    expect(rotated?.options?.app_secret).toBe("app-secret");
+    expect(rotated?.options?.twilio_token).toBe("twilio-secret");
+  });
 });
