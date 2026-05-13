@@ -22,6 +22,7 @@ import { getConfigValue } from "../../utils/runtimeConfig";
 import { createManagementClient } from "../../authProvider";
 import { resolveApiBase } from "../../dataProvider";
 import { useTenantId } from "../../TenantContext";
+import { ActionTestPanel } from "./test-panel";
 
 const triggerChoices = [
   { id: "post-login", name: "Post Login" },
@@ -160,6 +161,7 @@ export function ActionEdit() {
         <Labeled label={<FieldTitle source="updated_at" />}>
           <DateField source="updated_at" showTime />
         </Labeled>
+        <ActionTestPanel />
       </SimpleForm>
     </Edit>
   );

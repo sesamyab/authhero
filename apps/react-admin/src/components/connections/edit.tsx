@@ -93,6 +93,12 @@ function ConnectionTabbedFrom() {
                 label="Client Secret"
                 style={{ width: "800px" }}
               />
+              <TextInput
+                source="options.callback_url"
+                label="Callback URL Override"
+                helperText="Optional. Pin the redirect_uri sent to the upstream IdP. Leave blank to use the request's host (custom domain or default). Must be registered as an allowed redirect URI at the upstream IdP."
+                fullWidth
+              />
             </>
           )}
 
@@ -137,12 +143,24 @@ function ConnectionTabbedFrom() {
           )}
 
           {record?.strategy === "oidc" && (
-            <TextInput
-              source="name"
-              label="Name"
-              helperText="Unique identifier name for the connection"
-              fullWidth
-            />
+            <>
+              <TextInput
+                source="name"
+                label="Name"
+                helperText="Unique identifier name for the connection"
+                fullWidth
+              />
+              <SelectInput
+                source="options.token_endpoint_auth_method"
+                label="Token Endpoint Auth Method"
+                helperText="How client credentials are sent to the token endpoint. Use 'client_secret_post' for providers like JumpCloud that reject HTTP Basic."
+                choices={[
+                  { id: "client_secret_basic", name: "Client Secret Basic" },
+                  { id: "client_secret_post", name: "Client Secret Post" },
+                ]}
+                defaultValue="client_secret_basic"
+              />
+            </>
           )}
 
           {["oauth2", "oidc"].includes(record?.strategy) && (

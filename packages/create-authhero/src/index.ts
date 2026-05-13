@@ -257,15 +257,19 @@ function generateLocalSeedFileContent(
   // requires either an explicit audience or a tenant default_audience to mint
   // an access token, so set one here for the conformance setup.
   // enable_dynamic_client_registration is required by the OIDCC dynamic plan,
-  // which has the suite register its own client via /oidc/register. Existing
-  // flags (e.g. inherit_global_permissions_in_organizations set by seed for
-  // the control-plane tenant) are merged in so the update doesn't clobber.
+  // which has the suite register its own client via /oidc/register. The
+  // OIDCC dynamic_client variant uses open DCR (no Initial Access Token), so
+  // dcr_require_initial_access_token must be flipped off — the AuthHero
+  // default is to require an IAT. Existing flags (e.g.
+  // inherit_global_permissions_in_organizations set by seed for the
+  // control-plane tenant) are merged in so the update doesn't clobber.
   const existingTenant = await adapters.tenants.get("${tenantId}");
   await adapters.tenants.update("${tenantId}", {
     default_audience: "urn:authhero:management",
     flags: {
       ...(existingTenant?.flags ?? {}),
       enable_dynamic_client_registration: true,
+      dcr_require_initial_access_token: false,
     },
   });
   console.log("✅ Set tenant default_audience and enabled DCR for conformance");

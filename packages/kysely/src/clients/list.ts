@@ -132,6 +132,8 @@ export function list(db: Kysely<Database>) {
         require_pushed_authorization_requests:
           !!result.require_pushed_authorization_requests,
         require_proof_of_possession: !!result.require_proof_of_possession,
+        disable_sign_ups: !!result.disable_sign_ups,
+        hide_sign_up_disabled_error: !!result.hide_sign_up_disabled_error,
         // Parse JSON string fields back to objects/arrays
         callbacks: JSON.parse(result.callbacks),
         allowed_origins: JSON.parse(result.allowed_origins),

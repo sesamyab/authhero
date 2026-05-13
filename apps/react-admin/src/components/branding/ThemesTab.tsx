@@ -2,6 +2,10 @@ import { TextInput, NumberInput, BooleanInput, SelectInput } from "react-admin";
 import { ColorInput } from "react-admin-color-picker";
 import { Box, Typography, Divider } from "@mui/material";
 
+// Emit "" instead of null when cleared, matching Auth0's PATCH semantics:
+// an omitted key means "no change", an empty string clears the value.
+const keepEmptyString = (v: string | null | undefined) => v ?? "";
+
 export function ThemesTab() {
   return (
     <Box sx={{ maxWidth: 800, padding: 2 }}>
@@ -174,7 +178,12 @@ export function ThemesTab() {
       <Typography variant="h6" sx={{ mb: 2 }}>
         Fonts
       </Typography>
-      <TextInput source="themes.fonts.font_url" label="Font URL" fullWidth />
+      <TextInput
+        source="themes.fonts.font_url"
+        label="Font URL"
+        fullWidth
+        parse={keepEmptyString}
+      />
       <NumberInput
         source="themes.fonts.reference_text_size"
         label="Reference Text Size"
@@ -224,6 +233,7 @@ export function ThemesTab() {
           source="themes.page_background.background_image_url"
           label="Background Image URL"
           fullWidth
+          parse={keepEmptyString}
         />
         <SelectInput
           source="themes.page_background.page_layout"
@@ -290,7 +300,12 @@ export function ThemesTab() {
         />
       </Box>
 
-      <TextInput source="themes.widget.logo_url" label="Logo URL" fullWidth />
+      <TextInput
+        source="themes.widget.logo_url"
+        label="Logo URL"
+        fullWidth
+        parse={keepEmptyString}
+      />
     </Box>
   );
 }

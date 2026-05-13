@@ -34,6 +34,7 @@ import {
 import { PromptsList, PromptsEdit } from "./components/prompts";
 import { LogsList, LogShow } from "./components/logs";
 import { ActionCreate, ActionEdit, ActionList } from "./components/actions";
+import { ActionTriggersList } from "./components/action-triggers";
 import { HookEdit, HookList, HooksCreate } from "./components/hooks";
 import { SessionEdit } from "./components/sessions";
 import {
@@ -48,6 +49,7 @@ import {
   OrganizationList,
 } from "./components/organizations";
 import CodeIcon from "@mui/icons-material/Code";
+import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import WebhookIcon from "@mui/icons-material/Webhook";
 import DnsIcon from "@mui/icons-material/Dns";
 import PaletteIcon from "@mui/icons-material/Palette";
@@ -63,6 +65,8 @@ import {
   AttackProtectionEdit,
 } from "./components/attack-protection";
 import ShieldIcon from "@mui/icons-material/Shield";
+import VpnKeyIcon from "@mui/icons-material/VpnKey";
+import { SigningKeysList } from "./components/signing-keys";
 import { CertificateErrorDialog } from "./components/CertificateErrorDialog";
 import { ActivityDashboard } from "./components/activity";
 import { buildUrlWithProtocol } from "./utils/domainUtils";
@@ -248,6 +252,13 @@ export function App(props: AppProps) {
           list={ActionList}
           create={ActionCreate}
           edit={ActionEdit}
+          options={{ label: "Actions" }}
+        />
+        <Resource
+          icon={PlayCircleIcon}
+          name="action-triggers"
+          list={ActionTriggersList}
+          options={{ label: "Triggers" }}
         />
         <Resource
           icon={WebhookIcon}
@@ -278,6 +289,7 @@ export function App(props: AppProps) {
           create={FlowCreate}
           edit={FlowEdit}
           show={ShowGuesser}
+          options={{ label: "Form Flows" }}
         />
         <Resource
           icon={PaletteIcon}
@@ -327,6 +339,12 @@ export function App(props: AppProps) {
           list={AttackProtectionList}
           edit={AttackProtectionEdit}
           options={{ hasSingle: true, label: "Attack Protection" }}
+        />
+        <Resource
+          icon={VpnKeyIcon}
+          name="signing-keys"
+          list={SigningKeysList}
+          options={{ label: "Signing Keys" }}
         />
         <Resource
           icon={EmailIcon}

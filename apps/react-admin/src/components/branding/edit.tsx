@@ -1,4 +1,4 @@
-import { Edit, TextInput, TabbedForm } from "react-admin";
+import { Edit, TextInput, TabbedForm, SelectInput } from "react-admin";
 import { ColorInput } from "react-admin-color-picker";
 import { useInput, useRecordContext } from "react-admin";
 import { useState, useEffect } from "react";
@@ -6,6 +6,10 @@ import { Box } from "@mui/material";
 import { ThemesTab } from "./ThemesTab";
 import { BrandingPreview } from "./BrandingPreview";
 import { UniversalLoginTab } from "./UniversalLoginTab";
+
+// Emit "" instead of null when cleared, matching Auth0's PATCH semantics:
+// an omitted key means "no change", an empty string clears the value.
+const keepEmptyString = (v: string | null | undefined) => v ?? "";
 
 // Helper to recursively remove null values and empty objects from data
 // This is needed because react-admin sends null for empty form fields,
@@ -173,9 +177,27 @@ function BrandingFormContent() {
           <TabbedForm.Tab label="Style">
             <ColorInput source="colors.primary" label="Primary Color" />
             <PageBackgroundInput source="colors.page_background" />
-            <TextInput source="favicon_url" label="Favicon URL" />
-            <TextInput source="logo_url" label="Logo URL" />
+            <TextInput
+              source="favicon_url"
+              label="Favicon URL"
+              parse={keepEmptyString}
+            />
+            <TextInput
+              source="logo_url"
+              label="Logo URL"
+              parse={keepEmptyString}
+            />
             <TextInput source="font.url" label="Font URL" />
+            <SelectInput
+              source="dark_mode"
+              label="Dark Mode"
+              choices={[
+                { id: "auto", name: "Auto (follow system)" },
+                { id: "light", name: "Light" },
+                { id: "dark", name: "Dark" },
+              ]}
+              helperText="Default color scheme for the universal login page. The per-user ah-dark-mode cookie still overrides this at runtime."
+            />
             {/* Preview inside the form context */}
             <Box
               sx={{

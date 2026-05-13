@@ -105,9 +105,9 @@ export async function getTestServer(
     allowed_logout_urls: ["https://example.com/callback"],
     web_origins: ["https://example.com"],
     client_metadata: {
-      disable_sign_ups: "false",
       email_validation: "disabled",
     },
+    disable_sign_ups: false,
   });
 
   // Add the email connection

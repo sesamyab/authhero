@@ -150,6 +150,17 @@ export const sqlActionSchema = z.object({
   updated_at_ts: z.number(),
 });
 
+export const sqlActionExecutionSchema = z.object({
+  id: z.string(),
+  tenant_id: z.string(),
+  trigger_id: z.string(),
+  status: z.string(),
+  results: z.string(),
+  logs: z.string().optional().nullable(),
+  created_at_ts: z.number(),
+  updated_at_ts: z.number(),
+});
+
 export const sqlActionVersionSchema = z.object({
   id: z.string(),
   tenant_id: z.string(),
@@ -418,6 +429,8 @@ const sqlClientSchema = z.object({
   custom_login_page_on: z.number(),
   require_pushed_authorization_requests: z.number(),
   require_proof_of_possession: z.number(),
+  disable_sign_ups: z.number(),
+  hide_sign_up_disabled_error: z.number(),
   // Convert array/object fields to JSON strings for SQL storage
   callbacks: z.string(),
   allowed_origins: z.string(),
@@ -481,6 +494,7 @@ export const sqlAuthenticationMethodSchema = z.object({
 
 export interface Database {
   actions: z.infer<typeof sqlActionSchema>;
+  action_executions: z.infer<typeof sqlActionExecutionSchema>;
   action_versions: z.infer<typeof sqlActionVersionSchema>;
   flows: z.infer<typeof sqlFlowSchema>;
   branding: z.infer<typeof sqlBrandingSchema>;

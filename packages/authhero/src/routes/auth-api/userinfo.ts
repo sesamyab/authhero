@@ -3,7 +3,10 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Bindings, Variables } from "../../types";
 import { JSONHTTPException } from "../../errors/json-http-exception";
 import { validateJwtToken, JwtPayload } from "../../utils/jwt";
-import { buildScopeClaims } from "../../helpers/scope-claims";
+import {
+  buildScopeClaims,
+  buildRequestedClaims,
+} from "../../helpers/scope-claims";
 import type { User } from "@authhero/adapter-interfaces";
 
 // OIDC Address Claim schema per OIDC Core 5.1.1
@@ -46,12 +49,34 @@ const userInfoSchema = z.object({
 
 type UserInfoResponse = z.infer<typeof userInfoSchema>;
 
-function buildUserInfoResponse(user: User, scopes: string[]) {
+function isObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object";
+}
+
+// OIDC Core 5.5 — pull the list of requested userinfo claim names off the
+// access token payload. The mint stamps `requested_userinfo_claims` as an
+// array of strings; defensive guards keep this honest against tokens
+// minted by older code paths or hand-crafted in tests.
+function extractRequestedUserinfoClaims(tokenPayload: unknown): string[] {
+  if (!isObject(tokenPayload)) return [];
+  const raw = tokenPayload.requested_userinfo_claims;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((v): v is string => typeof v === "string");
+}
+
+function buildUserInfoResponse(
+  user: User,
+  scopes: string[],
+  requestedClaims: string[] = [],
+) {
   // sub is the only claim always included (OIDC Core 5.3.2). Scope-driven
-  // claims are shared with the ID Token via buildScopeClaims.
+  // claims are shared with the ID Token via buildScopeClaims. Individually
+  // requested claims (OIDC Core 5.5 `claims.userinfo`) are merged on top,
+  // regardless of scope.
   return {
     sub: user.user_id,
     ...buildScopeClaims(user, scopes),
+    ...buildRequestedClaims(user, requestedClaims),
   };
 }
 
@@ -122,9 +147,10 @@ export const userinfoRoutes = new OpenAPIHono<{
       // Get scope from token payload (ctx.var.user contains full JWT payload)
       const tokenPayload = ctx.var.user;
       const scopes = tokenPayload?.scope?.split(" ") || [];
+      const requestedClaims = extractRequestedUserinfoClaims(tokenPayload);
 
-      // Build initial userinfo response based on scopes
-      const baseUserInfo = buildUserInfoResponse(user, scopes);
+      // Build initial userinfo response based on scopes + requested claims
+      const baseUserInfo = buildUserInfoResponse(user, scopes, requestedClaims);
 
       // Call onFetchUserInfo hook if configured
       const onFetchUserInfo = ctx.env.hooks?.onFetchUserInfo;
@@ -279,9 +305,10 @@ export const userinfoRoutes = new OpenAPIHono<{
 
       // Get scopes from the token
       const scopes = tokenPayload?.scope?.split(" ") || [];
+      const requestedClaims = extractRequestedUserinfoClaims(tokenPayload);
 
-      // Build initial userinfo response based on scopes
-      const baseUserInfo = buildUserInfoResponse(user, scopes);
+      // Build initial userinfo response based on scopes + requested claims
+      const baseUserInfo = buildUserInfoResponse(user, scopes, requestedClaims);
 
       // Call onFetchUserInfo hook if configured
       const onFetchUserInfo = ctx.env.hooks?.onFetchUserInfo;

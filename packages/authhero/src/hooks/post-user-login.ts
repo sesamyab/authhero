@@ -15,7 +15,12 @@ import { startLoginSessionHook } from "../authentication-flows/common";
 import { isFormHook, handleFormHook } from "./formhooks";
 import { isPageHook, handlePageHook } from "./pagehooks";
 import { isTemplateHook, handleTemplateHook } from "./templatehooks";
-import { isCodeHook, handleCodeHook } from "./codehooks";
+import {
+  isCodeHook,
+  handleCodeHook,
+  persistActionExecution,
+  HandleCodeHookOutcome,
+} from "./codehooks";
 import { invokeHooks } from "./webhooks";
 import { createTokenAPI } from "./helpers/token-api";
 
@@ -106,7 +111,9 @@ async function buildEnhancedEventObject(
   }
 
   // Get countryCode from context (set by clientInfoMiddleware)
-  const countryCode = ctx.get("countryCode");
+  const countryCode = ctx.var?.countryCode;
+  const ip = ctx.var?.ip;
+  const userAgent = ctx.var?.useragent;
 
   return {
     // AuthHero specific
@@ -117,8 +124,8 @@ async function buildEnhancedEventObject(
     user: stripInternalUserFields(user),
     request: {
       asn: undefined, // ASN not available in current context variables
-      ip: ctx.get("ip") || "",
-      user_agent: ctx.get("useragent"),
+      ip: ip || "",
+      user_agent: userAgent,
       method: ctx.req.method,
       url: ctx.req.url,
       geoip: {
@@ -189,10 +196,10 @@ async function buildEnhancedEventObject(
         },
       ],
       device: {
-        initial_ip: ctx.get("ip"),
-        initial_user_agent: ctx.get("useragent"),
-        last_ip: user.last_ip || ctx.get("ip"),
-        last_user_agent: ctx.get("useragent"),
+        initial_ip: ip,
+        initial_user_agent: userAgent,
+        last_ip: user.last_ip || ip,
+        last_user_agent: userAgent,
       },
     },
   };
@@ -252,29 +259,30 @@ export async function postUserLoginHook(
     login_count: user.login_count + 1,
   });
 
+  // Build the Auth0-compatible event once. Reused by both the env-hook
+  // (ctx.env.hooks.onExecutePostLogin) and the code-hook loop below so user
+  // actions see the same `event.client`, `event.connection`, `event.transaction`
+  // etc. that Auth0 exposes.
+  const enhancedEvent =
+    params?.client && params?.authParams && loginSession
+      ? await buildEnhancedEventObject(
+          ctx,
+          data,
+          tenant_id,
+          user,
+          loginSession,
+          {
+            client: params.client,
+            authParams: params.authParams,
+          },
+        )
+      : null;
+
   // Trigger any onExecutePostLogin hooks defined in ctx.env.hooks
-  if (
-    ctx.env.hooks?.onExecutePostLogin &&
-    params?.client &&
-    params?.authParams &&
-    loginSession
-  ) {
+  if (ctx.env.hooks?.onExecutePostLogin && enhancedEvent && loginSession) {
     let redirectUrl: string | null = null;
 
-    // Build enhanced event object with Auth0 compatibility
-    const eventObject = await buildEnhancedEventObject(
-      ctx,
-      data,
-      tenant_id,
-      user,
-      loginSession,
-      {
-        client: params.client,
-        authParams: params.authParams,
-      },
-    );
-
-    await ctx.env.hooks.onExecutePostLogin(eventObject, {
+    await ctx.env.hooks.onExecutePostLogin(enhancedEvent, {
       prompt: {
         render: (_formId: string) => {},
       },
@@ -384,43 +392,63 @@ export async function postUserLoginHook(
         hook.metadata,
       );
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       logMessage(ctx, tenant_id, {
         type: LogTypes.FAILED_HOOK,
-        description: `Failed to execute template hook: ${hook.template_id}`,
+        description: `Failed to execute template hook ${hook.template_id}: ${message}`,
+        details: {
+          template_id: hook.template_id,
+          trigger_id: "post-user-login",
+          error: message,
+        },
       });
     }
   }
 
-  // Handle code hooks (execute user-authored code)
+  // Handle code hooks (execute user-authored code). Code hooks need the full
+  // Auth0-compatible event (client, transaction, connection, session, …).
+  // If the prerequisites aren't available we skip — same behaviour as
+  // ctx.env.hooks.onExecutePostLogin above, and matches Auth0 which won't
+  // fire post-login actions without a client and session context.
   const codeHooks = postLoginHooks.filter(
     (h: any) => h.enabled && isCodeHook(h),
   );
-  for (const hook of codeHooks) {
-    if (!isCodeHook(hook)) continue;
-    try {
-      await handleCodeHook(
-        ctx,
-        data,
-        hook,
-        {
+  if (enhancedEvent && codeHooks.length > 0) {
+    const outcomes: HandleCodeHookOutcome[] = [];
+    for (const hook of codeHooks) {
+      if (!isCodeHook(hook)) continue;
+      try {
+        const outcome = await handleCodeHook(
           ctx,
-          user,
-          request: {
-            ip: ctx.var.ip || "",
-            user_agent: ctx.var.useragent || "",
-            method: ctx.req.method,
-            url: ctx.req.url,
+          data,
+          hook,
+          enhancedEvent,
+          "post-user-login",
+          {},
+        );
+        if (outcome) outcomes.push(outcome);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        outcomes.push({
+          result: {
+            action_name: hook.code_id,
+            error: { id: "execution_threw", msg: message },
+            started_at: new Date().toISOString(),
+            ended_at: new Date().toISOString(),
           },
-          tenant: { id: tenant_id },
-        } as any,
-        "post-user-login",
-        {},
-      );
-    } catch (err) {
-      logMessage(ctx, tenant_id, {
-        type: LogTypes.FAILED_HOOK,
-        description: `Failed to execute code hook: ${hook.hook_id}`,
-      });
+          logs: [],
+          denied: false,
+        });
+      }
+    }
+    const executionId = await persistActionExecution(
+      data,
+      tenant_id,
+      "post-user-login",
+      outcomes,
+    );
+    if (executionId) {
+      ctx.set("action_execution_id", executionId);
     }
   }
 

@@ -28,6 +28,12 @@ export const hookTemplates: Record<string, HookTemplateMeta> = {
       "Sets the preferred_username claim on tokens based on the username from the primary or linked user",
     trigger_id: "credentials-exchange",
   },
+  "account-linking": {
+    name: "Account Linking",
+    description:
+      "Links a user to an existing primary account with the same verified email. Idempotent — safe to run on every login.",
+    trigger_id: "post-user-login",
+  },
 };
 
 /** All trigger IDs that have at least one template. */

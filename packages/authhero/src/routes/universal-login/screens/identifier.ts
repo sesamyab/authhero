@@ -18,6 +18,8 @@ import {
 import { validateSignupEmail } from "../../../hooks";
 import { getConnectionFromIdentifier } from "../../../utils/username";
 import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
+import { findHrdConnection } from "../../../helpers/hrd";
+import { connectionAuth } from "../../../authentication-flows/connection";
 import { getLoginStrategy } from "../common";
 import generateOTP from "../../../utils/otp";
 import { sendCode, sendLink } from "../../../emails";
@@ -47,12 +49,22 @@ function buildSocialButtons(
 ): FormNodeComponent[] {
   const { connections } = context;
 
-  const socialConnections = connections.filter(
-    (c) =>
-      c.strategy !== Strategy.EMAIL &&
-      c.strategy !== Strategy.SMS &&
-      c.strategy !== Strategy.USERNAME_PASSWORD,
-  );
+  const socialConnections = connections.filter((c) => {
+    if (
+      c.strategy === Strategy.EMAIL ||
+      c.strategy === Strategy.SMS ||
+      c.strategy === Strategy.USERNAME_PASSWORD
+    ) {
+      return false;
+    }
+    // HRD-only by default: connections with domain_aliases are routed via
+    // email-domain matching and hidden from the button row unless the
+    // tenant explicitly opts in with show_as_button.
+    if (c.options?.domain_aliases?.length && c.show_as_button !== true) {
+      return false;
+    }
+    return true;
+  });
 
   if (socialConnections.length === 0) {
     return [];
@@ -238,8 +250,8 @@ export async function identifierScreen(
     (c) => c.strategy === Strategy.USERNAME_PASSWORD,
   );
 
-  // Check if signups are disabled via client metadata or screen_hint=login
-  const signupsDisabled = client.client_metadata?.disable_sign_ups === "true";
+  // Check if signups are disabled via client flag or screen_hint=login
+  const signupsDisabled = client.disable_sign_ups === true;
   const authorizeUrl = context.ctx.var.loginSession?.authorization_url;
   const screenHintLogin =
     authorizeUrl &&
@@ -461,6 +473,39 @@ export const identifierScreenDefinition: ScreenDefinition = {
         };
       }
 
+      // Home Realm Discovery: route to enterprise/social IdP by email domain.
+      if (connectionType === "email") {
+        const hrdConnection = findHrdConnection(
+          normalized,
+          client.connections,
+          ctx.env.STRATEGIES,
+        );
+        if (hrdConnection) {
+          const loginSession = await ctx.env.data.loginSessions.get(
+            client.tenant.id,
+            state,
+          );
+          if (loginSession) {
+            loginSession.authParams.username = normalized;
+            await ctx.env.data.loginSessions.update(
+              client.tenant.id,
+              loginSession.id,
+              loginSession,
+            );
+            const authResult = await connectionAuth(
+              ctx,
+              client,
+              hrdConnection.name,
+              loginSession.authParams,
+            );
+            const location = authResult.headers.get("location");
+            const cookies = authResult.headers.getSetCookie?.() || [];
+            if (location) return { redirect: location, cookies };
+            return { response: authResult };
+          }
+        }
+      }
+
       // Validate username length when connectionType is "username"
       if (connectionType === "username" && requiresUsername) {
         const minLength = identifierConfig.usernameMinLength;
@@ -520,7 +565,7 @@ export const identifierScreenDefinition: ScreenDefinition = {
         user;
 
       if (!hasValidConnection) {
-        const errorMsg = m["invalid-email-format"]();
+        const errorMsg = m.userAccountDoesNotExist();
         return {
           error: errorMsg,
           screen: await identifierScreen({
@@ -531,7 +576,12 @@ export const identifierScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Validate signup if user doesn't exist
+      // Validate signup if user doesn't exist. In enumeration-safe mode
+      // (disable_sign_ups + hide_sign_up_disabled_error) we suppress the
+      // explicit error and let the flow continue past this point as if the
+      // account existed — the OTP/password challenge then fails generically,
+      // hiding the signal that the email is unknown.
+      let silentSignupStub = false;
       if (!user) {
         const validation = await validateSignupEmail(
           ctx,
@@ -542,15 +592,19 @@ export const identifierScreenDefinition: ScreenDefinition = {
         );
 
         if (!validation.allowed) {
-          const errorMsg = validation.reason || m.userAccountDoesNotExist();
-          return {
-            error: errorMsg,
-            screen: await identifierScreen({
-              ...context,
-              prefill: { username },
-              errors: { username: m.userAccountDoesNotExist() },
-            }),
-          };
+          if (client.hide_sign_up_disabled_error === true) {
+            silentSignupStub = true;
+          } else {
+            const errorMsg = validation.reason || m.userAccountDoesNotExist();
+            return {
+              error: errorMsg,
+              screen: await identifierScreen({
+                ...context,
+                prefill: { username },
+                errors: { username: m.userAccountDoesNotExist() },
+              }),
+            };
+          }
         }
       }
 
@@ -601,31 +655,10 @@ export const identifierScreenDefinition: ScreenDefinition = {
         return { screen: await enterPasswordScreen(nextContext) };
       }
 
-      // For code-based login, generate and send OTP
-      let code_id = generateOTP();
-      let existingCode = await ctx.env.data.codes.get(
-        client.tenant.id,
-        code_id,
-        "otp",
-      );
-
-      while (existingCode) {
-        code_id = generateOTP();
-        existingCode = await ctx.env.data.codes.get(
-          client.tenant.id,
-          code_id,
-          "otp",
-        );
-      }
-
-      await ctx.env.data.codes.create(client.tenant.id, {
-        code_id,
-        code_type: "otp",
-        login_id: loginSession.id,
-        expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
-        redirect_uri: loginSession.authParams.redirect_uri,
-      });
-
+      // For code-based login, generate and send OTP. Skip code creation and
+      // delivery in the enumeration-safe stub path: the user will see the
+      // challenge screen, but any code they enter will fail to verify (no
+      // code was registered for this session).
       const connection = client.connections.find(
         (p) => p.strategy === connectionType,
       );
@@ -635,22 +668,48 @@ export const identifierScreenDefinition: ScreenDefinition = {
         ?.split(" ")
         ?.map((locale: string) => locale.split("-")[0])[0];
 
-      if (
-        connectionType === "email" &&
-        connection?.options?.authentication_method === "magic_link"
-      ) {
-        await sendLink(ctx, {
-          to: normalized,
-          code: code_id,
-          authParams: loginSession.authParams,
-          language,
+      if (!silentSignupStub) {
+        let code_id = generateOTP();
+        let existingCode = await ctx.env.data.codes.get(
+          client.tenant.id,
+          code_id,
+          "otp",
+        );
+
+        while (existingCode) {
+          code_id = generateOTP();
+          existingCode = await ctx.env.data.codes.get(
+            client.tenant.id,
+            code_id,
+            "otp",
+          );
+        }
+
+        await ctx.env.data.codes.create(client.tenant.id, {
+          code_id,
+          code_type: "otp",
+          login_id: loginSession.id,
+          expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
+          redirect_uri: loginSession.authParams.redirect_uri,
         });
-      } else {
-        await sendCode(ctx, {
-          to: normalized,
-          code: code_id,
-          language,
-        });
+
+        if (
+          connectionType === "email" &&
+          connection?.options?.authentication_method === "magic_link"
+        ) {
+          await sendLink(ctx, {
+            to: normalized,
+            code: code_id,
+            authParams: loginSession.authParams,
+            language,
+          });
+        } else {
+          await sendCode(ctx, {
+            to: normalized,
+            code: code_id,
+            language,
+          });
+        }
       }
 
       // Return appropriate screen based on connection type and auth method

@@ -277,13 +277,9 @@ export function themeToCssVars(theme?: WidgetTheme): Record<string, string> {
       vars["--ah-color-primary"] = c.primary_button;
       vars["--ah-color-primary-hover"] = c.primary_button;
 
-      // Auto-compute text-on-primary for contrast
-      const hasGoodExplicit =
-        c.primary_button_label &&
-        wcagContrastRatio(c.primary_button_label, c.primary_button) >= 4.5;
-
-      if (hasGoodExplicit) {
-        vars["--ah-color-text-on-primary"] = c.primary_button_label!;
+      // Honor explicit primary_button_label when set; otherwise auto-pick.
+      if (c.primary_button_label) {
+        vars["--ah-color-text-on-primary"] = c.primary_button_label;
       } else {
         vars["--ah-color-text-on-primary"] = autoTextColor(
           c.primary_button,

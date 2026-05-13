@@ -121,7 +121,7 @@ The OpenID Foundation's Basic OP certification suite. Variant: `{ server_metadat
 | `oidcc-userinfo-get` | `GET /userinfo` with bearer token returns claims. | ✅ |
 | `oidcc-userinfo-post-header` | `POST /userinfo` with `Authorization: Bearer …` returns claims. | ✅ |
 | `oidcc-userinfo-post-body` | `POST /userinfo` with `access_token` in form body returns claims. | ✅ |
-| `oidcc-claims-essential` | `claims` parameter with `essential: true` claims is honored. | 🟡 WARNING (tracked in [#781](https://github.com/markusahlstrand/authhero/issues/781)) |
+| `oidcc-claims-essential` | `claims` parameter with `essential: true` claims is honored. | ✅ |
 :::
 
 ::: details Scopes (5 modules, all ✅)
@@ -184,7 +184,6 @@ Same module set as the Basic plan, but every authorization response is delivered
 Adding this plan exercises the form-post code path end-to-end without re-implementing every Basic-flow assertion. Module behavior matches the Basic plan tables above, with two notable points:
 
 - `oidcc-ensure-post-request-succeeds` runs the same `POST /authorize` check, but the *response* leg lands at the redirect URI as `application/x-www-form-urlencoded` rather than a `?query=…` redirect.
-- `oidcc-claims-essential` carries the same WARNING as the Basic plan, tracked in [#781](https://github.com/markusahlstrand/authhero/issues/781).
 
 The `response_modes_supported` discovery entry includes `form_post`, so AuthHero is eligible for this plan with no extra configuration.
 

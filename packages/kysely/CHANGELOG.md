@@ -1,5 +1,36 @@
 # @authhero/kysely-adapter
 
+## 10.136.0
+
+### Minor Changes
+
+- 1ea694f: Add an Auth0-compatible **Actions Executions** API.
+  - New `action_executions` storage entity and adapter (`get`, `create`).
+  - New management API endpoint `GET /api/v2/actions/executions/:id` returning the Auth0-shape execution object (`id`, `trigger_id`, `status`, `results[]`, `created_at`, `updated_at`). See https://auth0.com/docs/api/management/v2/actions/get-execution.
+  - Per-action console output is now captured and exposed via the AuthHero-specific endpoint `GET /api/v2/actions/executions/:id/logs` (Auth0 keeps these in a separate real-time logs stream rather than the executions API; we co-locate them so admins have one place to look).
+  - New dry-run endpoint `POST /api/v2/actions/actions/:id/test` runs an action through the executor with a caller-supplied event payload and returns the result synchronously. Does not persist an execution or replay API calls.
+  - The hook runtime now writes one execution record per trigger fire (post-login, credentials-exchange, pre-/post-user-registration), aggregating each action's result into the `results[]` array — matching Auth0's per-trigger semantics. Per-hook `sh`/`fh` log entries are no longer emitted from action paths; the credentials-exchange path stamps the resulting tenant log with `details.execution_id` so admins can navigate from a log entry to the execution detail.
+  - React-admin: action edit page gets a "Test action" panel with per-trigger payload fixtures; the log detail view gets an "Action Execution" tab that resolves `details.execution_id` and shows per-action timings, errors, and captured console output.
+
+  The internal trigger id `post-user-login` is normalized to Auth0's `post-login` when persisted in execution records.
+
+  The Drizzle adapter ships an `actionExecutions` stub that throws — same pattern as the existing `actions` stub — since action storage is not yet implemented for Drizzle. Use the Kysely adapter when actions are needed.
+
+- 1ea694f: Promote `disable_sign_ups` from `client_metadata` to a typed top-level `boolean` field on `Client`, and add a new `hide_sign_up_disabled_error` flag for enumeration-safe sign-up blocking.
+
+  When `disable_sign_ups` is true and `hide_sign_up_disabled_error` is also true, the identifier screen no longer reveals that an email is unknown: it advances to the OTP/password challenge as if the account existed and fails generically at credential check. Skips OTP/magic-link delivery to unknown addresses in this stub path. Useful for tenants where email enumeration is a stronger concern than the UX cost of stranded users.
+
+  Adds a migration that copies `client_metadata.disable_sign_ups = "true"` into the new column and removes the key from `client_metadata` so there is a single source of truth going forward. The legacy `client_metadata.disable_sign_ups` key is no longer read by the engine.
+
+### Patch Changes
+
+- 1ea694f: Hook dispatch now honors `priority` order. `hooks.list` returns rows ordered by `priority` desc with `created_at_ts` asc as tiebreaker, so the order configured in the Actions Triggers UI (and any other priority you set) determines the runtime execution order. Previously hooks ran in arbitrary DB order. Callers that pass an explicit `sort` keep that behavior.
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+  - @authhero/adapter-interfaces@1.19.0
+
 ## 10.135.0
 
 ### Minor Changes

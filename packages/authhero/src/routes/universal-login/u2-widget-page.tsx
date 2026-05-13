@@ -474,7 +474,7 @@ function buildPageCss(opts: {
       --ah-legal-fg:       rgba(15,17,21,0.5);
       --ah-legal-fg-hover: rgba(15,17,21,0.9);
       --ah-legal-sep:      rgba(15,17,21,0.2);
-      --ah-bg-tint: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.15) 100%);
+      --ah-bg-tint: transparent;
     }
 
     @media (prefers-color-scheme: light) {
@@ -491,7 +491,7 @@ function buildPageCss(opts: {
         --ah-legal-fg:       rgba(15,17,21,0.5);
         --ah-legal-fg-hover: rgba(15,17,21,0.9);
         --ah-legal-sep:      rgba(15,17,21,0.2);
-        --ah-bg-tint: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.15) 100%);
+        --ah-bg-tint: transparent;
       }
     }
 

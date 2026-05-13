@@ -30,7 +30,7 @@ export async function validateSignupEmail(
   connection: string = "email",
 ): Promise<{ allowed: boolean; reason?: string }> {
   // Check the disabled flag on the client
-  if (client.client_metadata?.disable_sign_ups === "true") {
+  if (client.disable_sign_ups) {
     const authorizeUrl = ctx.var.loginSession?.authorization_url;
 
     // Check if screen_hint=signup was specified in the authorization URL

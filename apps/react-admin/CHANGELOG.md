@@ -1,5 +1,38 @@
 # @authhero/react-admin
 
+## 0.67.3
+
+### Patch Changes
+
+- 1ea694f: OIDC connections can now choose how client credentials are sent to the upstream token endpoint via `options.token_endpoint_auth_method` (`client_secret_basic` — default — or `client_secret_post`). This fixes providers like JumpCloud that reject HTTP Basic auth at the token endpoint with `invalid_client`. The setting is editable in the react-admin connection form on the OIDC strategy.
+
+  Under the hood the OIDC strategy uses `ExtendedOAuth2Client`, a small subclass of arctic's `OAuth2Client` (`strategies/internal-oauth2.ts`) that overrides `validateAuthorizationCode` for the `client_secret_post` path. Arctic's PKCE/URL/auth-URL logic and `OAuth2Tokens` shape are reused unchanged. Other strategies (Apple, Facebook, GitHub, Google, Microsoft, Vipps, generic OAuth2) still use arctic directly — they will be migrated in a follow-up PR.
+
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+  - @authhero/adapter-interfaces@1.19.0
+
+## 0.67.2
+
+### Patch Changes
+
+- e1c52f0: Fix branding URL fields (background image, logo, favicon, font URL) that couldn't be cleared from the admin UI. React-admin's default `TextInput` converts emptied input back to `null`, and `transformBranding` then strips null keys before submitting — so the PATCH body omitted the cleared field, which the server's deep-merge treats as "no change". The cleared value silently persisted. The clearable URL inputs in `branding/edit.tsx` and `branding/ThemesTab.tsx` now emit `""` instead of `null`, matching Auth0's PATCH semantics (omitted key = no change, empty string = clear).
+- de79c2a: Connection callback URLs now match Auth0's default. Previously `getConnectionCallbackUrl` always returned `${env.ISSUER}callback` regardless of the request host. The fallback now returns `${customDomain ?? env.ISSUER}login/callback` — honoring custom domains and using Auth0's `/login/callback` path instead of the legacy `/callback`.
+
+  Existing connections with the legacy `/callback` URL registered at the upstream IdP should be pinned by setting `options.callback_url` to the exact previously-implicit URL (e.g. `https://auth2.example.com/callback`) before deploying — otherwise the upstream IdP will reject the new redirect_uri. For inherited/control-plane connections this only needs to be set once on the control-plane row; child tenants pick it up via settings inheritance. The override is now editable in the react-admin connection form. The legacy `/callback` route remains mounted (deprecated) so pinned URLs keep working.
+
+- e1c52f0: Fix client edit form sending `null` for cleared `refresh_token.leeway`, `refresh_token.token_lifetime`, and `refresh_token.idle_token_lifetime` fields. The API schema marks these as optional numbers (undefined OK, null rejected), so saving a client with any of them empty failed with `Expected number, received null`. The `NumberInput`s now parse empty/cleared values to `undefined` so the keys are omitted from the payload.
+
+## 0.67.1
+
+### Patch Changes
+
+- b221917: Fix blank spinner on refresh of deep URLs in production.
+
+  The Vite build emits relative asset paths (`./assets/index-*.js`) so the same bundle can be served from any base path. On Vercel — where nothing injects a `<base>` — refreshing a deep URL like `/:tenantId/users/abc` made the browser resolve `./assets/...` against the current path, hit the SPA catch-all rewrite, and get served `index.html` instead of the JS bundle, leaving the page stuck on the static loading spinner. Added `<base href="/" />` to `index.html` so the relative paths anchor to the origin. The Docker entrypoint still injects `<base href="/admin/" />` ahead of this one, and per HTML spec only the first `<base>` element is honored, so the `/admin` deployment is unaffected.
+
 ## 0.67.0
 
 ### Minor Changes

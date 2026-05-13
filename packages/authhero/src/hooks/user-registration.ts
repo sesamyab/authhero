@@ -8,7 +8,12 @@ import { JSONHTTPException } from "../errors/json-http-exception";
 import { HookRequest } from "../types/Hooks";
 import { enqueuePostHookEvent } from "../helpers/hook-events";
 import { commitUserHook } from "./link-users";
-import { isCodeHook, handleCodeHook } from "./codehooks";
+import {
+  isCodeHook,
+  handleCodeHook,
+  persistActionExecution,
+  HandleCodeHookOutcome,
+} from "./codehooks";
 import { isTemplateHook, handleTemplateHook } from "./templatehooks";
 import { createTokenAPI } from "./helpers/token-api";
 import { preUserSignupHook } from "./validate-signup";
@@ -90,9 +95,11 @@ export function createUserHooks(
         if (err instanceof HTTPException) {
           throw err;
         }
+        const message = err instanceof Error ? err.message : String(err);
         logMessage(ctx, tenant_id, {
           type: LogTypes.FAILED_SIGNUP,
-          description: "Pre user registration hook failed",
+          description: `Pre user registration hook failed: ${message}`,
+          details: { error: message },
         });
       }
     }
@@ -108,13 +115,14 @@ export function createUserHooks(
       const preRegCodeHooks = allHooks
         .filter((h) => h.enabled)
         .filter(isCodeHook);
+      const outcomes: HandleCodeHookOutcome[] = [];
       for (const hook of preRegCodeHooks) {
         try {
-          await handleCodeHook(
+          const outcome = await handleCodeHook(
             ctx,
             data,
             hook,
-            { ctx, user, request } as any,
+            { ctx, user, request },
             "pre-user-registration",
             {
               user: {
@@ -136,15 +144,53 @@ export function createUserHooks(
               },
             },
           );
+          if (outcome) outcomes.push(outcome);
         } catch (err) {
           if (err instanceof HTTPException) {
+            // api.access.deny — record before re-throwing so the canceled
+            // execution is persisted and discoverable.
+            outcomes.push({
+              result: {
+                action_name: hook.code_id,
+                error: {
+                  id: "access_denied",
+                  msg: err instanceof Error ? err.message : String(err),
+                },
+                started_at: new Date().toISOString(),
+                ended_at: new Date().toISOString(),
+              },
+              logs: [],
+              denied: true,
+            });
+            await persistActionExecution(
+              data,
+              tenant_id,
+              "pre-user-registration",
+              outcomes,
+            );
             throw err;
           }
-          logMessage(ctx, tenant_id, {
-            type: LogTypes.FAILED_SIGNUP,
-            description: `Pre user registration code hook ${hook.hook_id} failed`,
+          const message = err instanceof Error ? err.message : String(err);
+          outcomes.push({
+            result: {
+              action_name: hook.code_id,
+              error: { id: "execution_threw", msg: message },
+              started_at: new Date().toISOString(),
+              ended_at: new Date().toISOString(),
+            },
+            logs: [],
+            denied: false,
           });
         }
+      }
+      const executionId = await persistActionExecution(
+        data,
+        tenant_id,
+        "pre-user-registration",
+        outcomes,
+      );
+      if (executionId) {
+        ctx.set("action_execution_id", executionId);
       }
     }
 
@@ -193,9 +239,11 @@ export function createUserHooks(
             },
           );
         } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
           logMessage(ctx, tenant_id, {
             type: LogTypes.FAILED_SIGNUP,
-            description: "Post user registration hook failed",
+            description: `Post user registration hook failed: ${message}`,
+            details: { error: message },
           });
         }
       }
@@ -211,23 +259,41 @@ export function createUserHooks(
         const postRegCodeHooks = allHooks.filter(
           (h: any) => h.enabled && isCodeHook(h),
         );
+        const postRegOutcomes: HandleCodeHookOutcome[] = [];
         for (const hook of postRegCodeHooks) {
           if (!isCodeHook(hook)) continue;
           try {
-            await handleCodeHook(
+            const outcome = await handleCodeHook(
               ctx,
               ctx.env.data,
               hook,
-              { ctx, user: result, request } as any,
+              { ctx, user: result, request },
               "post-user-registration",
               { user: {} },
             );
+            if (outcome) postRegOutcomes.push(outcome);
           } catch (err) {
-            logMessage(ctx, tenant_id, {
-              type: LogTypes.FAILED_SIGNUP,
-              description: `Post user registration code hook ${hook.hook_id} failed`,
+            const message = err instanceof Error ? err.message : String(err);
+            postRegOutcomes.push({
+              result: {
+                action_name: hook.code_id,
+                error: { id: "execution_threw", msg: message },
+                started_at: new Date().toISOString(),
+                ended_at: new Date().toISOString(),
+              },
+              logs: [],
+              denied: false,
             });
           }
+        }
+        const postRegExecutionId = await persistActionExecution(
+          ctx.env.data,
+          tenant_id,
+          "post-user-registration",
+          postRegOutcomes,
+        );
+        if (postRegExecutionId) {
+          ctx.set("action_execution_id", postRegExecutionId);
         }
 
         // Template hooks (e.g. `account-linking`) run after code hooks so
@@ -247,9 +313,15 @@ export function createUserHooks(
               hook.metadata,
             );
           } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
             logMessage(ctx, tenant_id, {
               type: LogTypes.FAILED_SIGNUP,
-              description: `Post user registration template hook ${hook.template_id} failed`,
+              description: `Post user registration template hook ${hook.template_id} failed: ${message}`,
+              details: {
+                template_id: hook.template_id,
+                trigger_id: "post-user-registration",
+                error: message,
+              },
             });
           }
         }

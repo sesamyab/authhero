@@ -25,6 +25,8 @@ export function create(db: Kysely<Database>) {
       require_pushed_authorization_requests:
         params.require_pushed_authorization_requests ?? false,
       require_proof_of_possession: params.require_proof_of_possession ?? false,
+      disable_sign_ups: params.disable_sign_ups ?? false,
+      hide_sign_up_disabled_error: params.hide_sign_up_disabled_error ?? false,
     };
 
     const insertData: any = {
@@ -46,6 +48,8 @@ export function create(db: Kysely<Database>) {
         "custom_login_page_on",
         "require_pushed_authorization_requests",
         "require_proof_of_possession",
+        "disable_sign_ups",
+        "hide_sign_up_disabled_error",
       ],
       insertData,
     );

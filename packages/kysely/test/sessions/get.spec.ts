@@ -27,9 +27,7 @@ describe("sessions", () => {
         callbacks: ["https://example.com/callback"],
         allowed_logout_urls: ["https://example.com/callback"],
         web_origins: ["https://example.com"],
-        client_metadata: {
-          disable_sign_ups: "false",
-        },
+        disable_sign_ups: false,
       });
 
       // Add a test user

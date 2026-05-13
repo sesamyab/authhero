@@ -347,4 +347,83 @@ describe("connections", () => {
     expect(clientsResult3.enabled_clients).toHaveLength(1);
     expect(clientsResult3.enabled_clients[0].client_id).toBe("test-client-2");
   });
+
+  it("should strip secret fields from connection responses", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+
+    const token = await getAdminToken();
+
+    // POST — secrets in request, must not appear in response
+    const createResponse = await managementClient.connections.$post(
+      {
+        json: {
+          name: "google-oauth",
+          strategy: "google-oauth2",
+          options: {
+            client_id: "google-client-id",
+            client_secret: "super-secret",
+            app_secret: "facebook-app-secret",
+            twilio_sid: "AC123",
+            twilio_token: "twilio-secret",
+          },
+        },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(createResponse.status).toBe(201);
+    const created = (await createResponse.json()) as Connection;
+    expect(created.options?.client_secret).toBeUndefined();
+    expect(created.options?.app_secret).toBeUndefined();
+    expect(created.options?.twilio_token).toBeUndefined();
+    // Non-secret fields must still be returned
+    expect(created.options?.client_id).toBe("google-client-id");
+    expect(created.options?.twilio_sid).toBe("AC123");
+
+    // GET single
+    const getResponse = await managementClient.connections[":id"].$get(
+      {
+        param: { id: created.id },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(getResponse.status).toBe(200);
+    const fetched = (await getResponse.json()) as Connection;
+    expect(fetched.options?.client_secret).toBeUndefined();
+    expect(fetched.options?.app_secret).toBeUndefined();
+    expect(fetched.options?.twilio_token).toBeUndefined();
+    expect(fetched.options?.client_id).toBe("google-client-id");
+
+    // PATCH — response must also be stripped
+    const patchResponse = await managementClient.connections[":id"].$patch(
+      {
+        param: { id: created.id },
+        json: { options: { client_secret: "rotated-secret" } },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(patchResponse.status).toBe(200);
+    const patched = (await patchResponse.json()) as Connection;
+    expect(patched.options?.client_secret).toBeUndefined();
+
+    // GET list
+    const listResponse = await managementClient.connections.$get(
+      {
+        query: {},
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(listResponse.status).toBe(200);
+    const list = (await listResponse.json()) as Connection[];
+    for (const conn of list) {
+      expect(conn.options?.client_secret).toBeUndefined();
+      expect(conn.options?.app_secret).toBeUndefined();
+      expect(conn.options?.twilio_token).toBeUndefined();
+    }
+  });
 });

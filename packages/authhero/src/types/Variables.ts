@@ -42,4 +42,10 @@ export type Variables = {
   // RFC 7523 `client_assertion` (private_key_jwt or client_secret_jwt). Grant
   // handlers consult this so they can skip the client_secret comparison.
   client_authenticated_via_assertion?: boolean;
+  // Set by the action-execution runtime after a trigger fires (post-login,
+  // credentials-exchange, …) so the surrounding tenant log (SUCCESS_LOGIN,
+  // SUCCESS_EXCHANGE_*, …) can embed `details.execution_id`. Matches Auth0:
+  // execution IDs are discovered via tenant logs, then fetched with
+  // GET /api/v2/actions/executions/:id.
+  action_execution_id?: string;
 };

@@ -10,6 +10,7 @@ import { Box, Card, CardContent } from "@mui/material";
 import { LogType, LogIcon } from "../logs";
 import { JsonOutput } from "../common/JsonOutput";
 import { Link } from "react-admin";
+import { ActionExecutionTab } from "./ActionExecutionTab";
 
 const UserIdField = () => {
   const record = useRecordContext();
@@ -95,6 +96,10 @@ export function LogShow() {
               </CardContent>
             </Card>
           </Box>
+        </TabbedShowLayout.Tab>
+
+        <TabbedShowLayout.Tab label="Action Execution">
+          <ActionExecutionTab />
         </TabbedShowLayout.Tab>
       </TabbedShowLayout>
     </Show>

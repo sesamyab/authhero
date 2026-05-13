@@ -208,11 +208,9 @@ export class CloudflareCodeExecutor implements CodeExecutor {
   }): Promise<CodeExecutionResult> {
     const start = Date.now();
 
-    if (params.timeoutMs !== undefined || params.cpuLimitMs !== undefined) {
-      throw new Error(
-        "Cloudflare executor does not support timeoutMs/cpuLimitMs",
-      );
-    }
+    // timeoutMs / cpuLimitMs are not enforceable through the Worker Loader
+    // API today; accept and ignore so callers that pass a default value
+    // (e.g. handleCodeHook) don't fail before the worker is even spawned.
 
     try {
       const workerScript = buildWorkerScript(params.code);

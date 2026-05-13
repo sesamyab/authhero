@@ -177,6 +177,22 @@ export const clientInsertSchema = z.object({
       description:
         'Metadata associated with the client, in the form of an object with string values (max 255 chars). Maximum of 10 metadata properties allowed. Field names (max 255 chars) are alphanumeric and may only include the following special characters: :,-+=_*?"/()\u003c\u003e@ [Tab][Space]',
     }),
+  disable_sign_ups: z
+    .boolean()
+    .default(false)
+    .optional()
+    .openapi({
+      description:
+        "When true, blocks new user sign-ups via this client. The identifier/signup screen rejects emails that don't match an existing user with `User account does not exist` (unless `hide_sign_up_disabled_error` is also set). Existing users — including those signing in via a federated connection that links to an existing account — are unaffected.",
+    }),
+  hide_sign_up_disabled_error: z
+    .boolean()
+    .default(false)
+    .optional()
+    .openapi({
+      description:
+        "Enumeration-safe variant of `disable_sign_ups`. When both are true, the identifier screen does not reveal that an email is unknown — it advances to the OTP/password challenge as if the account existed and fails at credential check. Mitigates email enumeration at the cost of UX: users without an account see a generic credential failure instead of an explicit signup-disabled message.",
+    }),
   mobile: z.record(z.any()).default({}).optional().openapi({
     description: "Additional configuration for native mobile apps.",
   }),

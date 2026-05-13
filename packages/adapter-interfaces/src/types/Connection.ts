@@ -19,6 +19,12 @@ export const connectionOptionsSchema = z.object({
   jwks_uri: z.string().optional(),
   discovery_url: z.string().optional(),
   issuer: z.string().optional(),
+  // How client credentials are sent to the token endpoint for upstream OIDC /
+  // OAuth2 connections. Defaults to `client_secret_basic` (HTTP Basic auth).
+  // Set to `client_secret_post` for providers like JumpCloud that reject Basic.
+  token_endpoint_auth_method: z
+    .enum(["client_secret_basic", "client_secret_post"])
+    .optional(),
   provider: z.string().optional(),
   from: z.string().optional(),
   twilio_sid: z.string().optional(),

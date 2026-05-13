@@ -1,5 +1,58 @@
 # authhero
 
+## 4.119.0
+
+### Minor Changes
+
+- 1ea694f: Add an Auth0-compatible **Actions Executions** API.
+  - New `action_executions` storage entity and adapter (`get`, `create`).
+  - New management API endpoint `GET /api/v2/actions/executions/:id` returning the Auth0-shape execution object (`id`, `trigger_id`, `status`, `results[]`, `created_at`, `updated_at`). See https://auth0.com/docs/api/management/v2/actions/get-execution.
+  - Per-action console output is now captured and exposed via the AuthHero-specific endpoint `GET /api/v2/actions/executions/:id/logs` (Auth0 keeps these in a separate real-time logs stream rather than the executions API; we co-locate them so admins have one place to look).
+  - New dry-run endpoint `POST /api/v2/actions/actions/:id/test` runs an action through the executor with a caller-supplied event payload and returns the result synchronously. Does not persist an execution or replay API calls.
+  - The hook runtime now writes one execution record per trigger fire (post-login, credentials-exchange, pre-/post-user-registration), aggregating each action's result into the `results[]` array — matching Auth0's per-trigger semantics. Per-hook `sh`/`fh` log entries are no longer emitted from action paths; the credentials-exchange path stamps the resulting tenant log with `details.execution_id` so admins can navigate from a log entry to the execution detail.
+  - React-admin: action edit page gets a "Test action" panel with per-trigger payload fixtures; the log detail view gets an "Action Execution" tab that resolves `details.execution_id` and shows per-action timings, errors, and captured console output.
+
+  The internal trigger id `post-user-login` is normalized to Auth0's `post-login` when persisted in execution records.
+
+  The Drizzle adapter ships an `actionExecutions` stub that throws — same pattern as the existing `actions` stub — since action storage is not yet implemented for Drizzle. Use the Kysely adapter when actions are needed.
+
+- 1ea694f: Honor the OIDC `claims` request parameter (OIDC Core 5.5). `/authorize` now parses the `claims` parameter (JSON-encoded individual claim requests for `id_token` and/or `userinfo`), persists the request on the login session, and emits the requested standard claims at both `/userinfo` and in the ID Token regardless of scope. Adds `claims_parameter_supported: true` to the discovery document. Closes the `oidcc-claims-essential` WARNING in the OIDC conformance Basic/Hybrid/Implicit/Form-Post/Dynamic plans (issue #781).
+- 1ea694f: OIDC connections can now choose how client credentials are sent to the upstream token endpoint via `options.token_endpoint_auth_method` (`client_secret_basic` — default — or `client_secret_post`). This fixes providers like JumpCloud that reject HTTP Basic auth at the token endpoint with `invalid_client`. The setting is editable in the react-admin connection form on the OIDC strategy.
+
+  Under the hood the OIDC strategy uses `ExtendedOAuth2Client`, a small subclass of arctic's `OAuth2Client` (`strategies/internal-oauth2.ts`) that overrides `validateAuthorizationCode` for the `client_secret_post` path. Arctic's PKCE/URL/auth-URL logic and `OAuth2Tokens` shape are reused unchanged. Other strategies (Apple, Facebook, GitHub, Google, Microsoft, Vipps, generic OAuth2) still use arctic directly — they will be migrated in a follow-up PR.
+
+- 1ea694f: Promote `disable_sign_ups` from `client_metadata` to a typed top-level `boolean` field on `Client`, and add a new `hide_sign_up_disabled_error` flag for enumeration-safe sign-up blocking.
+
+  When `disable_sign_ups` is true and `hide_sign_up_disabled_error` is also true, the identifier screen no longer reveals that an email is unknown: it advances to the OTP/password challenge as if the account existed and fails generically at credential check. Skips OTP/magic-link delivery to unknown addresses in this stub path. Useful for tenants where email enumeration is a stronger concern than the UX cost of stranded users.
+
+  Adds a migration that copies `client_metadata.disable_sign_ups = "true"` into the new column and removes the key from `client_metadata` so there is a single source of truth going forward. The legacy `client_metadata.disable_sign_ups` key is no longer read by the engine.
+
+### Patch Changes
+
+- 1ea694f: Fix `event.client` and other Auth0-shape fields being undefined inside post-user-login code hooks. The code-hook path was constructing a minimal `{ ctx, user, request, tenant }` event while the `ctx.env.hooks.onExecutePostLogin` path right above it was already building the full Auth0-compatible event (`client`, `connection`, `transaction`, `session`, `organization`, `authentication`, `authorization`, `stats`, `resource_server`). Both paths now share the same event, so user-authored actions can access `event.client.name`, `event.connection`, etc. — matching Auth0. Code hooks are now skipped when prerequisites (client/authParams/loginSession) aren't available, instead of running with a broken event.
+- 1ea694f: Forward `login_hint` to the upstream IdP when Home Realm Discovery routes a login to an enterprise/social connection by email domain. The matched email is added as `login_hint` on the OAuth2/OIDC authorization URL (oauth2, oidc, google-oauth2, microsoft strategies), matching Auth0's HRD behavior so the upstream IdP can pre-fill the user identifier.
+- 1ea694f: Strip secret fields (`client_secret`, `app_secret`, `twilio_token`) from connection responses on the management API (GET list, GET by id, POST, PATCH). Matches Auth0's contract: secrets are write-only — callers POST/PATCH to set them, and an omitted value means "keep existing".
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+- Updated dependencies [1ea694f]
+  - @authhero/adapter-interfaces@1.19.0
+  - @authhero/widget@0.32.20
+
+## 4.118.0
+
+### Minor Changes
+
+- de79c2a: Connection callback URLs now match Auth0's default. Previously `getConnectionCallbackUrl` always returned `${env.ISSUER}callback` regardless of the request host. The fallback now returns `${customDomain ?? env.ISSUER}login/callback` — honoring custom domains and using Auth0's `/login/callback` path instead of the legacy `/callback`.
+
+  Existing connections with the legacy `/callback` URL registered at the upstream IdP should be pinned by setting `options.callback_url` to the exact previously-implicit URL (e.g. `https://auth2.example.com/callback`) before deploying — otherwise the upstream IdP will reject the new redirect_uri. For inherited/control-plane connections this only needs to be set once on the control-plane row; child tenants pick it up via settings inheritance. The override is now editable in the react-admin connection form. The legacy `/callback` route remains mounted (deprecated) so pinned URLs keep working.
+
+### Patch Changes
+
+- e1c52f0: Align the `/api/v2/keys/signing*` management endpoints with Auth0's permission names. `GET /signing` and `GET /signing/{kid}` now require `read:signing_keys` (was `read:keys`), `POST /signing/rotate` requires `create:signing_keys` (was `create:keys`), and `PUT /signing/{kid}/revoke` requires `update:signing_keys` (was `update:keys`). The `auth:read` / `auth:write` super-scopes still grant access. Tokens minted against the old AuthHero-only names will need their permissions reissued; Auth0-style tokens that already carry `*:signing_keys` will now work where they previously returned 403.
+- e1c52f0: Fix Cloudflare code hooks failing silently. `handleCodeHook` always passed `timeoutMs: 5000` to `codeExecutor.execute`, and `CloudflareCodeExecutor` threw on any `timeoutMs`/`cpuLimitMs` it didn't enforce. The throw escaped back to the post-login flow, where the catch logged only `"Failed to execute code hook: <hook_id>"` with no error detail — so every Cloudflare-deployed code hook failed without diagnostic. `CloudflareCodeExecutor` now accepts and ignores these params (they were unenforceable through the Worker Loader API anyway), and the FAILED_HOOK / FAILED_SIGNUP log entries in `post-user-login.ts`, `user-registration.ts`, and `codehooks.ts` now include the underlying error message and a `details` bag.
+- e1c52f0: Hide HRD-only enterprise connections from the identifier screen's button row. Connections with `options.domain_aliases` configured are intended to be routed via email-domain matching (Home Realm Discovery), not shown as "Continue with X" buttons. The identifier screen now excludes any connection that has `domain_aliases` set, unless `show_as_button: true` is explicitly set on the connection. Matches Auth0's default behavior for enterprise connections.
+
 ## 4.117.0
 
 ### Minor Changes
@@ -12,6 +65,13 @@
   - `screen_hint=login`
 
   The `check-account` route, screen definition, `CheckEmailPage` component, and locale strings have been removed.
+
+### Patch Changes
+
+- 47afa9e: Honor `theme.colors.primary_button_label` unconditionally instead of dropping it when its WCAG contrast against `primary_button` falls below 4.5. Previously, a tenant setting (e.g.) white text on a medium blue button was silently overridden by an auto-picked black, because the contrast ratio sat just under the AA threshold. The tenant's explicit choice now wins; the auto-picker only runs when no label is set.
+- b221917: Screen-based universal login (`/u2/login/identifier`): apply Home Realm Discovery so an email whose domain matches a connection's `options.domain_aliases` is routed to that connection's IdP, matching the legacy `/u/` flow. Also replaced the "Email is not valid." message shown when no connection accepts the entered email with "User account does not exist" — the email itself is valid; the prior message was misleading.
+- Updated dependencies [47afa9e]
+  - @authhero/widget@0.32.19
 
 ## 4.116.0
 
