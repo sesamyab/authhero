@@ -53,7 +53,9 @@ describe("Home Realm Discovery (HRD)", () => {
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
     const url = new URL(location!);
-    expect(`${url.origin}${url.pathname}`).toBe("https://example.com/authorize");
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://example.com/authorize",
+    );
     expect(url.searchParams.get("login_hint")).toBe("alice@acme.com");
   });
 
@@ -83,7 +85,9 @@ describe("Home Realm Discovery (HRD)", () => {
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
     const url = new URL(location!);
-    expect(`${url.origin}${url.pathname}`).toBe("https://example.com/authorize");
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://example.com/authorize",
+    );
     // login_hint is the normalized lowercase email.
     expect(url.searchParams.get("login_hint")).toBe("alice@acme.com");
   });
@@ -185,7 +189,9 @@ describe("Home Realm Discovery (HRD)", () => {
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
     const url = new URL(location!);
-    expect(`${url.origin}${url.pathname}`).toBe("https://example.com/authorize");
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://example.com/authorize",
+    );
     expect(url.searchParams.get("login_hint")).toBe("alice@acme.com");
   });
 });

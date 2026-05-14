@@ -57,7 +57,9 @@ export const suspiciousIpThrottlingSchema = z.object({
     .optional(),
 });
 
-export type SuspiciousIpThrottling = z.infer<typeof suspiciousIpThrottlingSchema>;
+export type SuspiciousIpThrottling = z.infer<
+  typeof suspiciousIpThrottlingSchema
+>;
 
 export const attackProtectionSchema = z.object({
   breached_password_detection: breachedPasswordDetectionSchema.optional(),

@@ -63,7 +63,12 @@ async function verifyJwtWithJwk(
   const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
 
   // Sanity-check the alg header matches what the JWK advertises.
-  if (jwk.kty === "EC" && header.alg !== "ES256" && header.alg !== "ES384" && header.alg !== "ES512") {
+  if (
+    jwk.kty === "EC" &&
+    header.alg !== "ES256" &&
+    header.alg !== "ES384" &&
+    header.alg !== "ES512"
+  ) {
     return false;
   }
   if (jwk.kty === "RSA" && header.alg !== "RS256") {

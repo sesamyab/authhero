@@ -55,7 +55,8 @@ export const LOCALE_DISPLAY_NAMES: Record<(typeof locales)[number], string> = {
   sv: "Svenska",
 };
 
-const LOCALE_DISPLAY_NAMES_LOOKUP: Record<string, string> = LOCALE_DISPLAY_NAMES;
+const LOCALE_DISPLAY_NAMES_LOOKUP: Record<string, string> =
+  LOCALE_DISPLAY_NAMES;
 
 /**
  * Resolve a locale code to its native display name, falling back to the
@@ -155,8 +156,8 @@ export function createTranslation<P extends string, S extends string>(
   customText?: CustomText,
 ): {
   m: `${P}.${S}` extends keyof ScreenMap
-  ? ScreenMap[`${P}.${S}`]
-  : TranslationMap;
+    ? ScreenMap[`${P}.${S}`]
+    : TranslationMap;
   locale: (typeof locales)[number];
 } {
   const validLocale = normalizeLocale(locale);

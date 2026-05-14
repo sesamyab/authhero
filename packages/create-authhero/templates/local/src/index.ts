@@ -27,7 +27,14 @@ function ensureCertificates() {
       execFileSync("which", ["mkcert"], { stdio: "ignore" });
       execFileSync(
         "mkcert",
-        ["-key-file", keyPath, "-cert-file", certPath, "localhost", "127.0.0.1"],
+        [
+          "-key-file",
+          keyPath,
+          "-cert-file",
+          certPath,
+          "localhost",
+          "127.0.0.1",
+        ],
         { stdio: "inherit" },
       );
       console.log("✅ Certificates generated with mkcert");

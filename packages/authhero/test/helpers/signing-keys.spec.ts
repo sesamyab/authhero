@@ -61,13 +61,10 @@ describe("resolveSigningKeyMode", () => {
 
   it("invokes the resolver with tenant_id", async () => {
     const seen: string[] = [];
-    const result = await resolveSigningKeyMode(
-      ({ tenant_id }) => {
-        seen.push(tenant_id);
-        return tenant_id === "t1" ? "tenant" : "control-plane";
-      },
-      "t1",
-    );
+    const result = await resolveSigningKeyMode(({ tenant_id }) => {
+      seen.push(tenant_id);
+      return tenant_id === "t1" ? "tenant" : "control-plane";
+    }, "t1");
     expect(result).toBe("tenant");
     expect(seen).toEqual(["t1"]);
   });

@@ -252,8 +252,7 @@ export async function identifierScreen(
   // screen_hint=login. Federated connections enforce disable_signup at
   // callback time; the identifier screen only governs the password signup
   // link visibility.
-  const signupsDisabled =
-    passwordConnection?.options?.disable_signup === true;
+  const signupsDisabled = passwordConnection?.options?.disable_signup === true;
   const authorizeUrl = context.ctx.var.loginSession?.authorization_url;
   const screenHintLogin =
     authorizeUrl &&

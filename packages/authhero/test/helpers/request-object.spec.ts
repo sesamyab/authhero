@@ -44,7 +44,9 @@ async function generateEcKeypair() {
   };
 }
 
-function clientWithJwks(jwk: JsonWebKey & { kid?: string }): RequestObjectClient {
+function clientWithJwks(
+  jwk: JsonWebKey & { kid?: string },
+): RequestObjectClient {
   return {
     client_id: CLIENT_ID,
     registration_metadata: { jwks: { keys: [jwk] } },
@@ -101,9 +103,7 @@ describe("verifyRequestObject", () => {
 
   it("verifies HS256 against client_secret", async () => {
     const client_secret = "this-is-a-shared-secret-of-reasonable-length";
-    const secretBytes = new Uint8Array(
-      new TextEncoder().encode(client_secret),
-    );
+    const secretBytes = new Uint8Array(new TextEncoder().encode(client_secret));
     const jwt = await createJWT(
       "HS256",
       secretBytes,

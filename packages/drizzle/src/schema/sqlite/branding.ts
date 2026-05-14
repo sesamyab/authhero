@@ -260,9 +260,7 @@ export const emailTemplates = sqliteTable(
     created_at: text("created_at", { length: 35 }).notNull(),
     updated_at: text("updated_at", { length: 35 }).notNull(),
   },
-  (table) => [
-    primaryKey({ columns: [table.tenant_id, table.template] }),
-  ],
+  (table) => [primaryKey({ columns: [table.tenant_id, table.template] })],
 );
 
 export const hooks = sqliteTable(

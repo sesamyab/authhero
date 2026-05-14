@@ -29,9 +29,7 @@ export function list(db: Kysely<Database>) {
       const { ref } = db.dynamic;
       query = query.orderBy(ref(sort.sort_by), sort.sort_order);
     } else {
-      query = query
-        .orderBy("priority", "desc")
-        .orderBy("created_at_ts", "asc");
+      query = query.orderBy("priority", "desc").orderBy("created_at_ts", "asc");
     }
 
     const filteredQuery = query.offset(page * per_page).limit(per_page);

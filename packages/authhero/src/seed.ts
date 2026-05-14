@@ -194,6 +194,19 @@ export const MANAGEMENT_API_SCOPES = [
   { description: "Create log_streams", value: "create:log_streams" },
   { description: "Delete log_streams", value: "delete:log_streams" },
   { description: "Update log_streams", value: "update:log_streams" },
+  { description: "Read migration_sources", value: "read:migration_sources" },
+  {
+    description: "Create migration_sources",
+    value: "create:migration_sources",
+  },
+  {
+    description: "Delete migration_sources",
+    value: "delete:migration_sources",
+  },
+  {
+    description: "Update migration_sources",
+    value: "update:migration_sources",
+  },
   { description: "Create signing keys", value: "create:signing_keys" },
   { description: "Read signing keys", value: "read:signing_keys" },
   { description: "Update signing keys", value: "update:signing_keys" },

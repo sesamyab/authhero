@@ -136,7 +136,9 @@ export function ActionExecutionTab() {
       <Card variant="outlined">
         <CardContent>
           <Stack spacing={0.5}>
-            <Typography variant="subtitle2">Execution {execution.id}</Typography>
+            <Typography variant="subtitle2">
+              Execution {execution.id}
+            </Typography>
             <Typography variant="body2">
               Trigger: {execution.trigger_id}
             </Typography>

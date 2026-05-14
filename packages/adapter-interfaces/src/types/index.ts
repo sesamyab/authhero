@@ -69,6 +69,7 @@ export * from "./ListParams";
 export * from "./LoginSession";
 export * from "./Logs";
 export * from "./LogStream";
+export * from "./MigrationSource";
 export * from "./AttackProtection";
 export * from "./Password";
 export * from "./Session";

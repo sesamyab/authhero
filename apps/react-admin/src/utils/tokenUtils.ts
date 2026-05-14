@@ -44,15 +44,16 @@ function getTokenExpiryMs(token: string): number {
 // Callers pass the slug they used as `organization` in the token request — the
 // server resolves slug → id and stamps `org_id` (the id) and `org_name` (the
 // slug) into the JWT. So accept a match on either claim.
-function tokenMatchesOrg(token: string, expectedOrg: string | undefined): boolean {
+function tokenMatchesOrg(
+  token: string,
+  expectedOrg: string | undefined,
+): boolean {
   try {
     const payload = decodeJwtPayload(token);
     if (expectedOrg === undefined) {
       return payload.org_id === undefined && payload.org_name === undefined;
     }
-    return (
-      payload.org_id === expectedOrg || payload.org_name === expectedOrg
-    );
+    return payload.org_id === expectedOrg || payload.org_name === expectedOrg;
   } catch {
     return false;
   }
@@ -273,8 +274,7 @@ export default async function getToken(
     // tenant page can be returned here and the tenants list endpoint will
     // filter results to that org.
     try {
-      const audience =
-        getConfigValue("audience") || "urn:authhero:management";
+      const audience = getConfigValue("audience") || "urn:authhero:management";
       const domain = formatDomain(domainConfig.url);
       return await getNonOrgAccessToken(auth0Client, audience, domain);
     } catch (error) {

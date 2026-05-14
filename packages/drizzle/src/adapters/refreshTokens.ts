@@ -181,8 +181,7 @@ export function createRefreshTokensAdapter(db: DrizzleDb) {
         updateData.token_lookup = token.token_lookup;
       if (token.token_hash !== undefined)
         updateData.token_hash = token.token_hash;
-      if (token.family_id !== undefined)
-        updateData.family_id = token.family_id;
+      if (token.family_id !== undefined) updateData.family_id = token.family_id;
       if (token.rotated_to !== undefined)
         updateData.rotated_to = token.rotated_to;
       if (token.rotated_at !== undefined)

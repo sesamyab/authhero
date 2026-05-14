@@ -46,10 +46,7 @@ export function AttackProtectionEdit() {
               label="Max attempts"
               helperText="Failed login attempts before block kicks in"
             />
-            <ArrayInput
-              source="brute_force_protection.shields"
-              label="Shields"
-            >
+            <ArrayInput source="brute_force_protection.shields" label="Shields">
               <SimpleFormIterator inline>
                 <SelectInput source="" label="" choices={shieldChoices} />
               </SimpleFormIterator>

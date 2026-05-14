@@ -200,10 +200,7 @@ export const createManagementClient = async (
   // construction meant a non-org token (taken when the flag was momentarily
   // wrong) stuck around for the lifetime of the cached client.
   const tokenSupplier = async (): Promise<string> => {
-    if (
-      normalizedTenantId &&
-      !isSingleTenantForDomain(domainForAuth)
-    ) {
+    if (normalizedTenantId && !isSingleTenantForDomain(domainForAuth)) {
       if (domainConfig.connectionMethod === "login") {
         const auth0Client = createAuth0Client(domainForAuth);
         const audience =

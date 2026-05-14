@@ -111,12 +111,17 @@ async function loadCodeForHook(
         data.multiTenancyConfig.controlPlaneTenantId,
         { q: `name:"${quoted}"`, per_page: 5 },
       );
-      const upstream = matches.find((a) => a.name === action.name && a.is_system);
+      const upstream = matches.find(
+        (a) => a.name === action.name && a.is_system,
+      );
       if (upstream) {
         return {
           code: upstream.code,
           name: action.name,
-          secrets: { ...secretsToMap(upstream.secrets), ...secretsToMap(action.secrets) },
+          secrets: {
+            ...secretsToMap(upstream.secrets),
+            ...secretsToMap(action.secrets),
+          },
         };
       }
     }

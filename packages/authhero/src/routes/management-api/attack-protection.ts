@@ -38,8 +38,9 @@ async function getSection<S extends Section>(
   if (!tenant) {
     throw new HTTPException(404, { message: "Tenant not found" });
   }
-  return (tenant.attack_protection?.[section] ??
-    {}) as NonNullable<AttackProtection[S]>;
+  return (tenant.attack_protection?.[section] ?? {}) as NonNullable<
+    AttackProtection[S]
+  >;
 }
 
 async function patchSection<S extends Section>(
@@ -120,9 +121,7 @@ export const attackProtectionRoutes = new OpenAPIHono<{
       },
     }),
     async (ctx) => {
-      const body = breachedPasswordDetectionSchema.parse(
-        await ctx.req.json(),
-      );
+      const body = breachedPasswordDetectionSchema.parse(await ctx.req.json());
       return ctx.json(
         await patchSection(ctx, "breached_password_detection", body),
       );

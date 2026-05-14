@@ -290,7 +290,9 @@ export const tokenRoutes = new OpenAPIHono<{
             // RFC 6749 §5.2 enumerates the valid `error` values for the token
             // endpoint. Translate internal assertion error codes to those.
             const error =
-              e.code === "unsupported_alg" ? "invalid_request" : "invalid_client";
+              e.code === "unsupported_alg"
+                ? "invalid_request"
+                : "invalid_client";
             throw new JSONHTTPException(401, {
               error,
               error_description: e.message,
@@ -457,9 +459,7 @@ export const tokenRoutes = new OpenAPIHono<{
           userId: grantResult.user?.user_id,
           scope: grantResult.authParams.scope,
           audience: grantResult.authParams.audience,
-          ...(executionId
-            ? { details: { execution_id: executionId } }
-            : {}),
+          ...(executionId ? { details: { execution_id: executionId } } : {}),
         });
       }
 

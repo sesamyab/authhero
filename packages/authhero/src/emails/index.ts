@@ -179,8 +179,7 @@ async function sendTemplatedEmail(
     result.kind === "rendered" ? result.email.subject : params.fallbackSubject;
   const html =
     result.kind === "rendered" ? result.email.html : params.fallbackHtml;
-  const from =
-    result.kind === "rendered" ? result.email.from : fallbackFrom;
+  const from = result.kind === "rendered" ? result.email.from : fallbackFrom;
 
   await sendEmail(ctx, {
     to: params.to,

@@ -141,9 +141,7 @@ export function createHooksAdapter(db: DrizzleDb) {
 
       let query = db.select().from(hooks).where(whereClause).$dynamic();
 
-      const sortCol = sort?.sort_by
-        ? (hooks as any)[sort.sort_by]
-        : undefined;
+      const sortCol = sort?.sort_by ? (hooks as any)[sort.sort_by] : undefined;
       if (sortCol) {
         query = query.orderBy(
           sort?.sort_order === "desc" ? desc(sortCol) : asc(sortCol),

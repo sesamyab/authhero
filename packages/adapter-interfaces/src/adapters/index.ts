@@ -14,6 +14,7 @@ import { TenantsDataAdapter } from "./Tenants";
 import { UserDataAdapter } from "./Users";
 import { LogsDataAdapter } from "./Logs";
 import { LogStreamsAdapter } from "./LogStreams";
+import { MigrationSourcesAdapter } from "./MigrationSources";
 import { ConnectionsAdapter } from "./Connections";
 import { CustomDomainsAdapter } from "./CustomDomains";
 import { KeysAdapter } from "./Keys";
@@ -81,6 +82,12 @@ export interface DataAdapters {
   loginSessions: LoginSessionsAdapter;
   logs: LogsDataAdapter;
   logStreams?: LogStreamsAdapter;
+  /**
+   * Optional tenant-level migration sources for lazy refresh-token re-mint
+   * against upstream IdPs (Auth0, Cognito, Okta, generic OIDC). When unset,
+   * unrecognized refresh tokens fail with `invalid_grant` as usual.
+   */
+  migrationSources?: MigrationSourcesAdapter;
   passwords: PasswordsAdapter;
   promptSettings: PromptSettingsAdapter;
   refreshTokens: RefreshTokensAdapter;
@@ -156,6 +163,7 @@ export * from "./UniversalLoginTemplates";
 export * from "./CustomText";
 export * from "./AuthenticationMethods";
 export * from "./LogStreams";
+export * from "./MigrationSources";
 export * from "./EmailService";
 export * from "./SmsService";
 export * from "./Outbox";

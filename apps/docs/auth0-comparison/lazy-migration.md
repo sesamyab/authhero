@@ -9,17 +9,17 @@ Move traffic from an Auth0 tenant to AuthHero one user at a time, without forcin
 
 **Password fallback** — on a password login, if no local hash matches, AuthHero verifies the password against the upstream Auth0 (Resource Owner Password Realm grant), fetches the user's profile from `/userinfo`, creates the user locally, and stores the hash. Subsequent logins are served entirely by AuthHero.
 
-> **Refresh tokens issued by upstream Auth0 are no longer accepted.** Earlier versions forwarded unknown refresh-token requests to Auth0 verbatim; that proxy was removed when the `strategy: "auth0"` source connection was collapsed into the DB connection. Clients presenting a refresh token AuthHero did not mint now receive `invalid_grant` ("Invalid refresh token") and must re-authenticate interactively. Re-mint of upstream tokens is tracked in [issue #833](https://github.com/markusahlstrand/authhero/issues/833).
+**Refresh-token re-mint** — when a client presents a refresh token that didn't originate from AuthHero, the configured tenant-level **Migration Source** redeems it at the upstream `/oauth/token` and `/userinfo`, resolves or lazily creates the local user (matched by upstream `sub`), and mints fresh AuthHero tokens. The client keeps using `grant_type=refresh_token` — no SDK change. After one exchange per user, that user is fully on the AuthHero side.
 
 Bulk import via `/api/v2/users-imports` and the [Auth0 proxy app](/apps/auth0-proxy/) remain useful for other migration shapes; this page covers the lazy/just-in-time approach that needs no client SDK changes.
 
 ## Migrating from a version that proxied refresh tokens
 
-If you are upgrading from a release that forwarded refresh tokens upstream, plan the cutover with the refresh-token break in mind:
+If you are upgrading from a release that forwarded refresh tokens upstream, the cutover is now seamless for clients:
 
-- **Client impact**: every active client still holding an Auth0-issued refresh token will get `invalid_grant` on its next exchange and must run its normal interactive-login fallback. Browser SPAs typically recover on the next page load; long-lived native clients (mobile/desktop) recover at the next foreground.
-- **Proactive migration is not currently possible**: AuthHero cannot re-mint a native refresh token from an opaque Auth0 handle without the user re-authenticating. Until [#833](https://github.com/markusahlstrand/authhero/issues/833) lands there is no server-side migration path for refresh tokens — only password fallback at the next interactive login.
-- **Recommended timing**: deploy the cutover at a low-traffic window and watch the `FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN` log type to confirm the spike subsides as users complete interactive logins. There is no built-in grace period; if you need one, keep the previous release running side-by-side behind the [Auth0 proxy app](/apps/auth0-proxy/) for the clients you cannot re-prompt.
+- **Configure a Migration Source for the tenant** (see "Enable refresh-token re-mint at the tenant level" below) **before** flipping DNS. Without one, unknown refresh tokens are rejected and clients must re-authenticate.
+- **Client impact with a Migration Source configured**: clients holding Auth0-issued refresh tokens get a fresh AuthHero refresh token back on their next exchange — no SDK change, no interactive prompt.
+- **Recommended monitoring**: watch the `FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN` log type for the residual spike from tokens the upstream itself rejects (expired, revoked). The volume should fall toward zero as the long tail of users either re-exchanges or expires.
 
 ## What you need from Auth0
 
@@ -68,15 +68,47 @@ Content-Type: application/json
 4. On 200, fetch the profile from `/userinfo` and create the local user (if missing) + bcrypt hash.
 5. On any upstream error, surface the existing `INVALID_PASSWORD` rejection so the upstream's existence is not leaked.
 
+### Enable refresh-token re-mint at the tenant level
+
+Refresh tokens don't carry a connection, and a tenant may have several connections (social + DB) sharing the same upstream IdP — so the credentials for re-mint live at the **tenant** level, not on a connection.
+
+```http
+POST /api/v2/migration-sources
+Content-Type: application/json
+
+{
+  "name": "Upstream Auth0",
+  "provider": "auth0",
+  "connection": "auth0",
+  "enabled": true,
+  "credentials": {
+    "domain": "example.auth0.com",
+    "client_id": "<auth0-client-id>",
+    "client_secret": "<auth0-client-secret>"
+  }
+}
+```
+
+When AuthHero's refresh-token grant doesn't find a local row for the presented token:
+
+1. List enabled migration sources for the tenant.
+2. For each source, call upstream `POST /oauth/token` with `grant_type=refresh_token`.
+3. On 200, call `/userinfo` to learn the upstream `sub`.
+4. Resolve or lazily create the local user (matched by `provider` + `sub`) — going through the same user-registration hooks as a fresh signup.
+5. Mint native AuthHero `access_token` + `id_token` + `refresh_token` and return them.
+6. If every source rejects, return `invalid_grant` as before.
+
+The upstream refresh token is dead to AuthHero after one successful exchange — the freshly minted AuthHero refresh token replaces it on the next call. Set `enabled: false` to disable a source without deleting it; flip it off once the upstream traffic drops to zero.
+
 ## What happens during a typical migration
 
 | Day | Event | What runs |
 | --- | --- | --- |
 | 0 | DNS flipped, AuthHero is now serving auth | Local lookups miss; password fallback activates |
-| 0 | Clients holding Auth0 refresh tokens hit `/oauth/token` | AuthHero returns `invalid_grant`; clients fall back to interactive login |
+| 0 | Clients holding Auth0 refresh tokens hit `/oauth/token` | Migration Source redeems the token upstream, mints fresh AuthHero tokens, returns them |
 | 0–N | A user signs in with username/password | Password fallback verifies against Auth0, creates them locally, stores hash |
 | N+1 | Migrated user signs in again | Served entirely from AuthHero — no upstream call |
-| Eventually | All long-tail clients have re-authenticated | `FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN` log volume settles |
+| Eventually | Upstream traffic settles | Disable the Migration Source and the per-connection `import_mode`; decommission the upstream Auth0 tenant |
 
 Once the upstream password-fallback traffic drops to a handful per day you can flip `import_mode` off and decommission the upstream Auth0 tenant.
 
@@ -85,13 +117,13 @@ Once the upstream password-fallback traffic drops to a handful per day you can f
 - **MFA-enforced users**: Auth0 returns `mfa_required` from the password-realm grant. AuthHero treats it as a generic `INVALID_PASSWORD` to avoid leaking that the user exists upstream — affected users must reset on the AuthHero side.
 - **`unauthorized_client: Grant type … not allowed`**: the Auth0 application has not been granted the password-realm grant. Enable it under Application → Advanced → Grant Types.
 - **Failed-login throttling still applies**: the existing 3-strikes lockout fires whether the password compare runs locally or against upstream, so an attacker can't bypass it by forcing the upstream path.
-- **Refresh tokens issued by Auth0 are not honored**: see the note above and [#833](https://github.com/markusahlstrand/authhero/issues/833). Clients must reauthenticate to receive an AuthHero-minted refresh token.
+- **Refresh-token re-mint requires a configured Migration Source**: if none is enabled for the tenant, unrecognized refresh tokens fall back to `invalid_grant` and the client must re-authenticate interactively.
 - **Connection name === realm**: AuthHero sends the local DB connection's name as the upstream `realm`. Keep the DB connection's name aligned with the upstream connection name (typically `Username-Password-Authentication`).
 
 ## Comparison with the other migration mechanisms
 
 - **[Auth0 proxy app](/apps/auth0-proxy/)** — a thin reverse proxy that exposes an Auth0-shaped surface to legacy clients during the cutover. Use when clients can't be repointed to AuthHero yet, or to keep refresh tokens working for long-tail clients while you wait for them to re-authenticate.
-- **[Token Exchange (RFC 8693)](https://github.com/markusahlstrand/authhero/issues/807)** and **[refresh-token re-mint](https://github.com/markusahlstrand/authhero/issues/833)** — proposed: server-side paths that would let AuthHero translate an upstream Auth0 refresh token into a native AuthHero one. Neither has shipped; until they do, upstream refresh tokens are rejected.
-- **Lazy migration (this page)** — no client changes for password logins; clients holding upstream refresh tokens must re-authenticate once.
+- **[Token Exchange (RFC 8693)](https://github.com/markusahlstrand/authhero/issues/807)** — proposed: an explicit `grant_type=token-exchange` surface for callers that prefer signalling the migration in the request rather than relying on transparent fallback. Not yet shipped.
+- **Lazy migration (this page)** — no client changes for password logins or refresh tokens; users and refresh tokens are migrated transparently on first use.
 
 These are complementary — most production migrations use lazy migration as the foundation and add the Auth0 proxy app for the small number of clients that need an Auth0-shaped HTTP surface or that cannot tolerate a forced re-authentication.

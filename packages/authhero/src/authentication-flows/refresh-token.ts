@@ -19,6 +19,7 @@ import {
   parseRefreshToken,
 } from "../utils/refresh-token-format";
 import { ulid } from "../utils/ulid";
+import { tryUpstreamRemint } from "./refresh-token-migration";
 
 export const refreshTokenParamsSchema = z.object({
   grant_type: z.literal("refresh_token"),
@@ -84,15 +85,14 @@ export async function refreshTokenGrant(
   }
 
   if (!refreshToken) {
-    // No local row matches the presented token. Earlier versions forwarded
-    // unknown refresh tokens to upstream Auth0; that proxy was removed when
-    // the `strategy: "auth0"` source connection was collapsed into the DB
-    // connection. Clients presenting an Auth0-issued (or otherwise unknown)
-    // token now receive `invalid_grant` and must re-authenticate
-    // interactively — see apps/docs/auth0-comparison/lazy-migration.md and
-    // https://github.com/markusahlstrand/authhero/issues/833 (re-mint).
-    // The FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN log below is the
-    // signal operators should watch during a cutover.
+    // No local row matches the presented token. Try the tenant's configured
+    // migration sources (#833): redeem the RT upstream, learn the user via
+    // /userinfo, then mint native authhero tokens. If no source accepts it,
+    // fall through to `invalid_grant`.
+    const reminted = await tryUpstreamRemint(ctx, client, params.refresh_token);
+    if (reminted) {
+      return reminted;
+    }
     appendLog(ctx, "Invalid refresh token");
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
@@ -302,8 +302,7 @@ export async function refreshTokenGrant(
   // Token rotation decision: rotate if either the stored row says so or, for
   // legacy rows that pre-date the rotating column being honored, the client
   // is configured to rotate.
-  const clientRotates =
-    client.refresh_token?.rotation_type === "rotating";
+  const clientRotates = client.refresh_token?.rotation_type === "rotating";
   const shouldRotate = refreshToken.rotating || clientRotates;
 
   const nextLastIp = ctx.req.header("x-real-ip") || "";
@@ -359,15 +358,11 @@ export async function refreshTokenGrant(
     // existed) this is the first time `family_id` gets a value, and
     // without it `revokeFamily` would skip the parent itself when reuse is
     // detected later.
-    await ctx.env.data.refreshTokens.update(
-      client.tenant.id,
-      refreshToken.id,
-      {
-        rotated_to: childId,
-        rotated_at: refreshToken.rotated_at ?? new Date().toISOString(),
-        family_id: familyId,
-      },
-    );
+    await ctx.env.data.refreshTokens.update(client.tenant.id, refreshToken.id, {
+      rotated_to: childId,
+      rotated_at: refreshToken.rotated_at ?? new Date().toISOString(),
+      family_id: familyId,
+    });
 
     outgoingWireToken = formatRefreshToken(childLookup, childSecret);
   } else if (

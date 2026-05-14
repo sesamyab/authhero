@@ -228,7 +228,14 @@ export async function verifyRequestObject(
           : RSA_VERIFY_PARAMS;
       try {
         attemptedVerify = true;
-        if (await crypto.subtle.verify(verifyParams, cryptoKey, signature, signedInput)) {
+        if (
+          await crypto.subtle.verify(
+            verifyParams,
+            cryptoKey,
+            signature,
+            signedInput,
+          )
+        ) {
           verified = true;
           break;
         }

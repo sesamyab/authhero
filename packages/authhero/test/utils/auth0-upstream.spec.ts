@@ -199,19 +199,16 @@ describe("auth0-upstream", () => {
       fetchSpy.mockResolvedValue(
         jsonResponse(200, { email: "user@example.com" }),
       );
-      await expect(fetchUserInfo(USERINFO_ENDPOINT, "at")).rejects.toMatchObject(
-        { code: "malformed_response" },
-      );
+      await expect(
+        fetchUserInfo(USERINFO_ENDPOINT, "at"),
+      ).rejects.toMatchObject({ code: "malformed_response" });
     });
 
     it("propagates non-2xx as Auth0UpstreamError", async () => {
-      fetchSpy.mockResolvedValue(
-        jsonResponse(401, { error: "invalid_token" }),
-      );
-      await expect(fetchUserInfo(USERINFO_ENDPOINT, "bad")).rejects.toMatchObject(
-        { status: 401, code: "invalid_token" },
-      );
+      fetchSpy.mockResolvedValue(jsonResponse(401, { error: "invalid_token" }));
+      await expect(
+        fetchUserInfo(USERINFO_ENDPOINT, "bad"),
+      ).rejects.toMatchObject({ status: 401, code: "invalid_token" });
     });
   });
-
 });

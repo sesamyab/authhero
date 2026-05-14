@@ -307,8 +307,6 @@ describe("auth0 migration: password fallback", () => {
       `${USERNAME_PASSWORD_PROVIDER}|preexisting`,
     );
     expect(passwordRow).toBeDefined();
-    expect(
-      await bcryptjs.compare("Pwd1!", passwordRow!.password),
-    ).toBe(true);
+    expect(await bcryptjs.compare("Pwd1!", passwordRow!.password)).toBe(true);
   });
 });

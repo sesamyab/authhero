@@ -25,6 +25,7 @@ import { sessionsRoutes } from "./sessions";
 import { refreshTokensRoutes } from "./refresh_tokens";
 import { customDomainRoutes } from "./custom-domains";
 import { logStreamsRoutes } from "./log-streams";
+import { migrationSourcesRoutes } from "./migration-sources";
 import { attackProtectionRoutes } from "./attack-protection";
 import { addDataHooks } from "../../hooks";
 import { addTimingLogs } from "../../helpers/server-timing";
@@ -178,9 +179,7 @@ export default function create(config: AuthHeroConfig) {
     // sets a JSON body), pass it through untouched. Only wrap the bare
     // HTTPException case where the message was meant to be a plaintext body.
     const existing = err.getResponse();
-    if (
-      existing.headers.get("content-type")?.includes("application/json")
-    ) {
+    if (existing.headers.get("content-type")?.includes("application/json")) {
       return existing;
     }
     const errorTextByStatus: Record<number, string> = {
@@ -361,6 +360,7 @@ export default function create(config: AuthHeroConfig) {
     .route("/client-registration-tokens", clientRegistrationTokenRoutes)
     .route("/logs", logRoutes)
     .route("/log-streams", logStreamsRoutes)
+    .route("/migration-sources", migrationSourcesRoutes)
     .route("/attack-protection", attackProtectionRoutes)
     .route("/failed-events", failedEventsRoutes)
     .route("/hooks", hooksRoutes)

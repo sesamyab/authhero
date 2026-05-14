@@ -170,9 +170,7 @@ export async function ssrfSafeFetch(
         received += value.byteLength;
         if (received > maxBytes) {
           await reader.cancel();
-          throw new SsrfBlockedError(
-            `response body exceeds ${maxBytes} bytes`,
-          );
+          throw new SsrfBlockedError(`response body exceeds ${maxBytes} bytes`);
         }
         chunks.push(value);
       }

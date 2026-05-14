@@ -11,8 +11,7 @@
  * and /userinfo is called with the access_token returned by ROPG.
  */
 
-const PASSWORD_REALM_GRANT =
-  "http://auth0.com/oauth/grant-type/password-realm";
+const PASSWORD_REALM_GRANT = "http://auth0.com/oauth/grant-type/password-realm";
 const DEFAULT_SCOPE = "openid profile email";
 
 export type Auth0UpstreamErrorCode =
@@ -153,6 +152,54 @@ export async function passwordRealmGrant(
   body.set("username", params.username);
   body.set("password", params.password);
   body.set("scope", params.scope ?? DEFAULT_SCOPE);
+  if (params.audience) {
+    body.set("audience", params.audience);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(params.tokenEndpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        accept: "application/json",
+      },
+      body: body.toString(),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "fetch failed";
+    throw new Auth0UpstreamError(0, "network_error", message);
+  }
+
+  const payload = await parseJson(response);
+
+  if (!response.ok) {
+    throw readUpstreamError(response.status, payload);
+  }
+
+  return readTokenResponse(payload);
+}
+
+export interface UpstreamRefreshTokenGrantParams {
+  tokenEndpoint: string;
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  audience?: string;
+  scope?: string;
+}
+
+export async function upstreamRefreshTokenGrant(
+  params: UpstreamRefreshTokenGrantParams,
+): Promise<Auth0TokenResponse> {
+  const body = new URLSearchParams();
+  body.set("grant_type", "refresh_token");
+  body.set("client_id", params.clientId);
+  body.set("client_secret", params.clientSecret);
+  body.set("refresh_token", params.refreshToken);
+  if (params.scope) {
+    body.set("scope", params.scope);
+  }
   if (params.audience) {
     body.set("audience", params.audience);
   }
