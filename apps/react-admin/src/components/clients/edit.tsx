@@ -779,8 +779,9 @@ const ClientMetadataInput = ({ source }: { source: string }) => {
     if (value && typeof value === "object") {
       // Reserved keys with dedicated controls above; keep them out of the
       // free-form key/value list. `disable_sign_ups` was historically stored
-      // here but is now a typed top-level field — filter the legacy key out
-      // so it doesn't show twice during a partial migration.
+      // here, then promoted to a typed column, and is now a connection-level
+      // setting — filter the legacy key out so old records don't show it
+      // twice during a partial migration.
       const preservedFields = ["email_validation"];
       const legacyFields = ["disable_sign_ups"];
 
@@ -923,7 +924,28 @@ interface Connection {
   id: string;
   name: string;
   strategy: string;
+  show_as_button?: boolean;
+  options?: { domain_aliases?: string[] };
 }
+
+// Mirrors the filter in packages/authhero/src/routes/universal-login/screens/identifier.ts:
+// email/sms/username-password render as forms, and HRD-only connections
+// (with domain_aliases) are routed by email domain unless show_as_button is set.
+const FORM_STRATEGIES = new Set([
+  "email",
+  "sms",
+  "Username-Password-Authentication",
+]);
+
+const getHiddenButtonReason = (c: Connection): string | null => {
+  if (FORM_STRATEGIES.has(c.strategy)) {
+    return "Rendered as a form, not a button";
+  }
+  if (c.options?.domain_aliases?.length && c.show_as_button !== true) {
+    return "HRD: routed by email domain";
+  }
+  return null;
+};
 
 // Helper to get API base URL
 const getApiBaseUrl = (): string => {
@@ -1000,6 +1022,8 @@ const ConnectionsTab = () => {
           id: ec.connection_id,
           name: ec.connection!.name,
           strategy: ec.connection!.strategy,
+          show_as_button: ec.connection!.show_as_button,
+          options: ec.connection!.options,
         }));
 
       // Fetch all connections to determine available ones
@@ -1100,26 +1124,33 @@ const ConnectionsTab = () => {
   };
 
   const handleMoveConnection = async (
-    index: number,
+    visibleIndex: number,
     direction: "up" | "down",
   ) => {
     if (!clientId) return;
 
-    const newIndex = direction === "up" ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= enabledConnections.length) return;
+    // Hidden connections keep their absolute positions; we only swap two
+    // visible neighbors so the button order changes without disturbing the
+    // rest of the array.
+    const visibleEntries = enabledConnections
+      .map((c, fullIndex) => ({ c, fullIndex }))
+      .filter(({ c }) => getHiddenButtonReason(c) === null);
 
-    // Create new order
+    const newVisibleIndex =
+      direction === "up" ? visibleIndex - 1 : visibleIndex + 1;
+    if (newVisibleIndex < 0 || newVisibleIndex >= visibleEntries.length) return;
+
+    const a = visibleEntries[visibleIndex];
+    const b = visibleEntries[newVisibleIndex];
+    if (!a || !b) return;
+
     const newOrder = [...enabledConnections];
-    const movedConnection = newOrder.splice(index, 1)[0];
-    if (!movedConnection) return;
-    newOrder.splice(newIndex, 0, movedConnection);
+    newOrder[a.fullIndex] = b.c;
+    newOrder[b.fullIndex] = a.c;
 
-    // Update local state optimistically
     setEnabledConnections(newOrder);
 
-    // Update the client's connections array
-    const newConnectionIds = newOrder.map((c) => c.id);
-    const success = await updateClientConnections(newConnectionIds);
+    const success = await updateClientConnections(newOrder.map((c) => c.id));
 
     if (success) {
       notify("Connection order updated", { type: "success" });
@@ -1137,24 +1168,34 @@ const ConnectionsTab = () => {
     );
   }
 
+  const visibleConnections = enabledConnections.filter(
+    (c) => getHiddenButtonReason(c) === null,
+  );
+  const hiddenConnections = enabledConnections.filter(
+    (c) => getHiddenButtonReason(c) !== null,
+  );
+
   return (
     <Box sx={{ width: "100%", maxWidth: 800 }}>
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        Enabled Connections
+      <Typography variant="h6" sx={{ mb: 1 }}>
+        Visible on Login Screen
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        These connections appear as buttons on the login screen, in the order
+        below.
       </Typography>
 
-      {enabledConnections.length === 0 ? (
+      {visibleConnections.length === 0 ? (
         <Typography color="text.secondary" sx={{ mb: 2 }}>
-          No connections enabled for this client. Click "Add Connection" to
-          enable one.
+          No connections will appear as buttons on the login screen.
         </Typography>
       ) : (
-        <Paper variant="outlined" sx={{ mb: 2 }}>
+        <Paper variant="outlined" sx={{ mb: 3 }}>
           <List>
-            {enabledConnections.map((connection, index) => (
+            {visibleConnections.map((connection, index) => (
               <ListItem
                 key={connection.id}
-                divider={index < enabledConnections.length - 1}
+                divider={index < visibleConnections.length - 1}
                 sx={{
                   "&:hover": { bgcolor: "action.hover" },
                 }}
@@ -1184,7 +1225,7 @@ const ConnectionsTab = () => {
                         size="small"
                         onClick={() => handleMoveConnection(index, "down")}
                         disabled={
-                          index === enabledConnections.length - 1 || saving
+                          index === visibleConnections.length - 1 || saving
                         }
                       >
                         <ArrowDownwardIcon />
@@ -1206,6 +1247,69 @@ const ConnectionsTab = () => {
             ))}
           </List>
         </Paper>
+      )}
+
+      {hiddenConnections.length > 0 && (
+        <>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Hidden Connections
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            These connections are enabled but won't show as buttons. Ordering
+            them has no effect.
+          </Typography>
+          <Paper variant="outlined" sx={{ mb: 2 }}>
+            <List>
+              {hiddenConnections.map((connection, index) => {
+                const reason = getHiddenButtonReason(connection);
+                return (
+                  <ListItem
+                    key={connection.id}
+                    divider={index < hiddenConnections.length - 1}
+                    sx={{
+                      bgcolor: "action.disabledBackground",
+                      "&:hover": { bgcolor: "action.hover" },
+                    }}
+                  >
+                    <ListItemText
+                      primary={connection.name}
+                      secondary={
+                        <>
+                          <Box component="span" sx={{ display: "block" }}>
+                            Strategy: {connection.strategy}
+                          </Box>
+                          {reason && (
+                            <Box
+                              component="span"
+                              sx={{
+                                display: "block",
+                                fontStyle: "italic",
+                              }}
+                            >
+                              {reason}
+                            </Box>
+                          )}
+                        </>
+                      }
+                    />
+                    <ListItemSecondaryAction>
+                      <Tooltip title="Remove connection">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleRemoveConnection(connection)}
+                          disabled={saving}
+                          color="error"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                );
+              })}
+            </List>
+          </Paper>
+        </>
       )}
 
       <Button
@@ -1291,24 +1395,22 @@ const normalizeClient = (record: RaRecord): RaRecord => {
   const rawMetadata = isPlainObject(record.client_metadata)
     ? record.client_metadata
     : {};
-  // Hoist the legacy `client_metadata.disable_sign_ups` string into the typed
-  // top-level boolean for records that pre-date the kysely migration. Strip
-  // the legacy key so a subsequent save doesn't write it back.
-  const { disable_sign_ups: legacyDisableSignUps, ...client_metadata } =
+  // Strip the legacy `client_metadata.disable_sign_ups` and any stray
+  // top-level `disable_sign_ups` so old records don't write them back. The
+  // flag now lives in `connection.options.disable_signup`.
+  const { disable_sign_ups: _legacyDisableSignUps, ...client_metadata } =
     rawMetadata;
-  const disable_sign_ups =
-    typeof record.disable_sign_ups === "boolean"
-      ? record.disable_sign_ups
-      : legacyDisableSignUps === "true" || legacyDisableSignUps === true;
-  const addons = isPlainObject(record.addons) ? record.addons : {};
+  const { disable_sign_ups: _legacyTopLevel, ...recordWithoutLegacy } = record;
+  const addons = isPlainObject(recordWithoutLegacy.addons)
+    ? recordWithoutLegacy.addons
+    : {};
   const samlp = isPlainObject(addons.samlp) ? addons.samlp : {};
-  const refresh_token = isPlainObject(record.refresh_token)
-    ? record.refresh_token
+  const refresh_token = isPlainObject(recordWithoutLegacy.refresh_token)
+    ? recordWithoutLegacy.refresh_token
     : {};
   return {
-    ...record,
+    ...recordWithoutLegacy,
     client_metadata,
-    disable_sign_ups,
     addons: { ...addons, samlp },
     refresh_token,
   };
@@ -1447,14 +1549,9 @@ export function ClientEdit() {
             defaultValue={true}
           />
           <BooleanInput
-            source="disable_sign_ups"
-            label="Disable sign ups"
-            helperText="Block new sign-ups. Existing users can still sign in."
-          />
-          <BooleanInput
             source="hide_sign_up_disabled_error"
             label="Hide sign-up-disabled error (enumeration-safe)"
-            helperText="When sign-ups are disabled, suppress the explicit account-does-not-exist error and let the OTP/password challenge fail generically. Mitigates email enumeration at the cost of UX clarity."
+            helperText="When the password connection has disable_signup=true, suppress the explicit account-does-not-exist error and let the OTP/password challenge fail generically. Mitigates email enumeration at the cost of UX clarity."
           />
           <ClientMetadataInput source="client_metadata" />
           <GrantTypesInput source="grant_types" />

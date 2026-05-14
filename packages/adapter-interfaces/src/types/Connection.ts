@@ -68,8 +68,21 @@ export const connectionOptionsSchema = z.object({
   disable_signup: z.boolean().optional(),
   // Brute force protection
   brute_force_protection: z.boolean().optional(),
-  // Import mode
+  // Import mode (Auth0 custom-DB semantics): when true and a successful
+  // upstream verification occurs, the user/password row is created locally
+  // so subsequent logins are served entirely from authhero.
   import_mode: z.boolean().optional(),
+  // Upstream migration credentials. Mirrors Auth0's
+  // `options.configuration` (encrypted env-vars accessed from custom
+  // scripts). For lazy migration, set when `import_mode: true`.
+  configuration: z
+    .object({
+      token_endpoint: z.string().optional(),
+      userinfo_endpoint: z.string().optional(),
+      client_id: z.string().optional(),
+      client_secret: z.string().optional(),
+    })
+    .optional(),
   // Flexible Identifiers: attributes schema (replaces legacy requires_username)
   attributes: z
     .object({

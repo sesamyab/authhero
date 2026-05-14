@@ -507,7 +507,8 @@ export default (
       if (resource === "custom-text-defaults") {
         const headers = createHeaders(tenantId);
         const defaultsQuery: Record<string, string> = {};
-        if (params.filter?.language) defaultsQuery.language = params.filter.language;
+        if (params.filter?.language)
+          defaultsQuery.language = params.filter.language;
         if (params.filter?.prompt) defaultsQuery.prompt = params.filter.prompt;
         const qs = stringify(defaultsQuery);
         const url = qs
@@ -1805,7 +1806,9 @@ export default (
       }
 
       // User identity link (Auth0 SDK)
-      const userIdentitiesMatch = resource.match(/^users\/([^/]+)\/identities$/);
+      const userIdentitiesMatch = resource.match(
+        /^users\/([^/]+)\/identities$/,
+      );
       if (userIdentitiesMatch?.[1]) {
         const primaryUserId = userIdentitiesMatch[1];
         // Auth0 expects either link_with=<JWT> or { provider, user_id }.
@@ -1828,7 +1831,8 @@ export default (
           primaryUserId,
           payload,
         );
-        const identities = (result as any).data || (result as any).response || result;
+        const identities =
+          (result as any).data || (result as any).response || result;
         return {
           data: {
             id: primaryUserId,
@@ -2020,8 +2024,8 @@ export default (
           provider as UnlinkProvider,
           String(params.id),
         );
-        const response = (result as { data?: unknown; response?: unknown })
-          .data ??
+        const response =
+          (result as { data?: unknown; response?: unknown }).data ??
           (result as { response?: unknown }).response ??
           result;
         return { data: { id: params.id, identities: response } };

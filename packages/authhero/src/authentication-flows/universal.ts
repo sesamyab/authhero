@@ -73,7 +73,10 @@ export async function universalAuth({
   // as `login` — authhero is single-session per browser, so the only way to
   // honor "pick another account" is to force re-authentication.
   const promptValues = authParams.prompt?.split(" ") ?? [];
-  if (promptValues.includes("login") || promptValues.includes("select_account")) {
+  if (
+    promptValues.includes("login") ||
+    promptValues.includes("select_account")
+  ) {
     session = undefined;
   }
 

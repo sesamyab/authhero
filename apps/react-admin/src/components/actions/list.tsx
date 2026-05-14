@@ -12,12 +12,19 @@ function renderTriggers(record: any): string {
   return record.supported_triggers.map((t: any) => t.id).join(", ");
 }
 
+function renderSource(record: any): string {
+  if (record?.is_system) return "system";
+  if (record?.inherit) return "inherited";
+  return "local";
+}
+
 export function ActionList() {
   return (
     <List actions={<PostListActions />}>
       <Datagrid rowClick="edit" bulkActionButtons={false}>
         <TextField source="name" />
         <FunctionField label="Triggers" render={renderTriggers} />
+        <FunctionField label="Source" render={renderSource} />
         <TextField source="status" />
         <TextField source="runtime" />
         <DateField source="created_at" showTime />

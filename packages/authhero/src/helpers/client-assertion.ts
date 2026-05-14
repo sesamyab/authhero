@@ -230,7 +230,14 @@ export async function verifyClientAssertion(
           ? { name: "ECDSA", hash: EC_HASH_BY_ALG[alg]! }
           : RSA_VERIFY_PARAMS;
       try {
-        if (await crypto.subtle.verify(verifyParams, cryptoKey, signature, signedInput)) {
+        if (
+          await crypto.subtle.verify(
+            verifyParams,
+            cryptoKey,
+            signature,
+            signedInput,
+          )
+        ) {
           verified = true;
           break;
         }
@@ -293,13 +300,13 @@ function validateClaims(
   }
 
   if (typeof payload.exp !== "number") {
-    throw new ClientAssertionError(
-      "invalid_client",
-      "exp claim is required",
-    );
+    throw new ClientAssertionError("invalid_client", "exp claim is required");
   }
   if (payload.exp + leeway < nowSec) {
-    throw new ClientAssertionError("invalid_client", "client_assertion is expired");
+    throw new ClientAssertionError(
+      "invalid_client",
+      "client_assertion is expired",
+    );
   }
 
   if (typeof payload.nbf === "number" && payload.nbf - leeway > nowSec) {

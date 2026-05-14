@@ -64,8 +64,14 @@ export function extractCandidateUsernames(user: {
 }): string[] {
   const raw: (string | undefined)[] = [];
 
-  if (user.nickname) raw.push(slugify(user.nickname));
-  if (user.name) raw.push(slugify(user.name));
+  // If nickname/name looks like an email (common when signup defaults
+  // them to the email address), drop the @domain part so we don't end
+  // up with usernames like "john-doe-hotmail-com".
+  const stripEmailDomain = (s: string) =>
+    s.includes("@") ? (s.split("@")[0] ?? s) : s;
+
+  if (user.nickname) raw.push(slugify(stripEmailDomain(user.nickname)));
+  if (user.name) raw.push(slugify(stripEmailDomain(user.name)));
   if (user.email) {
     const localPart = user.email.split("@")[0];
     if (localPart) raw.push(slugify(localPart));

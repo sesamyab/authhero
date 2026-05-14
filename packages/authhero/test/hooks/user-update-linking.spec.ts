@@ -250,4 +250,44 @@ describe("user update auto-linking", () => {
       `${USERNAME_PASSWORD_PROVIDER}|chain-primary`,
     );
   });
+
+  it("should reject updates that link a user to itself", async () => {
+    const { env } = await getTestServer();
+    const dataWithHooks = addDataHooks(createMockCtx(env), env.data);
+
+    await env.data.users.create("tenantId", {
+      user_id: `${USERNAME_PASSWORD_PROVIDER}|self-link`,
+      email: "self-link@example.com",
+      email_verified: true,
+      provider: USERNAME_PASSWORD_PROVIDER,
+      connection: Strategy.USERNAME_PASSWORD,
+    });
+
+    // Direct linked_to update (fast-path) must reject self-links.
+    await expect(
+      dataWithHooks.users.update(
+        "tenantId",
+        `${USERNAME_PASSWORD_PROVIDER}|self-link`,
+        { linked_to: `${USERNAME_PASSWORD_PROVIDER}|self-link` },
+      ),
+    ).rejects.toThrow(/Cannot link a user to itself/);
+
+    // Mixed-field update including linked_to must also reject.
+    await expect(
+      dataWithHooks.users.update(
+        "tenantId",
+        `${USERNAME_PASSWORD_PROVIDER}|self-link`,
+        {
+          linked_to: `${USERNAME_PASSWORD_PROVIDER}|self-link`,
+          name: "noop",
+        },
+      ),
+    ).rejects.toThrow(/Cannot link a user to itself/);
+
+    const after = await env.data.users.get(
+      "tenantId",
+      `${USERNAME_PASSWORD_PROVIDER}|self-link`,
+    );
+    expect(after?.linked_to).toBeUndefined();
+  });
 });

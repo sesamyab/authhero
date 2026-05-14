@@ -3,7 +3,6 @@ import {
   Auth0UpstreamError,
   fetchUserInfo,
   passwordRealmGrant,
-  proxyRefreshToken,
 } from "../../src/utils/auth0-upstream";
 
 const TOKEN_ENDPOINT = "https://example.auth0.com/oauth/token";
@@ -200,100 +199,16 @@ describe("auth0-upstream", () => {
       fetchSpy.mockResolvedValue(
         jsonResponse(200, { email: "user@example.com" }),
       );
-      await expect(fetchUserInfo(USERINFO_ENDPOINT, "at")).rejects.toMatchObject(
-        { code: "malformed_response" },
-      );
+      await expect(
+        fetchUserInfo(USERINFO_ENDPOINT, "at"),
+      ).rejects.toMatchObject({ code: "malformed_response" });
     });
 
     it("propagates non-2xx as Auth0UpstreamError", async () => {
-      fetchSpy.mockResolvedValue(
-        jsonResponse(401, { error: "invalid_token" }),
-      );
-      await expect(fetchUserInfo(USERINFO_ENDPOINT, "bad")).rejects.toMatchObject(
-        { status: 401, code: "invalid_token" },
-      );
-    });
-  });
-
-  describe("proxyRefreshToken", () => {
-    it("posts refresh_token grant and returns the upstream status + body verbatim", async () => {
-      fetchSpy.mockResolvedValue(
-        jsonResponse(200, {
-          access_token: "at2",
-          refresh_token: "rt2",
-          expires_in: 1234,
-          token_type: "Bearer",
-        }),
-      );
-
-      const result = await proxyRefreshToken({
-        tokenEndpoint: TOKEN_ENDPOINT,
-        clientId: "cid",
-        clientSecret: "csecret",
-        refreshToken: "rt-from-auth0",
-      });
-
-      expect(result.status).toBe(200);
-      expect(result.body).toEqual({
-        access_token: "at2",
-        refresh_token: "rt2",
-        expires_in: 1234,
-        token_type: "Bearer",
-      });
-
-      const [, init] = fetchSpy.mock.calls[0];
-      const body = new URLSearchParams(init.body);
-      expect(body.get("grant_type")).toBe("refresh_token");
-      expect(body.get("refresh_token")).toBe("rt-from-auth0");
-      expect(body.get("client_id")).toBe("cid");
-      expect(body.get("client_secret")).toBe("csecret");
-    });
-
-    it("returns upstream error body with original status (no exception on 4xx)", async () => {
-      fetchSpy.mockResolvedValue(
-        jsonResponse(403, {
-          error: "invalid_grant",
-          error_description: "rotated",
-        }),
-      );
-
-      const result = await proxyRefreshToken({
-        tokenEndpoint: TOKEN_ENDPOINT,
-        clientId: "cid",
-        refreshToken: "stale",
-      });
-
-      expect(result.status).toBe(403);
-      expect(result.body).toEqual({
-        error: "invalid_grant",
-        error_description: "rotated",
-      });
-    });
-
-    it("omits client_secret for public clients", async () => {
-      fetchSpy.mockResolvedValue(jsonResponse(200, { access_token: "x" }));
-
-      await proxyRefreshToken({
-        tokenEndpoint: TOKEN_ENDPOINT,
-        clientId: "public",
-        refreshToken: "rt",
-      });
-
-      const [, init] = fetchSpy.mock.calls[0];
-      const body = new URLSearchParams(init.body);
-      expect(body.has("client_secret")).toBe(false);
-    });
-
-    it("wraps fetch errors as Auth0UpstreamError(network_error)", async () => {
-      fetchSpy.mockRejectedValue(new Error("offline"));
-
+      fetchSpy.mockResolvedValue(jsonResponse(401, { error: "invalid_token" }));
       await expect(
-        proxyRefreshToken({
-          tokenEndpoint: TOKEN_ENDPOINT,
-          clientId: "cid",
-          refreshToken: "rt",
-        }),
-      ).rejects.toMatchObject({ code: "network_error" });
+        fetchUserInfo(USERINFO_ENDPOINT, "bad"),
+      ).rejects.toMatchObject({ status: 401, code: "invalid_token" });
     });
   });
 });

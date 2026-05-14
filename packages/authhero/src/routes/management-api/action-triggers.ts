@@ -195,7 +195,11 @@ export const actionTriggersRoutes = new OpenAPIHono<{
       for (let i = 0; i < bindings.length; i++) {
         const binding = bindings[i]!;
         let actionId = binding.ref.id;
-        if (!actionId && binding.ref.type === "action_id" && binding.ref.value) {
+        if (
+          !actionId &&
+          binding.ref.type === "action_id" &&
+          binding.ref.value
+        ) {
           actionId = binding.ref.value;
         } else if (
           !actionId &&
@@ -210,10 +214,11 @@ export const actionTriggersRoutes = new OpenAPIHono<{
           const per_page = 100;
           let lookupPage = 0;
           while (true) {
-            const matches = await ctx.env.data.actions.list(
-              ctx.var.tenant_id,
-              { page: lookupPage, per_page, include_totals: false },
-            );
+            const matches = await ctx.env.data.actions.list(ctx.var.tenant_id, {
+              page: lookupPage,
+              per_page,
+              include_totals: false,
+            });
             const found = matches.actions.find((a) => a.name === refName);
             if (found) {
               actionId = found.id;

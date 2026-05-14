@@ -152,7 +152,10 @@ if (fs.existsSync(adminIndexPath)) {
   // Inject <base> so they resolve against /admin/ regardless of the
   // request URL (handles /admin, /admin/users/123 refreshes, etc.).
   adminIndexHtml = rawHtml
-    .replace(/<head(\s[^>]*)?>/, (match) => `${match}\n    <base href="/admin/" />`)
+    .replace(
+      /<head(\s[^>]*)?>/,
+      (match) => `${match}\n    <base href="/admin/" />`,
+    )
     .replace(
       "</head>",
       `<script>window.__AUTHHERO_ADMIN_CONFIG__=${adminConfigJson};</script>\n</head>`,

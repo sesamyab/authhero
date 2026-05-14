@@ -49,7 +49,7 @@ describe("log-streams", () => {
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(list.status).toBe(200);
-    expect((await list.json())).toHaveLength(1);
+    expect(await list.json()).toHaveLength(1);
 
     // Update
     const patch = await client["log-streams"][":id"].$patch(
@@ -77,6 +77,6 @@ describe("log-streams", () => {
       { header: { "tenant-id": "tenantId" } },
       { headers: { authorization: `Bearer ${token}` } },
     );
-    expect((await afterDelete.json())).toEqual([]);
+    expect(await afterDelete.json()).toEqual([]);
   });
 });

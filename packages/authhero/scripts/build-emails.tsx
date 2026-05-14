@@ -11,14 +11,7 @@ import { VerifyEmailByCode } from "../src/emails/defaults/VerifyEmailByCode";
 import { WelcomeEmail } from "../src/emails/defaults/WelcomeEmail";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outPath = resolve(
-  here,
-  "..",
-  "src",
-  "emails",
-  "defaults",
-  "compiled.ts",
-);
+const outPath = resolve(here, "..", "src", "emails", "defaults", "compiled.ts");
 
 const templates: Array<[EmailTemplateName, () => JSX.Element]> = [
   ["reset_email", ResetEmail],

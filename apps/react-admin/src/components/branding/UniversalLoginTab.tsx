@@ -265,8 +265,7 @@ export function UniversalLoginTab() {
               powered-by chip
             </li>
             <li>
-              <code>{"{%- authhero:legal -%}"}</code> — bottom-right legal
-              chip
+              <code>{"{%- authhero:legal -%}"}</code> — bottom-right legal chip
             </li>
           </ul>
           <Link

@@ -29,7 +29,6 @@ import { serializeAuthCookie } from "../../utils/cookies";
 import { calculateScopesAndPermissions } from "../../helpers/scopes-permissions";
 import { GrantFlowResult } from "src/types/GrantFlowResult";
 import { JSONHTTPException } from "../../errors/json-http-exception";
-import { Auth0ProxyResponse } from "../../errors/auth0-proxy-response";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { parseBasicAuthHeader } from "../../utils/auth-header";
 import {
@@ -291,7 +290,9 @@ export const tokenRoutes = new OpenAPIHono<{
             // RFC 6749 §5.2 enumerates the valid `error` values for the token
             // endpoint. Translate internal assertion error codes to those.
             const error =
-              e.code === "unsupported_alg" ? "invalid_request" : "invalid_client";
+              e.code === "unsupported_alg"
+                ? "invalid_request"
+                : "invalid_client";
             throw new JSONHTTPException(401, {
               error,
               error_description: e.message,
@@ -308,56 +309,39 @@ export const tokenRoutes = new OpenAPIHono<{
 
       let grantResult: GrantFlowResult;
 
-      try {
-        switch (body.grant_type) {
-          case GrantType.AuthorizationCode:
-            grantResult = await authorizationCodeGrantUser(
-              ctx,
-              authorizationCodeGrantParamsSchema.parse(params),
-            );
-            break;
-          case GrantType.ClientCredential:
-            grantResult = await clientCredentialsGrant(
-              ctx,
-              clientCredentialGrantParamsSchema.parse(params),
-            );
-            break;
-          case GrantType.RefreshToken:
-            grantResult = await refreshTokenGrant(
-              ctx,
-              refreshTokenParamsSchema.parse(params),
-            );
-            break;
-          case GrantType.OTP:
-            grantResult = await passwordlessGrantUser(
-              ctx,
-              passwordlessGrantParamsSchema.parse(params),
-            );
-            break;
-          default:
-            return ctx.json(
-              {
-                error: "unsupported_grant_type",
-                error_description: "Grant type not implemented",
-              },
-              400,
-            );
-        }
-      } catch (err) {
-        // Refresh-token grant proxied to upstream Auth0 as part of lazy
-        // migration: relay the upstream response (status + body) verbatim so
-        // behaviour matches Auth0 byte-for-byte (rotation, error shape, etc).
-        if (err instanceof Auth0ProxyResponse) {
-          return new Response(JSON.stringify(err.body ?? null), {
-            status: err.status,
-            headers: {
-              "content-type": "application/json",
-              "Cache-Control": "no-store",
-              Pragma: "no-cache",
+      switch (body.grant_type) {
+        case GrantType.AuthorizationCode:
+          grantResult = await authorizationCodeGrantUser(
+            ctx,
+            authorizationCodeGrantParamsSchema.parse(params),
+          );
+          break;
+        case GrantType.ClientCredential:
+          grantResult = await clientCredentialsGrant(
+            ctx,
+            clientCredentialGrantParamsSchema.parse(params),
+          );
+          break;
+        case GrantType.RefreshToken:
+          grantResult = await refreshTokenGrant(
+            ctx,
+            refreshTokenParamsSchema.parse(params),
+          );
+          break;
+        case GrantType.OTP:
+          grantResult = await passwordlessGrantUser(
+            ctx,
+            passwordlessGrantParamsSchema.parse(params),
+          );
+          break;
+        default:
+          return ctx.json(
+            {
+              error: "unsupported_grant_type",
+              error_description: "Grant type not implemented",
             },
-          });
-        }
-        throw err;
+            400,
+          );
       }
 
       // RFC 6749 §5.2: reject grants the client is not registered for. Only
@@ -475,9 +459,7 @@ export const tokenRoutes = new OpenAPIHono<{
           userId: grantResult.user?.user_id,
           scope: grantResult.authParams.scope,
           audience: grantResult.authParams.audience,
-          ...(executionId
-            ? { details: { execution_id: executionId } }
-            : {}),
+          ...(executionId ? { details: { execution_id: executionId } } : {}),
         });
       }
 

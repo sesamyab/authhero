@@ -96,10 +96,22 @@ export function createUserHooks(
           throw err;
         }
         const message = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        const errorName = err instanceof Error ? err.name : undefined;
         logMessage(ctx, tenant_id, {
           type: LogTypes.FAILED_SIGNUP,
-          description: `Pre user registration hook failed: ${message}`,
-          details: { error: message },
+          description: `Pre user registration hook failed for ${user.email || user.phone_number || user.user_id}: ${message}`,
+          userId: user.user_id,
+          connection: user.connection,
+          details: {
+            error: message,
+            error_name: errorName,
+            error_stack: stack,
+            user_email: user.email,
+            user_phone_number: user.phone_number,
+            user_provider: user.provider,
+            user_connection: user.connection,
+          },
         });
       }
     }
@@ -240,10 +252,22 @@ export function createUserHooks(
           );
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
+          const stack = err instanceof Error ? err.stack : undefined;
+          const errorName = err instanceof Error ? err.name : undefined;
           logMessage(ctx, tenant_id, {
             type: LogTypes.FAILED_SIGNUP,
-            description: `Post user registration hook failed: ${message}`,
-            details: { error: message },
+            description: `Post user registration hook failed for ${result.email || result.phone_number || result.user_id}: ${message}`,
+            userId: result.user_id,
+            connection: result.connection,
+            details: {
+              error: message,
+              error_name: errorName,
+              error_stack: stack,
+              user_email: result.email,
+              user_phone_number: result.phone_number,
+              user_provider: result.provider,
+              user_connection: result.connection,
+            },
           });
         }
       }
@@ -314,13 +338,20 @@ export function createUserHooks(
             );
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
+            const stack = err instanceof Error ? err.stack : undefined;
+            const errorName = err instanceof Error ? err.name : undefined;
             logMessage(ctx, tenant_id, {
               type: LogTypes.FAILED_SIGNUP,
-              description: `Post user registration template hook ${hook.template_id} failed: ${message}`,
+              description: `Post user registration template hook ${hook.template_id} failed for ${result.email || result.phone_number || result.user_id}: ${message}`,
+              userId: result.user_id,
+              connection: result.connection,
               details: {
                 template_id: hook.template_id,
                 trigger_id: "post-user-registration",
                 error: message,
+                error_name: errorName,
+                error_stack: stack,
+                user_email: result.email,
               },
             });
           }

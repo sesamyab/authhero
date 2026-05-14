@@ -177,22 +177,10 @@ export const clientInsertSchema = z.object({
       description:
         'Metadata associated with the client, in the form of an object with string values (max 255 chars). Maximum of 10 metadata properties allowed. Field names (max 255 chars) are alphanumeric and may only include the following special characters: :,-+=_*?"/()\u003c\u003e@ [Tab][Space]',
     }),
-  disable_sign_ups: z
-    .boolean()
-    .default(false)
-    .optional()
-    .openapi({
-      description:
-        "When true, blocks new user sign-ups via this client. The identifier/signup screen rejects emails that don't match an existing user with `User account does not exist` (unless `hide_sign_up_disabled_error` is also set). Existing users — including those signing in via a federated connection that links to an existing account — are unaffected.",
-    }),
-  hide_sign_up_disabled_error: z
-    .boolean()
-    .default(false)
-    .optional()
-    .openapi({
-      description:
-        "Enumeration-safe variant of `disable_sign_ups`. When both are true, the identifier screen does not reveal that an email is unknown — it advances to the OTP/password challenge as if the account existed and fails at credential check. Mitigates email enumeration at the cost of UX: users without an account see a generic credential failure instead of an explicit signup-disabled message.",
-    }),
+  hide_sign_up_disabled_error: z.boolean().default(false).optional().openapi({
+    description:
+      "Enumeration-safe variant of the connection-level `disable_signup` flag. When a signup is blocked by the password connection and this is true, the identifier screen does not reveal that an email is unknown — it advances to the OTP/password challenge as if the account existed and fails at credential check. Mitigates email enumeration at the cost of UX: users without an account see a generic credential failure instead of an explicit signup-disabled message.",
+  }),
   mobile: z.record(z.any()).default({}).optional().openapi({
     description: "Additional configuration for native mobile apps.",
   }),
@@ -202,23 +190,14 @@ export const clientInsertSchema = z.object({
   native_social_login: z.record(z.any()).default({}).optional(),
   refresh_token: z
     .object({
-      rotation_type: z
-        .enum(["rotating", "non-rotating"])
-        .optional()
-        .openapi({
-          description:
-            "Whether refresh tokens for this client are rotated on every exchange (Auth0 'rotating' behavior) or kept stable (legacy non-rotating). Defaults to 'non-rotating' when unset.",
-        }),
-      leeway: z
-        .number()
-        .int()
-        .min(0)
-        .max(600)
-        .optional()
-        .openapi({
-          description:
-            "Seconds after a parent token's first rotation during which presenting it again still mints a fresh sibling child instead of triggering reuse-detection. Defaults to 30s when unset.",
-        }),
+      rotation_type: z.enum(["rotating", "non-rotating"]).optional().openapi({
+        description:
+          "Whether refresh tokens for this client are rotated on every exchange (Auth0 'rotating' behavior) or kept stable (legacy non-rotating). Defaults to 'non-rotating' when unset.",
+      }),
+      leeway: z.number().int().min(0).max(600).optional().openapi({
+        description:
+          "Seconds after a parent token's first rotation during which presenting it again still mints a fresh sibling child instead of triggering reuse-detection. Defaults to 30s when unset.",
+      }),
       // Auth0-compatible fields. Listed explicitly (rather than using
       // .passthrough()) so they survive parse cycles AND keep type info,
       // without tripping dts-bundle-generator's handling of zod's

@@ -35,6 +35,8 @@ export function get(db: Kysely<Database>) {
       secrets,
       dependencies,
       supported_triggers,
+      is_system,
+      inherit,
       tenant_id: _tenantId,
       ...rest
     } = row;
@@ -60,6 +62,8 @@ export function get(db: Kysely<Database>) {
         parseJsonField<Array<{ id: string; version?: string }>>(
           supported_triggers,
         ),
+      is_system: !!is_system,
+      inherit: !!inherit,
     } as Action;
   };
 }

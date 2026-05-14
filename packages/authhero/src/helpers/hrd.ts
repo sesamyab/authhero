@@ -8,7 +8,10 @@ export function findHrdConnection(
 ): Connection | undefined {
   const at = email.lastIndexOf("@");
   if (at < 0) return undefined;
-  const domain = email.slice(at + 1).trim().toLowerCase();
+  const domain = email
+    .slice(at + 1)
+    .trim()
+    .toLowerCase();
   if (!domain) return undefined;
 
   const matches = connections.filter((c) => {

@@ -25,6 +25,14 @@ export const actionInsertSchema = z.object({
   runtime: z.string().max(50).optional(),
   dependencies: z.array(actionDependencySchema).optional(),
   secrets: z.array(actionSecretSchema).optional(),
+  // Marks this action as a shared template owned by the control-plane tenant.
+  // Other tenants can opt-in by creating a row with the same `name` and
+  // `inherit: true`; at execute time the loader reads code from this row.
+  is_system: z.boolean().optional(),
+  // On a non-control-plane tenant, indicates the action's `code` should be
+  // read through from the control-plane system action with a matching name.
+  // The local `secrets` still override (local-first then upstream fallback).
+  inherit: z.boolean().optional(),
 });
 export type ActionInsert = z.infer<typeof actionInsertSchema>;
 

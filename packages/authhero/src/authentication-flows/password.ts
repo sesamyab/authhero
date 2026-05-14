@@ -35,10 +35,7 @@ import {
   getPasswordPolicy,
   hashPassword,
 } from "../helpers/password-policy";
-import {
-  findConnectionByName,
-  getAuth0SourceConnection,
-} from "../utils/auth0-source-connection";
+import { findConnectionByName } from "../utils/connections";
 import { attemptUpstreamPasswordFallback } from "./auth0-migration";
 
 async function recordFailedLogin(
@@ -136,37 +133,32 @@ export async function passwordGrant(
     username,
   });
 
-  // Lazy migration: a tenant configured with a `strategy: "auth0"` connection
-  // and at least one DB connection flagged `import_mode: true` will attempt
-  // password verification against upstream Auth0 when the user (or their
-  // password hash) is missing locally. On success, the user/password are
-  // created locally so subsequent logins are served entirely from authhero.
-  const auth0Source = await getAuth0SourceConnection(ctx, client.tenant.id);
-
+  // Lazy migration: a DB connection flagged `import_mode: true` AND carrying
+  // upstream credentials under `options.configuration` will attempt password
+  // verification against upstream Auth0 when the user (or their password
+  // hash) is missing locally. On success, the user/password are created
+  // locally so subsequent logins are served entirely from authhero.
   if (!user) {
-    if (auth0Source) {
-      // Resolve the DB connection by the requested realm (the connection the
-      // login is targeting), not "any import_mode connection in the tenant".
-      // This prevents a login for realm A from being verified against realm
-      // B's upstream just because B happens to have import_mode enabled.
-      const realmDbConnection = await findConnectionByName(
+    // Resolve the DB connection by the requested realm (the connection the
+    // login is targeting), not "any import_mode connection in the tenant".
+    // This prevents a login for realm A from being verified against realm
+    // B's upstream just because B happens to have import_mode enabled.
+    const realmDbConnection = await findConnectionByName(
+      ctx,
+      client.tenant.id,
+      realm,
+    );
+    if (realmDbConnection?.options?.import_mode === true) {
+      const migrated = await attemptUpstreamPasswordFallback({
         ctx,
-        client.tenant.id,
-        realm,
-      );
-      if (realmDbConnection?.options?.import_mode === true) {
-        const migrated = await attemptUpstreamPasswordFallback({
-          ctx,
-          client,
-          username,
-          password: authParams.password,
-          dbConnection: realmDbConnection,
-          source: auth0Source,
-          existingUser: null,
-        });
-        if (migrated) {
-          user = migrated;
-        }
+        client,
+        username,
+        password: authParams.password,
+        dbConnection: realmDbConnection,
+        existingUser: null,
+      });
+      if (migrated) {
+        user = migrated;
       }
     }
 
@@ -224,7 +216,7 @@ export async function passwordGrant(
     password &&
     (await bcryptjs.compare(authParams.password, password.password));
 
-  if (!valid && auth0Source) {
+  if (!valid) {
     // Try upstream lazy migration before recording a failed-login strike.
     // The user already exists locally; we just don't have a matching
     // password hash. Use the user's own connection record to read the
@@ -242,7 +234,6 @@ export async function passwordGrant(
         username,
         password: authParams.password,
         dbConnection: userDbConnection,
-        source: auth0Source,
         existingUser: primaryUser,
       });
       if (migrated) {

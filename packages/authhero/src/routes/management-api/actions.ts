@@ -475,7 +475,12 @@ export const actionsRoutes = new OpenAPIHono<{
       });
 
       // Reached only after a successful executor deploy (or none configured).
-      await snapshotActionVersion(ctx.env.data, ctx.var.tenant_id, action, true);
+      await snapshotActionVersion(
+        ctx.env.data,
+        ctx.var.tenant_id,
+        action,
+        true,
+      );
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
@@ -532,8 +537,7 @@ export const actionsRoutes = new OpenAPIHono<{
     }),
     async (ctx) => {
       const { actionId } = ctx.req.valid("param");
-      const { page, per_page, include_totals, sort } =
-        ctx.req.valid("query");
+      const { page, per_page, include_totals, sort } = ctx.req.valid("query");
 
       const action = await ctx.env.data.actions.get(
         ctx.var.tenant_id,
@@ -776,13 +780,7 @@ export const actionsRoutes = new OpenAPIHono<{
                 ),
                 logs: z.array(
                   z.object({
-                    level: z.enum([
-                      "log",
-                      "info",
-                      "warn",
-                      "error",
-                      "debug",
-                    ]),
+                    level: z.enum(["log", "info", "warn", "error", "debug"]),
                     message: z.string(),
                   }),
                 ),

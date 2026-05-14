@@ -566,10 +566,7 @@ describe("POST /oidc/register — client_grants provisioning", () => {
     });
     expect(client_grants).toHaveLength(1);
     expect(client_grants[0].audience).toBe("https://api.sesamy.com");
-    expect(client_grants[0].scope).toEqual([
-      "paywalls:read",
-      "products:read",
-    ]);
+    expect(client_grants[0].scope).toEqual(["paywalls:read", "products:read"]);
   });
 
   it("creates a client_grants row when audience+scope come from the request body (open DCR)", async () => {

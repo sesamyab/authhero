@@ -152,9 +152,23 @@ export function createUserDeletionHooks(
             },
           );
         } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const stack = err instanceof Error ? err.stack : undefined;
+          const errorName = err instanceof Error ? err.name : undefined;
           logMessage(ctx, tenant_id, {
             type: LogTypes.FAILED_HOOK,
-            description: `Post user deletion hook failed: ${err instanceof Error ? err.message : String(err)}`,
+            description: `Post user deletion hook failed for ${userToDelete.email || userToDelete.phone_number || user_id}: ${message}`,
+            userId: user_id,
+            connection: userToDelete.connection,
+            details: {
+              error: message,
+              error_name: errorName,
+              error_stack: stack,
+              user_email: userToDelete.email,
+              user_phone_number: userToDelete.phone_number,
+              user_provider: userToDelete.provider,
+              user_connection: userToDelete.connection,
+            },
           });
           // Don't throw - user is already deleted
         }

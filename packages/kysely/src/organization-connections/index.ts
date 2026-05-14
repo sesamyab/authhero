@@ -46,7 +46,11 @@ export function createOrganizationConnectionsAdapter(
   db: Kysely<Database>,
 ): OrganizationConnectionsAdapter {
   return {
-    async create(tenantId, organizationId, params: OrganizationConnectionInsert) {
+    async create(
+      tenantId,
+      organizationId,
+      params: OrganizationConnectionInsert,
+    ) {
       const now = new Date().toISOString();
       const row: Row = {
         tenant_id: tenantId,
@@ -59,7 +63,11 @@ export function createOrganizationConnectionsAdapter(
         updated_at: now,
       };
       await db.insertInto("organization_connections").values(row).execute();
-      const connection = await loadConnection(db, tenantId, params.connection_id);
+      const connection = await loadConnection(
+        db,
+        tenantId,
+        params.connection_id,
+      );
       return toDomain(row, connection);
     },
 
@@ -72,7 +80,11 @@ export function createOrganizationConnectionsAdapter(
         .execute();
       const out: OrganizationConnection[] = [];
       for (const row of rows) {
-        const connection = await loadConnection(db, tenantId, row.connection_id);
+        const connection = await loadConnection(
+          db,
+          tenantId,
+          row.connection_id,
+        );
         out.push(toDomain(row, connection));
       }
       return out;

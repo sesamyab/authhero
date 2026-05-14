@@ -246,12 +246,13 @@ export async function identifierScreen(
   }
 
   // Check if password signup is available
-  const hasPasswordConnection = context.connections.some(
-    (c) => c.strategy === Strategy.USERNAME_PASSWORD,
-  );
+  const hasPasswordConnection = !!passwordConnection;
 
-  // Check if signups are disabled via client flag or screen_hint=login
-  const signupsDisabled = client.disable_sign_ups === true;
+  // Check if signups are disabled on the password connection or via
+  // screen_hint=login. Federated connections enforce disable_signup at
+  // callback time; the identifier screen only governs the password signup
+  // link visibility.
+  const signupsDisabled = passwordConnection?.options?.disable_signup === true;
   const authorizeUrl = context.ctx.var.loginSession?.authorization_url;
   const screenHintLogin =
     authorizeUrl &&
@@ -577,10 +578,10 @@ export const identifierScreenDefinition: ScreenDefinition = {
       }
 
       // Validate signup if user doesn't exist. In enumeration-safe mode
-      // (disable_sign_ups + hide_sign_up_disabled_error) we suppress the
-      // explicit error and let the flow continue past this point as if the
-      // account existed — the OTP/password challenge then fails generically,
-      // hiding the signal that the email is unknown.
+      // (connection's disable_signup + client.hide_sign_up_disabled_error) we
+      // suppress the explicit error and let the flow continue past this point
+      // as if the account existed — the OTP/password challenge then fails
+      // generically, hiding the signal that the email is unknown.
       let silentSignupStub = false;
       if (!user) {
         const validation = await validateSignupEmail(

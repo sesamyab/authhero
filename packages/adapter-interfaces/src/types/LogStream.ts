@@ -9,11 +9,7 @@ export const logStreamTypeSchema = z.enum([
   "sumo",
 ]);
 
-export const logStreamStatusSchema = z.enum([
-  "active",
-  "paused",
-  "suspended",
-]);
+export const logStreamStatusSchema = z.enum(["active", "paused", "suspended"]);
 
 export const logStreamFilterSchema = z.object({
   type: z.string(),

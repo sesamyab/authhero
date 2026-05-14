@@ -59,9 +59,9 @@ function ScopeBanner() {
       {isControlPlane ? (
         <>
           Showing the <strong>shared control-plane</strong> bucket. Rotating
-          here affects every tenant that falls back to it — switch the tenant
-          to <code>signingKeyMode: "tenant"</code> first if you only want to
-          rotate this tenant's keys.
+          here affects every tenant that falls back to it — switch the tenant to{" "}
+          <code>signingKeyMode: "tenant"</code> first if you only want to rotate
+          this tenant's keys.
         </>
       ) : (
         <>

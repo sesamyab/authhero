@@ -186,10 +186,7 @@ export async function authorizationCodeGrantUser(
       });
     }
     const method = code.code_challenge_method || "plain";
-    const challenge = await computeCodeChallenge(
-      params.code_verifier,
-      method,
-    );
+    const challenge = await computeCodeChallenge(params.code_verifier, method);
     if (!safeCompare(challenge, code.code_challenge)) {
       logMessage(ctx, client.tenant.id, {
         type: LogTypes.FAILED_EXCHANGE_AUTHORIZATION_CODE_FOR_ACCESS_TOKEN,

@@ -39,10 +39,12 @@ describe("signup validation hooks", () => {
     it("should block signup when disable_sign_ups is true", async () => {
       const { env, oauthApp } = await getTestServer({ mockEmail: true });
 
-      // Update the client to disable signups
-      await env.data.clients.update("tenantId", "clientId", {
-        disable_sign_ups: true,
-      });
+      // Disable signups on the Username-Password-Authentication connection
+      await env.data.connections.update(
+        "tenantId",
+        "Username-Password-Authentication",
+        { options: { disable_signup: true } },
+      );
 
       const client = testClient(oauthApp, env);
 
@@ -86,10 +88,12 @@ describe("signup validation hooks", () => {
         last_login: new Date().toISOString(),
       });
 
-      // Update the client to disable signups
-      await env.data.clients.update("tenantId", "clientId", {
-        disable_sign_ups: true,
-      });
+      // Disable signups on the Username-Password-Authentication connection
+      await env.data.connections.update(
+        "tenantId",
+        "Username-Password-Authentication",
+        { options: { disable_signup: true } },
+      );
 
       const client = testClient(oauthApp, env);
 
@@ -119,10 +123,12 @@ describe("signup validation hooks", () => {
     it("should block email/password signup when disable_sign_ups is true", async () => {
       const { env, oauthApp } = await getTestServer({ mockEmail: true });
 
-      // Update the client to disable signups
-      await env.data.clients.update("tenantId", "clientId", {
-        disable_sign_ups: true,
-      });
+      // Disable signups on the Username-Password-Authentication connection
+      await env.data.connections.update(
+        "tenantId",
+        "Username-Password-Authentication",
+        { options: { disable_signup: true } },
+      );
 
       const client = testClient(oauthApp, env);
 
@@ -170,9 +176,11 @@ describe("signup validation hooks", () => {
         last_login: new Date().toISOString(),
       });
 
-      await env.data.clients.update("tenantId", "clientId", {
-        disable_sign_ups: true,
-      });
+      await env.data.connections.update(
+        "tenantId",
+        "Username-Password-Authentication",
+        { options: { disable_signup: true } },
+      );
 
       const client = testClient(oauthApp, env);
 
@@ -206,10 +214,12 @@ describe("signup validation hooks", () => {
     it("should log failed signup when blocked by disable_sign_ups", async () => {
       const { env, oauthApp } = await getTestServer({ mockEmail: true });
 
-      // Update the client to disable signups
-      await env.data.clients.update("tenantId", "clientId", {
-        disable_sign_ups: true,
-      });
+      // Disable signups on the Username-Password-Authentication connection
+      await env.data.connections.update(
+        "tenantId",
+        "Username-Password-Authentication",
+        { options: { disable_signup: true } },
+      );
 
       const client = testClient(oauthApp, env);
 

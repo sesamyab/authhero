@@ -146,6 +146,8 @@ export const sqlActionSchema = z.object({
   dependencies: z.string().optional().nullable(),
   supported_triggers: z.string().optional().nullable(),
   deployed_at_ts: z.number().optional().nullable(),
+  is_system: z.number().optional().nullable(),
+  inherit: z.number().optional().nullable(),
   created_at_ts: z.number(),
   updated_at_ts: z.number(),
 });
@@ -429,7 +431,6 @@ const sqlClientSchema = z.object({
   custom_login_page_on: z.number(),
   require_pushed_authorization_requests: z.number(),
   require_proof_of_possession: z.number(),
-  disable_sign_ups: z.number(),
   hide_sign_up_disabled_error: z.number(),
   // Convert array/object fields to JSON strings for SQL storage
   callbacks: z.string(),
@@ -549,6 +550,17 @@ export interface Database {
     sink: string; // JSON
     filters: string | null; // JSON
     is_priority: number | null;
+    created_at: string;
+    updated_at: string;
+  };
+  migration_sources: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    provider: string;
+    connection: string;
+    enabled: number;
+    credentials: string; // JSON, client_secret encrypted in application layer
     created_at: string;
     updated_at: string;
   };

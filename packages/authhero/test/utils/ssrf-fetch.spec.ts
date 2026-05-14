@@ -35,9 +35,9 @@ describe("assertSsrfSafeUrl", () => {
     "0.0.0.0",
     "100.64.0.1",
   ])("rejects private/loopback hostname %s", (host) => {
-    expect(() =>
-      assertSsrfSafeUrl(`https://${host}/x`),
-    ).toThrow(SsrfBlockedError);
+    expect(() => assertSsrfSafeUrl(`https://${host}/x`)).toThrow(
+      SsrfBlockedError,
+    );
   });
 
   it("rejects IPv6 loopback ::1", () => {
@@ -79,12 +79,8 @@ describe("assertSsrfSafeUrl", () => {
   });
 
   it("does NOT reject 172.15.x or 172.32.x (just outside the /12 block)", () => {
-    expect(() =>
-      assertSsrfSafeUrl("https://172.15.0.1/x"),
-    ).not.toThrow();
-    expect(() =>
-      assertSsrfSafeUrl("https://172.32.0.1/x"),
-    ).not.toThrow();
+    expect(() => assertSsrfSafeUrl("https://172.15.0.1/x")).not.toThrow();
+    expect(() => assertSsrfSafeUrl("https://172.32.0.1/x")).not.toThrow();
   });
 
   it("allows private hostnames when allowPrivateHosts=true (test mode)", () => {

@@ -18,29 +18,32 @@ interface Auth0SourceCredentials {
   clientSecret: string;
 }
 
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 /**
- * Read the upstream credentials from a `strategy: "auth0"` connection. Returns
- * null if any required field is missing — callers should treat this as
- * "migration is not configured" and fall through to the normal failure path.
+ * Read the upstream migration credentials from a DB connection's
+ * `options.configuration` (Auth0-shape: the destination connection holds the
+ * upstream creds inline). Returns null if any required field is missing —
+ * callers should treat this as "migration is not configured" and fall through
+ * to the normal failure path.
  */
 export function readAuth0SourceCredentials(
-  source: Connection,
+  dbConnection: Connection,
 ): Auth0SourceCredentials | null {
-  const options = source.options ?? {};
-  const tokenEndpoint =
-    typeof options.token_endpoint === "string"
-      ? options.token_endpoint
+  const config =
+    dbConnection.options && typeof dbConnection.options === "object"
+      ? (dbConnection.options as Record<string, unknown>).configuration
       : undefined;
-  const userinfoEndpoint =
-    typeof options.userinfo_endpoint === "string"
-      ? options.userinfo_endpoint
-      : undefined;
-  const clientId =
-    typeof options.client_id === "string" ? options.client_id : undefined;
-  const clientSecret =
-    typeof options.client_secret === "string"
-      ? options.client_secret
-      : undefined;
+  if (!config || typeof config !== "object") {
+    return null;
+  }
+  const c = config as Record<string, unknown>;
+  const tokenEndpoint = readString(c.token_endpoint);
+  const userinfoEndpoint = readString(c.userinfo_endpoint);
+  const clientId = readString(c.client_id);
+  const clientSecret = readString(c.client_secret);
 
   if (!tokenEndpoint || !userinfoEndpoint || !clientId || !clientSecret) {
     return null;
@@ -54,11 +57,12 @@ interface AttemptUpstreamPasswordParams {
   username: string;
   password: string;
   /**
-   * The local DB connection whose `name` is sent as `realm` to upstream Auth0.
-   * Must have `options.import_mode: true` to be eligible.
+   * The local DB connection the login is targeting. Its `name` is sent as
+   * `realm` to upstream Auth0, and its `options.configuration` carries the
+   * upstream credentials. Must have `options.import_mode: true` to be
+   * eligible.
    */
   dbConnection: Connection;
-  source: Connection;
   /**
    * The local user, if one already exists. When null, a new user record is
    * created from the `/userinfo` profile on upstream success.
@@ -80,14 +84,14 @@ interface AttemptUpstreamPasswordParams {
 export async function attemptUpstreamPasswordFallback(
   params: AttemptUpstreamPasswordParams,
 ): Promise<User | null> {
-  const { ctx, client, username, password, dbConnection, source, existingUser } =
+  const { ctx, client, username, password, dbConnection, existingUser } =
     params;
 
   if (dbConnection.options?.import_mode !== true) {
     return null;
   }
 
-  const credentials = readAuth0SourceCredentials(source);
+  const credentials = readAuth0SourceCredentials(dbConnection);
   if (!credentials) {
     return null;
   }

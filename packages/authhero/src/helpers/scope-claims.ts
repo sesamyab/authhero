@@ -28,7 +28,9 @@ export function getStandardClaim(
     case "email":
       return user.email || undefined;
     case "email_verified":
-      return user.email_verified !== undefined ? user.email_verified : undefined;
+      return user.email_verified !== undefined
+        ? user.email_verified
+        : undefined;
     case "name":
       return user.name || undefined;
     case "family_name":
@@ -67,7 +69,9 @@ export function getStandardClaim(
     // `phone_number_verified` is the OIDC standard claim name; we store it
     // internally as `phone_verified`.
     case "phone_number_verified":
-      return user.phone_verified !== undefined ? user.phone_verified : undefined;
+      return user.phone_verified !== undefined
+        ? user.phone_verified
+        : undefined;
     default:
       return undefined;
   }
