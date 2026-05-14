@@ -6,18 +6,10 @@ import {
 import { AnalyticsEngineLogsAdapterConfig } from "./types";
 import { executeAnalyticsEngineQuery, escapeSQLString } from "./query";
 
-// Log types that count as successful logins
-const LOGIN_TYPES = [
-  "s", // SUCCESS_LOGIN
-  "seacft", // SUCCESS_EXCHANGE_AUTHORIZATION_CODE_FOR_ACCESS_TOKEN
-  "seccft", // SUCCESS_EXCHANGE_CLIENT_CREDENTIALS_FOR_ACCESS_TOKEN
-  "sepft", // SUCCESS_EXCHANGE_PASSWORD_FOR_ACCESS_TOKEN
-  "sertft", // SUCCESS_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN
-  "ssa", // SUCCESS_SILENT_AUTH
-];
-
-// Log types that indicate leaked password detection
-const LEAKED_PASSWORD_TYPES = ["pwd_leak", "signup_pwd_leak", "reset_pwd_leak"];
+// Match Auth0: only SUCCESS_LOGIN counts as a login (no token exchanges /
+// silent auth), and only pwd_leak counts as a leaked-password detection.
+const LOGIN_TYPES = ["s"];
+const LEAKED_PASSWORD_TYPES = ["pwd_leak"];
 
 /**
  * Parses a date string in YYYYMMDD format to YYYY-MM-DD

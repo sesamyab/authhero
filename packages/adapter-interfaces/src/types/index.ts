@@ -93,6 +93,7 @@ export * from "./OrganizationConnection";
 export * from "./UserOrganization";
 export * from "./TenantSettings";
 export * from "./Stats";
+export * from "./Analytics";
 export * from "./CustomText";
 export * from "./Strategy";
 export * from "./AuthenticationMethod";

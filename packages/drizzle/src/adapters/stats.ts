@@ -2,8 +2,10 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { logs } from "../schema/sqlite";
 import type { DrizzleDb } from "./types";
 
-const LOGIN_TYPES = ["s", "seacft", "seccft", "sepft", "sertft", "ssa"];
-const LEAKED_PASSWORD_TYPES = ["pwd_leak", "signup_pwd_leak", "reset_pwd_leak"];
+// Match Auth0: only SUCCESS_LOGIN counts as a login (no token exchanges /
+// silent auth), and only pwd_leak counts as a leaked-password detection.
+const LOGIN_TYPES = ["s"];
+const LEAKED_PASSWORD_TYPES = ["pwd_leak"];
 
 export function createStatsAdapter(db: DrizzleDb) {
   return {

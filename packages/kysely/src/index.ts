@@ -40,6 +40,7 @@ import { createOrganizationConnectionsAdapter } from "./organization-connections
 import { createUserOrganizationsAdapter } from "./user-organizations";
 import { createInvitesAdapter } from "./invites";
 import { createStatsAdapter } from "./stats";
+import { createAnalyticsAdapter } from "./analytics";
 import { createCustomTextAdapter } from "./customText";
 import { createAuthenticationMethodsAdapter } from "./authenticationMethods";
 import { createOutboxAdapter } from "./outbox";
@@ -96,6 +97,7 @@ export default function createAdapters(
     organizationConnections: createOrganizationConnectionsAdapter(db),
     userOrganizations: createUserOrganizationsAdapter(db),
     stats: createStatsAdapter(db),
+    analytics: createAnalyticsAdapter(db),
     outbox: createOutboxAdapter(db),
     async transaction<T>(
       fn: (trxAdapters: DataAdapters) => Promise<T>,

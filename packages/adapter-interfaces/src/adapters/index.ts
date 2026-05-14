@@ -40,6 +40,7 @@ import { InvitesAdapter } from "./Invites";
 import { GeoAdapter } from "./Geo";
 import { AuthenticationMethodsAdapter } from "./AuthenticationMethods";
 import { StatsAdapter } from "./Stats";
+import { AnalyticsAdapter } from "./Analytics";
 import { UniversalLoginTemplatesAdapter } from "./UniversalLoginTemplates";
 import { CustomTextAdapter } from "./CustomText";
 import { EmailServiceAdapter } from "./EmailService";
@@ -97,6 +98,12 @@ export interface DataAdapters {
   roles: RolesAdapter;
   sessions: SessionsAdapter;
   stats?: StatsAdapter;
+  /**
+   * Optional richer analytics surface, exposed via `/api/v2/analytics/*`.
+   * Returns ClickHouse-style `{ meta, data }` responses with filtering and
+   * grouping. Unlike `stats`, this is not Auth0 wire-compatible.
+   */
+  analytics?: AnalyticsAdapter;
   tenants: TenantsDataAdapter;
   themes: ThemesAdapter;
   universalLoginTemplates: UniversalLoginTemplatesAdapter;
@@ -159,6 +166,7 @@ export * from "./UserOrganizations";
 export * from "./Invites";
 export * from "./Geo";
 export * from "./Stats";
+export * from "./Analytics";
 export * from "./UniversalLoginTemplates";
 export * from "./CustomText";
 export * from "./AuthenticationMethods";

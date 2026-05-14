@@ -6,22 +6,12 @@ import {
 } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 
-// Log types that count as successful logins
-const LOGIN_TYPES = [
-  "s", // SUCCESS_LOGIN
-  "seacft", // SUCCESS_EXCHANGE_AUTHORIZATION_CODE_FOR_ACCESS_TOKEN
-  "seccft", // SUCCESS_EXCHANGE_CLIENT_CREDENTIALS_FOR_ACCESS_TOKEN
-  "sepft", // SUCCESS_EXCHANGE_PASSWORD_FOR_ACCESS_TOKEN
-  "sertft", // SUCCESS_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN
-  "ssa", // SUCCESS_SILENT_AUTH
-] as const;
+// Match Auth0's daily-stats `logins`: just SUCCESS_LOGIN, not token exchanges
+// or silent auth (those would inflate the count for SPAs).
+const LOGIN_TYPES = ["s"] as const;
 
-// Log types that indicate leaked password detection
-const LEAKED_PASSWORD_TYPES = [
-  "pwd_leak",
-  "signup_pwd_leak",
-  "reset_pwd_leak",
-] as const;
+// Match Auth0's `leaked_passwords`: only the breached-password detection.
+const LEAKED_PASSWORD_TYPES = ["pwd_leak"] as const;
 
 /**
  * Parses a date string in YYYYMMDD format to YYYY-MM-DD

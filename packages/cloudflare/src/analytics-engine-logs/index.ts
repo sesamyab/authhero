@@ -9,6 +9,7 @@ export type {
 } from "./types";
 
 export { createAnalyticsEngineStatsAdapter } from "./stats";
+export { createAnalyticsEngineAnalyticsAdapter } from "./analytics";
 
 /**
  * Create an Analytics Engine logs adapter

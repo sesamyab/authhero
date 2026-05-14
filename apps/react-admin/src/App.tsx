@@ -69,6 +69,8 @@ import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import { SigningKeysList } from "./components/signing-keys";
 import { CertificateErrorDialog } from "./components/CertificateErrorDialog";
 import { ActivityDashboard } from "./components/activity";
+import { AnalyticsPage } from "./components/analytics";
+import BarChartIcon from "@mui/icons-material/BarChart";
 import { buildUrlWithProtocol } from "./utils/domainUtils";
 import { TenantProvider } from "./TenantContext";
 
@@ -317,6 +319,12 @@ export function App(props: AppProps) {
         />
         <Resource name="resource-server-scopes" />
         <Resource name="permissions" />
+        <Resource
+          icon={BarChartIcon}
+          name="analytics"
+          list={AnalyticsPage}
+          options={{ label: "Analytics" }}
+        />
         <Resource
           icon={SecurityIcon}
           name="roles"
