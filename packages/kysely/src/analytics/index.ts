@@ -65,11 +65,23 @@ function tzToSqliteOffset(tz: string, referenceDate: Date): string {
   return `${sign}${hh}:${mm}`;
 }
 
+function assertFixedOffsetTz(tz: string, referenceDate: Date): void {
+  const year = referenceDate.getUTCFullYear();
+  const janOffset = tzToSqliteOffset(tz, new Date(Date.UTC(year, 0, 1)));
+  const julOffset = tzToSqliteOffset(tz, new Date(Date.UTC(year, 6, 1)));
+  if (janOffset !== julOffset) {
+    throw new Error(
+      `Timezone '${tz}' is DST-varying (offset ${janOffset} in January vs ${julOffset} in July) and cannot be bucketed with a single fixed offset by the SQL analytics adapter. Use a fixed-offset zone (e.g. 'UTC' or '+02:00').`,
+    );
+  }
+}
+
 function timeBucketSql(
   interval: string,
   tz: string,
   referenceDate: Date,
 ): RawBuilder<string> {
+  assertFixedOffsetTz(tz, referenceDate);
   const offset = tzToSqliteOffset(tz, referenceDate);
   const shifted = sql<string>`datetime(${sql.ref("logs.date")}, ${offset})`;
   switch (interval) {

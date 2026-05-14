@@ -95,9 +95,9 @@ function pivotForTimeSeries(
   dimColumns: string[],
 ): { rows: Array<Record<string, unknown>>; seriesKeys: string[] } {
   const timeKey = "time";
-  const groupKey = dimColumns.find((c) => c !== timeKey);
+  const groupKeys = dimColumns.filter((c) => c !== timeKey);
 
-  if (!groupKey) {
+  if (groupKeys.length === 0) {
     return {
       rows: rows.map((r) => ({ time: r[timeKey], [metric]: r[metric] })),
       seriesKeys: [metric],
@@ -108,7 +108,7 @@ function pivotForTimeSeries(
   const seriesSet = new Set<string>();
   for (const r of rows) {
     const t = String(r[timeKey]);
-    const series = String(r[groupKey] ?? "—");
+    const series = groupKeys.map((k) => String(r[k] ?? "—")).join(" · ");
     seriesSet.add(series);
     if (!byTime.has(t)) byTime.set(t, { time: t });
     byTime.get(t)![series] = r[metric];
