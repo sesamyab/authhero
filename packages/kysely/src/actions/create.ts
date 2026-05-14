@@ -24,6 +24,8 @@ export function create(db: Kysely<Database>) {
         supported_triggers: action.supported_triggers
           ? JSON.stringify(action.supported_triggers)
           : null,
+        is_system: action.is_system ? 1 : 0,
+        inherit: action.inherit ? 1 : 0,
         created_at_ts: now,
         updated_at_ts: now,
       })
@@ -39,6 +41,8 @@ export function create(db: Kysely<Database>) {
       secrets: action.secrets?.map((s) => ({ name: s.name })),
       dependencies: action.dependencies,
       supported_triggers: action.supported_triggers,
+      is_system: action.is_system ?? false,
+      inherit: action.inherit ?? false,
       created_at: new Date(now).toISOString(),
       updated_at: new Date(now).toISOString(),
     };

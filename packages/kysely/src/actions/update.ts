@@ -68,6 +68,12 @@ export function update(db: Kysely<Database>) {
         sqlValues.deployed_at_ts = parsedTs;
       }
     }
+    if (action.is_system !== undefined) {
+      sqlValues.is_system = action.is_system ? 1 : 0;
+    }
+    if (action.inherit !== undefined) {
+      sqlValues.inherit = action.inherit ? 1 : 0;
+    }
 
     const result = await db
       .updateTable("actions")

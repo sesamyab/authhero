@@ -107,7 +107,6 @@ export async function getTestServer(
     client_metadata: {
       email_validation: "disabled",
     },
-    disable_sign_ups: false,
   });
 
   // Add the email connection

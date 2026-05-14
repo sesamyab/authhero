@@ -41,7 +41,6 @@ describe("clients", () => {
       auth0_conformant: true,
       cross_origin_authentication: false,
       custom_login_page_on: false,
-      disable_sign_ups: false,
       global: false,
       hide_sign_up_disabled_error: false,
       is_first_party: false,
@@ -186,7 +185,7 @@ describe("clients", () => {
       {
         json: {
           name: "connection-1",
-          strategy: "auth0",
+          strategy: "oidc",
         },
         header: {
           "tenant-id": "tenantId",

@@ -1,5 +1,4 @@
 import { JSONHTTPException } from "../errors/json-http-exception";
-import { Auth0ProxyResponse } from "../errors/auth0-proxy-response";
 import { Context } from "hono";
 import { Bindings, Variables, GrantFlowUserResult } from "../types";
 import {
@@ -20,11 +19,6 @@ import {
   parseRefreshToken,
 } from "../utils/refresh-token-format";
 import { ulid } from "../utils/ulid";
-import { getAuth0SourceConnection } from "../utils/auth0-source-connection";
-import {
-  Auth0UpstreamError,
-  proxyRefreshToken,
-} from "../utils/auth0-upstream";
 
 export const refreshTokenParamsSchema = z.object({
   grant_type: z.literal("refresh_token"),
@@ -90,63 +84,15 @@ export async function refreshTokenGrant(
   }
 
   if (!refreshToken) {
-    // Lazy migration: if a tenant has a `strategy: "auth0"` connection with
-    // `import_mode: true`, refresh tokens that don't match any local row are
-    // forwarded to upstream Auth0 verbatim. The user stays tracked by Auth0
-    // until their next interactive login (where the password-fallback path
-    // migrates them locally). This response is relayed unchanged so behaviour
-    // matches Auth0 byte-for-byte (rotation, error shapes, etc.).
-    const auth0Source = await getAuth0SourceConnection(ctx, client.tenant.id);
-    if (auth0Source?.options?.import_mode === true) {
-      const tokenEndpoint =
-        typeof auth0Source.options.token_endpoint === "string"
-          ? auth0Source.options.token_endpoint
-          : undefined;
-      const upstreamClientId =
-        typeof auth0Source.options.client_id === "string"
-          ? auth0Source.options.client_id
-          : undefined;
-      const upstreamClientSecret =
-        typeof auth0Source.options.client_secret === "string"
-          ? auth0Source.options.client_secret
-          : undefined;
-
-      if (tokenEndpoint && upstreamClientId) {
-        try {
-          const proxied = await proxyRefreshToken({
-            tokenEndpoint,
-            clientId: upstreamClientId,
-            clientSecret: upstreamClientSecret,
-            refreshToken: params.refresh_token,
-          });
-          if (proxied.status >= 200 && proxied.status < 300) {
-            logMessage(ctx, client.tenant.id, {
-              type: LogTypes.SUCCESS_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
-              description: "Proxied to upstream Auth0",
-            });
-          } else {
-            logMessage(ctx, client.tenant.id, {
-              type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
-              description: `Upstream Auth0 returned ${proxied.status}`,
-            });
-          }
-          throw new Auth0ProxyResponse(proxied.status, proxied.body);
-        } catch (err) {
-          if (err instanceof Auth0ProxyResponse) {
-            throw err;
-          }
-          if (err instanceof Auth0UpstreamError) {
-            console.warn(
-              `Auth0 upstream refresh proxy failed for tenant=${client.tenant.id}: ${err.code} ${err.description ?? ""}`,
-            );
-            // fall through to the standard invalid_grant rejection below
-          } else {
-            throw err;
-          }
-        }
-      }
-    }
-
+    // No local row matches the presented token. Earlier versions forwarded
+    // unknown refresh tokens to upstream Auth0; that proxy was removed when
+    // the `strategy: "auth0"` source connection was collapsed into the DB
+    // connection. Clients presenting an Auth0-issued (or otherwise unknown)
+    // token now receive `invalid_grant` and must re-authenticate
+    // interactively — see apps/docs/auth0-comparison/lazy-migration.md and
+    // https://github.com/markusahlstrand/authhero/issues/833 (re-mint).
+    // The FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN log below is the
+    // signal operators should watch during a cutover.
     appendLog(ctx, "Invalid refresh token");
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,

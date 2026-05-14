@@ -55,14 +55,10 @@ const IdentifierForm: FC<Props> = ({
   const showPhoneInput = connectionStrategies.includes(Strategy.SMS);
 
   // Strategies that are handled by form inputs, not social/enterprise buttons.
-  // Strategy.AUTH0 represents an upstream Auth0 tenant used for lazy migration
-  // — it is never directly authenticated against, so it must not surface as a
-  // login button.
   const formStrategies = new Set<string>([
     Strategy.EMAIL,
     Strategy.SMS,
     Strategy.USERNAME_PASSWORD,
-    Strategy.AUTH0,
   ]);
 
   // Get all available social/enterprise connections with their configs.

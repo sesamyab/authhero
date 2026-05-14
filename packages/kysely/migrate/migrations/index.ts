@@ -163,6 +163,9 @@ import * as o064_create_action_versions from "./2026-05-10T10:00:00_create_actio
 import * as o065_branding_dark_mode from "./2026-05-11T10:00:00_branding_dark_mode";
 import * as o066_create_action_executions from "./2026-05-12T10:00:00_create_action_executions";
 import * as o067_client_disable_sign_ups from "./2026-05-12T11:00:00_client_disable_sign_ups";
+import * as o068_move_disable_signup_to_connection from "./2026-05-13T10:00:00_move_disable_signup_to_connection";
+import * as o069_actions_is_system_inherit from "./2026-05-13T11:00:00_actions_is_system_inherit";
+import * as o070_collapse_auth0_source_into_db_connection from "./2026-05-13T12:00:00_collapse_auth0_source_into_db_connection";
 
 // These need to be in alphabetic order
 export default {
@@ -331,4 +334,7 @@ export default {
   o065_branding_dark_mode,
   o066_create_action_executions,
   o067_client_disable_sign_ups,
+  o068_move_disable_signup_to_connection,
+  o069_actions_is_system_inherit,
+  o070_collapse_auth0_source_into_db_connection,
 };
