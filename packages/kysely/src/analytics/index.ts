@@ -32,20 +32,58 @@ const METRIC_BY_RESOURCE: Record<
   sessions: { alias: "sessions", type: "UInt64", agg: "count" },
 };
 
-function timeBucketSql(interval: string): RawBuilder<string> {
-  const date = sql.ref("logs.date");
+// SQLite has no IANA tz support; convert to a fixed ±HH:MM offset computed
+// against `referenceDate`. DST changes inside the query window are not
+// honored — the ClickHouse path is the accurate one.
+function tzToSqliteOffset(tz: string, referenceDate: Date): string {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts: Record<string, string> = {};
+  for (const p of dtf.formatToParts(referenceDate)) parts[p.type] = p.value;
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  const localMs = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  const offsetMin = Math.round((localMs - referenceDate.getTime()) / 60000);
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMin);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `${sign}${hh}:${mm}`;
+}
+
+function timeBucketSql(
+  interval: string,
+  tz: string,
+  referenceDate: Date,
+): RawBuilder<string> {
+  const offset = tzToSqliteOffset(tz, referenceDate);
+  const shifted = sql<string>`datetime(${sql.ref("logs.date")}, ${offset})`;
   switch (interval) {
     case "hour":
-      return sql<string>`substr(${date}, 1, 13)`;
+      return sql<string>`substr(${shifted}, 1, 13)`;
     case "month":
-      return sql<string>`substr(${date}, 1, 7)`;
+      return sql<string>`substr(${shifted}, 1, 7)`;
     case "day":
-      return sql<string>`substr(${date}, 1, 10)`;
+      return sql<string>`substr(${shifted}, 1, 10)`;
     case "week":
       // ISO week start (Monday). SQLite's strftime("%w") returns 0=Sunday;
       // subtract (%w + 6) % 7 days to land on Monday. MySQL would need a
       // different expression — the SQL fallback targets SQLite.
-      return sql<string>`date(substr(${date}, 1, 10), '-' || ((cast(strftime('%w', substr(${date}, 1, 10)) as integer) + 6) % 7) || ' days')`;
+      return sql<string>`date(substr(${shifted}, 1, 10), '-' || ((cast(strftime('%w', substr(${shifted}, 1, 10)) as integer) + 6) % 7) || ' days')`;
     default:
       throw new Error(
         `Unsupported interval '${interval}' for SQL analytics adapter`,
@@ -115,7 +153,11 @@ export function createAnalyticsAdapter(
 
       for (const dim of params.group_by) {
         if (dim === "time") {
-          const bucket = timeBucketSql(params.interval);
+          const bucket = timeBucketSql(
+            params.interval,
+            params.tz,
+            new Date(params.from),
+          );
           selectExprs.push({ alias: "time", expr: bucket });
           groupRefs.push(bucket);
           meta.push({
