@@ -1,5 +1,48 @@
 # authhero
 
+## 5.1.0
+
+### Minor Changes
+
+- 7c8668d: Add tenant-level **Migration Sources** for transparently re-minting upstream refresh tokens (#833).
+
+  When a client presents a refresh token that doesn't match a local row, AuthHero now:
+  1. Lists the tenant's enabled migration sources.
+  2. For each, redeems the token at the upstream `/oauth/token` (`grant_type=refresh_token`) using the source's credentials.
+  3. On success, calls `/userinfo` to learn the upstream `sub`.
+  4. Resolves or lazily creates the local user via the standard `getOrCreateUserByProvider` path (running the existing user-registration hooks).
+  5. Mints native AuthHero `access_token` / `id_token` / `refresh_token` and returns them.
+  6. If every source rejects, falls back to the existing `invalid_grant`.
+
+  The client keeps using `grant_type=refresh_token` — no SDK change. After one exchange per user, that user is fully on the AuthHero side.
+
+  **New:**
+  - `MigrationSource` adapter entity at the tenant level: `provider` (`auth0` | `cognito` | `okta` | `oidc`), `connection`, `enabled`, `credentials` (`domain` / `client_id` / `client_secret` / optional `audience` / `scope`).
+  - `migrationSources?: MigrationSourcesAdapter` on `DataAdapters` (optional — adapters that don't implement it simply omit it; the re-mint flow becomes a no-op).
+  - `MigrationProvider` interface (`exchangeRefreshToken`, `fetchUserInfo`) with an Auth0 implementation. Cognito/Okta/generic OIDC will be added in follow-ups.
+  - `/api/v2/migration-sources` Management API (full CRUD); permissions `create|read|update|delete:migration_sources` are seeded automatically.
+  - `client_secret` is redacted (`"***"`) on every management-API response.
+  - Kysely migration `2026-05-14T10:00:00_migration_sources` adds the `migration_sources` table.
+
+  **Out of scope (follow-ups):** bulk user import via the same provider abstraction, Cognito / Okta / generic OIDC providers, account-link / `identities[]` migration, react-admin UI.
+
+### Patch Changes
+
+- dd833e1: Route email sends through the built-in provider matching `emailProvider.name`, and log notification failures to the audit log.
+
+  **Dispatch by provider name.** `sendEmail` now looks up `emailProvider.name` against a built-in service registry before falling back to the injected `ctx.env.data.emailService`. Currently the only built-in is `mailgun` (`MailgunEmailService`); anything else continues to delegate to the host application's `emailService` adapter as before. This matches the existing comment on `emailProviderSchema` ("The sending layer validates by `name`") and means a tenant that configures a mailgun provider no longer has its credentials parsed by an unrelated adapter (e.g. SES/SQS) and fail with a generic 500.
+
+  **Failure logging.** Both `sendEmail` and `sendSms` now wrap the underlying `.send()` call in a try/catch that:
+  - Emits `console.error` with tenant id, provider name, template, and recipient so the error is greppable in stdout.
+  - Writes a `LogTypes.FAILED_SENDING_NOTIFICATION` (`"fn"`) entry to the tenant's audit logs (`waitForCompletion: true`) including the provider name and error message.
+  - Re-throws the original error so existing error-handling behavior is preserved.
+
+  Previously a failing email/SMS provider produced a generic `Internal server error` response from the universal-login screen-api with no audit-log entry, making misconfigured providers hard to diagnose.
+
+- Updated dependencies [7c8668d]
+  - @authhero/adapter-interfaces@2.1.0
+  - @authhero/widget@0.32.22
+
 ## 5.0.0
 
 ### Major Changes
