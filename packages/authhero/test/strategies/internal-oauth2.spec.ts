@@ -30,7 +30,9 @@ function captureFetch(response: Response) {
     const headers: Record<string, string> = {};
     const headerSource =
       init?.headers ??
-      (typeof input !== "string" && !(input instanceof URL) && "headers" in input
+      (typeof input !== "string" &&
+      !(input instanceof URL) &&
+      "headers" in input
         ? input.headers
         : undefined);
     if (headerSource) {
@@ -43,7 +45,9 @@ function captureFetch(response: Response) {
       url,
       method:
         init?.method ??
-        (typeof input !== "string" && !(input instanceof URL) && "method" in input
+        (typeof input !== "string" &&
+        !(input instanceof URL) &&
+        "method" in input
           ? input.method
           : "GET"),
       headers,

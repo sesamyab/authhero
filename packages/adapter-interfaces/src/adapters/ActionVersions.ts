@@ -1,8 +1,4 @@
-import {
-  ActionVersion,
-  ActionVersionInsert,
-  Totals,
-} from "../types";
+import { ActionVersion, ActionVersionInsert, Totals } from "../types";
 import { ListParams } from "../types/ListParams";
 
 export interface ListActionVersionsResponse extends Totals {
@@ -33,8 +29,5 @@ export interface ActionVersionsAdapter {
    * Remove every version row for an action — used when the parent action is
    * deleted. Returns the number of rows removed.
    */
-  removeForAction: (
-    tenant_id: string,
-    action_id: string,
-  ) => Promise<number>;
+  removeForAction: (tenant_id: string, action_id: string) => Promise<number>;
 }

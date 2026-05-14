@@ -37,8 +37,7 @@ export function get(db: Kysely<Database>) {
       tenant_id: row.tenant_id,
       trigger_id: row.trigger_id,
       status: row.status as ActionExecutionStatus,
-      results:
-        parseJsonField<ActionExecutionResult[]>(row.results) ?? [],
+      results: parseJsonField<ActionExecutionResult[]>(row.results) ?? [],
       logs: parseJsonField<ActionExecutionLogs>(row.logs),
       created_at: new Date(Number(row.created_at_ts)).toISOString(),
       updated_at: new Date(Number(row.updated_at_ts)).toISOString(),

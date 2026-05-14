@@ -1,7 +1,4 @@
-import {
-  OrganizationConnection,
-  OrganizationConnectionInsert,
-} from "../types";
+import { OrganizationConnection, OrganizationConnectionInsert } from "../types";
 
 // Junction store: one row per (tenant_id, organization_id, connection_id).
 // Mirrors Auth0's `/organizations/{id}/enabled_connections` resource.

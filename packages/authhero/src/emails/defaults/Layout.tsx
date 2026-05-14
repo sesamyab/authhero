@@ -46,8 +46,7 @@ export function Layout({ preview, children }: LayoutProps) {
             <Hr className="border-zinc-200 m-0" />
             <Section className="px-6 py-4 text-center">
               <Text className="text-xs text-zinc-500 m-0">
-                {"{{ support_info }}"}{" "}
-                {`{% if tenant.support_url %}`}
+                {"{{ support_info }}"} {`{% if tenant.support_url %}`}
                 <Link
                   href={"{{ tenant.support_url }}"}
                   className="text-zinc-500 underline"

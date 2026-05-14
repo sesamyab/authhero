@@ -1,7 +1,4 @@
-import {
-  EmailTemplate,
-  EmailTemplateName,
-} from "@authhero/adapter-interfaces";
+import { EmailTemplate, EmailTemplateName } from "@authhero/adapter-interfaces";
 import { Kysely } from "kysely";
 import { Database } from "../db";
 

@@ -208,28 +208,24 @@ describeIfReady("terraform-provider-auth0 smoke test", () => {
     }
   });
 
-  it(
-    "applies the full fixture",
-    async () => {
-      const apply = await runTerraform(
-        ["apply", "-auto-approve", "-input=false", "-no-color"],
-        workdir,
-        env,
-        180_000,
-      );
-      const logPath = path.join(workdir, "apply.log");
-      writeFileSync(
-        logPath,
-        `exit=${apply.status} signal=${apply.signal ?? ""}\n` +
-          `--- stdout ---\n${apply.stdout}\n` +
-          `--- stderr ---\n${apply.stderr}\n`,
-      );
-      process.stderr.write(`\n[apply log: ${logPath}]\n`);
-      if (apply.stdout) process.stderr.write(apply.stdout);
-      if (apply.stderr) process.stderr.write(apply.stderr);
-      expect(apply.signal).toBeNull();
-      expect(apply.status).toBe(0);
-    },
-    240_000,
-  );
+  it("applies the full fixture", async () => {
+    const apply = await runTerraform(
+      ["apply", "-auto-approve", "-input=false", "-no-color"],
+      workdir,
+      env,
+      180_000,
+    );
+    const logPath = path.join(workdir, "apply.log");
+    writeFileSync(
+      logPath,
+      `exit=${apply.status} signal=${apply.signal ?? ""}\n` +
+        `--- stdout ---\n${apply.stdout}\n` +
+        `--- stderr ---\n${apply.stderr}\n`,
+    );
+    process.stderr.write(`\n[apply log: ${logPath}]\n`);
+    if (apply.stdout) process.stderr.write(apply.stdout);
+    if (apply.stderr) process.stderr.write(apply.stderr);
+    expect(apply.signal).toBeNull();
+    expect(apply.status).toBe(0);
+  }, 240_000);
 });

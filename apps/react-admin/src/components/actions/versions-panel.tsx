@@ -17,12 +17,7 @@ import RestoreIcon from "@mui/icons-material/Restore";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import {
-  useNotify,
-  useRecordContext,
-  useRefresh,
-  Confirm,
-} from "react-admin";
+import { useNotify, useRecordContext, useRefresh, Confirm } from "react-admin";
 import { createManagementClient } from "../../authProvider";
 import { resolveApiBase } from "../../dataProvider";
 import { getConfigValue } from "../../utils/runtimeConfig";
@@ -157,9 +152,7 @@ export function ActionVersionsPanel() {
                     <TableCell>
                       <IconButton
                         size="small"
-                        onClick={() =>
-                          setExpandedId(expanded ? null : v.id)
-                        }
+                        onClick={() => setExpandedId(expanded ? null : v.id)}
                         aria-label={expanded ? "Collapse" : "Expand"}
                       >
                         {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -169,11 +162,7 @@ export function ActionVersionsPanel() {
                     <TableCell>
                       <Stack direction="row" spacing={1} alignItems="center">
                         {v.deployed && (
-                          <Chip
-                            label="Deployed"
-                            size="small"
-                            color="success"
-                          />
+                          <Chip label="Deployed" size="small" color="success" />
                         )}
                         {v.status && (
                           <Chip

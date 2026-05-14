@@ -38,7 +38,9 @@ describe("scope-claims helper", () => {
       const ts = getStandardClaim(baseUser, "updated_at");
       // 2026-01-02T00:00:00Z → 1767312000
       expect(typeof ts).toBe("number");
-      expect(ts).toBe(Math.floor(new Date(baseUser.updated_at!).getTime() / 1000));
+      expect(ts).toBe(
+        Math.floor(new Date(baseUser.updated_at!).getTime() / 1000),
+      );
     });
 
     it("returns phone_verified under the OIDC name phone_number_verified", () => {

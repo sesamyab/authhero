@@ -257,11 +257,7 @@ export const keyRoutes = new OpenAPIHono<{
       if (!existing) {
         throw new HTTPException(404, { message: "Key not found" });
       }
-      if (
-        tenantId &&
-        existing.tenant_id &&
-        existing.tenant_id !== tenantId
-      ) {
+      if (tenantId && existing.tenant_id && existing.tenant_id !== tenantId) {
         throw new HTTPException(404, { message: "Key not found" });
       }
 

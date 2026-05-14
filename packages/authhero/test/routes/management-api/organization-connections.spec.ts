@@ -135,14 +135,15 @@ describe("organization enabled_connections", () => {
     expect(deleted.status).toBe(204);
 
     // After delete, list is empty again.
-    const finalList =
-      await client.organizations[":id"].enabled_connections.$get(
-        {
-          param: { id: org.id },
-          header: { "tenant-id": tenantId },
-        },
-        { headers: { authorization: `Bearer ${token}` } },
-      );
+    const finalList = await client.organizations[
+      ":id"
+    ].enabled_connections.$get(
+      {
+        param: { id: org.id },
+        header: { "tenant-id": tenantId },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
     const finalBody = (await finalList.json()) as { connections: unknown[] };
     expect(finalBody.connections).toEqual([]);
   });

@@ -259,7 +259,10 @@ function ConnectionTabbedFrom() {
               <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
                 Upstream Auth0 (migration)
               </Typography>
-              <Typography variant="body2" sx={{ mb: 2, color: "text.secondary" }}>
+              <Typography
+                variant="body2"
+                sx={{ mb: 2, color: "text.secondary" }}
+              >
                 Credentials of the upstream Auth0 tenant to verify passwords
                 against when Import Mode is enabled. The connection&apos;s name
                 is sent as the <code>realm</code> in the password-realm grant.

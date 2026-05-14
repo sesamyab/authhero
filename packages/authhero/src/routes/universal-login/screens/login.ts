@@ -297,8 +297,7 @@ export async function loginScreen(
   // screen_hint=login. Federated connections enforce disable_signup at
   // callback time; the login screen only governs the password signup
   // link visibility.
-  const signupsDisabled =
-    passwordConnection?.options?.disable_signup === true;
+  const signupsDisabled = passwordConnection?.options?.disable_signup === true;
   const authorizeUrl = context.ctx.var.loginSession?.authorization_url;
   const screenHintLogin =
     authorizeUrl &&
@@ -633,7 +632,10 @@ export const loginScreenDefinition: ScreenDefinition = {
           connectionType,
         );
 
-        if (!validation.allowed && client.hide_sign_up_disabled_error !== true) {
+        if (
+          !validation.allowed &&
+          client.hide_sign_up_disabled_error !== true
+        ) {
           const errorMsg = m.userAccountDoesNotExist();
           return {
             error: errorMsg,

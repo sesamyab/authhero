@@ -5,13 +5,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
 import { organizationConnectionKeys, connectionKeys } from "../keys";
-import {
-  getItem,
-  putItem,
-  deleteItem,
-  queryItems,
-  updateItem,
-} from "../utils";
+import { getItem, putItem, deleteItem, queryItems, updateItem } from "../utils";
 
 interface OrganizationConnectionItem extends DynamoDBBaseItem {
   tenant_id: string;

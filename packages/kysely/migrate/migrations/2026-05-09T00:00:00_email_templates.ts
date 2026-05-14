@@ -21,7 +21,10 @@ export async function up(db: Kysely<Database>): Promise<void> {
         .check(sql`include_email_in_redirect IN (0, 1)`),
     )
     .addColumn("enabled", "integer", (col) =>
-      col.notNull().defaultTo(1).check(sql`enabled IN (0, 1)`),
+      col
+        .notNull()
+        .defaultTo(1)
+        .check(sql`enabled IN (0, 1)`),
     )
     .addColumn("created_at", "varchar(35)", (col) => col.notNull())
     .addColumn("updated_at", "varchar(35)", (col) => col.notNull())

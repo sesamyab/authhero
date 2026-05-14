@@ -67,7 +67,11 @@ export function resolveDarkMode(
     return cookie;
   }
   const fromBranding = branding?.dark_mode;
-  if (fromBranding === "dark" || fromBranding === "light" || fromBranding === "auto") {
+  if (
+    fromBranding === "dark" ||
+    fromBranding === "light" ||
+    fromBranding === "auto"
+  ) {
     return fromBranding;
   }
   return "auto";
@@ -80,8 +84,8 @@ export type WidgetPageProps = {
     colors?: {
       primary?: string;
       page_background?:
-      | string
-      | { type?: string; start?: string; end?: string; angle_deg?: number };
+        | string
+        | { type?: string; start?: string; end?: string; angle_deg?: number };
     };
     logo_url?: string;
     favicon_url?: string;
@@ -247,9 +251,14 @@ export function DarkModeToggle({ darkMode }: { darkMode: DarkModePreference }) {
     >
       <svg
         class="icon-auto"
-        width="13" height="13" viewBox="0 0 24 24"
-        fill="none" stroke="currentColor" stroke-width="2.2"
-        stroke-linecap="round" stroke-linejoin="round"
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
         style={darkMode === "auto" ? undefined : "display:none"}
       >
         <circle cx="12" cy="12" r="9" />
@@ -257,9 +266,14 @@ export function DarkModeToggle({ darkMode }: { darkMode: DarkModePreference }) {
       </svg>
       <svg
         class="icon-sun"
-        width="13" height="13" viewBox="0 0 24 24"
-        fill="none" stroke="currentColor" stroke-width="2.2"
-        stroke-linecap="round" stroke-linejoin="round"
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
         style={darkMode === "light" ? undefined : "display:none"}
       >
         <circle cx="12" cy="12" r="5" />
@@ -272,9 +286,14 @@ export function DarkModeToggle({ darkMode }: { darkMode: DarkModePreference }) {
       </svg>
       <svg
         class="icon-moon"
-        width="13" height="13" viewBox="0 0 24 24"
-        fill="none" stroke="currentColor" stroke-width="2.2"
-        stroke-linecap="round" stroke-linejoin="round"
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
         style={darkMode === "dark" ? undefined : "display:none"}
       >
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
@@ -294,9 +313,14 @@ export function LanguagePicker({
   return (
     <div class="ah-lang">
       <svg
-        width="13" height="13" viewBox="0 0 24 24"
-        fill="none" stroke="currentColor" stroke-width="2.2"
-        stroke-linecap="round" stroke-linejoin="round"
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
         <circle cx="12" cy="12" r="10" />
         <path d="M2 12h20" />
@@ -349,9 +373,7 @@ export function PoweredByChip({
   const safeUrl = sanitizeUrl(url);
   const safeHref = href ? sanitizeUrl(href) : null;
   if (!safeUrl) return null;
-  const img = (
-    <img src={safeUrl} alt={alt || ""} height={height || 18} />
-  );
+  const img = <img src={safeUrl} alt={alt || ""} height={height || 18} />;
   return (
     <div class="ah-chip ah-chip-trust" data-ah-slot="bottom-left">
       {safeHref ? (
@@ -373,7 +395,11 @@ export function LegalChip({
   language?: string;
 }) {
   if (!termsAndConditionsUrl) return null;
-  const { m: commonT } = createTranslation("common", "common", language || "en");
+  const { m: commonT } = createTranslation(
+    "common",
+    "common",
+    language || "en",
+  );
   return (
     <div class="ah-chip-legal" data-ah-slot="bottom-right">
       <a href={termsAndConditionsUrl} target="_blank" rel="noopener noreferrer">
@@ -676,7 +702,9 @@ export function WidgetPage({
     sanitizeCssColor(theme?.colors?.widget_background) || "#ffffff";
 
   // ---- Sanitize logo URL ----
-  const safeLogoUrl = branding?.logo_url ? sanitizeUrl(branding.logo_url) : null;
+  const safeLogoUrl = branding?.logo_url
+    ? sanitizeUrl(branding.logo_url)
+    : null;
 
   // ---- Page layout (left/center/right) ----
   const pageLayout = themePageBackground?.page_layout || "center";
@@ -756,9 +784,7 @@ export function WidgetPage({
   // logoPosition === "widget".
   // -------------------------------------------------------------------------
 
-  const logoChip = (
-    <LogoChip logoUrl={safeLogoUrl} clientName={clientName} />
-  );
+  const logoChip = <LogoChip logoUrl={safeLogoUrl} clientName={clientName} />;
 
   const settingsChip = (
     <SettingsChip
@@ -883,9 +909,15 @@ var h2=document.documentElement;if(!h2.classList.contains('ah-dark-mode')&&!h2.c
  * Callers should pass the returned `theme` to `JSON.stringify` for the
  * widget's `theme` attribute, and forward `logoPosition` to `WidgetPage`.
  */
-export function derivePageLogoPlacement<T extends { page_background?: { logo_placement?: LogoPosition }; widget?: { logo_position?: string } } | null | undefined>(
-  theme: T,
-): { logoPosition: LogoPosition; theme: T } {
+export function derivePageLogoPlacement<
+  T extends
+    | {
+        page_background?: { logo_placement?: LogoPosition };
+        widget?: { logo_position?: string };
+      }
+    | null
+    | undefined,
+>(theme: T): { logoPosition: LogoPosition; theme: T } {
   const placement = theme?.page_background?.logo_placement ?? "widget";
   if (placement === "widget" || !theme) {
     return { logoPosition: placement, theme };

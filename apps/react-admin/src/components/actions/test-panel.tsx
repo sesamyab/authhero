@@ -262,9 +262,7 @@ export function ActionTestPanel() {
                   maxHeight: 240,
                 }}
               >
-                {result.logs
-                  .map((l) => `[${l.level}] ${l.message}`)
-                  .join("\n")}
+                {result.logs.map((l) => `[${l.level}] ${l.message}`).join("\n")}
               </Box>
             </Box>
           )}

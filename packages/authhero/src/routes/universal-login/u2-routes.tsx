@@ -101,7 +101,6 @@ function getPromptScreenForScreen(screenId: string): PromptScreen | undefined {
   return SCREEN_TO_PROMPT_MAP[screenId];
 }
 
-
 /**
  * Detect language from ui_locales parameter or Accept-Language header
  * Priority: ui_locales (from OAuth request) > Accept-Language header > "en"
@@ -187,7 +186,6 @@ async function fetchCustomText(
     return undefined;
   }
 }
-
 
 /**
  * Create a route handler for a specific screen with SSR + hydration

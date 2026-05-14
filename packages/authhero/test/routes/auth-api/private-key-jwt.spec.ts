@@ -265,7 +265,9 @@ describe("/oauth/token with RFC 7523 client_assertion", () => {
     await env.data.clients.update("tenantId", "clientId", {
       token_endpoint_auth_method: "client_secret_jwt",
     });
-    const secretBytes = new Uint8Array(new TextEncoder().encode("clientSecret"));
+    const secretBytes = new Uint8Array(
+      new TextEncoder().encode("clientSecret"),
+    );
     const assertion = await createJWT(
       "HS256",
       secretBytes,
@@ -302,10 +304,7 @@ describe("/oauth/token with RFC 7523 client_assertion", () => {
 
     const response = await oauthClient[".well-known"][
       "openid-configuration"
-    ].$get(
-      { param: {} },
-      { headers: { "tenant-id": "tenantId" } },
-    );
+    ].$get({ param: {} }, { headers: { "tenant-id": "tenantId" } });
     const body = (await response.json()) as {
       token_endpoint_auth_methods_supported: string[];
     };

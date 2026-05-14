@@ -60,18 +60,19 @@ function getProcessCwd(pid: string): string | null {
 // listening on :3000 belongs to someone else's local dev server and we'd
 // rather fail loudly than silently nuke it.
 function killStaleAuthServer(): void {
-  const lsof = spawnSync(
-    "lsof",
-    ["-nP", "-iTCP:3000", "-sTCP:LISTEN", "-t"],
-    { encoding: "utf-8" },
-  );
+  const lsof = spawnSync("lsof", ["-nP", "-iTCP:3000", "-sTCP:LISTEN", "-t"], {
+    encoding: "utf-8",
+  });
   if (lsof.status !== 0 || !lsof.stdout.trim()) return;
   const pids = lsof.stdout.trim().split(/\s+/).filter(Boolean);
   const ours: string[] = [];
   const foreign: { pid: string; cwd: string | null }[] = [];
   for (const pid of pids) {
     const cwd = getProcessCwd(pid);
-    if (cwd && (cwd === AUTH_SERVER_DIR || cwd.startsWith(AUTH_SERVER_DIR + path.sep))) {
+    if (
+      cwd &&
+      (cwd === AUTH_SERVER_DIR || cwd.startsWith(AUTH_SERVER_DIR + path.sep))
+    ) {
       ours.push(pid);
     } else {
       foreign.push({ pid, cwd });
@@ -110,9 +111,7 @@ function scaffoldAuthServer(): void {
   }
   killStaleAuthServer();
   if (fs.existsSync(AUTH_SERVER_DIR)) {
-    console.log(
-      `[conformance-runner] Wiping previous ${AUTH_SERVER_NAME}...`,
-    );
+    console.log(`[conformance-runner] Wiping previous ${AUTH_SERVER_NAME}...`);
     fs.rmSync(AUTH_SERVER_DIR, { recursive: true, force: true });
   }
   console.log(`[conformance-runner] Scaffolding ${AUTH_SERVER_NAME}...`);
@@ -185,7 +184,6 @@ function ensureAuthServerCert(): void {
     san,
   ]);
 }
-
 
 // Runs at playwright.config.ts module-load time, BEFORE Playwright spawns its
 // webServer plugin. This is necessary because Playwright's plugin setup tasks

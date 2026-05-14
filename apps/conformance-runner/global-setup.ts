@@ -135,8 +135,7 @@ function trustAuthHeroCertInSuite(): void {
     ],
     { encoding: "utf-8" },
   );
-  const storedFingerprint =
-    list.status === 0 ? parseSha256(list.stdout) : null;
+  const storedFingerprint = list.status === 0 ? parseSha256(list.stdout) : null;
 
   if (storedFingerprint === pemFingerprint) {
     console.log(

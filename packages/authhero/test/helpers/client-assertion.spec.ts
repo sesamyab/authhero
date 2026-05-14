@@ -65,16 +65,11 @@ const standardClaims = () => ({
 describe("verifyClientAssertion (RFC 7523)", () => {
   it("verifies a valid private_key_jwt assertion (RS256)", async () => {
     const { privateBuffer, publicJwk } = await generateRsaKeypair();
-    const jwt = await createJWT(
-      "RS256",
-      privateBuffer,
-      standardClaims(),
-      {
-        includeIssuedTimestamp: true,
-        expiresIn: new TimeSpan(5, "m"),
-        headers: { kid: publicJwk.kid },
-      },
-    );
+    const jwt = await createJWT("RS256", privateBuffer, standardClaims(), {
+      includeIssuedTimestamp: true,
+      expiresIn: new TimeSpan(5, "m"),
+      headers: { kid: publicJwk.kid },
+    });
     const verified = await verifyClientAssertion(
       jwt,
       clientWithJwks(publicJwk),
@@ -87,16 +82,11 @@ describe("verifyClientAssertion (RFC 7523)", () => {
 
   it("verifies a valid private_key_jwt assertion (ES256)", async () => {
     const { privateBuffer, publicJwk } = await generateEcKeypair();
-    const jwt = await createJWT(
-      "ES256",
-      privateBuffer,
-      standardClaims(),
-      {
-        includeIssuedTimestamp: true,
-        expiresIn: new TimeSpan(5, "m"),
-        headers: { kid: publicJwk.kid },
-      },
-    );
+    const jwt = await createJWT("ES256", privateBuffer, standardClaims(), {
+      includeIssuedTimestamp: true,
+      expiresIn: new TimeSpan(5, "m"),
+      headers: { kid: publicJwk.kid },
+    });
     const verified = await verifyClientAssertion(
       jwt,
       clientWithJwks(publicJwk),
@@ -107,9 +97,7 @@ describe("verifyClientAssertion (RFC 7523)", () => {
 
   it("verifies a client_secret_jwt assertion (HS256)", async () => {
     const client_secret = "shared-secret-of-reasonable-length-here";
-    const secretBytes = new Uint8Array(
-      new TextEncoder().encode(client_secret),
-    );
+    const secretBytes = new Uint8Array(new TextEncoder().encode(client_secret));
     const jwt = await createJWT("HS256", secretBytes, standardClaims(), {
       includeIssuedTimestamp: true,
       expiresIn: new TimeSpan(5, "m"),
@@ -224,16 +212,11 @@ describe("verifyClientAssertion (RFC 7523)", () => {
 
   it("rejects expired assertions", async () => {
     const { privateBuffer, publicJwk } = await generateRsaKeypair();
-    const jwt = await createJWT(
-      "RS256",
-      privateBuffer,
-      standardClaims(),
-      {
-        includeIssuedTimestamp: true,
-        expiresIn: new TimeSpan(1, "s"),
-        headers: { kid: publicJwk.kid },
-      },
-    );
+    const jwt = await createJWT("RS256", privateBuffer, standardClaims(), {
+      includeIssuedTimestamp: true,
+      expiresIn: new TimeSpan(1, "s"),
+      headers: { kid: publicJwk.kid },
+    });
     const future = Date.now() + 10 * 60 * 1000;
     await expect(
       verifyClientAssertion(jwt, clientWithJwks(publicJwk), {
@@ -265,16 +248,11 @@ describe("verifyClientAssertion (RFC 7523)", () => {
 
   it("rejects RS256 when client has no jwks registered", async () => {
     const { privateBuffer, publicJwk } = await generateRsaKeypair();
-    const jwt = await createJWT(
-      "RS256",
-      privateBuffer,
-      standardClaims(),
-      {
-        includeIssuedTimestamp: true,
-        expiresIn: new TimeSpan(5, "m"),
-        headers: { kid: publicJwk.kid },
-      },
-    );
+    const jwt = await createJWT("RS256", privateBuffer, standardClaims(), {
+      includeIssuedTimestamp: true,
+      expiresIn: new TimeSpan(5, "m"),
+      headers: { kid: publicJwk.kid },
+    });
     await expect(
       verifyClientAssertion(
         jwt,

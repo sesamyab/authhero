@@ -230,9 +230,7 @@ describe("/oidc/logout", () => {
       login_id: loginSession.id,
       user_id: "email|userId",
       client_id: "clientId",
-      resource_servers: [
-        { audience: "https://example.com", scopes: "openid" },
-      ],
+      resource_servers: [{ audience: "https://example.com", scopes: "openid" }],
       device: {
         last_ip: "",
         initial_ip: "",

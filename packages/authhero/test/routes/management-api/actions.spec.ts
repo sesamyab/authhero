@@ -51,9 +51,7 @@ describe("actions management API", () => {
 
     expect(deployCalls).toEqual([{ id: created.id, code: "// v1" }]);
 
-    const versionsRes = await client.actions.actions[
-      ":actionId"
-    ].versions.$get(
+    const versionsRes = await client.actions.actions[":actionId"].versions.$get(
       {
         param: { actionId: created.id },
         header: { "tenant-id": TENANT },
@@ -113,9 +111,7 @@ describe("actions management API", () => {
     );
     expect(deployRes.status).toBe(200);
 
-    const versionsRes = await client.actions.actions[
-      ":actionId"
-    ].versions.$get(
+    const versionsRes = await client.actions.actions[":actionId"].versions.$get(
       {
         param: { actionId: id },
         header: { "tenant-id": TENANT },
@@ -172,9 +168,11 @@ describe("actions management API", () => {
       },
       { headers: { authorization: `Bearer ${token}` } },
     );
-    const v1 = ((await v1List.json()) as {
-      versions: Array<{ id: string; number: number }>;
-    }).versions.find((v) => v.number === 1)!;
+    const v1 = (
+      (await v1List.json()) as {
+        versions: Array<{ id: string; number: number }>;
+      }
+    ).versions.find((v) => v.number === 1)!;
 
     deployCalls.length = 0; // Clear so we only assert on the rollback deploy
 
@@ -194,9 +192,7 @@ describe("actions management API", () => {
 
     // After rollback we expect 3 versions: create (v1), patch (v2),
     // rollback (v3 = v1's code re-snapshotted) — only v3 is marked deployed.
-    const versionsRes = await client.actions.actions[
-      ":actionId"
-    ].versions.$get(
+    const versionsRes = await client.actions.actions[":actionId"].versions.$get(
       {
         param: { actionId: id },
         header: { "tenant-id": TENANT },
@@ -289,9 +285,7 @@ describe("actions management API", () => {
     expect(removeCalls).toEqual([id]);
 
     // Versions endpoint should now 404 because the parent action is gone.
-    const versionsRes = await client.actions.actions[
-      ":actionId"
-    ].versions.$get(
+    const versionsRes = await client.actions.actions[":actionId"].versions.$get(
       {
         param: { actionId: id },
         header: { "tenant-id": TENANT },
@@ -339,9 +333,7 @@ describe("action-trigger bindings invoke the deployed action code", () => {
     );
     const { id: actionId } = (await createRes.json()) as { id: string };
 
-    const bindRes = await client.actions.triggers[
-      ":triggerId"
-    ].bindings.$patch(
+    const bindRes = await client.actions.triggers[":triggerId"].bindings.$patch(
       {
         param: { triggerId: "post-login" },
         json: {

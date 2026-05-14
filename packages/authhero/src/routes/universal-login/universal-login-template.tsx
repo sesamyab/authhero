@@ -84,7 +84,10 @@ function escapeAttr(value: string): string {
  */
 export function applyUniversalLoginTemplate(
   template: string,
-  opts: TemplateSlotOptions & { screenId: string; widgetContainerStyle?: string },
+  opts: TemplateSlotOptions & {
+    screenId: string;
+    widgetContainerStyle?: string;
+  },
 ): string {
   const settingsChip = (
     <SettingsChip

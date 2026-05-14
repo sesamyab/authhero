@@ -5,9 +5,7 @@ import type {
   EmailServiceSendParams,
 } from "@authhero/adapter-interfaces";
 
-function makeProvider(
-  credentials: Record<string, unknown>,
-): EmailProvider {
+function makeProvider(credentials: Record<string, unknown>): EmailProvider {
   return {
     name: "mailgun",
     enabled: true,
@@ -95,9 +93,7 @@ describe("MailgunEmailService", () => {
     const [, init] = fetchImpl.mock.calls[0];
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe(`Basic ${btoa("api:key-secret")}`);
-    expect(headers["Content-Type"]).toBe(
-      "application/x-www-form-urlencoded",
-    );
+    expect(headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
 
     const body = new URLSearchParams(init.body as string);
     expect(body.get("from")).toBe("noreply@example.com");
@@ -153,14 +149,12 @@ describe("MailgunEmailService", () => {
   });
 
   it("throws with status code when Mailgun responds non-2xx", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        new Response('{"message":"Forbidden"}', {
-          status: 401,
-          statusText: "Unauthorized",
-        }),
-      );
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response('{"message":"Forbidden"}', {
+        status: 401,
+        statusText: "Unauthorized",
+      }),
+    );
     const service = new MailgunEmailService({ fetchImpl });
 
     await expect(service.send(makeParams())).rejects.toThrow(/401/);

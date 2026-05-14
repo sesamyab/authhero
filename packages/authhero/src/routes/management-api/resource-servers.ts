@@ -32,8 +32,7 @@ async function resolveResourceServer(
   if (direct) return direct;
   const list = await ctx.env.data.resourceServers.list(tenantId, {});
   return (
-    list.resource_servers.find((rs) => rs.identifier === idOrIdentifier) ??
-    null
+    list.resource_servers.find((rs) => rs.identifier === idOrIdentifier) ?? null
   );
 }
 

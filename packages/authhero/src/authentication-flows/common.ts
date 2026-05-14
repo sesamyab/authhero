@@ -42,7 +42,10 @@ import { handleCredentialsExchangeCodeHooks } from "../hooks/codehooks";
 import renderAuthIframe from "../utils/authIframe";
 import { formPostResponse } from "../utils/form-post";
 import { calculateScopesAndPermissions } from "../helpers/scopes-permissions";
-import { buildScopeClaims, buildRequestedClaims } from "../helpers/scope-claims";
+import {
+  buildScopeClaims,
+  buildRequestedClaims,
+} from "../helpers/scope-claims";
 import { resolveSigningKeys } from "../helpers/signing-keys";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { GrantType } from "@authhero/adapter-interfaces";
@@ -325,7 +328,10 @@ export async function createAuthTokens(
           // they're identical lookups, but the order matches the spec's
           // "Requested Claims" precedence guidance).
           ...(authParams.claims?.id_token
-            ? buildRequestedClaims(user, Object.keys(authParams.claims.id_token))
+            ? buildRequestedClaims(
+                user,
+                Object.keys(authParams.claims.id_token),
+              )
             : {}),
           // OIDC Core 5.5 / 5.3.2 — when no Access Token is issued (pure
           // `id_token` response_type), there is no /userinfo to query, so

@@ -207,9 +207,9 @@ describe("/u2/connect/start — audience + scope plumbing", () => {
       env,
     );
     expect(response.status).toBe(302);
-    const iat = new URL(
-      response.headers.get("location")!,
-    ).searchParams.get("authhero_iat")!;
+    const iat = new URL(response.headers.get("location")!).searchParams.get(
+      "authhero_iat",
+    )!;
     const hash = await hashRegistrationToken(iat);
     const stored = await env.data.clientRegistrationTokens!.getByHash(
       "tenantId",

@@ -12,9 +12,7 @@ export function WelcomeEmail() {
       <Text>{"{{ welcome_body }}"}</Text>
       {`{% if url %}`}
       <Section className="text-center my-4">
-        <PrimaryButton href={"{{ url }}"}>
-          {"{{ welcome_cta }}"}
-        </PrimaryButton>
+        <PrimaryButton href={"{{ url }}"}>{"{{ welcome_cta }}"}</PrimaryButton>
       </Section>
       {`{% endif %}`}
     </Layout>

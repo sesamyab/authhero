@@ -553,6 +553,17 @@ export interface Database {
     created_at: string;
     updated_at: string;
   };
+  migration_sources: {
+    id: string;
+    tenant_id: string;
+    name: string;
+    provider: string;
+    connection: string;
+    enabled: number;
+    credentials: string; // JSON, client_secret encrypted in application layer
+    created_at: string;
+    updated_at: string;
+  };
   outbox_events: {
     id: string;
     tenant_id: string;

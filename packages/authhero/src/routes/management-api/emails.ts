@@ -90,9 +90,7 @@ export const emailProviderRoutes = new OpenAPIHono<{
 
       // Match Auth0: POST is strict create. If the singleton already exists,
       // return 409 — clients should PATCH to update, or DELETE first.
-      const existing = await ctx.env.data.emailProviders.get(
-        ctx.var.tenant_id,
-      );
+      const existing = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
       if (existing) {
         throw new HTTPException(409, {
           message: "Email provider already configured",
@@ -199,9 +197,7 @@ export const emailProviderRoutes = new OpenAPIHono<{
       },
     }),
     async (ctx) => {
-      const existing = await ctx.env.data.emailProviders.get(
-        ctx.var.tenant_id,
-      );
+      const existing = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
       if (!existing) {
         throw new HTTPException(404, { message: "Email provider not found" });
       }

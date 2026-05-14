@@ -147,9 +147,13 @@ export const revokeRoutes = new OpenAPIHono<{
         refreshToken.client_id === client.client_id &&
         !refreshToken.revoked_at
       ) {
-        await ctx.env.data.refreshTokens.update(client.tenant.id, refreshToken.id, {
-          revoked_at: new Date().toISOString(),
-        });
+        await ctx.env.data.refreshTokens.update(
+          client.tenant.id,
+          refreshToken.id,
+          {
+            revoked_at: new Date().toISOString(),
+          },
+        );
       }
     }
 

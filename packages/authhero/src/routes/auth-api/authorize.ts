@@ -113,7 +113,8 @@ function parseClaimsParam(
   const result = claimsRequestSchema.safeParse(decoded);
   if (!result.success) {
     throw new HTTPException(400, {
-      message: "invalid claims parameter: must be an object with optional `userinfo` and `id_token` members",
+      message:
+        "invalid claims parameter: must be an object with optional `userinfo` and `id_token` members",
     });
   }
   // Drop empty top-level members so downstream code can rely on
@@ -287,7 +288,9 @@ export const authorizeRoutes = new OpenAPIHono<{
       }
 
       let requestParams: z.infer<typeof authorizeParamsSchema> = {};
-      let requestClient: Awaited<ReturnType<typeof getEnrichedClient>> | undefined;
+      let requestClient:
+        | Awaited<ReturnType<typeof getEnrichedClient>>
+        | undefined;
       if (requestObjectJwt) {
         if (!queryParams.client_id) {
           throw new HTTPException(400, {
