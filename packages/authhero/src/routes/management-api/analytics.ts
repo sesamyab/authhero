@@ -29,6 +29,14 @@ const VALID_USER_TYPES: AnalyticsUserType[] = [
   "enterprise",
 ];
 
+const METRIC_BY_RESOURCE: Record<AnalyticsResource, string> = {
+  "active-users": "active_users",
+  logins: "logins",
+  signups: "signups",
+  "refresh-tokens": "refresh_tokens",
+  sessions: "sessions",
+};
+
 const MAX_LIMIT = 10000;
 const DEFAULT_LIMIT = 1000;
 const MAX_ROWS_UNGROUPED = 50000;
@@ -172,6 +180,24 @@ function parseQueryParams(
     );
   }
 
+  const orderByRaw = rawSingle("order_by");
+  let orderBy: string | undefined;
+  if (orderByRaw) {
+    const desc = orderByRaw.startsWith("-");
+    const col = desc ? orderByRaw.slice(1) : orderByRaw;
+    const allowedOrderColumns = new Set<string>([
+      ...groupBy,
+      METRIC_BY_RESOURCE[resource],
+    ]);
+    if (!allowedOrderColumns.has(col)) {
+      throw new AnalyticsRequestError(
+        "order_by",
+        `'order_by' column '${col}' is not selectable. Allowed: ${[...allowedOrderColumns].join(", ")}`,
+      );
+    }
+    orderBy = orderByRaw;
+  }
+
   return {
     from,
     to,
@@ -181,7 +207,7 @@ function parseQueryParams(
     group_by: groupBy,
     limit,
     offset,
-    order_by: rawSingle("order_by"),
+    order_by: orderBy,
   };
 }
 

@@ -36,11 +36,19 @@ function timeBucket(interval: string) {
       return sql<string>`substr(${logs.date}, 1, 7)`;
     case "day":
       return sql<string>`substr(${logs.date}, 1, 10)`;
+    case "week":
+      // ISO week start (Monday). SQLite's strftime("%w") returns 0=Sunday,
+      // so subtract (%w + 6) % 7 days from the date to land on Monday.
+      return sql<string>`date(substr(${logs.date}, 1, 10), '-' || ((cast(strftime('%w', substr(${logs.date}, 1, 10)) as integer) + 6) % 7) || ' days')`;
     default:
       throw new Error(
         `Unsupported interval '${interval}' for SQL analytics adapter`,
       );
   }
+}
+
+function escapeIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`;
 }
 
 function dimensionRef(dim: AnalyticsGroupBy) {
@@ -136,17 +144,28 @@ export function createAnalyticsAdapter(db: DrizzleDb): AnalyticsAdapter {
         query = query.groupBy(...groupRefs);
       }
 
-      // ORDER BY
+      // ORDER BY — only allow columns that appear in the SELECT list. The
+      // route already validates order_by, but defend in depth so a raw call
+      // to the adapter can't inject SQL via the identifier.
+      const allowedOrderCols = new Set<string>([
+        ...Object.keys(selectShape),
+      ]);
       if (params.order_by) {
         const desc = params.order_by.startsWith("-");
         const col = desc ? params.order_by.slice(1) : params.order_by;
-        query = query.orderBy(
-          desc ? sql.raw(`"${col}" DESC`) : sql.raw(`"${col}" ASC`),
-        );
+        if (!allowedOrderCols.has(col)) {
+          throw new Error(
+            `Invalid order_by column '${col}' for analytics query`,
+          );
+        }
+        const ident = escapeIdentifier(col);
+        query = query.orderBy(sql.raw(`${ident} ${desc ? "DESC" : "ASC"}`));
       } else if (params.group_by[0] === "time") {
-        query = query.orderBy(sql.raw(`"time" ASC`));
+        query = query.orderBy(sql.raw(`${escapeIdentifier("time")} ASC`));
       } else {
-        query = query.orderBy(sql.raw(`"${metric.alias}" DESC`));
+        query = query.orderBy(
+          sql.raw(`${escapeIdentifier(metric.alias)} DESC`),
+        );
       }
 
       query = query.limit(params.limit).offset(params.offset);

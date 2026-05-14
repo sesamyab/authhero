@@ -205,11 +205,11 @@ export function AnalyticsPage() {
     _e: React.MouseEvent<HTMLElement>,
     next: AnalyticsGroupBy[],
   ) => {
+    if (next.length === 0) return;
     setGroupBy(next);
   };
 
   const isTimeSeries = groupBy.includes("time");
-  const dimColumns = groupBy.map((d) => d);
 
   const { rows: chartRows, seriesKeys } = useMemo(() => {
     if (!main.data) return { rows: [], seriesKeys: [] as string[] };
@@ -217,7 +217,7 @@ export function AnalyticsPage() {
       return pivotForTimeSeries(
         main.data.data,
         resourceMeta.metric,
-        dimColumns,
+        groupBy,
       );
     }
     // Categorical: chart raw rows
@@ -225,7 +225,7 @@ export function AnalyticsPage() {
       rows: main.data.data,
       seriesKeys: [resourceMeta.metric],
     };
-  }, [main.data, isTimeSeries, resourceMeta.metric, dimColumns]);
+  }, [main.data, isTimeSeries, resourceMeta.metric, groupBy]);
 
   const summaryValue =
     summary.data?.data[0]?.[resourceMeta.metric] ?? 0;
@@ -267,7 +267,8 @@ export function AnalyticsPage() {
                 const next = e.target.value as AnalyticsResource;
                 setResource(next);
                 const allowed = RESOURCES.find((r) => r.value === next)!.dims;
-                setGroupBy(groupBy.filter((d) => allowed.includes(d)));
+                const filtered = groupBy.filter((d) => allowed.includes(d));
+                setGroupBy(filtered.length > 0 ? filtered : ["time"]);
               }}
               sx={{ minWidth: 200 }}
             >

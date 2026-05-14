@@ -7,16 +7,25 @@ import type { DrizzleDb } from "./types";
 const LOGIN_TYPES = ["s"];
 const LEAKED_PASSWORD_TYPES = ["pwd_leak"];
 
+function normalizeDateParam(dateStr: string): string {
+  if (/^\d{8}$/.test(dateStr)) {
+    return `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+  }
+  return dateStr;
+}
+
 export function createStatsAdapter(db: DrizzleDb) {
   return {
     async getDaily(tenant_id: string, params?: any) {
       const now = new Date();
-      const from =
-        params?.from ||
-        new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split("T")[0];
-      const to = params?.to || now.toISOString().split("T")[0];
+      const from = params?.from
+        ? normalizeDateParam(params.from)
+        : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+            .toISOString()
+            .split("T")[0];
+      const to = params?.to
+        ? normalizeDateParam(params.to)
+        : now.toISOString().split("T")[0];
 
       // Use raw SQL for date aggregation
       const results = await db

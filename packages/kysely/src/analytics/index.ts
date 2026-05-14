@@ -33,16 +33,20 @@ const METRIC_BY_RESOURCE: Record<
 };
 
 function timeBucketSql(interval: string): RawBuilder<string> {
+  const date = sql.ref("logs.date");
   switch (interval) {
     case "hour":
-      return sql<string>`substr(${sql.ref("logs.date")}, 1, 13)`;
+      return sql<string>`substr(${date}, 1, 13)`;
     case "month":
-      return sql<string>`substr(${sql.ref("logs.date")}, 1, 7)`;
+      return sql<string>`substr(${date}, 1, 7)`;
     case "day":
-      return sql<string>`substr(${sql.ref("logs.date")}, 1, 10)`;
+      return sql<string>`substr(${date}, 1, 10)`;
+    case "week":
+      // ISO week start (Monday). SQLite's strftime("%w") returns 0=Sunday;
+      // subtract (%w + 6) % 7 days to land on Monday. MySQL would need a
+      // different expression — the SQL fallback targets SQLite.
+      return sql<string>`date(substr(${date}, 1, 10), '-' || ((cast(strftime('%w', substr(${date}, 1, 10)) as integer) + 6) % 7) || ' days')`;
     default:
-      // week is not supported in the SQL fallback; the route validates this
-      // before reaching the adapter.
       throw new Error(
         `Unsupported interval '${interval}' for SQL analytics adapter`,
       );

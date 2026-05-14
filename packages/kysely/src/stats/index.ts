@@ -14,10 +14,13 @@ const LOGIN_TYPES = ["s"] as const;
 const LEAKED_PASSWORD_TYPES = ["pwd_leak"] as const;
 
 /**
- * Parses a date string in YYYYMMDD format to YYYY-MM-DD
+ * Normalize a date string in YYYYMMDD or YYYY-MM-DD format to YYYY-MM-DD.
  */
-function parseYYYYMMDD(dateStr: string): string {
-  return `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+function normalizeDateParam(dateStr: string): string {
+  if (/^\d{8}$/.test(dateStr)) {
+    return `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+  }
+  return dateStr;
 }
 
 /**
@@ -40,8 +43,10 @@ export function createStatsAdapter(db: Kysely<Database>): StatsAdapter {
       const thirtyDaysAgo = new Date(now);
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const fromDate = from ? parseYYYYMMDD(from) : toDateString(thirtyDaysAgo);
-      const toDate = to ? parseYYYYMMDD(to) : toDateString(now);
+      const fromDate = from
+        ? normalizeDateParam(from)
+        : toDateString(thirtyDaysAgo);
+      const toDate = to ? normalizeDateParam(to) : toDateString(now);
 
       // Note: We use sql`` for DATE() function as it's database-specific
       // and for conditional aggregation (SUM + CASE) which Kysely doesn't

@@ -105,8 +105,8 @@ export const statsRoutes = new OpenAPIHono<{
       const toDate = to ? parseYYYYMMDD(to) : toDateString(now);
 
       const stats = await ctx.env.data.stats.getDaily(ctx.var.tenant_id, {
-        from,
-        to,
+        from: fromDate,
+        to: toDate,
       });
 
       return ctx.json(zeroFillDailyStats(stats, fromDate, toDate));

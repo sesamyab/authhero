@@ -181,6 +181,54 @@ describe("/analytics validation", () => {
     expect(body.detail).toMatch(/not valid for \/analytics\/active-users/);
   });
 
+  it("supports interval=week without adapter errors", async () => {
+    const { managementApp, env } = await getTestServer();
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const recent = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    await seedLog(env, LogTypes.SUCCESS_LOGIN, recent, { user_id: "u1" });
+
+    const from = new Date(
+      Date.now() - 45 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const to = new Date().toISOString();
+
+    const res = await client.analytics.logins.$get(
+      {
+        query: { from, to, interval: "week", group_by: "time" },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: Array<Record<string, unknown>>;
+      meta: Array<{ name: string }>;
+    };
+    expect(body.meta.map((m) => m.name)).toContain("time");
+    expect(body.data.length).toBeGreaterThan(0);
+  });
+
+  it("rejects unknown order_by columns", async () => {
+    const { managementApp, env } = await getTestServer();
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const res = await client.analytics.logins.$get(
+      {
+        query: { group_by: "time", order_by: "1; DROP TABLE logs" },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { param: string };
+    expect(body.param).toBe("order_by");
+  });
+
   it("rejects hourly intervals on ranges longer than 30 days", async () => {
     const { managementApp, env } = await getTestServer();
     const client = testClient(managementApp, env);
