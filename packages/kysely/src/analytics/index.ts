@@ -65,14 +65,31 @@ function tzToSqliteOffset(tz: string, referenceDate: Date): string {
   return `${sign}${hh}:${mm}`;
 }
 
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
 function assertFixedOffsetTz(tz: string, referenceDate: Date): void {
   const year = referenceDate.getUTCFullYear();
-  const janOffset = tzToSqliteOffset(tz, new Date(Date.UTC(year, 0, 1)));
-  const julOffset = tzToSqliteOffset(tz, new Date(Date.UTC(year, 6, 1)));
-  if (janOffset !== julOffset) {
-    throw new Error(
-      `Timezone '${tz}' is DST-varying (offset ${janOffset} in January vs ${julOffset} in July) and cannot be bucketed with a single fixed offset by the SQL analytics adapter. Use a fixed-offset zone (e.g. 'UTC' or '+02:00').`,
-    );
+  const baseOffset = tzToSqliteOffset(tz, new Date(Date.UTC(year, 0, 1)));
+  for (let month = 1; month < 12; month++) {
+    const offset = tzToSqliteOffset(tz, new Date(Date.UTC(year, month, 1)));
+    if (offset !== baseOffset) {
+      throw new Error(
+        `Timezone '${tz}' is DST-varying (offset ${baseOffset} in January vs ${offset} in ${MONTH_NAMES[month]}) and cannot be bucketed with a single fixed offset by the SQL analytics adapter. Use a fixed-offset zone (e.g. 'UTC' or '+02:00').`,
+      );
+    }
   }
 }
 
