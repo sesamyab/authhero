@@ -13,6 +13,7 @@
 
 const PASSWORD_REALM_GRANT = "http://auth0.com/oauth/grant-type/password-realm";
 const DEFAULT_SCOPE = "openid profile email";
+const UPSTREAM_REFRESH_TIMEOUT_MS = 10_000;
 
 export type Auth0UpstreamErrorCode =
   | "invalid_grant"
@@ -204,6 +205,11 @@ export async function upstreamRefreshTokenGrant(
     body.set("audience", params.audience);
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    UPSTREAM_REFRESH_TIMEOUT_MS,
+  );
   let response: Response;
   try {
     response = await fetch(params.tokenEndpoint, {
@@ -213,10 +219,20 @@ export async function upstreamRefreshTokenGrant(
         accept: "application/json",
       },
       body: body.toString(),
+      signal: controller.signal,
     });
   } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Auth0UpstreamError(
+        0,
+        "network_error",
+        "request_timed_out",
+      );
+    }
     const message = err instanceof Error ? err.message : "fetch failed";
     throw new Auth0UpstreamError(0, "network_error", message);
+  } finally {
+    clearTimeout(timer);
   }
 
   const payload = await parseJson(response);

@@ -33,7 +33,7 @@ No Management API M2M token is required for v1 — `/userinfo` is called with th
 
 ## Configuration
 
-Configure the upstream credentials directly on the DB connection — no separate source connection, no new endpoints, no new tenant fields.
+Configure the upstream credentials directly on the DB connection — no separate source connection and no new endpoints. Refresh-token re-mint additionally requires a tenant-level **Migration Source** (see ["Enable refresh-token re-mint at the tenant level"](#enable-refresh-token-re-mint-at-the-tenant-level) below) holding the same upstream credentials.
 
 ### Enable lazy import on the database connection
 

@@ -13,7 +13,12 @@ function endpointsFor(domain: string): {
   tokenEndpoint: string;
   userinfoEndpoint: string;
 } {
-  const base = domain.startsWith("http") ? domain : `https://${domain}`;
+  if (domain.startsWith("http://")) {
+    throw new Error(
+      "Migration source domain must use https:// (got plain http://)",
+    );
+  }
+  const base = domain.startsWith("https://") ? domain : `https://${domain}`;
   const normalized = base.replace(/\/+$/, "");
   return {
     tokenEndpoint: `${normalized}/oauth/token`,

@@ -29,10 +29,12 @@ function pickUsername(
   if (userinfo.email) {
     return userinfo.email.toLowerCase();
   }
+  const connectionLc = connection.toLowerCase();
+  const subLc = userinfo.sub.toLowerCase();
   try {
-    return `${connection}.${userinfo.sub}@${new URL(issuer).hostname}`;
+    return `${connectionLc}.${subLc}@${new URL(issuer).hostname.toLowerCase()}`;
   } catch {
-    return `${connection}.${userinfo.sub}@unknown`;
+    return `${connectionLc}.${subLc}@unknown`;
   }
 }
 

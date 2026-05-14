@@ -3,6 +3,7 @@ import { t } from "i18next";
 import { Bindings, Variables } from "../types";
 import {
   AuthParams,
+  EmailServiceAdapter,
   EmailTemplateName,
   LogTypes,
   Strategy,
@@ -14,6 +15,11 @@ import { getAuthUrl, getUniversalLoginUrl } from "../variables";
 import { getConnectionFromIdentifier } from "../utils/username";
 import { getEnrichedClient } from "../helpers/client";
 import { renderEmailTemplate } from "./render";
+import { MailgunEmailService } from "../email-services/mailgun";
+
+const BUILT_IN_EMAIL_SERVICES: Record<string, () => EmailServiceAdapter> = {
+  mailgun: () => new MailgunEmailService(),
+};
 
 export type SendEmailParams = {
   to: string;
@@ -37,19 +43,45 @@ export async function sendEmail(
     throw new HTTPException(500, { message: "Email provider not found" });
   }
 
-  const emailService = ctx.env.data.emailService;
+  const builtInFactory = BUILT_IN_EMAIL_SERVICES[emailProvider.name];
+  const emailService = builtInFactory
+    ? builtInFactory()
+    : ctx.env.data.emailService;
   if (!emailService) {
     throw new HTTPException(500, { message: "Email service not configured" });
   }
 
-  await emailService.send({
-    emailProvider,
-    ...params,
-    from:
-      params.from ||
-      emailProvider.default_from_address ||
-      `login@${ctx.env.ISSUER}`,
-  });
+  try {
+    await emailService.send({
+      emailProvider,
+      ...params,
+      from:
+        params.from ||
+        emailProvider.default_from_address ||
+        `login@${ctx.env.ISSUER}`,
+    });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[sendEmail] tenant=${ctx.var.tenant_id} provider=${emailProvider.name} template=${params.template} to=${params.to}: ${errorMessage}`,
+      err,
+    );
+    await logMessage(ctx, ctx.var.tenant_id, {
+      type: LogTypes.FAILED_SENDING_NOTIFICATION,
+      description: `email send failed via ${emailProvider.name}: ${errorMessage}`.slice(
+        0,
+        500,
+      ),
+      details: {
+        provider: emailProvider.name,
+        template: params.template,
+        to: params.to,
+        error: errorMessage,
+      },
+      waitForCompletion: true,
+    });
+    throw err;
+  }
 }
 
 export type SendSmsParams = {
@@ -81,18 +113,40 @@ export async function sendSms(
     throw new HTTPException(500, { message: "SMS service not configured" });
   }
 
-  await smsService.send({
-    options: smsProvider.options,
-    to: params.to,
-    from: params.from,
-    text: params.text,
-    template: "auth-code",
-    data: {
-      code: params.code,
-      tenantName: client.tenant.friendly_name,
-      tenantId: client.tenant.id,
-    },
-  });
+  try {
+    await smsService.send({
+      options: smsProvider.options,
+      to: params.to,
+      from: params.from,
+      text: params.text,
+      template: "auth-code",
+      data: {
+        code: params.code,
+        tenantName: client.tenant.friendly_name,
+        tenantId: client.tenant.id,
+      },
+    });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[sendSms] tenant=${ctx.var.tenant_id} connection=${smsProvider.name} to=${params.to}: ${errorMessage}`,
+      err,
+    );
+    await logMessage(ctx, ctx.var.tenant_id, {
+      type: LogTypes.FAILED_SENDING_NOTIFICATION,
+      description: `sms send failed via ${smsProvider.name}: ${errorMessage}`.slice(
+        0,
+        500,
+      ),
+      details: {
+        connection: smsProvider.name,
+        to: params.to,
+        error: errorMessage,
+      },
+      waitForCompletion: true,
+    });
+    throw err;
+  }
 }
 
 async function buildEmailContext(
