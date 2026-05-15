@@ -43,6 +43,7 @@ import { clientGrantRoutes } from "./client-grants";
 import { clientRegistrationTokenRoutes } from "./client-registration-tokens";
 import { organizationRoutes } from "./organizations";
 import { statsRoutes } from "./stats";
+import { createAnalyticsRoutes } from "./analytics";
 import { guardianRoutes } from "./guardian";
 import { authenticationMethodsRoutes } from "./authentication-methods";
 import { DataAdapters } from "@authhero/adapter-interfaces";
@@ -375,6 +376,7 @@ export default function create(config: AuthHeroConfig) {
     .route("/resource-servers", resourceServerRoutes)
     .route("/organizations", organizationRoutes)
     .route("/stats", statsRoutes)
+    .route("/analytics", createAnalyticsRoutes({ cache: cacheAdapter }))
     .route("/guardian", guardianRoutes)
     .route(
       "/users/:user_id/authentication-methods",

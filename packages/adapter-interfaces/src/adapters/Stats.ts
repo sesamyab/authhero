@@ -1,8 +1,8 @@
 import { DailyStats } from "../types";
 
 export interface StatsListParams {
-  from?: string; // YYYYMMDD format
-  to?: string; // YYYYMMDD format
+  from?: string; // YYYYMMDD or YYYY-MM-DD
+  to?: string; // YYYYMMDD or YYYY-MM-DD
 }
 
 export interface StatsAdapter {

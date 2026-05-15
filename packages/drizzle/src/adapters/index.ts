@@ -39,6 +39,7 @@ import { createUsersAdapter } from "./users";
 import { createUserRolesAdapter } from "./userRoles";
 import { createUserOrganizationsAdapter } from "./userOrganizations";
 import { createStatsAdapter } from "./stats";
+import { createAnalyticsAdapter } from "./analytics";
 import { createOutboxAdapter } from "./outbox";
 import { createSessionCleanup } from "./cleanup";
 import type { DrizzleDb } from "./types";
@@ -90,6 +91,7 @@ export default function createAdapters(
     userRoles: createUserRolesAdapter(db),
     userOrganizations: createUserOrganizationsAdapter(db),
     stats: createStatsAdapter(db),
+    analytics: createAnalyticsAdapter(db),
     outbox: createOutboxAdapter(db),
     async transaction<T>(
       fn: (trxAdapters: DataAdapters) => Promise<T>,

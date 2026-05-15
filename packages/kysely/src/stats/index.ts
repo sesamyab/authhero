@@ -6,28 +6,21 @@ import {
 } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 
-// Log types that count as successful logins
-const LOGIN_TYPES = [
-  "s", // SUCCESS_LOGIN
-  "seacft", // SUCCESS_EXCHANGE_AUTHORIZATION_CODE_FOR_ACCESS_TOKEN
-  "seccft", // SUCCESS_EXCHANGE_CLIENT_CREDENTIALS_FOR_ACCESS_TOKEN
-  "sepft", // SUCCESS_EXCHANGE_PASSWORD_FOR_ACCESS_TOKEN
-  "sertft", // SUCCESS_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN
-  "ssa", // SUCCESS_SILENT_AUTH
-] as const;
+// Match Auth0's daily-stats `logins`: just SUCCESS_LOGIN, not token exchanges
+// or silent auth (those would inflate the count for SPAs).
+const LOGIN_TYPES = ["s"] as const;
 
-// Log types that indicate leaked password detection
-const LEAKED_PASSWORD_TYPES = [
-  "pwd_leak",
-  "signup_pwd_leak",
-  "reset_pwd_leak",
-] as const;
+// Match Auth0's `leaked_passwords`: only the breached-password detection.
+const LEAKED_PASSWORD_TYPES = ["pwd_leak"] as const;
 
 /**
- * Parses a date string in YYYYMMDD format to YYYY-MM-DD
+ * Normalize a date string in YYYYMMDD or YYYY-MM-DD format to YYYY-MM-DD.
  */
-function parseYYYYMMDD(dateStr: string): string {
-  return `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+function normalizeDateParam(dateStr: string): string {
+  if (/^\d{8}$/.test(dateStr)) {
+    return `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+  }
+  return dateStr;
 }
 
 /**
@@ -50,8 +43,10 @@ export function createStatsAdapter(db: Kysely<Database>): StatsAdapter {
       const thirtyDaysAgo = new Date(now);
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const fromDate = from ? parseYYYYMMDD(from) : toDateString(thirtyDaysAgo);
-      const toDate = to ? parseYYYYMMDD(to) : toDateString(now);
+      const fromDate = from
+        ? normalizeDateParam(from)
+        : toDateString(thirtyDaysAgo);
+      const toDate = to ? normalizeDateParam(to) : toDateString(now);
 
       // Note: We use sql`` for DATE() function as it's database-specific
       // and for conditional aggregation (SUM + CASE) which Kysely doesn't
