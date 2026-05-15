@@ -19,13 +19,15 @@ export interface MailgunEmailServiceOptions {
 }
 
 export class MailgunEmailService implements EmailServiceAdapter {
-  private readonly fetchImpl: typeof fetch;
+  private readonly options: MailgunEmailServiceOptions;
 
   constructor(options: MailgunEmailServiceOptions = {}) {
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.options = options;
   }
 
   async send(params: EmailServiceSendParams): Promise<void> {
+    const fetchImpl = this.options.fetchImpl ?? globalThis.fetch;
+
     const credentials = mailgunCredentialsSchema.parse(
       params.emailProvider.credentials,
     );
@@ -45,7 +47,7 @@ export class MailgunEmailService implements EmailServiceAdapter {
 
     const auth = btoa(`api:${credentials.api_key}`);
 
-    const res = await this.fetchImpl(url, {
+    const res = await fetchImpl(url, {
       method: "POST",
       headers: {
         Authorization: `Basic ${auth}`,

@@ -32,10 +32,22 @@ const METRIC_BY_RESOURCE: Record<
   sessions: { alias: "sessions", type: "UInt64", agg: "count" },
 };
 
-// SQLite has no IANA tz support; convert to a fixed ±HH:MM offset computed
-// against `referenceDate`. DST changes inside the query window are not
-// honored — the ClickHouse path is the accurate one.
-function tzToSqliteOffset(tz: string, referenceDate: Date): string {
+type SqlDialect = "mysql" | "sqlite";
+
+async function detectDialect(db: Kysely<Database>): Promise<SqlDialect> {
+  try {
+    await sql`SELECT @@version_comment`.execute(db);
+    return "mysql";
+  } catch {
+    return "sqlite";
+  }
+}
+
+// Both SQLite and MySQL have no IANA tz support in the queries we generate;
+// convert the requested IANA zone to a fixed ±HH:MM offset computed against
+// `referenceDate`. DST changes inside the query window are not honored —
+// the ClickHouse path is the accurate one.
+function tzToFixedOffset(tz: string, referenceDate: Date): string {
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     year: "numeric",
@@ -82,9 +94,9 @@ const MONTH_NAMES = [
 
 function assertFixedOffsetTz(tz: string, referenceDate: Date): void {
   const year = referenceDate.getUTCFullYear();
-  const baseOffset = tzToSqliteOffset(tz, new Date(Date.UTC(year, 0, 1)));
+  const baseOffset = tzToFixedOffset(tz, new Date(Date.UTC(year, 0, 1)));
   for (let month = 1; month < 12; month++) {
-    const offset = tzToSqliteOffset(tz, new Date(Date.UTC(year, month, 1)));
+    const offset = tzToFixedOffset(tz, new Date(Date.UTC(year, month, 1)));
     if (offset !== baseOffset) {
       throw new Error(
         `Timezone '${tz}' is DST-varying (offset ${baseOffset} in January vs ${offset} in ${MONTH_NAMES[month]}) and cannot be bucketed with a single fixed offset by the SQL analytics adapter. Use a fixed-offset zone (e.g. 'UTC' or '+02:00').`,
@@ -93,14 +105,25 @@ function assertFixedOffsetTz(tz: string, referenceDate: Date): void {
   }
 }
 
-function timeBucketSql(
+// Parse "±HH:MM" into signed total minutes.
+function offsetToMinutes(offset: string): number {
+  const sign = offset.startsWith("-") ? -1 : 1;
+  const [hh, mm] = offset.slice(1).split(":");
+  return sign * (Number(hh) * 60 + Number(mm));
+}
+
+function sqliteTimeBucket(
   interval: string,
-  tz: string,
-  referenceDate: Date,
+  offset: string,
 ): RawBuilder<string> {
-  assertFixedOffsetTz(tz, referenceDate);
-  const offset = tzToSqliteOffset(tz, referenceDate);
-  const shifted = sql<string>`datetime(${sql.ref("logs.date")}, ${offset})`;
+  let shifted: RawBuilder<string>;
+  if (offset === "+00:00") {
+    shifted = sql<string>`${sql.ref("logs.date")}`;
+  } else {
+    const minutes = offsetToMinutes(offset);
+    const modifier = `${minutes >= 0 ? "+" : "-"}${Math.abs(minutes)} minutes`;
+    shifted = sql<string>`datetime(${sql.ref("logs.date")}, ${modifier})`;
+  }
   switch (interval) {
     case "hour":
       return sql<string>`substr(${shifted}, 1, 13)`;
@@ -110,14 +133,70 @@ function timeBucketSql(
       return sql<string>`substr(${shifted}, 1, 10)`;
     case "week":
       // ISO week start (Monday). SQLite's strftime("%w") returns 0=Sunday;
-      // subtract (%w + 6) % 7 days to land on Monday. MySQL would need a
-      // different expression — the SQL fallback targets SQLite.
+      // subtract (%w + 6) % 7 days to land on Monday.
       return sql<string>`date(substr(${shifted}, 1, 10), '-' || ((cast(strftime('%w', substr(${shifted}, 1, 10)) as integer) + 6) % 7) || ' days')`;
     default:
       throw new Error(
         `Unsupported interval '${interval}' for SQL analytics adapter`,
       );
   }
+}
+
+function mysqlTimeBucket(
+  interval: string,
+  offset: string,
+): RawBuilder<string> {
+  // logs.date is stored as a VARCHAR ISO 8601 string in UTC. For the
+  // UTC-offset case we can avoid parsing entirely and just slice the prefix.
+  if (offset === "+00:00") {
+    switch (interval) {
+      case "hour":
+        return sql<string>`substring(${sql.ref("logs.date")}, 1, 13)`;
+      case "day":
+        return sql<string>`substring(${sql.ref("logs.date")}, 1, 10)`;
+      case "month":
+        return sql<string>`substring(${sql.ref("logs.date")}, 1, 7)`;
+      case "week": {
+        const day = sql<string>`str_to_date(substring(${sql.ref("logs.date")}, 1, 10), '%Y-%m-%d')`;
+        return sql<string>`date_format(date_sub(${day}, interval weekday(${day}) day), '%Y-%m-%d')`;
+      }
+      default:
+        throw new Error(
+          `Unsupported interval '${interval}' for SQL analytics adapter`,
+        );
+    }
+  }
+
+  // Non-UTC: parse the ISO prefix, shift by offset minutes, then format.
+  const minutes = offsetToMinutes(offset);
+  const shifted = sql<Date>`date_add(str_to_date(substring(${sql.ref("logs.date")}, 1, 19), '%Y-%m-%dT%H:%i:%s'), interval ${sql.lit(minutes)} minute)`;
+  switch (interval) {
+    case "hour":
+      return sql<string>`date_format(${shifted}, '%Y-%m-%dT%H')`;
+    case "day":
+      return sql<string>`date_format(${shifted}, '%Y-%m-%d')`;
+    case "month":
+      return sql<string>`date_format(${shifted}, '%Y-%m')`;
+    case "week":
+      return sql<string>`date_format(date_sub(${shifted}, interval weekday(${shifted}) day), '%Y-%m-%d')`;
+    default:
+      throw new Error(
+        `Unsupported interval '${interval}' for SQL analytics adapter`,
+      );
+  }
+}
+
+function timeBucketSql(
+  interval: string,
+  tz: string,
+  referenceDate: Date,
+  dialect: SqlDialect,
+): RawBuilder<string> {
+  assertFixedOffsetTz(tz, referenceDate);
+  const offset = tzToFixedOffset(tz, referenceDate);
+  return dialect === "mysql"
+    ? mysqlTimeBucket(interval, offset)
+    : sqliteTimeBucket(interval, offset);
 }
 
 function dimensionColumn(dim: AnalyticsGroupBy): string {
@@ -138,6 +217,12 @@ function dimensionColumn(dim: AnalyticsGroupBy): string {
 export function createAnalyticsAdapter(
   db: Kysely<Database>,
 ): AnalyticsAdapter {
+  let dialectPromise: Promise<SqlDialect> | null = null;
+  const getDialect = () => {
+    if (!dialectPromise) dialectPromise = detectDialect(db);
+    return dialectPromise;
+  };
+
   return {
     async query(
       tenantId: string,
@@ -147,6 +232,7 @@ export function createAnalyticsAdapter(
       const startedAt = Date.now();
       const events = RESOURCE_EVENTS[resource];
       const metric = METRIC_BY_RESOURCE[resource];
+      const dialect = await getDialect();
 
       const meta: AnalyticsQueryResponse["meta"] = [];
       let qb = db.selectFrom("logs").where("tenant_id", "=", tenantId);
@@ -186,6 +272,7 @@ export function createAnalyticsAdapter(
             params.interval,
             params.tz,
             new Date(params.from),
+            dialect,
           );
           selectExprs.push({ alias: "time", expr: bucket });
           groupRefs.push(bucket);

@@ -4,6 +4,7 @@ import {
   LogsDataAdapter,
   GeoAdapter,
   RateLimitAdapter,
+  AnalyticsAdapter,
 } from "@authhero/adapter-interfaces";
 import { createCustomDomainsAdapter } from "./customDomains";
 import { createCloudflareCache } from "./cache";
@@ -13,6 +14,7 @@ import {
 } from "./r2-sql-logs";
 import {
   createAnalyticsEngineLogsAdapter,
+  createAnalyticsEngineAnalyticsAdapter,
   type AnalyticsEngineLogsAdapterConfig,
   type AnalyticsEngineDataset,
 } from "./analytics-engine-logs";
@@ -60,6 +62,7 @@ export interface CloudflareAdapters {
   customDomains: CustomDomainsAdapter;
   cache: CacheAdapter;
   logs?: LogsDataAdapter;
+  analytics?: AnalyticsAdapter;
   geo?: GeoAdapter;
   rateLimit?: RateLimitAdapter;
 }
@@ -88,6 +91,12 @@ export default function createAdapters(
     adapters.logs = createR2SQLLogsAdapter(config.r2SqlLogs);
   } else if (config.analyticsEngineLogs) {
     adapters.logs = createAnalyticsEngineLogsAdapter(
+      config.analyticsEngineLogs,
+    );
+  }
+
+  if (config.analyticsEngineLogs) {
+    adapters.analytics = createAnalyticsEngineAnalyticsAdapter(
       config.analyticsEngineLogs,
     );
   }

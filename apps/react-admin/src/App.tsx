@@ -218,6 +218,12 @@ export function App(props: AppProps) {
           />
         </CustomRoutes>
         <Resource
+          icon={BarChartIcon}
+          name="analytics"
+          list={AnalyticsPage}
+          options={{ label: "Analytics" }}
+        />
+        <Resource
           icon={DnsIcon}
           name="clients"
           list={ClientList}
@@ -319,12 +325,6 @@ export function App(props: AppProps) {
         />
         <Resource name="resource-server-scopes" />
         <Resource name="permissions" />
-        <Resource
-          icon={BarChartIcon}
-          name="analytics"
-          list={AnalyticsPage}
-          options={{ label: "Analytics" }}
-        />
         <Resource
           icon={SecurityIcon}
           name="roles"
