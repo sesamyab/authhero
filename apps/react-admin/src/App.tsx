@@ -218,6 +218,12 @@ export function App(props: AppProps) {
           />
         </CustomRoutes>
         <Resource
+          icon={BarChartIcon}
+          name="analytics"
+          list={AnalyticsPage}
+          options={{ label: "Analytics" }}
+        />
+        <Resource
           icon={DnsIcon}
           name="clients"
           list={ClientList}

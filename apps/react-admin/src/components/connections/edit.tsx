@@ -254,42 +254,53 @@ function ConnectionTabbedFrom() {
               <BooleanInput
                 source="options.import_mode"
                 label="Import Mode"
-                helperText="On unknown passwords, fall back to upstream Auth0 using the credentials below. On success the user/password are migrated locally."
+                helperText="On unknown passwords, fall back to an upstream auth server using the credentials below. On success the user/password are migrated locally. The upstream client must have the password grant type enabled."
               />
-              <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
-                Upstream Auth0 (migration)
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{ mb: 2, color: "text.secondary" }}
-              >
-                Credentials of the upstream Auth0 tenant to verify passwords
-                against when Import Mode is enabled. The connection&apos;s name
-                is sent as the <code>realm</code> in the password-realm grant.
-              </Typography>
-              <TextInput
-                source="options.configuration.token_endpoint"
-                label="Token Endpoint"
-                placeholder="https://example.auth0.com/oauth/token"
-                helperText="Upstream /oauth/token URL"
-                fullWidth
-              />
-              <TextInput
-                source="options.configuration.userinfo_endpoint"
-                label="Userinfo Endpoint"
-                placeholder="https://example.auth0.com/userinfo"
-                helperText="Upstream /userinfo URL — called after a successful password-realm grant to populate the local user profile"
-                fullWidth
-              />
-              <TextInput
-                source="options.configuration.client_id"
-                label="Client ID"
-              />
-              <SecretInput
-                source="options.configuration.client_secret"
-                label="Client Secret"
-                style={{ width: "800px" }}
-              />
+              <FormDataConsumer>
+                {({ formData }) =>
+                  formData?.options?.import_mode && (
+                    <>
+                      <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
+                        Upstream Auth Server (migration)
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{ mb: 2, color: "text.secondary" }}
+                      >
+                        Credentials of the upstream OIDC auth server (Auth0,
+                        Cognito, etc.) to verify passwords against when Import
+                        Mode is enabled. The connection&apos;s name is sent as
+                        the <code>realm</code> in the password-realm grant —
+                        the upstream client must have the password grant type
+                        enabled.
+                      </Typography>
+                      <TextInput
+                        source="options.configuration.token_endpoint"
+                        label="Token Endpoint"
+                        placeholder="https://example.auth0.com/oauth/token"
+                        helperText="Upstream token endpoint URL"
+                        fullWidth
+                      />
+                      <TextInput
+                        source="options.configuration.userinfo_endpoint"
+                        label="Userinfo Endpoint"
+                        placeholder="https://example.auth0.com/userinfo"
+                        helperText="Upstream userinfo endpoint URL — called after a successful password-realm grant to populate the local user profile"
+                        fullWidth
+                      />
+                      <TextInput
+                        source="options.configuration.client_id"
+                        label="Client ID"
+                      />
+                      <SecretInput
+                        source="options.configuration.client_secret"
+                        label="Client Secret"
+                        style={{ width: "800px" }}
+                      />
+                    </>
+                  )
+                }
+              </FormDataConsumer>
             </>
           )}
 
