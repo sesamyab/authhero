@@ -1,5 +1,77 @@
 # authhero
 
+## 5.1.0
+
+### Minor Changes
+
+- e9bef63: Add `/api/v2/analytics/*` — richer stats endpoints with filtering, breakdowns, and a ClickHouse-style `{ meta, data }` wire format.
+
+  **Five resources** under `/api/v2/analytics/`: `active-users`, `logins`, `signups`, `refresh-tokens`, `sessions`. Each accepts the same shared parameter shape — `from`, `to`, `interval`, `tz`, repeatable `connection`/`client_id`/`user_type`/`user_id` filters, comma-separated `group_by`, plus `limit`/`offset`/`order_by`. Per-resource grouping rules are validated server-side and rejections return a problem+json body with the offending `param`.
+
+  **Wire format** is `{ meta, data, rows, rows_before_limit_at_least, statistics }`, identical to Cloudflare Analytics Engine's SQL output, so the response can be passed straight into Recharts, Tremor, ECharts, Observable Plot, or any ClickHouse-speaking BI tool with zero adapter code.
+
+  **New `AnalyticsAdapter`** in `@authhero/adapter-interfaces`. Implementations:
+  - `@authhero/cloudflare-adapter` — `createAnalyticsEngineAnalyticsAdapter`, compiles each query to a single parameterized SQL statement against the Analytics Engine dataset; tenant predicate is injected server-side and never trusted from request input.
+  - `@authhero/kysely-adapter` and `@authhero/drizzle` — SQL fallbacks against the `logs` table for local dev and tests (`day` / `hour` / `month` intervals; week is rejected). Active-users uses `COUNT(DISTINCT user_id)`.
+
+  **Response caching** uses the existing `CacheAdapter` (Cloudflare cache in workers, in-memory locally — no new KV needed). TTL is picked based on how recent the `to` boundary is: 60s for the live window, 5m for last 24h, 1h within yesterday, 24h for older windows. Cache keys are namespaced by `tenant_id` and normalize the query string so semantically-equivalent requests share an entry.
+
+  **Guard rails**: `limit` capped at 10000; `interval=hour` rejected for ranges over 30 days; ungrouped queries can't request more than ~50k rows.
+
+  **New scope**: `read:analytics` (alongside `auth:read`).
+
+  **React-admin**: new `/analytics` page with resource picker, time-range presets, group-by toggles, connection/client filters, line + bar charts, and CSV export.
+
+- 7c8668d: Add tenant-level **Migration Sources** for transparently re-minting upstream refresh tokens (#833).
+
+  When a client presents a refresh token that doesn't match a local row, AuthHero now:
+  1. Lists the tenant's enabled migration sources.
+  2. For each, redeems the token at the upstream `/oauth/token` (`grant_type=refresh_token`) using the source's credentials.
+  3. On success, calls `/userinfo` to learn the upstream `sub`.
+  4. Resolves or lazily creates the local user via the standard `getOrCreateUserByProvider` path (running the existing user-registration hooks).
+  5. Mints native AuthHero `access_token` / `id_token` / `refresh_token` and returns them.
+  6. If every source rejects, falls back to the existing `invalid_grant`.
+
+  The client keeps using `grant_type=refresh_token` — no SDK change. After one exchange per user, that user is fully on the AuthHero side.
+
+  **New:**
+  - `MigrationSource` adapter entity at the tenant level: `provider` (`auth0` | `cognito` | `okta` | `oidc`), `connection`, `enabled`, `credentials` (`domain` / `client_id` / `client_secret` / optional `audience` / `scope`).
+  - `migrationSources?: MigrationSourcesAdapter` on `DataAdapters` (optional — adapters that don't implement it simply omit it; the re-mint flow becomes a no-op).
+  - `MigrationProvider` interface (`exchangeRefreshToken`, `fetchUserInfo`) with an Auth0 implementation. Cognito/Okta/generic OIDC will be added in follow-ups.
+  - `/api/v2/migration-sources` Management API (full CRUD); permissions `create|read|update|delete:migration_sources` are seeded automatically.
+  - `client_secret` is redacted (`"***"`) on every management-API response.
+  - Kysely migration `2026-05-14T10:00:00_migration_sources` adds the `migration_sources` table.
+
+  **Out of scope (follow-ups):** bulk user import via the same provider abstraction, Cognito / Okta / generic OIDC providers, account-link / `identities[]` migration, react-admin UI.
+
+### Patch Changes
+
+- dd833e1: Route email sends through the built-in provider matching `emailProvider.name`, and log notification failures to the audit log.
+
+  **Dispatch by provider name.** `sendEmail` now looks up `emailProvider.name` against a built-in service registry before falling back to the injected `ctx.env.data.emailService`. Currently the only built-in is `mailgun` (`MailgunEmailService`); anything else continues to delegate to the host application's `emailService` adapter as before. This matches the existing comment on `emailProviderSchema` ("The sending layer validates by `name`") and means a tenant that configures a mailgun provider no longer has its credentials parsed by an unrelated adapter (e.g. SES/SQS) and fail with a generic 500.
+
+  **Failure logging.** Both `sendEmail` and `sendSms` now wrap the underlying `.send()` call in a try/catch that:
+  - Emits `console.error` with tenant id, provider name, template, and recipient so the error is greppable in stdout.
+  - Writes a `LogTypes.FAILED_SENDING_NOTIFICATION` (`"fn"`) entry to the tenant's audit logs (`waitForCompletion: true`) including the provider name and error message.
+  - Re-throws the original error so existing error-handling behavior is preserved.
+
+  Previously a failing email/SMS provider produced a generic `Internal server error` response from the universal-login screen-api with no audit-log entry, making misconfigured providers hard to diagnose.
+
+- 52aba15: Tighten `/api/v2/stats/daily` and `/api/v2/stats/active-users` to match Auth0's semantics.
+
+  **`logins` no longer over-counts.** All three stats adapters (kysely, drizzle, cloudflare/analytics-engine) now count only `s` (SUCCESS_LOGIN) as a login. Previously they also summed token exchanges (`seacft`, `seccft`, `sepft`, `sertft`) and silent auth (`ssa`), which inflated the figure substantially for SPAs that refresh tokens frequently. Auth0's daily-stats `logins` is just successful logins, so the numbers now line up.
+
+  **`leaked_passwords` matches Auth0's definition.** Adapters now sum only `pwd_leak` (breached-password detection). The authhero-internal `signup_pwd_leak` and `reset_pwd_leak` variants are no longer included in this metric.
+
+  **`/stats/active-users` only counts real logins.** Same narrowing — distinct users with a `SUCCESS_LOGIN` in the last 30 days, not distinct users who happened to exchange a refresh token.
+
+  **Zero-fill in `/stats/daily`.** The route now returns one row per day in the requested range, including days with no events (Auth0 behavior). Previously consumers got gaps for empty days, breaking graphs that iterate the array sequentially.
+
+- Updated dependencies [e9bef63]
+- Updated dependencies [7c8668d]
+  - @authhero/adapter-interfaces@2.1.0
+  - @authhero/widget@0.32.22
+
 ## 5.0.0
 
 ### Major Changes
