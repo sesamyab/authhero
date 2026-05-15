@@ -116,10 +116,14 @@ function sqliteTimeBucket(
   interval: string,
   offset: string,
 ): RawBuilder<string> {
-  const shifted =
-    offset === "+00:00"
-      ? sql<string>`${sql.ref("logs.date")}`
-      : sql<string>`datetime(${sql.ref("logs.date")}, ${offset})`;
+  let shifted: RawBuilder<string>;
+  if (offset === "+00:00") {
+    shifted = sql<string>`${sql.ref("logs.date")}`;
+  } else {
+    const minutes = offsetToMinutes(offset);
+    const modifier = `${minutes >= 0 ? "+" : "-"}${Math.abs(minutes)} minutes`;
+    shifted = sql<string>`datetime(${sql.ref("logs.date")}, ${modifier})`;
+  }
   switch (interval) {
     case "hour":
       return sql<string>`substr(${shifted}, 1, 13)`;
