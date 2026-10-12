@@ -549,7 +549,15 @@ async function writeRow(
     // (operation_id, seq), an existing user carrying exactly that id can only
     // be this row's own earlier write — so report the import that actually
     // happened instead of a spurious conflict.
-    const ownPriorWrite = existingId === mapped.value.user.user_id;
+    //
+    // That only holds for a derived id. An entry with an explicit user_id maps
+    // to the same id as a pre-existing user's, so the match says nothing about
+    // who wrote it and cannot be told apart from a real conflict. It is
+    // therefore treated as one: without upsert the row fails as a duplicate,
+    // as in Auth0, and under upsert it falls through to the update, which is
+    // idempotent, so a retried row is harmless.
+    const ownPriorWrite =
+      existingId === mapped.value.user.user_id && entry.user_id === undefined;
 
     if (existingId && !input.upsert && !ownPriorWrite) {
       return errorOutcome(row.seq, {
