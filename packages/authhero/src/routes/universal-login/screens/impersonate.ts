@@ -187,6 +187,7 @@ async function handleImpersonateSubmit(
   | { screen: ScreenResult }
   | { redirect: string; cookies?: string[] }
   | { error: string; screen: ScreenResult }
+  | { response: Response }
 > {
   const { ctx, tenant, client, state } = context;
 
@@ -267,14 +268,15 @@ async function handleImpersonateSubmit(
       skipHooks: true, // Skip post-login hooks during impersonation
     });
 
-    // Extract redirect URL and cookies from response
+    // Extract redirect URL and cookies from response. Non-redirect responses
+    // (e.g. the SAML POST form) are passed through as-is.
     const location = response.headers.get("Location");
     const cookies = response.headers.getSetCookie?.() || [];
     if (location) {
       return { redirect: location, cookies };
     }
 
-    throw new HTTPException(500, { message: "Failed to generate redirect" });
+    return { response };
   }
 
   // Switch to impersonate another user
@@ -316,9 +318,6 @@ async function handleImpersonateSubmit(
   // Extract redirect URL and cookies from response
   const location = response.headers.get("Location");
   const cookies = response.headers.getSetCookie?.() || [];
-  if (!location) {
-    throw new HTTPException(500, { message: "Failed to generate redirect" });
-  }
 
   // Switch identity only after authorization succeeds, so rejected scopes or
   // failures generating the response leave the original SSO identity intact.
@@ -335,6 +334,11 @@ async function handleImpersonateSubmit(
     targetType: "user",
     targetId: targetUser.user_id,
   });
+
+  // Non-redirect responses (e.g. the SAML POST form) are passed through as-is.
+  if (!location) {
+    return { response };
+  }
 
   return { redirect: location, cookies };
 }

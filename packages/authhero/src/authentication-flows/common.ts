@@ -2045,11 +2045,37 @@ export async function createFrontChannelAuthResponse(
         message: "Session ID not available for SAML response",
       });
     }
+
+    // SAML returns before completeLogin, which is where post-login hooks
+    // normally run. Run them here so page/form hooks (e.g. impersonate) can
+    // interrupt the login and webhooks/code hooks still fire.
+    let samlUser = user;
+    if (params.loginSession && !params.skipHooks) {
+      const hookResult = await postUserLoginHook(
+        ctx,
+        ctx.env.data,
+        client.tenant.id,
+        user,
+        params.loginSession,
+        {
+          client,
+          authParams,
+          authStrategy: params.authStrategy,
+          authConnection: params.authConnection,
+          sessionReused: Boolean(params.existingSessionIdToLink),
+        },
+      );
+      if (hookResult instanceof Response) {
+        return hookResult;
+      }
+      samlUser = hookResult;
+    }
+
     return samlCallback(
       ctx,
       params.client,
       params.authParams,
-      user,
+      samlUser,
       session_id,
     );
   }

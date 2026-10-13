@@ -501,6 +501,7 @@ export async function postUserLoginHook(
           loginSession,
           user,
           pageHook.permission_required,
+          params?.client,
         );
         if (pageResult instanceof Response) {
           return pageResult;
