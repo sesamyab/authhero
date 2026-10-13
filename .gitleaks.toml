@@ -13,7 +13,7 @@
 #
 # Note: this uses the per-rule allowlist form rather than a global
 # `[[allowlists]]` with `targetRules`. The latter only exists in gitleaks
-# >= 8.30 and is silently ignored by the 8.24.3 pinned in the workflow.
+# >= 8.30 and is silently ignored by older versions, so the per-rule form is kept.
 
 [extend]
 useDefault = true
