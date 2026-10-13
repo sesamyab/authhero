@@ -1047,7 +1047,15 @@ describe("callback", () => {
     expect(hook).toHaveBeenCalledTimes(1);
 
     const [event] = hook.mock.calls[0] as unknown as [
-      { user: any; ctx: unknown; request: { method: string; url: string } },
+      {
+        user: any;
+        ctx: unknown;
+        request: {
+          body?: Record<string, unknown>;
+          method: string;
+          url: string;
+        };
+      },
     ];
     expect(event.user.email).toEqual("vipps-user@example.com");
     expect(event.user.provider).toEqual("mock-strategy");
@@ -1056,6 +1064,7 @@ describe("callback", () => {
     expect(event.user.user_id).toEqual("mock-strategy|vipps-456");
     expect(event.ctx).toBeTruthy();
     expect(event.request.method).toEqual("GET");
+    expect(event.request.body).toBeUndefined();
   });
 
   it("access.deny in onExecutePreUserRegistration rejects a social-callback sign-up and persists no user row", async () => {

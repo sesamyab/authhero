@@ -55,6 +55,7 @@ describe("on-pre-user-registration-hook", () => {
 
     // The event should carry the tenant, matching update/deletion hooks
     expect(events[0]?.tenant).toEqual({ id: "tenantId" });
+    expect(events[0]?.request.body).toBeUndefined();
 
     // Create a secondary user that will be linked to the primary
     const secondaryResponse = await client.users.$post(

@@ -37,6 +37,12 @@ export type Variables = {
   username?: string;
   connection?: string;
   body?: any;
+  /**
+   * Auth0-compatible custom fields submitted by the u2 signup form. Only
+   * `ulp-*` keys are stored here so pre-user-registration hooks never receive
+   * credentials or unrelated request fields.
+   */
+  signup_body?: Record<string, unknown>;
   log?: string;
   custom_domain?: string;
   host?: string;
