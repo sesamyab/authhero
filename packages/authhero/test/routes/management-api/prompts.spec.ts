@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { testClient } from "hono/testing";
 import { getAdminToken } from "../../helpers/token";
 import { getTestServer } from "../../helpers/test-server";
+import { MAX_PROMPT_PARTIAL_LENGTH } from "../../../src/helpers/prompt-partials";
 
 describe("prompts", () => {
   it("should set and get prompts", async () => {
@@ -310,5 +311,223 @@ describe("prompts", () => {
       },
     );
     expect(response.status).toBe(400);
+  });
+
+  it("should round-trip prompt partials and replace the whole object", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const emptyResponse = await managementClient.prompts[
+      ":prompt"
+    ].partials.$get(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(emptyResponse.status).toBe(200);
+    expect(await emptyResponse.json()).toEqual({});
+
+    const partials = {
+      signup: {
+        "form-content-start": "<p>Tell us about yourself</p>",
+        "form-content-end":
+          '<input name="ulp-first-name" data-authhero-map="given_name" required>',
+      },
+    };
+    const putResponse = await managementClient.prompts[":prompt"].partials.$put(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+        json: partials,
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(putResponse.status).toBe(200);
+    expect(await putResponse.json()).toEqual(partials);
+
+    const getResponse = await managementClient.prompts[":prompt"].partials.$get(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(await getResponse.json()).toEqual(partials);
+
+    const replaceResponse = await managementClient.prompts[
+      ":prompt"
+    ].partials.$put(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+        json: {},
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(replaceResponse.status).toBe(200);
+    expect(await replaceResponse.json()).toEqual({});
+
+    const afterReplace = await managementClient.prompts[
+      ":prompt"
+    ].partials.$get(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(await afterReplace.json()).toEqual({});
+  });
+
+  it("should sanitize unsafe prompt partial markup before storing it", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const response = await managementClient.prompts[":prompt"].partials.$put(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+        json: {
+          signup: {
+            "form-content-end":
+              '<script>alert(1)</script><a href="javascript:alert(2)" onclick="alert(3)">Link</a><input name="ulp-company" data-authhero-map="user_metadata.company">',
+          },
+        },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const html = body.signup?.["form-content-end"] ?? "";
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("alert(1)");
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("onclick");
+    expect(html).toContain('data-authhero-map="user_metadata.company"');
+
+    const stored = await env.data.promptPartials?.get("tenantId", "signup");
+    expect(stored).toEqual(body);
+  });
+
+  it("should require the matching prompt scope for each partials operation", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const readToken = await getAdminToken({ permissions: ["read:prompts"] });
+    const updateToken = await getAdminToken({
+      permissions: ["update:prompts"],
+    });
+    const request = {
+      header: { "tenant-id": "tenantId" },
+      param: { prompt: "signup" as const },
+    };
+
+    const allowedRead = await managementClient.prompts[":prompt"].partials.$get(
+      request,
+      { headers: { authorization: `Bearer ${readToken}` } },
+    );
+    expect(allowedRead.status).toBe(200);
+
+    const deniedRead = await managementClient.prompts[":prompt"].partials.$get(
+      request,
+      { headers: { authorization: `Bearer ${updateToken}` } },
+    );
+    expect(deniedRead.status).toBe(403);
+
+    const allowedUpdate = await managementClient.prompts[
+      ":prompt"
+    ].partials.$put(
+      { ...request, json: {} },
+      { headers: { authorization: `Bearer ${updateToken}` } },
+    );
+    expect(allowedUpdate.status).toBe(200);
+
+    const deniedUpdate = await managementClient.prompts[
+      ":prompt"
+    ].partials.$put(
+      { ...request, json: {} },
+      { headers: { authorization: `Bearer ${readToken}` } },
+    );
+    expect(deniedUpdate.status).toBe(403);
+  });
+
+  it("should reject invalid prompts, insertion points, mapping targets, and oversized partials", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+    const requestOptions = {
+      headers: { authorization: `Bearer ${token}` },
+    };
+
+    const invalidPrompt = await managementClient.prompts[
+      ":prompt"
+    ].partials.$put(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "logout" as any },
+        json: {},
+      },
+      requestOptions,
+    );
+    expect(invalidPrompt.status).toBe(400);
+
+    const invalidInsertionPoint = await managementClient.prompts[
+      ":prompt"
+    ].partials.$put(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+        json: {
+          signup: {
+            "not-an-insertion-point": "<p>No</p>",
+          } as any,
+        },
+      },
+      requestOptions,
+    );
+    expect(invalidInsertionPoint.status).toBe(400);
+
+    const invalidMapping = await managementClient.prompts[
+      ":prompt"
+    ].partials.$put(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+        json: {
+          signup: {
+            "form-content-end":
+              '<input name="ulp-email" data-authhero-map="email">',
+          },
+        },
+      },
+      requestOptions,
+    );
+    expect(invalidMapping.status).toBe(400);
+    expect(await invalidMapping.json()).toMatchObject({
+      message: expect.stringContaining(
+        'Invalid data-authhero-map target "email"',
+      ),
+    });
+
+    const oversized = await managementClient.prompts[":prompt"].partials.$put(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "signup" },
+        json: {
+          signup: {
+            "form-content-end": "x".repeat(MAX_PROMPT_PARTIAL_LENGTH + 1),
+          },
+        },
+      },
+      requestOptions,
+    );
+    expect(oversized.status).toBe(400);
+    expect(await oversized.json()).toMatchObject({
+      message: expect.stringContaining("character limit"),
+    });
   });
 });

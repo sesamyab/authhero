@@ -4,9 +4,15 @@ import {
   promptSettingSchema,
   promptScreenSchema,
   customTextSchema,
+  promptPartialsSchema,
   LogTypes,
 } from "@authhero/adapter-interfaces";
+import { HTTPException } from "hono/http-exception";
 import { logMessage } from "../../helpers/logging";
+import {
+  promptPartialPrompts,
+  sanitizePromptPartials,
+} from "../../helpers/prompt-partials";
 import { getAllLocaleDefaults } from "../../i18n";
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
@@ -342,6 +348,116 @@ const deleteByPromptCustomTextByLanguage = defineRoute({
   },
 });
 
+const promptPartialPromptSchema = z.enum(promptPartialPrompts);
+
+const getPromptPartials = defineRoute({
+  route: createRoute({
+    tags: ["prompts"],
+    method: "get",
+    path: "/{prompt}/partials",
+    request: {
+      headers: z.object({
+        "tenant-id": z.string().optional(),
+      }),
+      params: z.object({
+        prompt: promptPartialPromptSchema,
+      }),
+    },
+    security: [
+      {
+        Bearer: ["read:prompts"],
+      },
+    ],
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: promptPartialsSchema,
+          },
+        },
+        description: "Prompt partials",
+      },
+    },
+  }),
+  handler: async (ctx) => {
+    const tenantId = requireTenantId(ctx);
+    const { prompt } = ctx.req.valid("param");
+    const adapter = ctx.env.data.promptPartials;
+
+    if (!adapter) {
+      throw new HTTPException(501, {
+        message: "Prompt partials are not supported by the configured adapter",
+      });
+    }
+
+    return ctx.json((await adapter.get(tenantId, prompt)) ?? {});
+  },
+});
+
+const putPromptPartials = defineRoute({
+  route: createRoute({
+    tags: ["prompts"],
+    method: "put",
+    path: "/{prompt}/partials",
+    request: {
+      headers: z.object({
+        "tenant-id": z.string().optional(),
+      }),
+      params: z.object({
+        prompt: promptPartialPromptSchema,
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: promptPartialsSchema,
+          },
+        },
+      },
+    },
+    security: [
+      {
+        Bearer: ["update:prompts"],
+      },
+    ],
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: promptPartialsSchema,
+          },
+        },
+        description: "Updated prompt partials",
+      },
+    },
+  }),
+  handler: async (ctx) => {
+    const tenantId = requireTenantId(ctx);
+    const { prompt } = ctx.req.valid("param");
+    const adapter = ctx.env.data.promptPartials;
+
+    if (!adapter) {
+      throw new HTTPException(501, {
+        message: "Prompt partials are not supported by the configured adapter",
+      });
+    }
+
+    const partials = sanitizePromptPartials(ctx.req.valid("json"));
+    const existing = await adapter.get(tenantId, prompt);
+    await adapter.set(tenantId, prompt, partials);
+
+    await logMessage(ctx, tenantId, {
+      type: LogTypes.SUCCESS_API_OPERATION,
+      description: "Set Prompt Partials",
+      targetType: "prompt_partials",
+      targetId: prompt,
+      ...(existing ? { beforeState: { ...existing } } : {}),
+      afterState: { ...partials },
+    });
+
+    return ctx.json(partials);
+  },
+});
+
 export const promptsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
@@ -353,4 +469,6 @@ export const promptsRoutes = new OpenAPIHono<{
   getByPromptCustomTextByLanguage,
   putByPromptCustomTextByLanguage,
   deleteByPromptCustomTextByLanguage,
+  getPromptPartials,
+  putPromptPartials,
 ] as const);
