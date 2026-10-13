@@ -81,6 +81,7 @@ export function createUserHooks(
       ip: ctx.req.query("x-real-ip") || "",
       user_agent: ctx.req.query("user-agent"),
       url: ctx.var.loginSession?.authorization_url || ctx.req.url,
+      body: ctx.var.signup_body,
     };
 
     if (ctx.env.hooks?.onExecutePreUserRegistration) {

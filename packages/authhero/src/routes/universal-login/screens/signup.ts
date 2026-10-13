@@ -375,6 +375,13 @@ export const signupScreenDefinition: ScreenDefinition = {
       let newUser: User;
 
       try {
+        const signupBody = Object.fromEntries(
+          Object.entries(data).filter(([key]) => key.startsWith("ulp-")),
+        );
+        if (Object.keys(signupBody).length > 0) {
+          ctx.set("signup_body", signupBody);
+        }
+
         // Create the new user with password atomically in a single transaction
         newUser = await ctx.env.data.users.create(client.tenant.id, {
           user_id,
