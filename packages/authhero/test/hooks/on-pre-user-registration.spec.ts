@@ -83,7 +83,7 @@ describe("on-pre-user-registration-hook", () => {
     expect(returnedUser.identities).toHaveLength(2);
   });
 
-  it("keeps the legacy top-level setUserMetadata behavior by default", async () => {
+  it("writes setUserMetadata values to user_metadata", async () => {
     const { env, managementApp } = await getTestServer({
       hooks: {
         onExecutePreUserRegistration: async (
@@ -120,10 +120,11 @@ describe("on-pre-user-registration-hook", () => {
     expect(userResponse.status).toBe(201);
     const user = await userResponse.json();
 
-    expect(user?.given_name).toBe("given_name");
+    expect(user?.user_metadata).toEqual({ given_name: "given_name" });
+    expect(user).not.toHaveProperty("given_name");
   });
 
-  it("merges user and app metadata when Auth0-compatible behavior is enabled", async () => {
+  it("merges user and app metadata", async () => {
     const { env, managementApp } = await getTestServer({
       hooks: {
         onExecutePreUserRegistration: async (_event, api) => {
@@ -131,9 +132,6 @@ describe("on-pre-user-registration-hook", () => {
           api.user.setAppMetadata("plan", "pro");
         },
       },
-    });
-    await env.data.tenants.update("tenantId", {
-      flags: { enable_auth0_pre_user_registration_metadata: true },
     });
 
     const client = testClient(managementApp, env);
@@ -169,9 +167,6 @@ describe("on-pre-user-registration-hook", () => {
   it("exposes Auth0-compatible metadata setters to code hooks", async () => {
     const { env, managementApp } = await getTestServer({
       codeExecutor: new LocalCodeExecutor(),
-    });
-    await env.data.tenants.update("tenantId", {
-      flags: { enable_auth0_pre_user_registration_metadata: true },
     });
     const action = await env.data.actions.create("tenantId", {
       name: "set-signup-metadata",

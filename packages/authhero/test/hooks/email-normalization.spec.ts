@@ -12,7 +12,6 @@ import { Bindings, Variables } from "../../src/types";
 import {
   HookEvent,
   Hooks,
-  OnExecutePreUserRegistrationAPI,
   OnExecutePreUserUpdateAPI,
 } from "../../src/types/Hooks";
 
@@ -189,42 +188,12 @@ describe("email normalization at the data-hooks layer", () => {
   });
 });
 
-// Pre-registration and pre-update hooks both expose `setUserMetadata`, which
-// writes arbitrary keys onto the pending payload — including `email`. That runs
-// after the adapter wrapper normalized the incoming value, so the decorators
-// normalize again just before their commit.
+// Pre-update hooks expose `setUserMetadata`, which writes arbitrary keys onto
+// the pending payload — including `email`. That runs after the adapter wrapper
+// normalized the incoming value, so the decorator normalizes again just before
+// its commit. (Pre-registration `setUserMetadata` writes to `user_metadata`, so
+// it can't change the email.)
 describe("email normalization for hook-assigned emails", () => {
-  it("lowercases an email assigned by a pre-registration hook", async () => {
-    const { env } = await getTestServer();
-    const dataWithHooks = addDataHooks(
-      createMockCtx(env, {
-        onExecutePreUserRegistration: async (
-          _event: HookEvent,
-          api: OnExecutePreUserRegistrationAPI,
-        ) => {
-          api.user.setUserMetadata("email", "Hook.Assigned@Example.COM");
-        },
-      }),
-      env.data,
-    );
-
-    const created = await dataWithHooks.users.create("tenantId", {
-      user_id: `${USERNAME_PASSWORD_PROVIDER}|hook-create`,
-      email: "original@example.com",
-      email_verified: true,
-      provider: USERNAME_PASSWORD_PROVIDER,
-      connection: Strategy.USERNAME_PASSWORD,
-    });
-
-    expect(created.email).toBe("hook.assigned@example.com");
-
-    const stored = await env.data.users.get(
-      "tenantId",
-      `${USERNAME_PASSWORD_PROVIDER}|hook-create`,
-    );
-    expect(stored?.email).toBe("hook.assigned@example.com");
-  });
-
   it("lowercases an email assigned by a pre-update hook", async () => {
     const { env } = await getTestServer();
     const dataWithHooks = addDataHooks(
@@ -258,37 +227,6 @@ describe("email normalization for hook-assigned emails", () => {
       `${USERNAME_PASSWORD_PROVIDER}|hook-update`,
     );
     expect(stored?.email).toBe("hook.updated@example.com");
-  });
-
-  it("trims an email assigned by a pre-registration hook", async () => {
-    const { env } = await getTestServer();
-    const dataWithHooks = addDataHooks(
-      createMockCtx(env, {
-        onExecutePreUserRegistration: async (
-          _event: HookEvent,
-          api: OnExecutePreUserRegistrationAPI,
-        ) => {
-          api.user.setUserMetadata("email", "  Hook.Padded@Example.COM  ");
-        },
-      }),
-      env.data,
-    );
-
-    const created = await dataWithHooks.users.create("tenantId", {
-      user_id: `${USERNAME_PASSWORD_PROVIDER}|hook-padded-create`,
-      email: "original@example.com",
-      email_verified: true,
-      provider: USERNAME_PASSWORD_PROVIDER,
-      connection: Strategy.USERNAME_PASSWORD,
-    });
-
-    expect(created.email).toBe("hook.padded@example.com");
-
-    const stored = await env.data.users.get(
-      "tenantId",
-      `${USERNAME_PASSWORD_PROVIDER}|hook-padded-create`,
-    );
-    expect(stored?.email).toBe("hook.padded@example.com");
   });
 
   it("trims an email assigned by a pre-update hook", async () => {
