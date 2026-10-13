@@ -7,6 +7,7 @@ import {
 import { testClient } from "hono/testing";
 import { getAdminToken } from "../helpers/token";
 import { UserResponse, Strategy } from "@authhero/adapter-interfaces";
+import { LocalCodeExecutor } from "../../src/hooks/code-executor/local";
 
 describe("on-pre-user-registration-hook", () => {
   it("should link user to primary via setLinkedTo", async () => {
@@ -82,7 +83,7 @@ describe("on-pre-user-registration-hook", () => {
     expect(returnedUser.identities).toHaveLength(2);
   });
 
-  it("should update user metadata", async () => {
+  it("writes setUserMetadata values to user_metadata", async () => {
     const { env, managementApp } = await getTestServer({
       hooks: {
         onExecutePreUserRegistration: async (
@@ -119,7 +120,98 @@ describe("on-pre-user-registration-hook", () => {
     expect(userResponse.status).toBe(201);
     const user = await userResponse.json();
 
-    expect(user?.given_name).toBe("given_name");
+    expect(user?.user_metadata).toEqual({ given_name: "given_name" });
+    expect(user).not.toHaveProperty("given_name");
+  });
+
+  it("merges user and app metadata", async () => {
+    const { env, managementApp } = await getTestServer({
+      hooks: {
+        onExecutePreUserRegistration: async (_event, api) => {
+          api.user.setUserMetadata("first_name", "Ada");
+          api.user.setAppMetadata("plan", "pro");
+        },
+      },
+    });
+
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+    const response = await client.users.$post(
+      {
+        json: {
+          email: "metadata@example.com",
+          connection: Strategy.USERNAME_PASSWORD,
+          user_metadata: { existing_user_key: "preserved" },
+          app_metadata: { existing_app_key: "preserved" },
+        },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(201);
+    const user = (await response.json()) as UserResponse &
+      Record<string, unknown>;
+    expect(user.user_metadata).toEqual({
+      existing_user_key: "preserved",
+      first_name: "Ada",
+    });
+    expect(user.app_metadata).toEqual({
+      existing_app_key: "preserved",
+      plan: "pro",
+    });
+    expect(user).not.toHaveProperty("first_name");
+    expect(user).not.toHaveProperty("plan");
+  });
+
+  it("exposes Auth0-compatible metadata setters to code hooks", async () => {
+    const { env, managementApp } = await getTestServer({
+      codeExecutor: new LocalCodeExecutor(),
+    });
+    const action = await env.data.actions.create("tenantId", {
+      name: "set-signup-metadata",
+      code: `
+exports.onExecutePreUserRegistration = async (_event, api) => {
+  api.user.setUserMetadata("first_name", "Ada");
+  api.user.setAppMetadata("plan", "pro");
+};
+`,
+    });
+    await env.data.hooks.create("tenantId", {
+      trigger_id: "pre-user-registration",
+      enabled: true,
+      code_id: action.id,
+      synchronous: true,
+    });
+
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+    const response = await client.users.$post(
+      {
+        json: {
+          email: "code-metadata@example.com",
+          connection: Strategy.USERNAME_PASSWORD,
+          user_metadata: { existing_user_key: "preserved" },
+          app_metadata: { existing_app_key: "preserved" },
+        },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(201);
+    const user = (await response.json()) as UserResponse &
+      Record<string, unknown>;
+    expect(user.user_metadata).toEqual({
+      existing_user_key: "preserved",
+      first_name: "Ada",
+    });
+    expect(user.app_metadata).toEqual({
+      existing_app_key: "preserved",
+      plan: "pro",
+    });
+    expect(user).not.toHaveProperty("first_name");
+    expect(user).not.toHaveProperty("plan");
   });
 
   it("should block user creation when deny() is called", async () => {
