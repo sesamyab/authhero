@@ -3,7 +3,7 @@ import { Bindings, Variables } from "../types";
 import { LoginSession, User } from "@authhero/adapter-interfaces";
 import { HTTPException } from "hono/http-exception";
 import { startLoginSessionHook } from "../authentication-flows/common";
-import { getEnrichedClient } from "../helpers/client";
+import { EnrichedClient, getEnrichedClient } from "../helpers/client";
 
 // Type guard for page hooks
 export function isPageHook(
@@ -22,6 +22,7 @@ export async function handlePageHook(
   loginSession: LoginSession,
   user: User,
   permission_required?: string,
+  client?: EnrichedClient,
 ): Promise<User | Response> {
   const data = ctx.env.data;
   const tenant_id = ctx.var.tenant_id || ctx.req.header("tenant-id");
@@ -49,21 +50,24 @@ export async function handlePageHook(
   // Mark login session as awaiting hook before redirecting to page
   await startLoginSessionHook(ctx, tenant_id, loginSession, `page:${page_id}`);
 
-  // Determine route prefix based on client metadata
+  // Determine route prefix based on client metadata. Prefer the client the
+  // login is already running with (the one that picked /u2 for the login
+  // screens) over a second lookup, which would silently fall back to /u.
   let routePrefix = "/u";
-  if (loginSession.authParams.client_id) {
+  let loginClient = client;
+  if (!loginClient && loginSession.authParams.client_id) {
     try {
-      const client = await getEnrichedClient(
+      loginClient = await getEnrichedClient(
         ctx.env,
         loginSession.authParams.client_id,
         tenant_id,
       );
-      if (client?.client_metadata?.universal_login_version === "2") {
-        routePrefix = "/u2";
-      }
     } catch {
       // If client lookup fails, use default /u prefix
     }
+  }
+  if (loginClient?.client_metadata?.universal_login_version === "2") {
+    routePrefix = "/u2";
   }
 
   // If user has permission or no permission is required, redirect to the page

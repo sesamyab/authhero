@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  AuthorizationResponseMode,
+  AuthParams,
   AuthorizationResponseType,
   LoginSessionState,
   LogTypes,
@@ -7,6 +9,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../../helpers/test-server";
 import { USERNAME_PASSWORD_PROVIDER } from "../../../src/constants";
+import { createX509Certificate } from "../../../src/utils/encryption";
 
 const IMPERSONATOR_ID = `${USERNAME_PASSWORD_PROVIDER}|admin`;
 const TARGET_ID = `${USERNAME_PASSWORD_PROVIDER}|target`;
@@ -14,7 +17,7 @@ const TARGET_ID = `${USERNAME_PASSWORD_PROVIDER}|target`;
 type TestEnv = Awaited<ReturnType<typeof getTestServer>>["env"];
 
 /** Seed the two identities and a pending impersonation page hook. */
-async function setup(env: TestEnv) {
+async function setup(env: TestEnv, authParams: Partial<AuthParams> = {}) {
   for (const [user_id, email] of [
     [IMPERSONATOR_ID, "admin@example.com"],
     [TARGET_ID, "target@example.com"],
@@ -45,6 +48,7 @@ async function setup(env: TestEnv) {
       response_type: AuthorizationResponseType.CODE,
       state: "auth-state",
       nonce: "nonce",
+      ...authParams,
     },
     state: LoginSessionState.AWAITING_HOOK,
     state_data: JSON.stringify({ hookId: "page:impersonate" }),
@@ -179,6 +183,38 @@ describe("u2 impersonate screen", () => {
     expect(log).toBeDefined();
     const [event] = await env.data.outbox!.getByIds([log!.log_id]);
     expect(event.actor.id).toBe(IMPERSONATOR_ID);
+  });
+
+  it("returns the SAML POST form for the impersonated user", async () => {
+    const { u2App, env } = await getTestServer();
+    // The fixture's SAML_SIGN_URL points at a service that isn't running.
+    env.samlSigner = { signSAML: async (xml) => xml };
+    const signingKey = await createX509Certificate({ name: "CN=saml" });
+    await env.data.keys.create({ ...signingKey, type: "saml_encryption" });
+    await env.data.clients.update("tenantId", "clientId", {
+      addons: {
+        samlp: { recipient: "https://example.com/callback" },
+      },
+    });
+    const { state, sessionId } = await setup(env, {
+      response_mode: AuthorizationResponseMode.SAML_POST,
+      redirect_uri: "https://example.com/callback",
+      audience: "https://sp.example/sp",
+      state: JSON.stringify({ requestId: "_abc123", relayState: "relay" }),
+    });
+
+    const response = await postScreen(u2App, env, state, {
+      impersonate: "true",
+      user_id: TARGET_ID,
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('name="SAMLResponse"');
+    expect(body).toContain('action="https://example.com/callback"');
+
+    const session = await env.data.sessions.get("tenantId", sessionId);
+    expect(session?.user_id).toBe(TARGET_ID);
   });
 
   it("preserves the SSO identity when authorization rejects the scopes", async () => {
