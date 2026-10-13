@@ -24,6 +24,7 @@ import {
   themeInsertSchema,
   brandingSchema,
   promptSettingSchema,
+  promptPartialsEntrySchema,
   customTextSchema,
   customTextEntrySchema,
   emailProviderSchema,
@@ -310,6 +311,23 @@ export async function importTenant(
             promptSettingSchema.parse(clean),
           );
           break;
+        case "prompt_partials": {
+          if (!data.promptPartials) {
+            errors.push({
+              entity,
+              error: "promptPartials adapter is not configured",
+            });
+            continue;
+          }
+          const parsed = promptPartialsEntrySchema.parse(clean);
+          await data.promptPartials.set(
+            tenant_id,
+            parsed.prompt,
+            parsed.partials,
+            meta(row),
+          );
+          break;
+        }
         case "universal_login_templates": {
           const body = required(getString(row, "body"), "body");
           await data.universalLoginTemplates.set(

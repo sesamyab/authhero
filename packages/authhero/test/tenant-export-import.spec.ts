@@ -115,6 +115,13 @@ async function seed(data: DataAdapters, tenant: string) {
     colors: { primary: "#ffffff", page_background: "#000000" },
   });
 
+  await data.promptPartials.set(tenant, "signup", {
+    signup: {
+      "form-content-start": '<input name="ulp-first-name">',
+      "form-footer-end": "<p>Terms apply</p>",
+    },
+  });
+
   return { client, connection, role, organization, user };
 }
 
@@ -177,6 +184,15 @@ describe("tenant export/import round-trip", () => {
     // User role assignment carried.
     const dstUserRoles = await dst.userRoles.list("dst", "auth2|u1");
     expect(dstUserRoles.some((r) => r.id === seeded.role.id)).toBe(true);
+
+    // Prompt partials carried without merging or dropping insertion points.
+    expect(await dst.promptPartials.get("dst", "signup")).toEqual({
+      signup: {
+        "form-content-start": '<input name="ulp-first-name">',
+        "form-footer-end": "<p>Terms apply</p>",
+      },
+    });
+    expect(result.counts.prompt_partials).toBe(1);
   });
 
   it("emits lines in the FK-safe manifest order", async () => {

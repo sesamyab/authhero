@@ -25,6 +25,7 @@ import { createThemesAdapter } from "./themes";
 import { DataAdapters } from "@authhero/adapter-interfaces";
 import { createLoginAdapter } from "./loginSessions";
 import { createPromptSettingsAdapter } from "./promptSettings";
+import { createPromptPartialsAdapter } from "./promptPartials";
 import { createEmailProvidersAdapter } from "./emailProvideres";
 import { createEmailTemplatesAdapter } from "./emailTemplates";
 import { createRefreshTokensAdapter } from "./refreshTokens";
@@ -104,6 +105,7 @@ export default function createAdapters(
     authenticationMethods: createAuthenticationMethodsAdapter(db),
     passwords: createPasswordAdapter(db),
     promptSettings: createPromptSettingsAdapter(db),
+    promptPartials: createPromptPartialsAdapter(db),
     proxyRoutes: createProxyRoutesAdapter(db),
     scimConfigurations: createScimConfigurationsAdapter(db),
     scimTokens: createScimTokensAdapter(db),

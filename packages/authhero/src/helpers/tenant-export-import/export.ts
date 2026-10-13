@@ -319,6 +319,17 @@ export async function* exportTenantLines(
     yield line("prompt_settings", promptSettings);
   }
 
+  // prompt_partials (per prompt)
+  if (data.promptPartials) {
+    const promptsWithPartials = await data.promptPartials.list(tenant_id);
+    for (const prompt of promptsWithPartials) {
+      const partials = await data.promptPartials.get(tenant_id, prompt);
+      if (partials) {
+        yield line("prompt_partials", { prompt, partials });
+      }
+    }
+  }
+
   // universal_login_templates (singleton)
   const universalLoginTemplate =
     await data.universalLoginTemplates.get(tenant_id);

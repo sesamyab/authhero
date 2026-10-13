@@ -56,7 +56,7 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-09-25T12:00:00_token_exchange_profiles";
+    const last = "2026-10-13T12:00:00_prompt_partials";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
 
@@ -65,14 +65,12 @@ describe("planMigrations", () => {
     expect(plan.pending.map((it) => it.name)).toEqual([last]);
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
-    expect(output).toMatch(
-      /create table if not exists "token_exchange_profiles"/i,
-    );
-    expect(await tableNames(db)).not.toContain("token_exchange_profiles");
+    expect(output).toMatch(/create table if not exists "prompt_partials"/i);
+    expect(await tableNames(db)).not.toContain("prompt_partials");
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    expect(await tableNames(db)).toContain("token_exchange_profiles");
+    expect(await tableNames(db)).toContain("prompt_partials");
     await db.destroy();
   });
 });

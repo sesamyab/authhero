@@ -92,6 +92,14 @@ const sqlCustomTextSchema = z.object({
   updated_at_ts: z.number(),
 });
 
+const sqlPromptPartialsSchema = z.object({
+  tenant_id: z.string(),
+  prompt: z.string(),
+  body: z.string(),
+  created_at_ts: z.number(),
+  updated_at_ts: z.number(),
+});
+
 const sqlPromptSettingSchema = promptSettingSchema.extend({
   identifier_first: z.number(),
   password_first: z.number(),
@@ -569,6 +577,7 @@ export interface Database {
   invites: z.infer<typeof sqlInviteSchema>;
   universal_login_templates: z.infer<typeof sqlUniversalLoginTemplateSchema>;
   custom_text: z.infer<typeof sqlCustomTextSchema>;
+  prompt_partials: z.infer<typeof sqlPromptPartialsSchema>;
   authentication_methods: z.infer<typeof sqlAuthenticationMethodSchema>;
   log_streams: {
     id: string;
