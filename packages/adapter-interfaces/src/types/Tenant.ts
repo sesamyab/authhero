@@ -70,10 +70,6 @@ export const tenantInsertSchema = z.object({
       disable_management_api_sms_obfuscation: z.boolean().optional(),
       enable_adfs_waad_email_verification: z.boolean().optional(),
       enable_apis_section: z.boolean().optional(),
-      // AuthHero migration flag. Existing tenants keep the historical
-      // top-level behavior for pre-registration setUserMetadata until they
-      // explicitly opt in to Auth0-compatible user_metadata writes.
-      enable_auth0_pre_user_registration_metadata: z.boolean().optional(),
       enable_client_connections: z.boolean().optional(),
       enable_custom_domain_in_emails: z.boolean().optional(),
       enable_dynamic_client_registration: z.boolean().optional(),
