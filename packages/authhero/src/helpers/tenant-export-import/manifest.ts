@@ -34,6 +34,7 @@ export const EXPORT_ORDER = [
   "themes",
   "branding",
   "prompt_settings",
+  "prompt_partials",
   "universal_login_templates",
   "custom_text",
   "email_providers",

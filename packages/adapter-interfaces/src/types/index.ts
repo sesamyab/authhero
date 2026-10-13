@@ -106,6 +106,7 @@ export * from "./TenantSettings";
 export * from "./Stats";
 export * from "./Analytics";
 export * from "./CustomText";
+export * from "./PromptPartials";
 export * from "./Strategy";
 export * from "./AuthenticationMethod";
 export * from "./ImportMetadata";

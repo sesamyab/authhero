@@ -50,6 +50,7 @@ import { StatsAdapter } from "./Stats";
 import { AnalyticsAdapter } from "./Analytics";
 import { UniversalLoginTemplatesAdapter } from "./UniversalLoginTemplates";
 import { CustomTextAdapter } from "./CustomText";
+import { PromptPartialsAdapter } from "./PromptPartials";
 import { EmailServiceAdapter } from "./EmailService";
 import { SmsServiceAdapter } from "./SmsService";
 import { OutboxAdapter } from "./Outbox";
@@ -102,6 +103,8 @@ export interface DataAdapters {
   migrationSources?: MigrationSourcesAdapter;
   passwords: PasswordsAdapter;
   promptSettings: PromptSettingsAdapter;
+  /** Optional tenant-level storage for Auth0-compatible prompt partials. */
+  promptPartials?: PromptPartialsAdapter;
   /**
    * Optional adapter for managing reverse-proxy route configuration per tenant.
    * When set, AuthHero mounts the `/api/v2/proxy-routes` management API. A
@@ -248,6 +251,7 @@ export * from "./ActionVersions";
 export * from "./Flows";
 export * from "./Cache";
 export * from "./Clients";
+export * from "./PromptPartials";
 export * from "./ClientConnections";
 export * from "./ClientGrants";
 export * from "./ClientRegistrationTokens";

@@ -27,6 +27,7 @@ import { createAuthenticationMethodsAdapter } from "./authenticationMethods";
 import { createOrganizationsAdapter } from "./organizations";
 import { createPasswordsAdapter } from "./passwords";
 import { createPromptSettingsAdapter } from "./promptSettings";
+import { createPromptPartialsAdapter } from "./promptPartials";
 import { createProxyRoutesAdapter } from "./proxyRoutes";
 import { createTokenExchangeProfilesAdapter } from "./tokenExchangeProfiles";
 import {
@@ -105,6 +106,7 @@ export default function createAdapters(
     organizations: createOrganizationsAdapter(db),
     passwords: createPasswordsAdapter(db),
     promptSettings: createPromptSettingsAdapter(db),
+    promptPartials: createPromptPartialsAdapter(db),
     proxyRoutes: createProxyRoutesAdapter(db),
     scimConfigurations: createScimConfigurationsAdapter(db),
     scimTokens: createScimTokensAdapter(db),

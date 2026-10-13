@@ -324,3 +324,10 @@ export const customTextKeys = {
   sk: (prompt: string, language: string) => `CUSTOM_TEXT#${prompt}#${language}`,
   skPrefix: () => "CUSTOM_TEXT#",
 };
+
+// Prompt partial keys (one per tenant/prompt)
+export const promptPartialsKeys = {
+  pk: (tenantId: string) => `TENANT#${tenantId}`,
+  sk: (prompt: string) => `PROMPT_PARTIALS#${prompt}`,
+  skPrefix: () => "PROMPT_PARTIALS#",
+};

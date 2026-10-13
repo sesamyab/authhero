@@ -345,3 +345,17 @@ export const customText = sqliteTable(
     primaryKey({ columns: [table.tenant_id, table.prompt, table.language] }),
   ],
 );
+
+export const promptPartials = sqliteTable(
+  "prompt_partials",
+  {
+    tenant_id: text("tenant_id", { length: 191 })
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    prompt: text("prompt", { length: 64 }).notNull(),
+    body: text("body").notNull(),
+    created_at_ts: integer("created_at_ts").notNull(),
+    updated_at_ts: integer("updated_at_ts").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.tenant_id, table.prompt] })],
+);

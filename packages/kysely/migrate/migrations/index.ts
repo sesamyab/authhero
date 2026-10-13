@@ -9,6 +9,7 @@ import * as refreshTokenSessionId from "./2026-08-20T12:00:00_refresh_token_sess
 import * as refreshTokenSessionIdBackfill from "./2026-08-21T12:00:00_refresh_token_session_id_backfill";
 import * as tenantOperationRows from "./2026-09-01T12:00:00_tenant_operation_rows";
 import * as tokenExchangeProfiles from "./2026-09-25T12:00:00_token_exchange_profiles";
+import * as promptPartials from "./2026-10-13T12:00:00_prompt_partials";
 
 /**
  * Kysely runs these in key order and refuses to start if an already-executed
@@ -39,4 +40,5 @@ export default {
     refreshTokenSessionIdBackfill,
   "2026-09-01T12:00:00_tenant_operation_rows": tenantOperationRows,
   "2026-09-25T12:00:00_token_exchange_profiles": tokenExchangeProfiles,
+  "2026-10-13T12:00:00_prompt_partials": promptPartials,
 };

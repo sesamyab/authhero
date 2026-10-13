@@ -41,6 +41,7 @@ import { createOrganizationConnectionsAdapter } from "./adapters/organizationCon
 import { createUserOrganizationsAdapter } from "./adapters/userOrganizations";
 import { createInvitesAdapter } from "./adapters/invites";
 import { createCustomTextAdapter } from "./adapters/customText";
+import { createPromptPartialsAdapter } from "./adapters/promptPartials";
 import { createAuthenticationMethodsAdapter } from "./adapters/authenticationMethods";
 import { createProxyRoutesAdapter } from "./adapters/proxyRoutes";
 
@@ -105,6 +106,7 @@ export default function createAdapters(
     organizationConnections: createOrganizationConnectionsAdapter(ctx),
     passwords: createPasswordsAdapter(ctx),
     promptSettings: createPromptSettingsAdapter(ctx),
+    promptPartials: createPromptPartialsAdapter(ctx),
     proxyRoutes: createProxyRoutesAdapter(ctx),
     refreshTokens: createRefreshTokensAdapter(ctx),
     resourceServers: createResourceServersAdapter(ctx),
@@ -165,6 +167,7 @@ export { createCustomDomainsAdapter } from "./adapters/customDomains";
 export { createLogsAdapter } from "./adapters/logs";
 export { createThemesAdapter } from "./adapters/themes";
 export { createPromptSettingsAdapter } from "./adapters/promptSettings";
+export { createPromptPartialsAdapter } from "./adapters/promptPartials";
 export { createEmailProvidersAdapter } from "./adapters/emailProviders";
 export { createRefreshTokensAdapter } from "./adapters/refreshTokens";
 export { createFormsAdapter } from "./adapters/forms";
