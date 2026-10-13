@@ -6,6 +6,7 @@ import type {
 import type { HookEvent } from "../../../src/types/Hooks";
 import { getTestServer } from "../../helpers/test-server";
 import { getSignupPrefill } from "../../../src/routes/universal-login/screens/signup";
+import { LocalCodeExecutor } from "../../../src/hooks/code-executor/local";
 
 type ScreenMessage = { text: string; type: string };
 type ScreenComponent = {
@@ -135,23 +136,8 @@ describe("u2 signup pre-user-registration request body", () => {
 
   it("shows code-hook validation errors in the JSON screen API and records a canceled execution", async () => {
     let createdExecution: ActionExecutionInsert | undefined;
-    const codeExecutor: CodeExecutor = {
-      async execute() {
-        return {
-          success: true,
-          durationMs: 1,
-          apiCalls: [
-            {
-              method: "validation.error",
-              args: ["missing_name", "Please enter your name"],
-            },
-          ],
-          logs: [],
-        };
-      },
-    };
     const { u2App, env } = await getTestServer({
-      codeExecutor,
+      codeExecutor: new LocalCodeExecutor(),
       wrapDataAdapter: (data) => ({
         ...data,
         actionExecutions: {
@@ -166,7 +152,11 @@ describe("u2 signup pre-user-registration request body", () => {
 
     const action = await env.data.actions.create("tenantId", {
       name: "validate-signup-fields",
-      code: "exports.onExecutePreUserRegistration = async () => {};",
+      code: `
+exports.onExecutePreUserRegistration = async (_event, api) => {
+  api.validation.error("missing_name", "Please enter your name");
+};
+`,
     });
     await env.data.hooks.create("tenantId", {
       trigger_id: "pre-user-registration",

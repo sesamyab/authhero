@@ -7,6 +7,7 @@ import {
 import { testClient } from "hono/testing";
 import { getAdminToken } from "../helpers/token";
 import { UserResponse, Strategy } from "@authhero/adapter-interfaces";
+import { LocalCodeExecutor } from "../../src/hooks/code-executor/local";
 
 describe("on-pre-user-registration-hook", () => {
   it("should link user to primary via setLinkedTo", async () => {
@@ -82,7 +83,7 @@ describe("on-pre-user-registration-hook", () => {
     expect(returnedUser.identities).toHaveLength(2);
   });
 
-  it("should update user metadata", async () => {
+  it("keeps the legacy top-level setUserMetadata behavior by default", async () => {
     const { env, managementApp } = await getTestServer({
       hooks: {
         onExecutePreUserRegistration: async (
@@ -120,6 +121,102 @@ describe("on-pre-user-registration-hook", () => {
     const user = await userResponse.json();
 
     expect(user?.given_name).toBe("given_name");
+  });
+
+  it("merges user and app metadata when Auth0-compatible behavior is enabled", async () => {
+    const { env, managementApp } = await getTestServer({
+      hooks: {
+        onExecutePreUserRegistration: async (_event, api) => {
+          api.user.setUserMetadata("first_name", "Ada");
+          api.user.setAppMetadata("plan", "pro");
+        },
+      },
+    });
+    await env.data.tenants.update("tenantId", {
+      flags: { enable_auth0_pre_user_registration_metadata: true },
+    });
+
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+    const response = await client.users.$post(
+      {
+        json: {
+          email: "metadata@example.com",
+          connection: Strategy.USERNAME_PASSWORD,
+          user_metadata: { existing_user_key: "preserved" },
+          app_metadata: { existing_app_key: "preserved" },
+        },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(201);
+    const user = (await response.json()) as UserResponse &
+      Record<string, unknown>;
+    expect(user.user_metadata).toEqual({
+      existing_user_key: "preserved",
+      first_name: "Ada",
+    });
+    expect(user.app_metadata).toEqual({
+      existing_app_key: "preserved",
+      plan: "pro",
+    });
+    expect(user).not.toHaveProperty("first_name");
+    expect(user).not.toHaveProperty("plan");
+  });
+
+  it("exposes Auth0-compatible metadata setters to code hooks", async () => {
+    const { env, managementApp } = await getTestServer({
+      codeExecutor: new LocalCodeExecutor(),
+    });
+    await env.data.tenants.update("tenantId", {
+      flags: { enable_auth0_pre_user_registration_metadata: true },
+    });
+    const action = await env.data.actions.create("tenantId", {
+      name: "set-signup-metadata",
+      code: `
+exports.onExecutePreUserRegistration = async (_event, api) => {
+  api.user.setUserMetadata("first_name", "Ada");
+  api.user.setAppMetadata("plan", "pro");
+};
+`,
+    });
+    await env.data.hooks.create("tenantId", {
+      trigger_id: "pre-user-registration",
+      enabled: true,
+      code_id: action.id,
+      synchronous: true,
+    });
+
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+    const response = await client.users.$post(
+      {
+        json: {
+          email: "code-metadata@example.com",
+          connection: Strategy.USERNAME_PASSWORD,
+          user_metadata: { existing_user_key: "preserved" },
+          app_metadata: { existing_app_key: "preserved" },
+        },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(201);
+    const user = (await response.json()) as UserResponse &
+      Record<string, unknown>;
+    expect(user.user_metadata).toEqual({
+      existing_user_key: "preserved",
+      first_name: "Ada",
+    });
+    expect(user.app_metadata).toEqual({
+      existing_app_key: "preserved",
+      plan: "pro",
+    });
+    expect(user).not.toHaveProperty("first_name");
+    expect(user).not.toHaveProperty("plan");
   });
 
   it("should block user creation when deny() is called", async () => {

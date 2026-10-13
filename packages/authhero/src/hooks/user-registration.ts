@@ -25,6 +25,20 @@ import { builtInUserLinkingEnabled } from "../helpers/user-linking";
 import { withNormalizedEmail } from "../utils/email";
 import { SignupValidationError } from "../errors/signup-validation-error";
 
+function setMetadata(
+  user: User,
+  field: "user_metadata" | "app_metadata",
+  key: string,
+  value: unknown,
+) {
+  const current = user[field];
+  const metadata =
+    current && typeof current === "object" && !Array.isArray(current)
+      ? current
+      : {};
+  user[field] = { ...metadata, [key]: value };
+}
+
 /**
  * Decorator applied by `addDataHooks` to `users.create`. Runs the full
  * pre-commit/commit/publish pipeline for a user creation:
@@ -85,6 +99,30 @@ export function createUserHooks(
       body: ctx.var.signup_body,
     };
 
+    // Fetch the full tenant hooks list (bundle-covered) and filter in memory
+    // rather than passing a `q:` param that bypasses the bundle wrapper.
+    const { hooks: allHooks } = await data.hooks.list(tenant_id);
+    const preRegCodeHooks = allHooks
+      .filter((h) => h.trigger_id === "pre-user-registration" && h.enabled)
+      .filter(isCodeHook);
+    const tenant =
+      ctx.env.hooks?.onExecutePreUserRegistration || preRegCodeHooks.length > 0
+        ? await data.tenants.get(tenant_id)
+        : null;
+    const useAuth0Metadata =
+      tenant?.flags?.enable_auth0_pre_user_registration_metadata === true;
+    const setUserMetadata = (key: string, value: unknown) => {
+      if (useAuth0Metadata) {
+        setMetadata(user, "user_metadata", key, value);
+      } else {
+        // Preserve the historical AuthHero behavior until the tenant opts in.
+        user[key] = value;
+      }
+    };
+    const setAppMetadata = (key: string, value: unknown) => {
+      setMetadata(user, "app_metadata", key, value);
+    };
+
     if (ctx.env.hooks?.onExecutePreUserRegistration) {
       try {
         await ctx.env.hooks.onExecutePreUserRegistration(
@@ -96,9 +134,8 @@ export function createUserHooks(
           },
           {
             user: {
-              setUserMetadata: async (key, value) => {
-                user[key] = value;
-              },
+              setUserMetadata,
+              setAppMetadata,
               setLinkedTo: (primaryUserId: string) => {
                 user.linked_to = primaryUserId;
               },
@@ -146,13 +183,7 @@ export function createUserHooks(
     }
 
     // Execute pre-user-registration code hooks.
-    // Fetch the full tenant hooks list (bundle-covered) and filter in memory
-    // rather than passing a `q:` param that bypasses the bundle wrapper.
     {
-      const { hooks: allHooks } = await data.hooks.list(tenant_id);
-      const preRegCodeHooks = allHooks
-        .filter((h) => h.trigger_id === "pre-user-registration" && h.enabled)
-        .filter(isCodeHook);
       const outcomes: HandleCodeHookOutcome[] = [];
       for (const hook of preRegCodeHooks) {
         try {
@@ -164,9 +195,8 @@ export function createUserHooks(
             "pre-user-registration",
             {
               user: {
-                setUserMetadata: (key: string, value: any) => {
-                  (user as any)[key] = value;
-                },
+                setUserMetadata,
+                setAppMetadata,
                 setLinkedTo: (primaryUserId: string) => {
                   user.linked_to = primaryUserId;
                 },
@@ -243,8 +273,8 @@ export function createUserHooks(
     }
 
     // Re-normalize after the pre-registration hooks: both the config hook and
-    // code hooks expose `setUserMetadata`, which writes arbitrary keys onto
-    // `user` and can therefore introduce an un-normalized `email` after the
+    // Legacy tenants can still use `setUserMetadata` to write arbitrary root
+    // keys and may therefore introduce an un-normalized `email` after the
     // adapter wrapper normalized the incoming payload. Reassigned (rather than
     // used only at the commit call) so the outbox event, the post-registration
     // hook payload, and the log lines below all carry the stored value.

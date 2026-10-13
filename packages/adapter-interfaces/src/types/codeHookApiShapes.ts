@@ -36,8 +36,9 @@ export const TRIGGER_API_SHAPES: Readonly<
     access: ["deny"],
   },
   "pre-user-registration": {
-    user: ["setUserMetadata", "setLinkedTo"],
+    user: ["setUserMetadata", "setAppMetadata", "setLinkedTo"],
     access: ["deny"],
+    validation: ["error"],
   },
   "post-user-registration": {},
   // Not bound through trigger bindings: a Custom Token Exchange profile names
