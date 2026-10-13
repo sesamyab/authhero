@@ -210,6 +210,9 @@ export type OnExecutePreUserRegistrationAPI = {
   access: {
     deny: (code: string, reason?: string) => void;
   };
+  validation: {
+    error: (code: string, message: string) => void;
+  };
   token: TokenAPI;
 };
 

@@ -23,6 +23,7 @@ import { createTokenAPI } from "./helpers/token-api";
 import { preUserSignupHook } from "./validate-signup";
 import { builtInUserLinkingEnabled } from "../helpers/user-linking";
 import { withNormalizedEmail } from "../utils/email";
+import { SignupValidationError } from "../errors/signup-validation-error";
 
 /**
  * Decorator applied by `addDataHooks` to `users.create`. Runs the full
@@ -111,6 +112,11 @@ export function createUserHooks(
                 });
               },
             },
+            validation: {
+              error: (code: string, message: string) => {
+                throw new SignupValidationError(code, message);
+              },
+            },
             token: createTokenAPI(ctx, tenant_id),
           },
         );
@@ -174,18 +180,26 @@ export function createUserHooks(
                   });
                 },
               },
+              validation: {
+                error: (code: string, message: string) => {
+                  throw new SignupValidationError(code, message);
+                },
+              },
             },
           );
           if (outcome) outcomes.push(outcome);
         } catch (err) {
           if (err instanceof HTTPException) {
-            // api.access.deny — record before re-throwing so the canceled
-            // execution is persisted and discoverable.
+            // Blocking API calls are recorded before re-throwing so the
+            // canceled execution is persisted and discoverable.
             outcomes.push({
               result: {
                 action_name: hook.code_id,
                 error: {
-                  id: "access_denied",
+                  id:
+                    err instanceof SignupValidationError
+                      ? err.code
+                      : "access_denied",
                   msg: err instanceof Error ? err.message : String(err),
                 },
                 started_at: new Date().toISOString(),
