@@ -215,7 +215,7 @@ async function loadCodeForHook(
 export type HandleCodeHookOutcome = {
   result: ActionExecutionResult;
   logs: CodeExecutionLog[];
-  /** True if api.access.deny was recorded by the executor. */
+  /** True if the executor recorded an API call that cancels the flow. */
   denied: boolean;
 };
 
@@ -229,8 +229,9 @@ export type HandleCodeHookOutcome = {
  *
  * Always returns an outcome — including a `code_not_found` / `execution_failed`
  * outcome — so the caller can persist an `action_executions` record. It only
- * throws for `api.access.deny`, which surfaces as a thrown `HTTPException` from
- * the replayed API call; callers that must abort the flow catch it.
+ * throws for blocking API calls such as `api.access.deny` and
+ * `api.validation.error`, which surface as thrown `HTTPException`s from the
+ * replayed API call; callers that must abort the flow catch them.
  *
  * `idempotencyKey`, when set, is exposed to user code as `event.idempotency_key`.
  * The outbox is at-least-once, so a retried hook event re-runs the code; authors
@@ -299,8 +300,9 @@ export async function executeCodeHook(params: {
   }
 
   // Replay the recorded API calls against the real api objects. This is where
-  // api.access.deny fires (throws), where setCustomClaim mutates the real
-  // token, and where user.setLinkedTo performs (and awaits) the link.
+  // blocking calls such as api.access.deny and api.validation.error fire
+  // (throw), where setCustomClaim mutates the real token, and where
+  // user.setLinkedTo performs (and awaits) the link.
   await replayApiCalls(execResult.apiCalls, api);
 
   const denied = execResult.apiCalls.some((c) => c.method === "access.deny");

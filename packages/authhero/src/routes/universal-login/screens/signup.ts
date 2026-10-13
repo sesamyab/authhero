@@ -39,6 +39,20 @@ import {
 } from "./email-verification";
 import { loginWithPassword } from "../../../authentication-flows/password";
 import { logMessage } from "../../../helpers/logging";
+import { SignupValidationError } from "../../../errors/signup-validation-error";
+
+export function getSignupPrefill(
+  email: string,
+  signupBody?: Record<string, unknown>,
+): Record<string, string> {
+  const customFields = Object.fromEntries(
+    Object.entries(signupBody ?? {}).filter(
+      ([key, value]) => key.startsWith("ulp-") && typeof value === "string",
+    ),
+  ) as Record<string, string>;
+
+  return { email, ...customFields };
+}
 
 /**
  * Translate a validatePasswordPolicy failure into a user-facing message.
@@ -393,8 +407,17 @@ export const signupScreenDefinition: ScreenDefinition = {
           password: { hash, algorithm },
         });
       } catch (err: any) {
-        console.log("Err: " + err.message);
+        if (err instanceof SignupValidationError) {
+          return {
+            error: err.message,
+            screen: await signupScreen({
+              ...context,
+              prefill: getSignupPrefill(email, ctx.var.signup_body),
+            }),
+          };
+        }
 
+        console.log("Err: " + err.message);
         const errorMessage = m.createUserFailed();
         return {
           error: errorMessage,
