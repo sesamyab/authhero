@@ -31,6 +31,185 @@ export function isAllowedPromptPartialMappingTarget(target: string): boolean {
   );
 }
 
+// Partials are rendered inside the login form, so only content, layout and
+// form-field elements are allowed. Embedded content (iframe/object/embed),
+// navigation/document-level elements (base/meta/link/form), styles and
+// SVG/MathML (including animation elements) are intentionally excluded, as are
+// form-override attributes (formaction etc.) so credentials can't be posted to
+// an external host.
+const ALLOWED_TAGS = [
+  "a",
+  "abbr",
+  "b",
+  "blockquote",
+  "br",
+  "button",
+  "caption",
+  "cite",
+  "code",
+  "datalist",
+  "dd",
+  "del",
+  "details",
+  "dfn",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "i",
+  "img",
+  "input",
+  "ins",
+  "kbd",
+  "label",
+  "legend",
+  "li",
+  "mark",
+  "ol",
+  "optgroup",
+  "option",
+  "p",
+  "pre",
+  "q",
+  "s",
+  "section",
+  "select",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "summary",
+  "sup",
+  "table",
+  "tbody",
+  "td",
+  "textarea",
+  "tfoot",
+  "th",
+  "thead",
+  "time",
+  "tr",
+  "u",
+  "ul",
+];
+const ALLOWED_TAG_SET = new Set(ALLOWED_TAGS);
+
+const GLOBAL_ATTRIBUTES = [
+  "class",
+  "id",
+  "title",
+  "lang",
+  "dir",
+  "role",
+  "hidden",
+  "tabindex",
+];
+
+const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
+  "*": [...GLOBAL_ATTRIBUTES, "aria-*", "data-*"],
+  a: ["href", "target", "rel", "name"],
+  blockquote: ["cite"],
+  q: ["cite"],
+  del: ["cite", "datetime"],
+  ins: ["cite", "datetime"],
+  time: ["datetime"],
+  img: ["src", "alt", "width", "height", "loading"],
+  label: ["for"],
+  button: ["type", "name", "value", "disabled"],
+  fieldset: ["name", "disabled"],
+  input: [
+    "name",
+    "type",
+    "value",
+    "placeholder",
+    "required",
+    "checked",
+    "disabled",
+    "readonly",
+    "autocomplete",
+    "inputmode",
+    "pattern",
+    "min",
+    "max",
+    "minlength",
+    "maxlength",
+    "step",
+    "size",
+    "multiple",
+    "list",
+  ],
+  select: ["name", "required", "disabled", "multiple", "size", "autocomplete"],
+  optgroup: ["label", "disabled"],
+  option: ["value", "label", "selected", "disabled"],
+  textarea: [
+    "name",
+    "rows",
+    "cols",
+    "placeholder",
+    "required",
+    "disabled",
+    "readonly",
+    "minlength",
+    "maxlength",
+    "autocomplete",
+  ],
+  ol: ["start", "type", "reversed"],
+  li: ["value"],
+  td: ["colspan", "rowspan", "headers"],
+  th: ["colspan", "rowspan", "headers", "scope"],
+  details: ["open"],
+};
+
+const ALLOWED_URL_SCHEMES = ["http", "https", "mailto", "tel"];
+
+// Every attribute that can carry a URL. Most are not in the allowlist and are
+// dropped anyway; listing them keeps scheme validation in place if the
+// allowlist is ever extended.
+const URL_ATTRIBUTES = new Set([
+  "href",
+  "src",
+  "srcset",
+  "srcdoc",
+  "cite",
+  "action",
+  "formaction",
+  "poster",
+  "data",
+  "xlink:href",
+  "background",
+  "from",
+  "to",
+  "values",
+  "by",
+]);
+
+function isAllowedAttribute(tagName: string, name: string): boolean {
+  if (/^on/i.test(name)) return false;
+  if (/^(aria|data)-[a-z0-9_.:-]+$/.test(name)) return true;
+  return (
+    GLOBAL_ATTRIBUTES.includes(name) ||
+    (ALLOWED_ATTRIBUTES[tagName]?.includes(name) ?? false)
+  );
+}
+
+function isSafeUrl(value: string): boolean {
+  const normalized = value.replace(/[\u0000- \u007f]/g, "").toLowerCase();
+  // Browsers treat `//host`, `\\host` and `/\host` as protocol-relative.
+  if (/^[\\/]{2}/.test(normalized)) return false;
+  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(normalized)?.[1];
+  return scheme === undefined || ALLOWED_URL_SCHEMES.includes(scheme);
+}
+
 function sanitizePromptPartial(html: string, location: string): string {
   if (html.length > MAX_PROMPT_PARTIAL_LENGTH) {
     throw new HTTPException(400, {
@@ -47,39 +226,27 @@ function sanitizePromptPartial(html: string, location: string): string {
       return "";
     },
   );
-  const urlAttributes = new Set([
-    "href",
-    "src",
-    "cite",
-    "action",
-    "formaction",
-    "poster",
-  ]);
   const sanitized = sanitizeHtml(withoutScripts, {
-    // Prompt partials intentionally support arbitrary HTML. Security-sensitive
-    // content is removed below while otherwise preserving imported markup.
-    allowedTags: false,
-    allowedAttributes: false,
-    allowVulnerableTags: true,
-    allowedSchemes: ["http", "https", "mailto", "tel"],
-    allowedSchemesAppliedToAttributes: [...urlAttributes],
+    allowedTags: ALLOWED_TAGS,
+    allowedAttributes: ALLOWED_ATTRIBUTES,
+    allowedSchemes: ALLOWED_URL_SCHEMES,
+    allowedSchemesAppliedToAttributes: [...URL_ATTRIBUTES],
     allowProtocolRelative: false,
     transformTags: {
       "*": (tagName, attribs) => {
+        // sanitize-html drops disallowed tags/attributes silently; track it
+        // here so safe input can still be returned byte-for-byte below.
+        if (!ALLOWED_TAG_SET.has(tagName.toLowerCase())) {
+          removedUnsafeMarkup = true;
+        }
+
         const safeAttributes: Record<string, string> = {};
 
         for (const [name, value] of Object.entries(attribs)) {
           const lowerName = name.toLowerCase();
-          if (/^on/i.test(name)) {
-            removedUnsafeMarkup = true;
-            continue;
-          }
-
           if (
-            urlAttributes.has(lowerName) &&
-            /^\s*javascript\s*:/i.test(
-              value.replace(/[\u0000-\u001f\u007f]/g, ""),
-            )
+            !isAllowedAttribute(tagName.toLowerCase(), lowerName) ||
+            (URL_ATTRIBUTES.has(lowerName) && !isSafeUrl(value))
           ) {
             removedUnsafeMarkup = true;
             continue;

