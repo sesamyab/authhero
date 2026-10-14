@@ -101,6 +101,237 @@ function addAttrs(tag: string, attrs: string): string {
   return `${prefix}${attrs}${closing.includes("/") ? " />" : ">"}`;
 }
 
+export interface PartialField {
+  name: string;
+  type: string;
+  required: boolean;
+  maxlength?: number;
+  pattern?: string;
+  map?: string;
+  label: string;
+}
+
+const MAP_TARGETS = [
+  "given_name",
+  "family_name",
+  "name",
+  "nickname",
+  "picture",
+] as const;
+
+/** Only allowlisted targets may be written by `data-authhero-map`. */
+export function isValidAuthheroMapTarget(target: string): boolean {
+  if ((MAP_TARGETS as readonly string[]).includes(target)) return true;
+  const match = target.match(/^user_metadata\.([A-Za-z0-9_-]+)$/);
+  return !!match && match[1] !== "__proto__";
+}
+
+function hasBooleanAttr(tag: string, attr: string): boolean {
+  return new RegExp(`\\s${attr}(?=[\\s/>=])`, "i").test(tag);
+}
+
+/** Parse the ulp-* controls out of stored (trusted) prompt-partial HTML. */
+export function parsePartialFields(htmls: string[]): PartialField[] {
+  const fields: PartialField[] = [];
+  for (const html of htmls) {
+    const tags = html.match(
+      /<(?:input|textarea|select)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+    );
+    for (const tag of tags ?? []) {
+      const name = getAttr(tag, "name");
+      if (!name?.startsWith("ulp-")) continue;
+      const kind = (tag.match(/^<(\w+)/)?.[1] ?? "").toLowerCase();
+      const type =
+        kind === "input"
+          ? (getAttr(tag, "type") ?? "text").toLowerCase()
+          : kind;
+      if (
+        ["submit", "button", "image", "reset", "file", "hidden"].includes(type)
+      )
+        continue;
+      const maxlength = Number.parseInt(getAttr(tag, "maxlength") ?? "", 10);
+      const map = getAttr(tag, "data-authhero-map");
+      fields.push({
+        name,
+        type,
+        required: hasBooleanAttr(tag, "required"),
+        maxlength: Number.isFinite(maxlength) ? maxlength : undefined,
+        pattern: getAttr(tag, "pattern"),
+        map: map && isValidAuthheroMapTarget(map) ? map : undefined,
+        label:
+          getAttr(tag, "aria-label") ?? getAttr(tag, "placeholder") ?? name,
+      });
+    }
+  }
+  return fields;
+}
+
+function submittedValues(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.filter((v) => typeof v === "string");
+  return [];
+}
+
+/**
+ * Enforce required / maxlength / pattern from the stored partial. Returns the
+ * first failing field's message, or undefined when everything passes.
+ */
+export function validatePartialFields(
+  fields: PartialField[],
+  data: Record<string, unknown>,
+): { name: string; message: string } | undefined {
+  const seen = new Set<string>();
+  for (const field of fields) {
+    const values = submittedValues(data[field.name]);
+    const nonEmpty = values.filter((v) => v.trim() !== "");
+    // Checkbox/radio groups share a name: required means any member checked.
+    const groupRequired = fields.some(
+      (f) => f.name === field.name && f.required,
+    );
+    if (seen.has(field.name)) continue;
+    seen.add(field.name);
+    if (groupRequired && nonEmpty.length === 0) {
+      return { name: field.name, message: `${field.label} is required` };
+    }
+    for (const value of values) {
+      if (value === "") continue;
+      if (field.maxlength !== undefined && value.length > field.maxlength) {
+        return {
+          name: field.name,
+          message: `${field.label} must be at most ${field.maxlength} characters`,
+        };
+      }
+      if (field.pattern) {
+        try {
+          if (!new RegExp(`^(?:${field.pattern})$`, "u").test(value)) {
+            return {
+              name: field.name,
+              message: `${field.label} is not in the expected format`,
+            };
+          }
+        } catch {
+          // Invalid pattern: browsers ignore it, so do we.
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Build the user fields set by `data-authhero-map` from submitted data. */
+export function applyPartialMappings(
+  fields: PartialField[],
+  data: Record<string, unknown>,
+): Partial<
+  Pick<
+    User,
+    | "given_name"
+    | "family_name"
+    | "name"
+    | "nickname"
+    | "picture"
+    | "user_metadata"
+  >
+> {
+  const result: Record<string, unknown> = {};
+  const metadata: Record<string, string> = {};
+  for (const field of fields) {
+    if (!field.map) continue;
+    const value = submittedValues(data[field.name])[0]?.trim();
+    if (!value) continue;
+    if (field.map.startsWith("user_metadata.")) {
+      metadata[field.map.slice("user_metadata.".length)] = value;
+    } else {
+      result[field.map] = value;
+    }
+  }
+  if (Object.keys(metadata).length > 0) result.user_metadata = metadata;
+  return result;
+}
+
+async function getSignupPartialFields(
+  context: ScreenContext,
+): Promise<PartialField[]> {
+  const stored = await context.ctx.env.data.promptPartials?.get(
+    context.tenant.id,
+    "signup",
+  );
+  return parsePartialFields(Object.values(stored?.signup ?? {}));
+}
+
+const ERROR_INFO_CLASS = /\bulp-error-info\b/;
+
+function addClass(tag: string, cls: string): string {
+  const existing = getAttr(tag, "class");
+  if (existing === undefined) return addAttrs(tag, ` class="${cls}"`);
+  return addAttrs(
+    removeAttr(tag, "class"),
+    ` class="${escapeHtmlAttribute(`${existing} ${cls}`)}"`,
+  );
+}
+
+/**
+ * Auth0-style field errors for prompt partials: the `ulp-field` wrapper around
+ * a failing input gets `ulp-error`, and its `ulp-error-info` element (added if
+ * missing) carries the message. Returns the rewritten HTML and the names of the
+ * fields whose error was placed.
+ */
+export function applyPartialErrors(
+  html: string,
+  errors: Record<string, string>,
+): { html: string; placed: Set<string> } {
+  const placed = new Set<string>();
+  let out = "";
+  let cursor = 0;
+  const open = /<div\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = open.exec(html))) {
+    if (match.index < cursor) continue;
+    const tag = match[0];
+    if (!/\bulp-field\b/.test(getAttr(tag, "class") ?? "")) continue;
+
+    // Find the matching </div> by tracking nesting depth.
+    const divs = /<(\/?)div\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+    divs.lastIndex = match.index + tag.length;
+    let depth = 1;
+    let closeAt = -1;
+    let d: RegExpExecArray | null;
+    while ((d = divs.exec(html))) {
+      depth += d[1] ? -1 : 1;
+      if (depth === 0) {
+        closeAt = d.index;
+        break;
+      }
+    }
+    if (closeAt < 0) continue;
+
+    const inner = html.slice(match.index + tag.length, closeAt);
+    const name = (
+      inner.match(
+        /<(?:input|textarea|select)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+      ) ?? []
+    )
+      .map((t) => getAttr(t, "name"))
+      .find((n) => n !== undefined && errors[n] !== undefined);
+    if (name === undefined) continue;
+
+    const message = escapeHtmlText(errors[name] ?? "");
+    const infoRe =
+      /(<(\w+)\b[^>]*\bulp-error-info\b[^>]*>)[\s\S]*?(<\/\2\s*>)/i;
+    const newInner =
+      ERROR_INFO_CLASS.test(inner) && infoRe.test(inner)
+        ? inner.replace(infoRe, `$1${message}$3`)
+        : `${inner}<div class="ulp-error-info">${message}</div>`;
+
+    out +=
+      html.slice(cursor, match.index) + addClass(tag, "ulp-error") + newInner;
+    cursor = closeAt;
+    placed.add(name);
+    open.lastIndex = closeAt;
+  }
+  return { html: out + html.slice(cursor), placed };
+}
+
 function prefillValues(value: PrefillValue): string[] {
   return Array.isArray(value) ? value : [value];
 }
@@ -330,14 +561,26 @@ export async function signupScreen(
     "signup",
   );
   const signupPartials = storedPartials?.signup;
+  const partialErrors = Object.fromEntries(
+    Object.entries(errors ?? {}).filter(([key]) => key.startsWith("ulp-")),
+  );
+  const placedErrors = new Set<string>();
   const partials = signupPartials
     ? Object.fromEntries(
-        Object.entries(signupPartials).map(([insertionPoint, html]) => [
-          insertionPoint,
-          prefillPromptPartial(html, prefill),
-        ]),
+        Object.entries(signupPartials).map(([insertionPoint, html]) => {
+          const { html: withErrors, placed } = applyPartialErrors(
+            prefillPromptPartial(html, prefill),
+            partialErrors,
+          );
+          placed.forEach((name) => placedErrors.add(name));
+          return [insertionPoint, withErrors];
+        }),
       )
     : undefined;
+  // Errors for fields without a ulp-field wrapper fall back to the screen.
+  const unplacedErrors = Object.entries(partialErrors)
+    .filter(([name]) => !placedErrors.has(name))
+    .map(([, text]) => ({ text, type: "error" as const }));
 
   // Determine login link based on identifier_first setting
   const loginPath = await getLoginPath(context);
@@ -351,6 +594,7 @@ export async function signupScreen(
     description: m.description(),
     components,
     partials,
+    ...(unplacedErrors.length > 0 ? { messages: unplacedErrors } : {}),
     links: [
       {
         id: "login",
@@ -438,6 +682,20 @@ export const signupScreenDefinition: ScreenDefinition = {
             ...context,
             prefill: signupPrefill,
             errors: { re_password: errorMessage },
+          }),
+        };
+      }
+
+      // Enforce the stored partial's constraints; the browser is only a hint.
+      const partialFields = await getSignupPartialFields(context);
+      const partialError = validatePartialFields(partialFields, data);
+      if (partialError) {
+        return {
+          error: partialError.message,
+          screen: await signupScreen({
+            ...context,
+            prefill: signupPrefill,
+            errors: { [partialError.name]: partialError.message },
           }),
         };
       }
@@ -552,6 +810,8 @@ export const signupScreenDefinition: ScreenDefinition = {
           connection,
           is_social: false,
           password: { hash, algorithm },
+          // Mappings come from the stored partial, never from the request.
+          ...applyPartialMappings(partialFields, data),
         });
       } catch (err: any) {
         if (err instanceof SignupValidationError) {

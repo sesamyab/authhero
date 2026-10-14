@@ -6,6 +6,7 @@ import type {
 import type { HookEvent } from "../../../src/types/Hooks";
 import { getTestServer } from "../../helpers/test-server";
 import {
+  applyPartialErrors,
   getSignupPrefill,
   prefillPromptPartial,
 } from "../../../src/routes/universal-login/screens/signup";
@@ -337,5 +338,169 @@ exports.onExecutePreUserRegistration = async (_event, api) => {
     expect(result).toContain('<textarea name="ulp-bio">&lt;hi&gt;</textarea>');
     expect(result).toContain('<option value="se" selected>');
     expect(result).not.toContain('<option value="no" selected>');
+  });
+});
+
+describe("u2 signup partial enforcement and data-authhero-map", () => {
+  const post = (
+    u2App: Awaited<ReturnType<typeof getTestServer>>["u2App"],
+    env: Awaited<ReturnType<typeof getTestServer>>["env"],
+    stateId: string,
+    fields: Record<string, string>,
+  ) =>
+    u2App.request(
+      `/signup?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "tenantId",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          password: "Password1!",
+          re_password: "Password1!",
+          ...fields,
+        }).toString(),
+      },
+      env,
+    );
+
+  it("places errors on the ulp-field wrapper, reusing or adding ulp-error-info", () => {
+    const { html, placed } = applyPartialErrors(
+      '<div class="ulp-field"><label>First</label><input name="ulp-first"></div>' +
+        '<div class="ulp-field x"><div><input name="ulp-last"></div><div class="ulp-error-info">old</div></div>' +
+        '<input name="ulp-bare">',
+      { "ulp-first": "Needed <b>", "ulp-last": "Bad", "ulp-bare": "Nope" },
+    );
+    expect(html).toContain(
+      '<div class="ulp-field ulp-error"><label>First</label><input name="ulp-first"><div class="ulp-error-info">Needed &lt;b&gt;</div></div>',
+    );
+    expect(html).toContain('<div class="ulp-error-info">Bad</div>');
+    expect(html).not.toContain("old");
+    expect([...placed].sort()).toEqual(["ulp-first", "ulp-last"]);
+  });
+
+  it("rejects a missing required field and creates no user", async () => {
+    const { u2App, env } = await getTestServer();
+    await env.data.promptPartials?.set("tenantId", "signup", {
+      signup: {
+        "form-content-start": '<input name="ulp-first-name" required>',
+      },
+    });
+    const session = await seedSignupSession(env);
+
+    const response = await post(u2App, env, session.id, {
+      email: "required@example.com",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("ulp-first-name is required");
+  });
+
+  it("shows the required error inline on the ulp-field in the screen API", async () => {
+    const { u2App, env } = await getTestServer();
+    await env.data.promptPartials?.set("tenantId", "signup", {
+      signup: {
+        "form-content-start":
+          '<div class="ulp-field"><input name="ulp-first-name" required></div>',
+      },
+    });
+    const session = await seedSignupSession(env);
+    const response = await u2App.request(
+      `/screen/signup?state=${encodeURIComponent(session.id)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "tenantId",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          data: {
+            email: "inline@example.com",
+            password: "Password1!",
+            re_password: "Password1!",
+          },
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as ScreenBody;
+    expect(body.screen.partials?.["form-content-start"]).toContain(
+      'class="ulp-field ulp-error"',
+    );
+    expect(body.screen.partials?.["form-content-start"]).toContain(
+      '<div class="ulp-error-info">ulp-first-name is required</div>',
+    );
+    expect(body.screen.messages).toBeUndefined();
+    const { users } = await env.data.users.list("tenantId");
+    expect(
+      users.find((u) => u.email === "required@example.com"),
+    ).toBeUndefined();
+  });
+
+  it("enforces maxlength and pattern", async () => {
+    const { u2App, env } = await getTestServer();
+    await env.data.promptPartials?.set("tenantId", "signup", {
+      signup: {
+        "form-content-start":
+          '<input name="ulp-zip" maxlength="5" pattern="[0-9]+">',
+      },
+    });
+    const session = await seedSignupSession(env);
+
+    const tooLong = await post(u2App, env, session.id, {
+      email: "len@example.com",
+      "ulp-zip": "123456",
+    });
+    expect(tooLong.status).toBe(400);
+    const badPattern = await post(u2App, env, session.id, {
+      email: "pat@example.com",
+      "ulp-zip": "abcde",
+    });
+    expect(badPattern.status).toBe(400);
+  });
+
+  it("maps allowlisted targets from the stored partial onto the user", async () => {
+    const events: HookEvent[] = [];
+    const { u2App, env } = await getTestServer({
+      hooks: {
+        onExecutePreUserRegistration: async (event) => {
+          events.push(event);
+        },
+      },
+    });
+    await env.data.promptPartials?.set("tenantId", "signup", {
+      signup: {
+        "form-content-start":
+          '<input name="ulp-first-name" data-authhero-map="given_name" required>' +
+          '<input name="ulp-company" data-authhero-map="user_metadata.company">' +
+          '<input name="ulp-evil" data-authhero-map="email_verified">' +
+          '<input name="ulp-evil2" data-authhero-map="app_metadata.role">',
+      },
+    });
+    const session = await seedSignupSession(env);
+
+    const response = await post(u2App, env, session.id, {
+      email: "mapped@example.com",
+      "ulp-first-name": "Ada",
+      "ulp-company": "Acme",
+      "ulp-evil": "true",
+      "ulp-evil2": "admin",
+      // Tampering: browser-supplied mapping and extra fields are ignored.
+      "data-authhero-map": "family_name",
+      family_name: "Hacker",
+      given_name: "Hacker",
+    });
+
+    expect(response.status).toBe(302);
+    const { users } = await env.data.users.list("tenantId");
+    const user = users.find((u) => u.email === "mapped@example.com");
+    expect(user?.given_name).toBe("Ada");
+    expect(user?.family_name).toBeUndefined();
+    expect(user?.email_verified).toBe(false);
+    expect(user?.user_metadata).toEqual({ company: "Acme" });
+    expect(user?.app_metadata).not.toHaveProperty("role");
+    expect(events[0]?.user.given_name).toBe("Ada");
   });
 });

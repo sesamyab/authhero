@@ -12,6 +12,9 @@ import type { UiScreen } from "@authhero/adapter-interfaces";
 export function withHandlerError(screen: UiScreen, error: string): UiScreen {
   const showsError =
     screen.messages?.some((m) => m.type === "error") ||
+    Object.values(screen.partials ?? {}).some((html) =>
+      /\bulp-error\b/.test(html),
+    ) ||
     screen.components.some(
       (c) => "messages" in c && c.messages?.some((m) => m.type === "error"),
     );
