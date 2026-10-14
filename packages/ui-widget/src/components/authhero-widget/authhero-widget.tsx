@@ -69,8 +69,11 @@ const FILLABLE_FIELD_TYPES = new Set([
 export interface SubmitEventDetail {
   /** The current screen configuration */
   screen: UiScreen;
-  /** Form field values keyed by component ID */
-  data: Record<string, string>;
+  /**
+   * Form field values keyed by component ID. Prompt-partial `ulp-*` fields
+   * that submit several values (checkbox groups, multi-selects) are arrays.
+   */
+  data: Record<string, string | string[]>;
 }
 
 /**
@@ -1049,26 +1052,42 @@ export class AuthheroWidget {
       return;
     }
 
-    const submitData = { ...this.formData, ...(overrideData || {}) };
+    const submitData: Record<string, string | string[]> = {
+      ...this.formData,
+      ...(overrideData || {}),
+    };
 
     // Native fields in prompt partials are direct descendants of this form,
     // unlike authhero-node inputs in nested shadow roots. Read them through
     // FormData so standard HTML controls and successful-control semantics are
-    // preserved. Hidden inputs are also included for existing inline scripts.
+    // preserved (disabled controls are skipped, repeated names are kept as
+    // arrays). FormData also covers enabled hidden inputs for ulp-* names.
+    const nativeNames = new Set<string>();
     if (form && this._screen.partials) {
-      const nativeFormData = new FormData(form);
-      nativeFormData.forEach((value, key) => {
+      const nativeValues: Record<string, string[]> = {};
+      new FormData(form).forEach((value, key) => {
         if (typeof value === "string" && key.startsWith("ulp-")) {
-          submitData[key] = value;
+          (nativeValues[key] ??= []).push(value);
         }
       });
+      for (const [key, values] of Object.entries(nativeValues)) {
+        nativeNames.add(key);
+        submitData[key] = values.length > 1 ? values : values[0];
+      }
     }
 
+    // Legacy behaviour for inline scripts that fill hidden inputs: merge
+    // enabled ones, but never overwrite what FormData already collected.
     if (form) {
       form
         .querySelectorAll<HTMLInputElement>('input[type="hidden"]')
         .forEach((input) => {
-          if (input.name && input.value) {
+          if (
+            input.name &&
+            input.value &&
+            !input.disabled &&
+            !nativeNames.has(input.name)
+          ) {
             submitData[input.name] = input.value;
           }
         });

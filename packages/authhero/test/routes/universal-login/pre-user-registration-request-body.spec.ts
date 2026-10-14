@@ -307,4 +307,35 @@ exports.onExecutePreUserRegistration = async (_event, api) => {
       '<input name="ulp-first-name" value="Ada &quot;&lt;&amp;&gt;"><input name="email" value="old@example.com"><input name="ulp-empty">',
     );
   });
+
+  it("restores checked, textarea and selected state instead of overwriting values", () => {
+    const html =
+      '<input type="checkbox" name="ulp-tags" value="a" checked><input type="checkbox" name="ulp-tags" value="b">' +
+      '<input type="radio" name="ulp-plan" value="free"><input type="radio" name="ulp-plan" value="pro">' +
+      '<textarea name="ulp-bio">old</textarea>' +
+      '<select name="ulp-country"><option value="se">SE</option><option value="no" selected>NO</option></select>';
+
+    const result = prefillPromptPartial(html, {
+      "ulp-tags": ["b"],
+      "ulp-plan": "pro",
+      "ulp-bio": "<hi>",
+      "ulp-country": "se",
+    });
+
+    expect(result).toContain(
+      '<input type="checkbox" name="ulp-tags" value="a">',
+    );
+    expect(result).toContain(
+      '<input type="checkbox" name="ulp-tags" value="b" checked>',
+    );
+    expect(result).toContain(
+      '<input type="radio" name="ulp-plan" value="free">',
+    );
+    expect(result).toContain(
+      '<input type="radio" name="ulp-plan" value="pro" checked>',
+    );
+    expect(result).toContain('<textarea name="ulp-bio">&lt;hi&gt;</textarea>');
+    expect(result).toContain('<option value="se" selected>');
+    expect(result).not.toContain('<option value="no" selected>');
+  });
 });

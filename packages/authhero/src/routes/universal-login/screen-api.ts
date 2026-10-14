@@ -521,7 +521,7 @@ screenApiRoutes.use("/:screenId", async (ctx, next) => {
   const state = url.searchParams.get("state") || "";
 
   // Parse form data
-  const formData = await ctx.req.parseBody();
+  const formData = await ctx.req.parseBody({ all: true });
   const data: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(formData)) {
     data[key] = value;
