@@ -157,6 +157,30 @@ form {
   color: var(--ah-color-text, #1e212a);
 }
 
+.prompt-partial
+  .ulp-error
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.prompt-partial .ulp-error select,
+.prompt-partial .ulp-error textarea {
+  border-color: var(--ah-color-error, #d03c38);
+}
+
+.prompt-partial
+  .ulp-error
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus,
+.prompt-partial .ulp-error select:focus,
+.prompt-partial .ulp-error textarea:focus {
+  box-shadow: inset 0 0 0 1px var(--ah-color-error, #d03c38);
+}
+
+/* Matches .error-text on built-in fields (the flex gap supplies the spacing). */
+.prompt-partial .ulp-error-info {
+  font-size: 12px;
+  color: var(--ah-color-error, #d03c38);
+  margin-top: -2px;
+  line-height: 1.4;
+}
+
 .prompt-partial .required {
   color: var(--ah-color-error, #d03c38);
   margin-left: 2px;
