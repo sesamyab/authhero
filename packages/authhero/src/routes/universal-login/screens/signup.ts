@@ -42,7 +42,7 @@ import { logMessage } from "../../../helpers/logging";
 import { SignupValidationError } from "../../../errors/signup-validation-error";
 
 export function getSignupPrefill(
-  email: string,
+  email: string | undefined,
   signupBody?: Record<string, unknown>,
 ): Record<string, string> {
   const customFields = Object.fromEntries(
@@ -51,7 +51,44 @@ export function getSignupPrefill(
     ),
   ) as Record<string, string>;
 
-  return { email, ...customFields };
+  return { ...(email ? { email } : {}), ...customFields };
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Restore submitted ulp-* input values in stored prompt-partial HTML.
+ * Passwords and unrelated fields never enter the prefill object.
+ */
+export function prefillPromptPartial(
+  html: string,
+  prefill?: Record<string, string | undefined>,
+): string {
+  if (!prefill) return html;
+
+  return html.replace(/<input\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (input) => {
+    const nameMatch = input.match(
+      /\sname\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i,
+    );
+    const name = nameMatch?.[1] ?? nameMatch?.[2] ?? nameMatch?.[3];
+    const value = name?.startsWith("ulp-") ? prefill[name] : undefined;
+    if (value === undefined) return input;
+
+    const withoutValue = input.replace(
+      /\svalue\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
+      "",
+    );
+    const closing = withoutValue.match(/\s*\/?>$/)?.[0] ?? ">";
+    const prefix = withoutValue.slice(0, -closing.length);
+    const suffix = closing.includes("/") ? " />" : ">";
+    return `${prefix} value="${escapeHtmlAttribute(value)}"${suffix}`;
+  });
 }
 
 /**
@@ -132,9 +169,6 @@ export async function signupScreen(
         },
         required: true,
         order: order++,
-        messages: errors?.email
-          ? [{ text: errors.email, type: "error" as const }]
-          : undefined,
       },
       // Password input
       {
@@ -150,9 +184,6 @@ export async function signupScreen(
         required: true,
         sensitive: true,
         order: order++,
-        messages: errors?.password
-          ? [{ text: errors.password, type: "error" as const }]
-          : undefined,
       },
       // Confirm password input
       {
@@ -168,9 +199,6 @@ export async function signupScreen(
         required: true,
         sensitive: true,
         order: order++,
-        messages: errors?.re_password
-          ? [{ text: errors.re_password, type: "error" as const }]
-          : undefined,
       },
       // Submit button
       {
@@ -186,14 +214,36 @@ export async function signupScreen(
     );
   }
 
-  // Pre-fill email if provided
-  if (prefill?.email) {
-    const emailComponent = components.find((c) => c.id === "email");
-    if (emailComponent && "config" in emailComponent) {
-      (emailComponent.config as Record<string, unknown>).default_value =
-        prefill.email;
+  // Apply prefill and validation messages generically to built-in fields.
+  for (const component of components) {
+    if (component.category !== "FIELD") continue;
+
+    const value = prefill?.[component.id];
+    if (value !== undefined && "config" in component) {
+      const config = (component.config ?? {}) as Record<string, unknown>;
+      config.default_value = value;
+      component.config = config as typeof component.config;
+    }
+
+    const error = errors?.[component.id];
+    if (error) {
+      component.messages = [{ text: error, type: "error" }];
     }
   }
+
+  const storedPartials = await context.ctx.env.data.promptPartials?.get(
+    context.tenant.id,
+    "signup",
+  );
+  const signupPartials = storedPartials?.signup;
+  const partials = signupPartials
+    ? Object.fromEntries(
+        Object.entries(signupPartials).map(([insertionPoint, html]) => [
+          insertionPoint,
+          prefillPromptPartial(html, prefill),
+        ]),
+      )
+    : undefined;
 
   // Determine login link based on identifier_first setting
   const loginPath = await getLoginPath(context);
@@ -206,6 +256,7 @@ export async function signupScreen(
     title: m.title(),
     description: m.description(),
     components,
+    partials,
     links: [
       {
         id: "login",
@@ -236,6 +287,7 @@ export const signupScreenDefinition: ScreenDefinition = {
       const email = (data.email as string)?.toLowerCase()?.trim();
       const password = (data.password as string)?.trim();
       const rePassword = (data.re_password as string)?.trim();
+      const signupPrefill = getSignupPrefill(email, data);
 
       // Initialize i18n for error messages
       const locale = context.language || "en";
@@ -253,6 +305,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
+            prefill: signupPrefill,
             errors: { email: errorMessage },
           }),
         };
@@ -264,7 +317,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { password: errorMessage },
           }),
         };
@@ -276,7 +329,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { re_password: errorMessage },
           }),
         };
@@ -289,7 +342,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { re_password: errorMessage },
           }),
         };
@@ -326,7 +379,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { password: errorMessage },
           }),
         };
@@ -345,7 +398,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { email: errorMessage },
           }),
         };
@@ -363,7 +416,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { email: errorMessage },
           }),
         };
@@ -423,7 +476,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { email: errorMessage },
           }),
         };

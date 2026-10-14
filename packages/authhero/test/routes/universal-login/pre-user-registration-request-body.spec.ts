@@ -5,7 +5,10 @@ import type {
 } from "@authhero/adapter-interfaces";
 import type { HookEvent } from "../../../src/types/Hooks";
 import { getTestServer } from "../../helpers/test-server";
-import { getSignupPrefill } from "../../../src/routes/universal-login/screens/signup";
+import {
+  getSignupPrefill,
+  prefillPromptPartial,
+} from "../../../src/routes/universal-login/screens/signup";
 import { LocalCodeExecutor } from "../../../src/hooks/code-executor/local";
 
 type ScreenMessage = { text: string; type: string };
@@ -14,7 +17,11 @@ type ScreenComponent = {
   config?: Record<string, unknown>;
 };
 type ScreenBody = {
-  screen: { messages?: ScreenMessage[]; components: ScreenComponent[] };
+  screen: {
+    messages?: ScreenMessage[];
+    components: ScreenComponent[];
+    partials?: Record<string, string>;
+  };
 };
 
 async function seedSignupSession(
@@ -31,6 +38,50 @@ async function seedSignupSession(
 }
 
 describe("u2 signup pre-user-registration request body", () => {
+  it("loads signup prompt partials into the shared SSR/JSON screen definition", async () => {
+    const { u2App, env } = await getTestServer();
+    await env.data.promptPartials?.set("tenantId", "signup", {
+      signup: {
+        "form-content-start":
+          '<div class="ulp-field"><input name="ulp-first-name" required></div>',
+      },
+      "signup-id": {
+        "form-content-end": "must not render on the signup screen",
+      },
+    });
+    const loginSession = await seedSignupSession(env);
+
+    const response = await u2App.request(
+      `/screen/signup?state=${encodeURIComponent(loginSession.id)}`,
+      { headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ScreenBody;
+    expect(body.screen.partials).toEqual({
+      "form-content-start":
+        '<div class="ulp-field"><input name="ulp-first-name" required></div>',
+    });
+  });
+
+  it("renders signup without partials when the adapter is not configured", async () => {
+    const { u2App, env } = await getTestServer({
+      wrapDataAdapter: (data) => ({ ...data, promptPartials: undefined }),
+    });
+    const loginSession = await seedSignupSession(env);
+
+    const response = await u2App.request(
+      `/screen/signup?state=${encodeURIComponent(loginSession.id)}`,
+      { headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ScreenBody;
+    expect(body.screen.partials).toBeUndefined();
+  });
+
   it("passes only ulp-* fields to config and code hooks", async () => {
     const configEvents: HookEvent[] = [];
     const codeEvents: Record<string, unknown>[] = [];
@@ -103,6 +154,12 @@ describe("u2 signup pre-user-registration request body", () => {
         },
       },
     });
+    await env.data.promptPartials?.set("tenantId", "signup", {
+      signup: {
+        "form-content-start":
+          '<div class="ulp-field"><input name="ulp-first-name" required></div>',
+      },
+    });
     const loginSession = await seedSignupSession(env);
 
     const response = await u2App.request(
@@ -127,6 +184,8 @@ describe("u2 signup pre-user-registration request body", () => {
     const body = await response.text();
     expect(body).toContain("Please enter your name");
     expect(body).toContain("validation-error@example.com");
+    expect(body).toContain('name="ulp-first-name"');
+    expect(body).toContain('value="Ada"');
 
     const { users } = await env.data.users.list("tenantId");
     expect(
@@ -164,6 +223,11 @@ exports.onExecutePreUserRegistration = async (_event, api) => {
       code_id: action.id,
       synchronous: true,
     });
+    await env.data.promptPartials?.set("tenantId", "signup", {
+      signup: {
+        "form-content-start": '<input name="ulp-first-name" required>',
+      },
+    });
     const loginSession = await seedSignupSession(env);
 
     const response = await u2App.request(
@@ -195,6 +259,9 @@ exports.onExecutePreUserRegistration = async (_event, api) => {
       body.screen.components.find((component) => component.id === "email")
         ?.config?.default_value,
     ).toBe("code-validation-error@example.com");
+    expect(body.screen.partials?.["form-content-start"]).toContain(
+      'value="Ada"',
+    );
     expect(createdExecution).toMatchObject({
       trigger_id: "pre-user-registration",
       status: "canceled",
@@ -224,5 +291,20 @@ exports.onExecutePreUserRegistration = async (_event, api) => {
       email: "prefill@example.com",
       "ulp-first-name": "Ada",
     });
+  });
+
+  it("HTML-escapes restored ulp-* values and leaves unrelated inputs alone", () => {
+    expect(
+      prefillPromptPartial(
+        '<input name="ulp-first-name" value="Old"><input name="email" value="old@example.com"><input name="ulp-empty">',
+        {
+          "ulp-first-name": 'Ada "<&>',
+          email: "new@example.com",
+          password: "must-not-be-used",
+        },
+      ),
+    ).toBe(
+      '<input name="ulp-first-name" value="Ada &quot;&lt;&amp;&gt;"><input name="email" value="old@example.com"><input name="ulp-empty">',
+    );
   });
 });

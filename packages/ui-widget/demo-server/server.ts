@@ -405,6 +405,18 @@ function createSignupScreen(
     action: `${baseUrl}/u2/screen/signup?state=${state}`,
     method: "POST",
     title: "Create your account",
+    partials: {
+      "form-content-start": `
+        <div class="ulp-field">
+          <input id="ulp-first-name" name="ulp-first-name" autocomplete="given-name" placeholder=" " required>
+          <label for="ulp-first-name">First name <span class="required" aria-hidden="true">*</span></label>
+        </div>
+        <div class="ulp-field">
+          <input id="ulp-last-name" name="ulp-last-name" autocomplete="family-name" placeholder=" " required>
+          <label for="ulp-last-name">Last name <span class="required" aria-hidden="true">*</span></label>
+        </div>
+      `,
+    },
     components: [
       ...socialButtons,
       {

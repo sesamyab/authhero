@@ -135,6 +135,103 @@ form {
   flex-direction: column;
 }
 
+.form-footer,
+.secondary-actions,
+.prompt-partial {
+  display: flex;
+  flex-direction: column;
+}
+
+.prompt-partial .ulp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+.prompt-partial label {
+  font-size: var(--ah-font-size-label, 14px);
+  font-weight: var(--ah-font-weight-label, 400);
+  color: var(--ah-color-text, #1e212a);
+}
+
+.prompt-partial .required {
+  color: var(--ah-color-error, #d03c38);
+  margin-left: 2px;
+}
+
+.prompt-partial .ulp-field > input + label,
+.prompt-partial .ulp-field > select + label,
+.prompt-partial .ulp-field > textarea + label {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  z-index: 1;
+  padding: 0;
+  background-color: transparent;
+  color: var(--ah-color-text-muted, #65676e);
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: all 0.15s ease-out;
+}
+
+.prompt-partial .ulp-field > input:focus + label,
+.prompt-partial .ulp-field > input:not(:placeholder-shown) + label,
+.prompt-partial .ulp-field > select + label,
+.prompt-partial .ulp-field > textarea:focus + label,
+.prompt-partial .ulp-field > textarea:not(:placeholder-shown) + label {
+  top: -8px;
+  left: 12px;
+  padding: 0 4px;
+  background-color: var(--ah-color-bg, #ffffff);
+  color: var(--ah-color-text-muted, #65676e);
+  font-size: 12px;
+  transform: translateY(0);
+}
+
+.prompt-partial .ulp-field > input:focus + label,
+.prompt-partial .ulp-field > select:focus + label,
+.prompt-partial .ulp-field > textarea:focus + label {
+  color: var(--ah-color-primary, #635dff);
+}
+
+.prompt-partial
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.prompt-partial select,
+.prompt-partial textarea {
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--ah-color-input-text, var(--ah-color-text, #1e212a));
+  background-color: var(--ah-color-input-bg, #ffffff);
+  border: var(--ah-input-border-width, 1px) solid
+    var(--ah-color-border, #c9cace);
+  border-radius: var(--ah-input-radius, 3px);
+  outline: none;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease-out,
+    box-shadow 0.15s ease-out;
+}
+
+.prompt-partial
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):hover,
+.prompt-partial select:hover,
+.prompt-partial textarea:hover {
+  border-color: var(--ah-color-border-hover, #65676e);
+}
+
+.prompt-partial
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus,
+.prompt-partial select:focus,
+.prompt-partial textarea:focus {
+  border-color: var(--ah-color-primary, #635dff);
+  box-shadow: inset 0 0 0 1px var(--ah-color-primary, #635dff);
+}
+
 .form-content {
   display: flex;
   flex-direction: column;

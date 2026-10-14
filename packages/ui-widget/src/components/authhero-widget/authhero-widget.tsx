@@ -1040,20 +1040,38 @@ export class AuthheroWidget {
 
     if (!this._screen || this.loading) return;
 
-    let submitData = { ...this.formData, ...(overrideData || {}) };
-
-    // Merge hidden input values from DOM (may have been set programmatically
-    // by inline scripts, e.g. passkey management buttons)
     const form = this.el.shadowRoot?.querySelector("form");
-    if (form) {
-      const hiddenInputs = form.querySelectorAll<HTMLInputElement>(
-        'input[type="hidden"]',
-      );
-      hiddenInputs.forEach((input) => {
-        if (input.name && input.value) {
-          submitData[input.name] = input.value;
+    if (
+      this._screen.partials &&
+      form?.reportValidity &&
+      !form.reportValidity()
+    ) {
+      return;
+    }
+
+    const submitData = { ...this.formData, ...(overrideData || {}) };
+
+    // Native fields in prompt partials are direct descendants of this form,
+    // unlike authhero-node inputs in nested shadow roots. Read them through
+    // FormData so standard HTML controls and successful-control semantics are
+    // preserved. Hidden inputs are also included for existing inline scripts.
+    if (form && this._screen.partials) {
+      const nativeFormData = new FormData(form);
+      nativeFormData.forEach((value, key) => {
+        if (typeof value === "string" && key.startsWith("ulp-")) {
+          submitData[key] = value;
         }
       });
+    }
+
+    if (form) {
+      form
+        .querySelectorAll<HTMLInputElement>('input[type="hidden"]')
+        .forEach((input) => {
+          if (input.name && input.value) {
+            submitData[input.name] = input.value;
+          }
+        });
     }
 
     // Always emit the submit event
@@ -1216,6 +1234,14 @@ export class AuthheroWidget {
     if (!form) return;
 
     form.submit = () => {
+      if (
+        this._screen?.partials &&
+        form.reportValidity &&
+        !form.reportValidity()
+      ) {
+        return;
+      }
+
       const formData = new FormData(form);
       const data: Record<string, string> = {};
       formData.forEach((value, key) => {
@@ -1941,6 +1967,76 @@ export class AuthheroWidget {
     return config?.text ?? "";
   }
 
+  private renderPromptPartial(
+    screen: UiScreen,
+    insertionPoint: keyof NonNullable<UiScreen["partials"]>,
+  ) {
+    const html = screen.partials?.[insertionPoint];
+    if (!html) return null;
+
+    // Prompt partials intentionally contain tenant-authored form controls, so
+    // the widget must keep their input attributes intact.
+    return (
+      <div
+        class={`prompt-partial prompt-partial-${insertionPoint}`}
+        part={`prompt-partial prompt-partial-${insertionPoint}`}
+        data-insertion-point={insertionPoint}
+        innerHTML={html}
+      />
+    );
+  }
+
+  private renderScreenLinks(screen: UiScreen) {
+    if (!screen.links?.length) return null;
+
+    return (
+      <div class="links" part="links">
+        {screen.links.map((link) => (
+          <span
+            class="link-wrapper"
+            part="link-wrapper"
+            key={link.id ?? link.href}
+          >
+            {link.linkText ? (
+              <span>
+                {link.text}{" "}
+                <a
+                  href={link.href}
+                  class="link"
+                  part="link"
+                  onClick={(e) =>
+                    this.handleLinkClick(e, {
+                      id: link.id,
+                      href: link.href,
+                      text: link.linkText || link.text,
+                    })
+                  }
+                >
+                  {link.linkText}
+                </a>
+              </span>
+            ) : (
+              <a
+                href={link.href}
+                class="link"
+                part="link"
+                onClick={(e) =>
+                  this.handleLinkClick(e, {
+                    id: link.id,
+                    href: link.href,
+                    text: link.text,
+                  })
+                }
+              >
+                {link.text}
+              </a>
+            )}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
   render() {
     const screen = this._screen;
 
@@ -1986,6 +2082,20 @@ export class AuthheroWidget {
     const fieldComponents = components.filter(
       (c) => !this.isSocialComponent(c) && c !== dividerComponent,
     );
+    const hasPromptPartials = Object.values(screen.partials ?? {}).some(
+      (html) => !!html,
+    );
+    const footerComponents = hasPromptPartials
+      ? fieldComponents.filter(
+          (component) =>
+            component.id === "submit" && component.type === "NEXT_BUTTON",
+        )
+      : [];
+    const contentFieldComponents = hasPromptPartials
+      ? fieldComponents.filter(
+          (component) => !footerComponents.includes(component),
+        )
+      : fieldComponents;
     const hasDivider = !!dividerComponent;
     const dividerText =
       (dividerComponent as DividerComponent)?.config?.text || "Or";
@@ -1993,11 +2103,11 @@ export class AuthheroWidget {
     // A "choice list" screen is one whose entire field section is pick-one
     // buttons (e.g. tenant selection). When the list is long, render it as a
     // searchable, scrollable list instead of a tall column of buttons.
-    const choiceButtons = fieldComponents.filter(
+    const choiceButtons = contentFieldComponents.filter(
       (c) => c.type === "NEXT_BUTTON",
     );
     const isSearchableChoiceList =
-      choiceButtons.length === fieldComponents.length &&
+      choiceButtons.length === contentFieldComponents.length &&
       choiceButtons.length > CHOICE_LIST_SEARCH_THRESHOLD;
     // Hold the primary action button disabled until every required field has
     // a value.
@@ -2109,6 +2219,8 @@ export class AuthheroWidget {
               />
             ))}
             <div class="form-content">
+              {this.renderPromptPartial(screen, "form-content-start")}
+
               {/* Social buttons section - order controlled by CSS */}
               {socialComponents.length > 0 && (
                 <div class="social-section" part="social-section">
@@ -2179,7 +2291,7 @@ export class AuthheroWidget {
                 >
                   {(isSearchableChoiceList
                     ? visibleChoiceButtons
-                    : fieldComponents
+                    : contentFieldComponents
                   ).map((component) => (
                     <authhero-node
                       key={component.id}
@@ -2212,55 +2324,51 @@ export class AuthheroWidget {
                     )}
                 </div>
               </div>
+
+              {this.renderPromptPartial(screen, "form-content-end")}
+
+              {hasPromptPartials && (
+                <div class="form-footer" part="form-footer">
+                  {this.renderPromptPartial(screen, "form-footer-start")}
+                  {footerComponents.map((component) => (
+                    <authhero-node
+                      key={component.id}
+                      component={component}
+                      locale={this.locale}
+                      value={this.formData[component.id]}
+                      onFieldChange={(
+                        e: CustomEvent<{ id: string; value: string }>,
+                      ) => this.handleInputChange(e.detail.id, e.detail.value)}
+                      onButtonClick={(
+                        e: CustomEvent<{
+                          id: string;
+                          type: string;
+                          value?: string;
+                        }>,
+                      ) => this.handleButtonClick(e.detail)}
+                      disabled={
+                        this.loading ||
+                        (component.type === "NEXT_BUTTON" &&
+                          component.config?.skip_validation !== true &&
+                          requiredFieldsMissing)
+                      }
+                    />
+                  ))}
+                  {this.renderPromptPartial(screen, "form-footer-end")}
+                </div>
+              )}
             </div>
+
+            {hasPromptPartials && (
+              <div class="secondary-actions" part="secondary-actions">
+                {this.renderPromptPartial(screen, "secondary-actions-start")}
+                {this.renderScreenLinks(screen)}
+                {this.renderPromptPartial(screen, "secondary-actions-end")}
+              </div>
+            )}
           </form>
 
-          {screen.links && screen.links.length > 0 && (
-            <div class="links" part="links">
-              {screen.links.map((link) => (
-                <span
-                  class="link-wrapper"
-                  part="link-wrapper"
-                  key={link.id ?? link.href}
-                >
-                  {link.linkText ? (
-                    <span>
-                      {link.text}{" "}
-                      <a
-                        href={link.href}
-                        class="link"
-                        part="link"
-                        onClick={(e) =>
-                          this.handleLinkClick(e, {
-                            id: link.id,
-                            href: link.href,
-                            text: link.linkText || link.text,
-                          })
-                        }
-                      >
-                        {link.linkText}
-                      </a>
-                    </span>
-                  ) : (
-                    <a
-                      href={link.href}
-                      class="link"
-                      part="link"
-                      onClick={(e) =>
-                        this.handleLinkClick(e, {
-                          id: link.id,
-                          href: link.href,
-                          text: link.text,
-                        })
-                      }
-                    >
-                      {link.text}
-                    </a>
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
+          {!hasPromptPartials && this.renderScreenLinks(screen)}
 
           {screen.footer && (
             <div
