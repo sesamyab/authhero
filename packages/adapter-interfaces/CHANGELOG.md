@@ -1,5 +1,13 @@
 # @authhero/adapter-interfaces
 
+## 4.20.0
+
+### Minor Changes
+
+- 29e1618: Align pre-registration metadata setters with Auth0: `api.user.setUserMetadata()` now merges into `user_metadata` instead of writing to the root of the user, and the new `api.user.setAppMetadata()` merges into `app_metadata`. Hooks that relied on `setUserMetadata` setting root attributes (e.g. `given_name`) must set those through the user payload instead.
+- 6f3c9c7: Add tenant-scoped prompt partial storage across the adapter interface, Drizzle, Kysely, and AWS, including tenant export/import support.
+- dec362c: Render Auth0-compatible prompt partials inside the signup form, including native validation, submitted `ulp-*` fields, and value preservation after server-side errors.
+
 ## 4.19.0
 
 ### Minor Changes

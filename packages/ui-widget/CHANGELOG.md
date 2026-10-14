@@ -1,5 +1,19 @@
 # @authhero/widget
 
+## 0.41.0
+
+### Minor Changes
+
+- dec362c: Render Auth0-compatible prompt partials inside the signup form, including native validation, submitted `ulp-*` fields, and value preservation after server-side errors.
+
+### Patch Changes
+
+- 41d4d4b: Style `ulp-error` / `ulp-error-info` in prompt partials so server-side field errors are visible.
+- Updated dependencies [29e1618]
+- Updated dependencies [6f3c9c7]
+- Updated dependencies [dec362c]
+  - @authhero/adapter-interfaces@4.20.0
+
 ## 0.40.3
 
 ### Patch Changes

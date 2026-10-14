@@ -1,5 +1,35 @@
 # authhero
 
+## 9.23.0
+
+### Minor Changes
+
+- 29e1618: Align pre-registration metadata setters with Auth0: `api.user.setUserMetadata()` now merges into `user_metadata` instead of writing to the root of the user, and the new `api.user.setAppMetadata()` merges into `app_metadata`. Hooks that relied on `setUserMetadata` setting root attributes (e.g. `given_name`) must set those through the user payload instead.
+- dbcc4c0: Add Auth0-compatible pre-user-registration validation errors that display custom signup feedback.
+- 41d4d4b: Enforce `required`, `maxlength` and `pattern` for `ulp-*` signup prompt partial inputs server-side, and add the `data-authhero-map` extension to map partial inputs onto `given_name`, `family_name`, `name`, `nickname`, `picture` and `user_metadata.*` before pre-user-registration hooks run.
+- 837dbf4: Add Auth0-compatible Management API endpoints for reading and replacing prompt partials.
+
+  Partials exported from an Auth0 tenant can be used as is: HTML, `<style>`, `<script>`, inline `on*` handlers and Liquid (including Liquid between attributes, e.g. `<option {% if x %}selected{% endif %}>`) are accepted and stored unchanged. Markup that escapes the login page or hijacks the form is rejected with a 400 that names it: `iframe`, `object`, `embed`, `base`, `meta`, `link`, `form`, SVG/MathML, non-`http(s)`/`mailto`/`tel` URLs and form-override attributes such as `formaction`. Each fragment is limited to 100,000 characters (Auth0 documents 10,000). The Auth0 prompt names `login-passwordless-sms-otp` and `login-passwordless-email-code` are accepted alongside `login-passwordless`.
+
+- 6f3c9c7: Add tenant-scoped prompt partial storage across the adapter interface, Drizzle, Kysely, and AWS, including tenant export/import support.
+- dec362c: Render Auth0-compatible prompt partials inside the signup form, including native validation, submitted `ulp-*` fields, and value preservation after server-side errors.
+
+### Patch Changes
+
+- 4808a33: Run post-login hooks for SAML logins. The SAML response was built before `completeLogin`, so page and form hooks (such as the impersonate page), code hooks, webhooks and the success-login log were skipped for SAML. Also fix the u2 impersonate screen failing with "Failed to generate redirect" when the auth response is the SAML POST form rather than a redirect.
+
+  Page hooks (such as impersonate) now use the client the login is already running with to choose between `/u` and `/u2`, instead of looking the client up a second time and silently falling back to `/u` if that lookup failed.
+
+- 9a81828: Expose submitted ulp-\* custom signup fields to pre-user-registration hooks without forwarding passwords or unrelated fields.
+- Updated dependencies [29e1618]
+- Updated dependencies [6f3c9c7]
+- Updated dependencies [dec362c]
+- Updated dependencies [41d4d4b]
+  - @authhero/adapter-interfaces@4.20.0
+  - @authhero/widget@0.41.0
+  - @authhero/proxy@0.11.6
+  - @authhero/saml@0.5.18
+
 ## 9.22.1
 
 ### Patch Changes
