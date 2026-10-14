@@ -41,17 +41,148 @@ import { loginWithPassword } from "../../../authentication-flows/password";
 import { logMessage } from "../../../helpers/logging";
 import { SignupValidationError } from "../../../errors/signup-validation-error";
 
-export function getSignupPrefill(
-  email: string,
-  signupBody?: Record<string, unknown>,
-): Record<string, string> {
-  const customFields = Object.fromEntries(
-    Object.entries(signupBody ?? {}).filter(
-      ([key, value]) => key.startsWith("ulp-") && typeof value === "string",
-    ),
-  ) as Record<string, string>;
+type PrefillValue = string | string[];
 
-  return { email, ...customFields };
+export function getSignupPrefill(
+  email: string | undefined,
+  signupBody?: Record<string, unknown>,
+): Record<string, PrefillValue> {
+  const customFields: Record<string, PrefillValue> = {};
+  for (const [key, value] of Object.entries(signupBody ?? {})) {
+    if (!key.startsWith("ulp-")) continue;
+    if (typeof value === "string") {
+      customFields[key] = value;
+    } else if (
+      Array.isArray(value) &&
+      value.every((v) => typeof v === "string")
+    ) {
+      customFields[key] = value as string[];
+    }
+  }
+
+  return { ...(email ? { email } : {}), ...customFields };
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+const ATTR_VALUE = `(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\`]+))`;
+
+function getAttr(tag: string, attr: string): string | undefined {
+  const match = tag.match(new RegExp(`\\s${attr}\\s*=\\s*${ATTR_VALUE}`, "i"));
+  return match?.[1] ?? match?.[2] ?? match?.[3];
+}
+
+function removeAttr(tag: string, attr: string): string {
+  return tag.replace(
+    new RegExp(
+      `\\s${attr}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?(?=[\\s/>])`,
+      "gi",
+    ),
+    "",
+  );
+}
+
+function addAttrs(tag: string, attrs: string): string {
+  const closing = tag.match(/\s*\/?>$/)?.[0] ?? ">";
+  const prefix = tag.slice(0, -closing.length);
+  return `${prefix}${attrs}${closing.includes("/") ? " />" : ">"}`;
+}
+
+function prefillValues(value: PrefillValue): string[] {
+  return Array.isArray(value) ? value : [value];
+}
+
+/**
+ * Restore submitted ulp-* control state in stored prompt-partial HTML: `value`
+ * for text-like inputs, `checked` for checkboxes/radios, and the content or
+ * selected options for textarea/select. Passwords and unrelated fields never
+ * enter the prefill object.
+ */
+export function prefillPromptPartial(
+  html: string,
+  prefill?: Record<string, PrefillValue | undefined>,
+): string {
+  if (!prefill) return html;
+
+  const lookup = (tag: string) => {
+    const name = getAttr(tag, "name");
+    return name?.startsWith("ulp-") ? prefill[name] : undefined;
+  };
+
+  const withInputs = html.replace(
+    /<input\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+    (input) => {
+      const submitted = lookup(input);
+      if (submitted === undefined) return input;
+
+      const type = (getAttr(input, "type") ?? "text").toLowerCase();
+      if (type === "checkbox" || type === "radio") {
+        // Compare against the control's own value ("on" is the HTML default).
+        const own = getAttr(input, "value") ?? "on";
+        const base = removeAttr(input, "checked");
+        return prefillValues(submitted).includes(own)
+          ? addAttrs(base, " checked")
+          : base;
+      }
+      if (
+        ["file", "submit", "button", "image", "reset", "password"].includes(
+          type,
+        )
+      ) {
+        return input;
+      }
+      if (Array.isArray(submitted)) return input;
+
+      return addAttrs(
+        removeAttr(input, "value"),
+        ` value="${escapeHtmlAttribute(submitted)}"`,
+      );
+    },
+  );
+
+  const withTextareas = withInputs.replace(
+    /(<textarea\b(?:[^>"']|"[^"]*"|'[^']*')*>)[\s\S]*?(<\/textarea\s*>)/gi,
+    (match, open: string, close: string) => {
+      const submitted = lookup(open);
+      if (submitted === undefined || Array.isArray(submitted)) return match;
+      return `${open}${escapeHtmlText(submitted)}${close}`;
+    },
+  );
+
+  return withTextareas.replace(
+    /(<select\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/select\s*>)/gi,
+    (match, open: string, body: string, close: string) => {
+      const submitted = lookup(open);
+      if (submitted === undefined) return match;
+      const selected = prefillValues(submitted);
+      const options = body.replace(
+        /<option\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+        (option) => {
+          const base = removeAttr(option, "selected");
+          // An option without a value attribute submits its text, which we
+          // can't see from the opening tag alone; leave it unselected.
+          const own = getAttr(option, "value");
+          return own !== undefined && selected.includes(own)
+            ? addAttrs(base, " selected")
+            : base;
+        },
+      );
+      return `${open}${options}${close}`;
+    },
+  );
 }
 
 /**
@@ -132,9 +263,6 @@ export async function signupScreen(
         },
         required: true,
         order: order++,
-        messages: errors?.email
-          ? [{ text: errors.email, type: "error" as const }]
-          : undefined,
       },
       // Password input
       {
@@ -150,9 +278,6 @@ export async function signupScreen(
         required: true,
         sensitive: true,
         order: order++,
-        messages: errors?.password
-          ? [{ text: errors.password, type: "error" as const }]
-          : undefined,
       },
       // Confirm password input
       {
@@ -168,9 +293,6 @@ export async function signupScreen(
         required: true,
         sensitive: true,
         order: order++,
-        messages: errors?.re_password
-          ? [{ text: errors.re_password, type: "error" as const }]
-          : undefined,
       },
       // Submit button
       {
@@ -186,14 +308,36 @@ export async function signupScreen(
     );
   }
 
-  // Pre-fill email if provided
-  if (prefill?.email) {
-    const emailComponent = components.find((c) => c.id === "email");
-    if (emailComponent && "config" in emailComponent) {
-      (emailComponent.config as Record<string, unknown>).default_value =
-        prefill.email;
+  // Apply prefill and validation messages generically to built-in fields.
+  for (const component of components) {
+    if (component.category !== "FIELD") continue;
+
+    const value = prefill?.[component.id];
+    if (typeof value === "string" && "config" in component) {
+      const config = (component.config ?? {}) as Record<string, unknown>;
+      config.default_value = value;
+      component.config = config as typeof component.config;
+    }
+
+    const error = errors?.[component.id];
+    if (error) {
+      component.messages = [{ text: error, type: "error" }];
     }
   }
+
+  const storedPartials = await context.ctx.env.data.promptPartials?.get(
+    context.tenant.id,
+    "signup",
+  );
+  const signupPartials = storedPartials?.signup;
+  const partials = signupPartials
+    ? Object.fromEntries(
+        Object.entries(signupPartials).map(([insertionPoint, html]) => [
+          insertionPoint,
+          prefillPromptPartial(html, prefill),
+        ]),
+      )
+    : undefined;
 
   // Determine login link based on identifier_first setting
   const loginPath = await getLoginPath(context);
@@ -206,6 +350,7 @@ export async function signupScreen(
     title: m.title(),
     description: m.description(),
     components,
+    partials,
     links: [
       {
         id: "login",
@@ -236,6 +381,7 @@ export const signupScreenDefinition: ScreenDefinition = {
       const email = (data.email as string)?.toLowerCase()?.trim();
       const password = (data.password as string)?.trim();
       const rePassword = (data.re_password as string)?.trim();
+      const signupPrefill = getSignupPrefill(email, data);
 
       // Initialize i18n for error messages
       const locale = context.language || "en";
@@ -253,6 +399,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
+            prefill: signupPrefill,
             errors: { email: errorMessage },
           }),
         };
@@ -264,7 +411,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { password: errorMessage },
           }),
         };
@@ -276,7 +423,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { re_password: errorMessage },
           }),
         };
@@ -289,7 +436,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { re_password: errorMessage },
           }),
         };
@@ -326,7 +473,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { password: errorMessage },
           }),
         };
@@ -345,7 +492,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { email: errorMessage },
           }),
         };
@@ -363,7 +510,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { email: errorMessage },
           }),
         };
@@ -423,7 +570,7 @@ export const signupScreenDefinition: ScreenDefinition = {
           error: errorMessage,
           screen: await signupScreen({
             ...context,
-            prefill: { email },
+            prefill: signupPrefill,
             errors: { email: errorMessage },
           }),
         };

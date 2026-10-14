@@ -58,7 +58,7 @@ export interface ScreenContext {
   /** The login state parameter */
   state: string;
   /** Pre-filled values for form fields */
-  prefill?: Record<string, string | undefined>;
+  prefill?: Record<string, string | string[] | undefined>;
   /** Error messages to display */
   errors?: Record<string, string>;
   /** Screen-level messages to display (errors, success, info, warnings) */

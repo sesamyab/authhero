@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { baseEntitySchema } from "./BaseEntity";
+import type { PromptPartialInsertionPoint } from "./PromptPartials";
 
 /**
  * Auth0 Forms Component Schema
@@ -754,6 +755,25 @@ export const screenLinkSchema = z.object({
 export type ScreenLink = z.infer<typeof screenLinkSchema>;
 
 /**
+ * Auth0 prompt partials attached to a rendered screen.
+ *
+ * This is a single screen's insertion points, rather than the complete
+ * prompt -> screen -> insertion point object persisted by adapters.
+ */
+export const uiScreenPartialsSchema: z.ZodType<
+  Partial<Record<PromptPartialInsertionPoint, string>>
+> = z
+  .object({
+    "form-content-start": z.string().optional(),
+    "form-content-end": z.string().optional(),
+    "form-footer-start": z.string().optional(),
+    "form-footer-end": z.string().optional(),
+    "secondary-actions-start": z.string().optional(),
+    "secondary-actions-end": z.string().optional(),
+  })
+  .strict();
+
+/**
  * Screen sent to the widget (simplified STEP for rendering)
  * This is what the API returns to the widget - no flow routing logic
  */
@@ -767,6 +787,8 @@ export const uiScreenSchema = z.object({
   components: z.array(formNodeComponentDefinition),
   messages: z.array(componentMessageSchema).optional(),
   links: z.array(screenLinkSchema).optional(),
+  /** Auth0-compatible HTML fragments rendered at positions inside the form. */
+  partials: uiScreenPartialsSchema.optional(),
   /** Footer HTML content displayed at the very bottom of the widget (e.g., terms and conditions) */
   footer: z.string().optional(),
 });
