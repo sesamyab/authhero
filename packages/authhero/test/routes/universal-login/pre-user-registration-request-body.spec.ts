@@ -10,6 +10,7 @@ import {
   getSignupPrefill,
   prefillPromptPartial,
 } from "../../../src/routes/universal-login/screens/signup";
+import { withHandlerError } from "../../../src/routes/universal-login/screens/handler-error";
 import { LocalCodeExecutor } from "../../../src/hooks/code-executor/local";
 
 type ScreenMessage = { text: string; type: string };
@@ -380,6 +381,25 @@ describe("u2 signup partial enforcement and data-authhero-map", () => {
     expect([...placed].sort()).toEqual(["ulp-first", "ulp-last"]);
   });
 
+  it("only treats the exact ulp-error class token as an inline error", () => {
+    const screen = (html: string) =>
+      ({
+        components: [],
+        partials: { "form-content-start": html },
+      }) as unknown as Parameters<typeof withHandlerError>[0];
+
+    expect(
+      withHandlerError(screen('<div class="ulp-error-info">x</div>'), "boom")
+        .messages,
+    ).toEqual([{ text: "boom", type: "error" }]);
+    expect(
+      withHandlerError(
+        screen('<div class="ulp-field ulp-error"></div>'),
+        "boom",
+      ).messages,
+    ).toBeUndefined();
+  });
+
   it("rejects a missing required field and creates no user", async () => {
     const { u2App, env } = await getTestServer();
     await env.data.promptPartials?.set("tenantId", "signup", {
@@ -434,9 +454,7 @@ describe("u2 signup partial enforcement and data-authhero-map", () => {
     );
     expect(body.screen.messages).toBeUndefined();
     const { users } = await env.data.users.list("tenantId");
-    expect(
-      users.find((u) => u.email === "required@example.com"),
-    ).toBeUndefined();
+    expect(users.find((u) => u.email === "inline@example.com")).toBeUndefined();
   });
 
   it("enforces maxlength and pattern", async () => {
