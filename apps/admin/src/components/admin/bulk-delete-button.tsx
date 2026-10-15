@@ -37,7 +37,7 @@ import type { ReactNode } from "react";
  * );
  */
 export const BulkDeleteButton = <
-  RecordType extends RaRecord = any,
+  RecordType extends RaRecord = RaRecord,
   MutationOptionsError = unknown,
 >({
   icon = defaultIcon,
@@ -75,7 +75,7 @@ export const BulkDeleteButton = <
 };
 
 export type BulkDeleteButtonProps<
-  RecordType extends RaRecord = any,
+  RecordType extends RaRecord = RaRecord,
   MutationOptionsError = unknown,
 > = {
   label?: string;

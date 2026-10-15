@@ -24,7 +24,7 @@ import type { FieldProps } from "@/lib/field.type";
  * );
  */
 export const TextField = <
-  RecordType extends Record<string, any> = Record<string, any>,
+  RecordType extends Record<string, unknown> = Record<string, unknown>,
 >({
   defaultValue,
   source,
@@ -55,6 +55,6 @@ export const TextField = <
 };
 
 export interface TextFieldProps<
-  RecordType extends Record<string, any> = Record<string, any>,
+  RecordType extends Record<string, unknown> = Record<string, unknown>,
 >
   extends FieldProps<RecordType>, HTMLAttributes<HTMLSpanElement> {}

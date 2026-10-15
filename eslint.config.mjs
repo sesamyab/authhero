@@ -72,16 +72,10 @@ export default [
     },
   },
   {
-    // apps/admin is a typed React codebase: PropTypes are redundant, and the
-    // react-admin data layer is deliberately loosely typed, so `any` is
-    // reported as a warning (cleanup backlog) instead of failing CI.
+    // eslint-plugin-react-hooks is registered for apps/admin so its existing
+    // `react-hooks/exhaustive-deps` disable comments refer to a known rule.
     files: ["apps/admin/src/**/*.{ts,tsx}"],
     plugins: { "react-hooks": reactHooks },
-    rules: {
-      "react/prop-types": "off",
-      "react/no-unescaped-entities": "off",
-      "react-hooks/exhaustive-deps": "warn",
-      "@typescript-eslint/no-explicit-any": "warn",
-    },
+    rules: { "react-hooks/exhaustive-deps": "warn" },
   },
 ];

@@ -42,7 +42,7 @@ export function CertificateErrorDialog({
         <div className="space-y-3 text-sm">
           <p>
             Your local AuthHero server is using a self-signed SSL certificate
-            that your browser doesn't trust yet.
+            that your browser doesn&apos;t trust yet.
           </p>
           <p>To fix this:</p>
           <ol className="list-decimal pl-5 space-y-1">
@@ -59,8 +59,8 @@ export function CertificateErrorDialog({
             </li>
             <li>
               When you see the security warning, click{" "}
-              <strong>"Advanced"</strong> and then{" "}
-              <strong>"Proceed to localhost (unsafe)"</strong>
+              <strong>&quot;Advanced&quot;</strong> and then{" "}
+              <strong>&quot;Proceed to localhost (unsafe)&quot;</strong>
             </li>
             <li>Return to this page and refresh</li>
           </ol>

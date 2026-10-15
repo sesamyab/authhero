@@ -432,7 +432,8 @@ function RotateSigningKeyButton({ type }: { type: SigningKeyType }) {
               metadata straight away, but keep signing with the current one
               until it activates. Send the new certificate to every service
               provider during that window — they cannot fetch it themselves, and
-              assertions signed by a certificate they don't trust are rejected.
+              assertions signed by a certificate they don&apos;t trust are
+              rejected.
             </p>
           ) : (
             <p className="text-sm">

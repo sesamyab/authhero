@@ -298,8 +298,8 @@ export function ConnectionsTab() {
         <section>
           <h3 className="text-base font-semibold">Hidden connections</h3>
           <p className="text-sm text-muted-foreground mb-2">
-            These connections are enabled but won't show as buttons. Ordering
-            them has no effect.
+            These connections are enabled but won&apos;t show as buttons.
+            Ordering them has no effect.
           </p>
           <ul className="border rounded-md divide-y bg-muted/30">
             {hidden.map((c) => {

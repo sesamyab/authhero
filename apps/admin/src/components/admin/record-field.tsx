@@ -42,7 +42,7 @@ import { TextField } from "@/components/admin/text-field";
  * );
  */
 export const RecordField = <
-  RecordType extends Record<string, any> = Record<string, any>,
+  RecordType extends Record<string, unknown> = Record<string, unknown>,
 >(
   props: RecordFieldProps<RecordType>,
 ) => {
@@ -117,7 +117,7 @@ export const RecordField = <
 type NoInfer<T> = T extends infer U ? U : never;
 
 export interface RecordFieldProps<
-  RecordType extends Record<string, any> = Record<string, any>,
+  RecordType extends Record<string, unknown> = Record<string, unknown>,
 > extends HTMLAttributes<HTMLDivElement> {
   children?: ReactNode;
   className?: string;
