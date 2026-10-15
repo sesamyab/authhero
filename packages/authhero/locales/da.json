@@ -17,7 +17,11 @@
       "showPasswordText": "Vis adgangskode",
       "termsOfServiceText": "Servicevilkår",
       "termsShortText": "Vilkår",
-      "tryAgainText": "Prøv igen"
+      "tryAgainText": "Prøv igen",
+      "embeddedBrowserTitle": "Skal man blive ved med at logge ind?",
+      "embeddedBrowserText": "Du er i øjeblikket inde på ${browserName}. Denne browser logger dig ofte ud, så vi anbefaler, at du bruger din telefons standardbrowser i stedet.",
+      "privateBrowsingTitle": "Privat browsing registreret",
+      "privateBrowsingText": "Du ser ud til at bruge et privat vindue. Du skal måske logge ind igen hver gang, fordi din session ikke huskes, når vinduet lukkes."
     },
     "account": {
       "title": "Kontoindstillinger",

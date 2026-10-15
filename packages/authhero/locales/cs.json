@@ -17,7 +17,11 @@
       "showPasswordText": "Zobrazit heslo",
       "termsOfServiceText": "Podmínky služby",
       "termsShortText": "Podmínky",
-      "tryAgainText": "Zkusit znovu"
+      "tryAgainText": "Zkusit znovu",
+      "embeddedBrowserTitle": "Musíte se stále přihlašovat?",
+      "embeddedBrowserText": "Právě se nacházíte v prohlížeči ${browserName}. Tento prohlížeč vás často odhlašuje, proto doporučujeme použít výchozí prohlížeč telefonu.",
+      "privateBrowsingTitle": "Zjištěno anonymní prohlížení",
+      "privateBrowsingText": "Zdá se, že používáte anonymní okno. Možná se budete muset přihlašovat pokaždé znovu, protože relace se po zavření okna nepamatuje."
     },
     "account": {
       "title": "Nastavení účtu",

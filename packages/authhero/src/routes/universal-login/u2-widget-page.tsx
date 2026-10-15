@@ -78,6 +78,7 @@ import {
   templateIsFullDocument,
 } from "./universal-login-template";
 import { buildEmbedPageScript, type EmbedLoginContext } from "./embed";
+import { DefaultUserAgentDetector } from "../../client/user-agent-detector";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -172,7 +173,36 @@ export type WidgetPageProps = {
    * modal supplies the frame, and runs the resize/relay script.
    */
   embed?: EmbedLoginContext;
+  /**
+   * Set when the User-Agent is an in-app/embedded browser (Instagram, Facebook,
+   * WebViews, ...) that tends to drop sessions. Renders a banner recommending
+   * the device's default browser.
+   */
+  embeddedBrowser?: { name?: string };
 };
+
+/** Fixed top banner for embedded-browser users; sits above the page chrome. */
+const EMBEDDED_BROWSER_CSS = `
+    .ah-embedded-warning { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; box-sizing: border-box; padding: 10px 16px; background: #fff7ed; color: #9a3412; border-bottom: 1px solid #fed7aa; font: 13px/1.4 system-ui, -apple-system, sans-serif; text-align: left; }
+    .ah-embedded-warning strong { display: block; font-size: 14px; }
+    .ah-embedded-warning p { margin: 2px 0 0; }
+    .ah-private-warning.hidden { display: none; }
+    .ah-dark-mode .ah-embedded-warning { background: #431407; color: #ffedd5; border-bottom-color: #7c2d12; }
+    @media (prefers-color-scheme: dark) { html:not(.ah-light-mode) .ah-embedded-warning { background: #431407; color: #ffedd5; border-bottom-color: #7c2d12; } }
+`;
+
+/** Detects in-app browsers from the request's User-Agent. */
+export function detectEmbeddedBrowser(
+  userAgent: string | undefined,
+): { name?: string } | undefined {
+  const info = new DefaultUserAgentDetector().parse(userAgent || "");
+  // The shared detector flags Samsung Internet, but it is a standalone browser
+  // with normal session handling. Only apps hosting a WebView should warn.
+  if (!info.isEmbedded || info.browser?.name === "Samsung Internet") {
+    return undefined;
+  }
+  return { name: info.browser?.name };
+}
 
 /**
  * Overrides for the embedded (iframe) layout. Appended after the shared page
@@ -386,6 +416,7 @@ export function WidgetPage({
   extraScript,
   customBodyHtml,
   embed,
+  embeddedBrowser,
 }: WidgetPageProps) {
   const resolvedLogoPosition: LogoPosition =
     logoPosition ?? theme?.page_background?.logo_placement ?? "widget";
@@ -478,6 +509,12 @@ export function WidgetPage({
         poweredBy: poweredByLogo,
       });
 
+  const bannerT = embed
+    ? undefined
+    : createTranslation("common", "common", language || "en").m;
+  const embeddedWarning = embeddedBrowser ? bannerT : undefined;
+  const showPrivateProbe = !!bannerT && !embeddedBrowser;
+
   return (
     <html
       lang={language || "en"}
@@ -495,7 +532,11 @@ export function WidgetPage({
         {fontUrl && <link rel="stylesheet" href={fontUrl} />}
         <style
           dangerouslySetInnerHTML={{
-            __html: embed ? pageCss + EMBED_PAGE_CSS : pageCss,
+            __html: embed
+              ? pageCss + EMBED_PAGE_CSS
+              : embeddedBrowser || showPrivateProbe
+                ? pageCss + EMBEDDED_BROWSER_CSS
+                : pageCss,
           }}
         />
         <script
@@ -505,6 +546,33 @@ export function WidgetPage({
       </head>
       <body>
         {hasBgImage && !embed && <div class="ah-bg-tint" aria-hidden="true" />}
+
+        {embeddedWarning && (
+          <div class="ah-embedded-warning" role="alert">
+            <strong>{embeddedWarning.embeddedBrowserTitle()}</strong>
+            <p>
+              {embeddedWarning.embeddedBrowserText({
+                browserName: embeddedBrowser?.name || "the app",
+              })}
+            </p>
+          </div>
+        )}
+
+        {showPrivateProbe && bannerT && (
+          <>
+            {/* Revealed by the shared client bundle (detectincognitojs), which
+                removes `hidden` from #incognito-warning-container. */}
+            <div
+              id="incognito-warning-container"
+              class="ah-embedded-warning ah-private-warning hidden"
+              role="alert"
+            >
+              <strong>{bannerT.privateBrowsingTitle()}</strong>
+              <p>{bannerT.privateBrowsingText()}</p>
+            </div>
+            <script type="module" src={`/u/js/client.js?v=${buildHash}`} />
+          </>
+        )}
 
         {customBodyHtml ? (
           /* Custom-template path: tenant-controlled body markup. The
@@ -833,6 +901,7 @@ export async function renderWidgetPageResponse(
       extraScript={opts.extraScript}
       customBodyHtml={customBodyHtml}
       embed={embed}
+      embeddedBrowser={detectEmbeddedBrowser(ctx.req?.header?.("user-agent"))}
     />,
     opts.status,
   );
