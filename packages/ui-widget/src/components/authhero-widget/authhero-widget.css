@@ -195,6 +195,7 @@ form {
   z-index: 1;
   padding: 0;
   background-color: transparent;
+  font-size: var(--ah-font-size-label, 16px);
   color: var(--ah-color-text-muted, #65676e);
   pointer-events: none;
   transform: translateY(-50%);
