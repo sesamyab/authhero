@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { PartialsTab } from "./tabs/partials-tab";
 
 const PROMPT_SCREENS = [
   { id: "login", name: "Login" },
@@ -954,6 +955,7 @@ function PromptsFormContent() {
       <TabsList>
         <TabsTrigger value="settings">Settings</TabsTrigger>
         <TabsTrigger value="custom-text">Custom Text</TabsTrigger>
+        <TabsTrigger value="partials">Partials</TabsTrigger>
         <TabsTrigger value="raw">Raw JSON</TabsTrigger>
       </TabsList>
       <TabsContent value="settings" className="mt-4">
@@ -961,6 +963,9 @@ function PromptsFormContent() {
       </TabsContent>
       <TabsContent value="custom-text" className="mt-4">
         <CustomTextTab />
+      </TabsContent>
+      <TabsContent value="partials" className="mt-4">
+        <PartialsTab />
       </TabsContent>
       <TabsContent value="raw" className="mt-4">
         <RawJsonTab />
