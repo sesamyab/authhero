@@ -12,6 +12,9 @@ const INSTAGRAM_UA =
 const SAFARI_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1";
 
+const SAMSUNG_UA =
+  "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/24.0 Chrome/117.0.0.0 Mobile Safari/537.36";
+
 async function render(userAgent: string, language?: string) {
   const screen = buildPreviewScreen("login");
   const ctx = {
@@ -43,6 +46,12 @@ describe("u2 page — embedded browser warning", () => {
     expect(html).toContain('class="ah-embedded-warning"');
     expect(html).toContain("Do you have to keep logging in?");
     expect(html).toContain("You are currently inside the Instagram.");
+  });
+
+  it("treats standalone Samsung Internet as a regular browser", async () => {
+    const html = await render(SAMSUNG_UA);
+    expect(html).not.toContain('<div class="ah-embedded-warning"');
+    expect(html).toContain("ah-private-warning");
   });
 
   it("localizes the banner", async () => {
