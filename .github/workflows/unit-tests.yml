@@ -62,13 +62,13 @@ jobs:
       - name: Type-check apps
         run: pnpm type-check
 
-      # ESLint gate. Scoped to apps/website for now: it is the only workspace
-      # that is clean today. apps/admin (~230) and the packages (~760 in
-      # authhero alone) have a backlog that is mostly react/prop-types noise
-      # in a TypeScript codebase plus @typescript-eslint/no-explicit-any, so
-      # widening this gate needs a rules decision first (see #1015).
+      # ESLint gate. Covers apps/website and apps/admin. The packages (~760
+      # findings in authhero alone) still have a backlog that needs a rules
+      # decision before they can be added (see #1015).
       - name: Lint
-        run: pnpm website lint
+        run: |
+          pnpm website lint
+          pnpm admin lint
 
       - name: Build admin
         run: pnpm admin build
