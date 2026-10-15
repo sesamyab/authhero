@@ -17,7 +17,11 @@
       "showPasswordText": "Mostra password",
       "termsOfServiceText": "Termini di servizio",
       "termsShortText": "Termini",
-      "tryAgainText": "Riprova"
+      "tryAgainText": "Riprova",
+      "embeddedBrowserTitle": "È necessario continuare a collegarsi?",
+      "embeddedBrowserText": "Siete attualmente all'interno del sito ${browserName}. Questo browser vi fa spesso uscire, quindi vi consigliamo di utilizzare il browser predefinito del vostro telefono.",
+      "privateBrowsingTitle": "Navigazione privata rilevata",
+      "privateBrowsingText": "Sembra che tu stia usando una finestra privata. Potrebbe esserti chiesto di accedere di nuovo ogni volta, perché la sessione non viene ricordata dopo la chiusura della finestra."
     },
     "account": {
       "title": "Impostazioni account",

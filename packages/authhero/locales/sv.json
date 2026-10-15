@@ -17,7 +17,11 @@
       "showPasswordText": "Visa lösenord",
       "termsOfServiceText": "Användarvillkor",
       "termsShortText": "Villkor",
-      "tryAgainText": "Försök igen"
+      "tryAgainText": "Försök igen",
+      "embeddedBrowserTitle": "Måste du logga in hela tiden?",
+      "embeddedBrowserText": "Du befinner dig för närvarande på ${browserName}. Den här webbläsaren loggar ofta ut, så vi rekommenderar att du använder telefonens standardwebbläsare istället.",
+      "privateBrowsingTitle": "Privat surfning upptäckt",
+      "privateBrowsingText": "Du verkar använda ett privat fönster. Du kan behöva logga in igen varje gång eftersom din session inte sparas när fönstret stängs."
     },
     "account": {
       "title": "Kontoinställningar",

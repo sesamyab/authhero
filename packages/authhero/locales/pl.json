@@ -17,7 +17,11 @@
       "showPasswordText": "Pokaż hasło",
       "termsOfServiceText": "Regulamin",
       "termsShortText": "Zasady",
-      "tryAgainText": "Spróbuj ponownie"
+      "tryAgainText": "Spróbuj ponownie",
+      "embeddedBrowserTitle": "Czy musisz się ciągle logować?",
+      "embeddedBrowserText": "Znajdujesz się obecnie w przeglądarce ${browserName}. Przeglądarka ta często wylogowuje użytkownika, dlatego zalecamy korzystanie z domyślnej przeglądarki telefonu.",
+      "privateBrowsingTitle": "Wykryto tryb prywatny",
+      "privateBrowsingText": "Wygląda na to, że korzystasz z okna prywatnego. Może być konieczne ponowne logowanie za każdym razem, ponieważ sesja nie jest zapamiętywana po zamknięciu okna."
     },
     "account": {
       "title": "Ustawienia konta",

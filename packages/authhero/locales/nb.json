@@ -17,7 +17,11 @@
       "showPasswordText": "Vis passord",
       "termsOfServiceText": "Vilkår for bruk",
       "termsShortText": "Vilkår",
-      "tryAgainText": "Prøv igjen"
+      "tryAgainText": "Prøv igjen",
+      "embeddedBrowserTitle": "Må du fortsette å logge inn?",
+      "embeddedBrowserText": "Du er for øyeblikket inne på ${browserName}. Denne nettleseren logger deg ofte ut, så vi anbefaler at du bruker telefonens standardnettleser i stedet.",
+      "privateBrowsingTitle": "Privat nettlesing oppdaget",
+      "privateBrowsingText": "Du ser ut til å bruke et privat vindu. Du må kanskje logge inn på nytt hver gang, fordi økten din ikke huskes når vinduet lukkes."
     },
     "account": {
       "title": "Kontoinnstillinger",

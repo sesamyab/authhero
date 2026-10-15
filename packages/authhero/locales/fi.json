@@ -17,7 +17,11 @@
       "showPasswordText": "Näytä salasana",
       "termsOfServiceText": "Käyttöehdot",
       "termsShortText": "Ehdot",
-      "tryAgainText": "Yritä uudelleen"
+      "tryAgainText": "Yritä uudelleen",
+      "embeddedBrowserTitle": "Pitääkö sinun kirjautua jatkuvasti sisään?",
+      "embeddedBrowserText": "Olet tällä hetkellä osoitteessa ${browserName}. Tämä selain kirjautuu usein ulos, joten suosittelemme käyttämään sen sijaan puhelimen oletusselainta.",
+      "privateBrowsingTitle": "Yksityinen selaus havaittu",
+      "privateBrowsingText": "Näytät käyttävän yksityistä ikkunaa. Sinun on ehkä kirjauduttava sisään uudelleen joka kerta, koska istuntoasi ei muisteta ikkunan sulkemisen jälkeen."
     },
     "account": {
       "title": "Tilin asetukset",

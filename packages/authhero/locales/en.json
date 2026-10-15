@@ -17,7 +17,11 @@
       "showPasswordText": "Show password",
       "termsOfServiceText": "Terms of Service",
       "termsShortText": "Terms",
-      "tryAgainText": "Try again"
+      "tryAgainText": "Try again",
+      "embeddedBrowserTitle": "Do you have to keep logging in?",
+      "embeddedBrowserText": "You are currently inside the ${browserName}. This browser often logs you out, so we recommend using your phone's default browser instead.",
+      "privateBrowsingTitle": "Private browsing detected",
+      "privateBrowsingText": "You appear to be in a private window. You may have to log in again each time, because your session isn't remembered once the window is closed."
     },
     "account": {
       "title": "Account Settings",
