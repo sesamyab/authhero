@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useTenantId } from "@/TenantContext";
 import { openFullPreview } from "./previewClient";
 
-const WIDGET_VERSION = "0.32.14";
+const WIDGET_VERSION = "0.41.0";
 const WIDGET_SRC = `https://unpkg.com/@authhero/widget@${WIDGET_VERSION}/dist/authhero-widget/authhero-widget.esm.js`;
 
 if (
@@ -48,6 +48,8 @@ interface UiScreen {
   components: FormComponent[];
   links?: ScreenLink[];
   messages?: Array<{ text: string; type: "error" | "success" }>;
+  /** Raw HTML rendered into the prompt's insertion points. */
+  partials?: Partial<Record<string, string>>;
 }
 
 const sampleScreen: UiScreen = {
@@ -102,7 +104,7 @@ const sampleScreen: UiScreen = {
 
 type PreviewScreen = "login" | "signup" | "password";
 
-const screenConfigs: Record<PreviewScreen, UiScreen> = {
+export const screenConfigs: Record<PreviewScreen, UiScreen> = {
   login: sampleScreen,
   signup: {
     ...sampleScreen,
@@ -183,7 +185,7 @@ interface PageBackgroundObject {
   angle_deg?: number;
 }
 
-interface WidgetBranding {
+export interface WidgetBranding {
   colors?: {
     primary?: string;
     page_background?: PageBackgroundObject | string;
@@ -193,7 +195,7 @@ interface WidgetBranding {
   font?: { url?: string };
 }
 
-interface WidgetTheme {
+export interface WidgetTheme {
   borders?: Record<string, unknown>;
   colors?: Record<string, unknown>;
   fonts?: Record<string, unknown>;
@@ -217,7 +219,6 @@ function isPageBackgroundObject(v: unknown): v is PageBackgroundObject {
 }
 
 export function BrandingPreview() {
-  const containerRef = useRef<HTMLDivElement>(null);
   const [previewScreen, setPreviewScreen] = useState<PreviewScreen>("login");
   const tenantId = useTenantId() ?? "";
   const notify = useNotify();
@@ -253,40 +254,6 @@ export function BrandingPreview() {
       }
     : undefined;
 
-  const getBackgroundStyle = (): React.CSSProperties => {
-    if (theme?.page_background?.background_color) {
-      return { background: theme.page_background.background_color };
-    }
-    const bg = branding.colors?.page_background;
-    if (!bg) return { background: "#f5f5f5" };
-    if (typeof bg === "string") return { background: bg };
-    if (
-      isPageBackgroundObject(bg) &&
-      bg.type === "linear-gradient" &&
-      bg.start &&
-      bg.end
-    ) {
-      const angle = bg.angle_deg ?? 180;
-      return {
-        background: `linear-gradient(${angle}deg, ${bg.start}, ${bg.end})`,
-      };
-    }
-    if (isPageBackgroundObject(bg) && bg.start) return { background: bg.start };
-    return { background: "#f5f5f5" };
-  };
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const widget = containerRef.current.querySelector(
-      "authhero-widget",
-    ) as WidgetElement | null;
-    if (widget) {
-      widget.screen = screenConfigs[previewScreen];
-      widget.branding = branding;
-      if (theme) widget.theme = theme;
-    }
-  }, [branding, theme, previewScreen]);
-
   const handleOpenFull = async () => {
     if (!tenantId) return;
     try {
@@ -300,15 +267,6 @@ export function BrandingPreview() {
       notify("Failed to open preview", { type: "error" });
     }
   };
-
-  const screenJson = JSON.stringify(screenConfigs[previewScreen]).replace(
-    /'/g,
-    "&apos;",
-  );
-  const brandingJson = JSON.stringify(branding).replace(/'/g, "&apos;");
-  const themeJson = theme
-    ? JSON.stringify(theme).replace(/'/g, "&apos;")
-    : null;
 
   return (
     <div className="flex h-full flex-col gap-2 rounded-lg bg-muted/40 p-3">
@@ -340,21 +298,88 @@ export function BrandingPreview() {
         </div>
       </div>
 
+      <WidgetPreview
+        screen={screenConfigs[previewScreen]}
+        branding={branding}
+        theme={theme}
+        className="flex-1"
+      />
+    </div>
+  );
+}
+
+/**
+ * Renders `<authhero-widget>` on the tenant's page background. Shared by the
+ * branding and prompt partials editors.
+ */
+export function WidgetPreview({
+  screen,
+  branding,
+  theme,
+  className = "",
+}: {
+  screen: UiScreen;
+  branding: WidgetBranding;
+  theme?: WidgetTheme;
+  className?: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const getBackgroundStyle = (): React.CSSProperties => {
+    if (theme?.page_background?.background_color) {
+      return { background: theme.page_background.background_color };
+    }
+    const bg = branding.colors?.page_background;
+    if (!bg) return { background: "#f5f5f5" };
+    if (typeof bg === "string") return { background: bg };
+    if (
+      isPageBackgroundObject(bg) &&
+      bg.type === "linear-gradient" &&
+      bg.start &&
+      bg.end
+    ) {
+      const angle = bg.angle_deg ?? 180;
+      return {
+        background: `linear-gradient(${angle}deg, ${bg.start}, ${bg.end})`,
+      };
+    }
+    if (isPageBackgroundObject(bg) && bg.start) return { background: bg.start };
+    return { background: "#f5f5f5" };
+  };
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const widget = containerRef.current.querySelector(
+      "authhero-widget",
+    ) as WidgetElement | null;
+    if (widget) {
+      widget.screen = screen;
+      widget.branding = branding;
+      if (theme) widget.theme = theme;
+    }
+  }, [branding, theme, screen]);
+
+  const screenJson = JSON.stringify(screen).replace(/'/g, "&apos;");
+  const brandingJson = JSON.stringify(branding).replace(/'/g, "&apos;");
+  const themeJson = theme
+    ? JSON.stringify(theme).replace(/'/g, "&apos;")
+    : null;
+
+  return (
+    <div
+      className={`flex items-center justify-center overflow-hidden rounded-md ${className}`}
+      style={getBackgroundStyle()}
+    >
       <div
-        className="flex flex-1 items-center justify-center overflow-hidden rounded-md"
-        style={getBackgroundStyle()}
-      >
-        <div
-          ref={containerRef}
-          dangerouslySetInnerHTML={{
-            __html: `<authhero-widget
+        ref={containerRef}
+        dangerouslySetInnerHTML={{
+          __html: `<authhero-widget
               screen='${screenJson}'
               branding='${brandingJson}'
               ${themeJson ? `theme='${themeJson}'` : ""}
             ></authhero-widget>`,
-          }}
-        />
-      </div>
+        }}
+      />
     </div>
   );
 }

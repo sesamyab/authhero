@@ -6,6 +6,7 @@ import {
   useRefresh,
 } from "ra-core";
 import { useWatch, useFormContext } from "react-hook-form";
+import { useSearchParams } from "react-router-dom";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
   BooleanInput,
@@ -52,6 +53,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { PartialsTab } from "./tabs/partials-tab";
 
 const PROMPT_SCREENS = [
   { id: "login", name: "Login" },
@@ -949,11 +951,22 @@ function SettingsTab() {
 }
 
 function PromptsFormContent() {
+  // Mount the Partials tab on first visit, so it doesn't fetch or render for
+  // anyone who never opens it. It then stays mounted to keep unsaved edits.
+  const [searchParams] = useSearchParams();
+  const [partialsOpened, setPartialsOpened] = useState(
+    searchParams.get("tab") === "partials",
+  );
+  useEffect(() => {
+    if (searchParams.get("tab") === "partials") setPartialsOpened(true);
+  }, [searchParams]);
+
   return (
     <UrlTabs defaultValue="settings" className="w-full">
       <TabsList>
         <TabsTrigger value="settings">Settings</TabsTrigger>
         <TabsTrigger value="custom-text">Custom Text</TabsTrigger>
+        <TabsTrigger value="partials">Partials</TabsTrigger>
         <TabsTrigger value="raw">Raw JSON</TabsTrigger>
       </TabsList>
       <TabsContent value="settings" className="mt-4">
@@ -961,6 +974,13 @@ function PromptsFormContent() {
       </TabsContent>
       <TabsContent value="custom-text" className="mt-4">
         <CustomTextTab />
+      </TabsContent>
+      <TabsContent
+        value="partials"
+        forceMount
+        className="mt-4 data-[state=inactive]:hidden"
+      >
+        {partialsOpened && <PartialsTab />}
       </TabsContent>
       <TabsContent value="raw" className="mt-4">
         <RawJsonTab />

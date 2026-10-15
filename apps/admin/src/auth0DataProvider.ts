@@ -1169,6 +1169,13 @@ export default (
     getOne: async (resource, params) => {
       const managementClient = await getManagementClient();
 
+      if (resource === "partials") {
+        const partials = await managementClient.prompts.partials.get(
+          params.id as any,
+        );
+        return { data: { id: params.id, partials } };
+      }
+
       // Virtual scopes-as-one under resource servers
       if (resource === SCOPE_RES) {
         const [rsId, value] = splitScopeId(params.id);
@@ -1885,6 +1892,14 @@ export default (
       const cleanParams = removeExtraFields(params);
       const managementClient = await getManagementClient();
       const headers = createHeaders(tenantId);
+
+      if (resource === "partials") {
+        await managementClient.prompts.partials.set(
+          params.id as any,
+          params.data.partials,
+        );
+        return { data: { id: params.id, partials: params.data.partials } };
+      }
 
       // Virtual scope update: read-modify-write the parent's scopes array
       if (resource === SCOPE_RES) {

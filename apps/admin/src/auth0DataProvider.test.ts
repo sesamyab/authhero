@@ -7,6 +7,7 @@ const { managementClient } = vi.hoisted(() => ({
   managementClient: {
     users: { list: vi.fn(), get: vi.fn() },
     resourceServers: { get: vi.fn(), update: vi.fn() },
+    prompts: { partials: { get: vi.fn(), set: vi.fn() } },
   },
 }));
 
@@ -597,5 +598,66 @@ describe("token-exchange-profiles", () => {
     );
     expect(calls[0].options?.method).toBe("DELETE");
     expect(result.data).toEqual(profile("tep_1"));
+  });
+});
+
+describe("partials", () => {
+  const stored = { signup: { "form-content-end": "<div></div>" } };
+
+  it("reads a prompt's partials through the management client", async () => {
+    managementClient.prompts.partials.get.mockResolvedValue(stored);
+    const { client } = createHttpClient(() => ({}));
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    const result = await provider.getOne("partials", { id: "signup" });
+
+    expect(managementClient.prompts.partials.get).toHaveBeenCalledWith(
+      "signup",
+    );
+    expect(result.data).toEqual({ id: "signup", partials: stored });
+  });
+
+  it("sets the partials through the management client", async () => {
+    const partials = { signup: { "form-content-end": "<div></div>" } };
+    managementClient.prompts.partials.set.mockResolvedValue(undefined);
+    const { client, calls } = createHttpClient(() => ({}));
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    const result = await provider.update("partials", {
+      id: "signup",
+      data: { partials },
+      previousData: {},
+    });
+
+    expect(managementClient.prompts.partials.set).toHaveBeenCalledWith(
+      "signup",
+      partials,
+    );
+    expect(result.data).toEqual({ id: "signup", partials });
+    // No raw HTTP calls: everything goes through the SDK.
+    expect(calls).toHaveLength(0);
+  });
+
+  it("lets API validation errors through with their body for inline display", async () => {
+    const apiError = Object.assign(new Error("Bad Request"), {
+      statusCode: 400,
+      body: {
+        message:
+          'Invalid data-authhero-map target "x" at signup.form-content-end',
+      },
+    });
+    managementClient.prompts.partials.set.mockRejectedValue(apiError);
+    const { client } = createHttpClient(() => ({}));
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    await expect(
+      provider.update("partials", {
+        id: "signup",
+        data: { partials: {} },
+        previousData: {},
+      }),
+    ).rejects.toMatchObject({
+      body: { message: expect.stringContaining("signup.form-content-end") },
+    });
   });
 });
