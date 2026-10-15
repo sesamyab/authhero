@@ -271,7 +271,7 @@ function FieldRow({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NONE}>Don't save</SelectItem>
+              <SelectItem value={NONE}>Don&apos;t save</SelectItem>
               {FIXED_MAP_TARGETS.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
@@ -298,7 +298,8 @@ function FieldRow({
             />
             {field.mapTo && !isValidMapTarget(field.mapTo) && (
               <p className="text-xs text-destructive">
-                Use letters, numbers, "-" or "_" for the key.
+                Use letters, numbers, &quot;-&quot; or &quot;_&quot; for the
+                key.
               </p>
             )}
           </div>
@@ -584,8 +585,8 @@ function InsertionPointPanel({
         {parseError && (
           <Alert>
             <AlertDescription>
-              This HTML can't be represented as fields without changing it, so
-              it stays in HTML mode.
+              This HTML can&apos;t be represented as fields without changing it,
+              so it stays in HTML mode.
             </AlertDescription>
           </Alert>
         )}
@@ -716,6 +717,7 @@ export function PartialsTab() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [errors, setErrors] = useState<
     Partial<Record<PartialInsertionPoint, string>>
   >({});
@@ -748,6 +750,7 @@ export function PartialsTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     setErrors({});
     setGeneralError(null);
     try {
@@ -772,13 +775,13 @@ export function PartialsTab() {
         ),
       );
     } catch (err) {
-      notify(`Failed to load partials: ${(err as Error).message}`, {
-        type: "error",
-      });
+      // Stay in the error state until a retry succeeds. The editor holds no
+      // loaded data, so saving would overwrite the stored partials.
+      setLoadError((err as Error).message || "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, [dataProvider, notify, prompt]);
+  }, [dataProvider, prompt]);
 
   useEffect(() => {
     load();
@@ -857,6 +860,7 @@ export function PartialsTab() {
   const isEmpty = PARTIAL_INSERTION_POINTS.every((p) => !hasContent(html[p]));
 
   const save = async () => {
+    if (loadError) return;
     if (totalIssues > 0) {
       setAttempted(true);
       // Open the sections that have something to fix.
@@ -1024,7 +1028,7 @@ export function PartialsTab() {
               <Button
                 type="button"
                 onClick={save}
-                disabled={saving || loading || !dirty}
+                disabled={saving || loading || !!loadError || !dirty}
               >
                 {saving ? "Saving…" : "Save partials"}
               </Button>
@@ -1046,7 +1050,23 @@ export function PartialsTab() {
             </Alert>
           )}
 
-          {!loading && isEmpty && (
+          {!loading && loadError && (
+            <Alert variant="destructive">
+              <AlertDescription className="flex items-center justify-between gap-3">
+                <span>Failed to load partials: {loadError}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={load}
+                >
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!loading && !loadError && isEmpty && (
             <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-5">
               <div>
                 <p className="text-sm font-medium">No fields yet</p>
@@ -1064,6 +1084,7 @@ export function PartialsTab() {
           )}
 
           {!loading &&
+            !loadError &&
             PARTIAL_INSERTION_POINTS.map((point) => (
               <InsertionPointPanel
                 key={`${prompt}:${point}`}
