@@ -52,3 +52,9 @@ export * from "./scim";
 
 // Custom Token Exchange profiles (#1417)
 export * from "./tokenExchangeProfiles";
+
+// Log streams
+export * from "./logStreams";
+
+// Lazy refresh-token migration sources
+export * from "./migrationSources";

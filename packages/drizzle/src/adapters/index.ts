@@ -25,6 +25,9 @@ import { createLoginSessionsAdapter } from "./loginSessions";
 import { createLogsAdapter } from "./logs";
 import { createAuthenticationMethodsAdapter } from "./authenticationMethods";
 import { createOrganizationsAdapter } from "./organizations";
+import { createOrganizationConnectionsAdapter } from "./organizationConnections";
+import { createLogStreamsAdapter } from "./logStreams";
+import { createMigrationSourcesAdapter } from "./migrationSources";
 import { createPasswordsAdapter } from "./passwords";
 import { createPromptSettingsAdapter } from "./promptSettings";
 import { createPromptPartialsAdapter } from "./promptPartials";
@@ -102,8 +105,11 @@ export default function createAdapters(
     keys: createKeysAdapter(db),
     loginSessions: createLoginSessionsAdapter(db),
     logs: createLogsAdapter(db),
+    logStreams: createLogStreamsAdapter(db),
+    migrationSources: createMigrationSourcesAdapter(db),
     authenticationMethods: createAuthenticationMethodsAdapter(db),
     organizations: createOrganizationsAdapter(db),
+    organizationConnections: createOrganizationConnectionsAdapter(db),
     passwords: createPasswordsAdapter(db),
     promptSettings: createPromptSettingsAdapter(db),
     promptPartials: createPromptPartialsAdapter(db),

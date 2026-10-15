@@ -4,6 +4,7 @@ import {
   integer,
   uniqueIndex,
   index,
+  primaryKey,
 } from "drizzle-orm/sqlite-core";
 
 export const organizations = sqliteTable(
@@ -70,5 +71,27 @@ export const invites = sqliteTable(
     index("idx_invites_organization_id").on(table.organization_id),
     index("idx_invites_expires_at").on(table.expires_at),
     index("idx_invites_tenant_created").on(table.tenant_id, table.created_at),
+  ],
+);
+
+// Junction table: organizations ↔ connections ("enabled_connections").
+export const organizationConnections = sqliteTable(
+  "organization_connections",
+  {
+    tenant_id: text("tenant_id", { length: 191 }).notNull(),
+    organization_id: text("organization_id", { length: 21 }).notNull(),
+    connection_id: text("connection_id", { length: 191 }).notNull(),
+    assign_membership_on_login: integer("assign_membership_on_login")
+      .notNull()
+      .default(0),
+    show_as_button: integer("show_as_button").notNull().default(1),
+    is_signup_enabled: integer("is_signup_enabled").notNull().default(1),
+    created_at: text("created_at", { length: 35 }).notNull(),
+    updated_at: text("updated_at", { length: 35 }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.tenant_id, table.organization_id, table.connection_id],
+    }),
   ],
 );
