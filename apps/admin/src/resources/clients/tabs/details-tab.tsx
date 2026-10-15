@@ -67,7 +67,6 @@ function ClientMetadataInput() {
     setRows(next);
     // value is intentionally not in deps — we only seed the local rows from the
     // form state once per record load; subsequent edits flow through commit().
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field.name, record?.id]);
 
   const commit = (next: Array<{ key: string; value: string }>) => {

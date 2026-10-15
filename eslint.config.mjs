@@ -3,14 +3,6 @@ import pluginJs from "@eslint/js";
 import tseslint from "typescript-eslint";
 import pluginReactConfig from "eslint-plugin-react/configs/recommended.js";
 import { fixupConfigRules } from "@eslint/compat";
-import { createRequire } from "node:module";
-
-// eslint-plugin-react-hooks is a dependency of apps/admin only, so resolve
-// it from there rather than from the workspace root.
-const requireFromAdmin = createRequire(
-  new URL("./apps/admin/package.json", import.meta.url),
-);
-const reactHooks = requireFromAdmin("eslint-plugin-react-hooks");
 
 export default [
   { files: ["**/*.{js,mjs,cjs,ts,jsx,tsx}"] },
@@ -70,12 +62,5 @@ export default [
         },
       ],
     },
-  },
-  {
-    // eslint-plugin-react-hooks is registered for apps/admin so its existing
-    // `react-hooks/exhaustive-deps` disable comments refer to a known rule.
-    files: ["apps/admin/src/**/*.{ts,tsx}"],
-    plugins: { "react-hooks": reactHooks },
-    rules: { "react-hooks/exhaustive-deps": "warn" },
   },
 ];
