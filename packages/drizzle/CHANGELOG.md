@@ -1,5 +1,19 @@
 # @authhero/drizzle
 
+## 1.12.0
+
+### Minor Changes
+
+- 6f3c9c7: Add tenant-scoped prompt partial storage across the adapter interface, Drizzle, Kysely, and AWS, including tenant export/import support.
+
+### Patch Changes
+
+- Updated dependencies [29e1618]
+- Updated dependencies [6f3c9c7]
+- Updated dependencies [dec362c]
+  - @authhero/adapter-interfaces@4.20.0
+  - @authhero/proxy@0.11.6
+
 ## 1.11.0
 
 ### Minor Changes
