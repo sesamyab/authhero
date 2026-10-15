@@ -6,7 +6,6 @@ import {
   useRefresh,
 } from "ra-core";
 import { useWatch, useFormContext } from "react-hook-form";
-import { useSearchParams } from "react-router-dom";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
   BooleanInput,
@@ -951,16 +950,6 @@ function SettingsTab() {
 }
 
 function PromptsFormContent() {
-  // Mount the Partials tab on first visit, so it doesn't fetch or render for
-  // anyone who never opens it. It then stays mounted to keep unsaved edits.
-  const [searchParams] = useSearchParams();
-  const [partialsOpened, setPartialsOpened] = useState(
-    searchParams.get("tab") === "partials",
-  );
-  useEffect(() => {
-    if (searchParams.get("tab") === "partials") setPartialsOpened(true);
-  }, [searchParams]);
-
   return (
     <UrlTabs defaultValue="settings" className="w-full">
       <TabsList>
@@ -975,12 +964,8 @@ function PromptsFormContent() {
       <TabsContent value="custom-text" className="mt-4">
         <CustomTextTab />
       </TabsContent>
-      <TabsContent
-        value="partials"
-        forceMount
-        className="mt-4 data-[state=inactive]:hidden"
-      >
-        {partialsOpened && <PartialsTab />}
+      <TabsContent value="partials" className="mt-4">
+        <PartialsTab />
       </TabsContent>
       <TabsContent value="raw" className="mt-4">
         <RawJsonTab />
