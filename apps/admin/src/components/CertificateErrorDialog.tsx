@@ -51,7 +51,7 @@ export function CertificateErrorDialog({
               <a
                 href={serverUrl}
                 target="_blank"
-                rel="noopener"
+                rel="noopener noreferrer"
                 className="underline"
               >
                 {serverUrl}
@@ -72,7 +72,7 @@ export function CertificateErrorDialog({
               <a
                 href="https://github.com/FiloSottile/mkcert"
                 target="_blank"
-                rel="noopener"
+                rel="noopener noreferrer"
                 className="underline"
               >
                 mkcert

@@ -246,6 +246,7 @@ export const SimpleFormIteratorItem = React.forwardRef(
     );
   },
 );
+SimpleFormIteratorItem.displayName = "SimpleFormIteratorItem";
 
 export interface SimpleFormIteratorItemProps extends SimpleFormIteratorItemBaseProps {
   disabled?: boolean;

@@ -480,7 +480,7 @@ export const getAuthProvider = (
 const authProvider = getAuthProvider(getSelectedDomainFromStorage());
 
 // Create a debounced http client to prevent parallel token requests
-let pendingRequests = new Map<string, Promise<any>>();
+const pendingRequests = new Map<string, Promise<any>>();
 export interface HttpOptions extends RequestInit {
   headers?: HeadersInit;
 }
@@ -628,7 +628,7 @@ const authorizedHttpClient = (url: string, options: HttpOptions = {}) => {
         let json;
         try {
           json = JSON.parse(text);
-        } catch (e) {
+        } catch {
           json = text;
         }
 
@@ -688,7 +688,7 @@ const authorizedHttpClient = (url: string, options: HttpOptions = {}) => {
         let json;
         try {
           json = JSON.parse(text);
-        } catch (e) {
+        } catch {
           json = text;
         }
 
@@ -852,7 +852,7 @@ export const createOrganizationHttpClient = (organizationId: string) => {
           let json;
           try {
             json = JSON.parse(text);
-          } catch (e) {
+          } catch {
             json = text;
           }
 

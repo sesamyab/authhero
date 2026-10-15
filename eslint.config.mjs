@@ -3,6 +3,14 @@ import pluginJs from "@eslint/js";
 import tseslint from "typescript-eslint";
 import pluginReactConfig from "eslint-plugin-react/configs/recommended.js";
 import { fixupConfigRules } from "@eslint/compat";
+import { createRequire } from "node:module";
+
+// eslint-plugin-react-hooks is a dependency of apps/admin only, so resolve
+// it from there rather than from the workspace root.
+const requireFromAdmin = createRequire(
+  new URL("./apps/admin/package.json", import.meta.url),
+);
+const reactHooks = requireFromAdmin("eslint-plugin-react-hooks");
 
 export default [
   { files: ["**/*.{js,mjs,cjs,ts,jsx,tsx}"] },
@@ -61,6 +69,19 @@ export default [
             "Don't replace ctx.env during a request (#140); only applyConfigMiddleware may copy it.",
         },
       ],
+    },
+  },
+  {
+    // apps/admin is a typed React codebase: PropTypes are redundant, and the
+    // react-admin data layer is deliberately loosely typed, so `any` is
+    // reported as a warning (cleanup backlog) instead of failing CI.
+    files: ["apps/admin/src/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    rules: {
+      "react/prop-types": "off",
+      "react/no-unescaped-entities": "off",
+      "react-hooks/exhaustive-deps": "warn",
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 ];

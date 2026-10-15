@@ -209,8 +209,8 @@ function ProxyRouteDialog({
               placeholder="/*, /account/*, /api/*"
             />
             <p className="text-xs text-muted-foreground">
-              Exact match, prefix, or <code>/prefix/*</code>. <code>/*</code>{" "}
-              matches everything.
+              Exact match, prefix, or <code>/prefix/*</code>.{" "}
+              <code>{"/*"}</code> matches everything.
             </p>
           </div>
           <div className="flex flex-col gap-1">

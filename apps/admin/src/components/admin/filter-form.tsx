@@ -508,6 +508,7 @@ export const FilterButtonMenuItem = React.forwardRef<
     </div>
   );
 });
+FilterButtonMenuItem.displayName = "FilterButtonMenuItem";
 
 export interface FilterButtonMenuItemProps {
   filter: React.ReactElement<any>;

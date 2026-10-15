@@ -144,7 +144,7 @@ function parseResource(resourcePath: string) {
 function escapeLuceneValue(value: unknown): string {
   const str = String(value);
   return str.replace(
-    /[\\"+\-!(){}\[\]^~*?:/]|&&|\|\|/g,
+    /[\\"+\-!(){}[\]^~*?:/]|&&|\|\|/g,
     (match) => `\\${match}`,
   );
 }
