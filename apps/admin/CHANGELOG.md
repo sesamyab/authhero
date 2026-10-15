@@ -1,5 +1,13 @@
 # @authhero/admin
 
+## 0.22.1
+
+### Patch Changes
+
+- d1f55c1: Bump the widget used by the branding and prompt partials previews to 0.41.1.
+- f3ec06c: Run the admin test suite without `--passWithNoTests`.
+- d6b370c: Fix all ESLint errors in the admin app, including replacing every explicit `any` with a real type, so `pnpm admin lint` passes. `lint` no longer rewrites files; use `lint:fix` for that.
+
 ## 0.22.0
 
 ### Minor Changes
