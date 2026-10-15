@@ -31,7 +31,7 @@ export const ToggleFilterButton = ({
   className,
 }: {
   label: React.ReactElement | string;
-  value: any;
+  value: Record<string, unknown>;
   className?: string;
   size?: "default" | "sm" | "lg" | "icon" | null | undefined;
 }) => {
@@ -56,7 +56,10 @@ export const ToggleFilterButton = ({
   );
 };
 
-const toggleFilter = (value: any, filters: any) => {
+const toggleFilter = (
+  value: Record<string, unknown>,
+  filters: Record<string, unknown>,
+) => {
   const isSelected = matches(
     pickBy(value, (val: unknown) => typeof val !== "undefined"),
   )(filters);
@@ -73,5 +76,8 @@ const toggleFilter = (value: any, filters: any) => {
   return { ...filters, ...value };
 };
 
-const getIsSelected = (value: any, filters: any) =>
+const getIsSelected = (
+  value: Record<string, unknown>,
+  filters: Record<string, unknown>,
+) =>
   matches(pickBy(value, (val: unknown) => typeof val !== "undefined"))(filters);

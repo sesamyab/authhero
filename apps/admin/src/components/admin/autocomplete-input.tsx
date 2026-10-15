@@ -81,12 +81,10 @@ export const AutocompleteInput = (
     ChoicesProps & {
       className?: string;
       disableValue?: string;
-      filterToQuery?: (searchText: string) => any;
+      filterToQuery?: (searchText: string) => unknown;
       translateChoice?: boolean;
       placeholder?: string;
-      inputText?:
-        | React.ReactNode
-        | ((option: any | undefined) => React.ReactNode);
+      inputText?: React.ReactNode | ((option: unknown) => React.ReactNode);
     } & Pick<PopoverProps, "modal">,
 ) => {
   const {
@@ -131,7 +129,7 @@ export const AutocompleteInput = (
   );
 
   const getInputText = useCallback(
-    (selectedChoice: any) => {
+    (selectedChoice: unknown) => {
       if (typeof inputText === "function") {
         return inputText(selectedChoice);
       }
@@ -152,7 +150,7 @@ export const AutocompleteInput = (
   });
 
   const handleChange = useCallback(
-    (choice: any) => {
+    (choice: unknown) => {
       if (field.value === getChoiceValue(choice) && !isRequired) {
         field.onChange("");
         setFilterValue("");

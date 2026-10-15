@@ -296,8 +296,8 @@ export function VersionsTab() {
               Roll back to version {pendingRollback?.number}?
             </DialogTitle>
             <DialogDescription>
-              This will replace the action's current code, runtime, secrets and
-              dependencies with this version, redeploy it, and record a new
+              This will replace the action&apos;s current code, runtime, secrets
+              and dependencies with this version, redeploy it, and record a new
               version capturing the rollback.
             </DialogDescription>
           </DialogHeader>

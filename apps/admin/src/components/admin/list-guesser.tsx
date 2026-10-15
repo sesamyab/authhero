@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
-import type { RaRecord } from "ra-core";
+import type { InferredType, InferredTypeMap, RaRecord } from "ra-core";
 import {
   ListBase,
   getElementsFromRecords,
@@ -101,9 +101,12 @@ const ListViewGuesser = (
 
   useEffect(() => {
     if (data && data.length > 0 && !child) {
-      const inferredElements = getElementsFromRecords(data, listFieldTypes);
+      const inferredElements = getElementsFromRecords(
+        data,
+        listFieldTypes as unknown as InferredTypeMap,
+      );
       const inferredChild = new InferredElement(
-        listFieldTypes.table,
+        listFieldTypes.table as unknown as InferredType,
         null,
         inferredElements,
       );
@@ -133,7 +136,6 @@ const ListViewGuesser = (
         .sort();
 
       if (enableLog) {
-        // eslint-disable-next-line no-console
         console.log(
           `Guessed List:
 
@@ -159,13 +161,19 @@ ${inferredChild.getRepresentation()}
   return <ListView {...rest}>{child}</ListView>;
 };
 
+type ComponentProps = {
+  source: string;
+  reference: string;
+  children: React.ReactNode;
+};
+
 const listFieldTypes = {
   table: {
-    component: (props: any) => {
+    component: (props: ComponentProps) => {
       return <DataTable {...props} />;
     },
     representation: (
-      _props: any,
+      _props: ComponentProps,
       children: { getRepresentation: () => string }[],
     ) =>
       `        <DataTable>
@@ -176,18 +184,18 @@ ${children
   },
 
   reference: {
-    component: (props: any) => (
+    component: (props: ComponentProps) => (
       <DataTable.Col source={props.source}>
         <ReferenceField source={props.source} reference={props.reference} />
       </DataTable.Col>
     ),
-    representation: (props: any) =>
+    representation: (props: ComponentProps) =>
       `<DataTable.Col source="${props.source}">
                 <ReferenceField source="${props.source}" reference="${props.reference}" />
             </DataTable.Col>`,
   },
   array: {
-    component: ({ children, ...props }: any) => {
+    component: ({ children, ...props }: ComponentProps) => {
       const childrenArray = React.Children.toArray(children);
       return (
         <DataTable.Col source={props.source}>
@@ -195,9 +203,10 @@ ${children
             <SingleFieldList>
               <BadgeField
                 source={
-                  childrenArray.length > 0 &&
-                  React.isValidElement(childrenArray[0]) &&
-                  (childrenArray[0].props as any).source
+                  (childrenArray.length > 0 &&
+                    React.isValidElement(childrenArray[0]) &&
+                    (childrenArray[0].props as { source: string })
+                      .source) as string
                 }
               />
             </SingleFieldList>
@@ -205,7 +214,10 @@ ${children
         </DataTable.Col>
       );
     },
-    representation: (props: any, children: any) =>
+    representation: (
+      props: ComponentProps,
+      children: { getProps: () => { source: string } }[],
+    ) =>
       `<DataTable.Col source="${props.source}">
                <ArrayField source="${props.source}">
                     <SingleFieldList>
@@ -217,19 +229,19 @@ ${children
             </DataTable.Col>`,
   },
   referenceArray: {
-    component: (props: any) => (
+    component: (props: ComponentProps) => (
       <DataTable.Col {...props}>
         <ReferenceArrayField {...props} />
       </DataTable.Col>
     ),
-    representation: (props: any) =>
+    representation: (props: ComponentProps) =>
       `<DataTable.Col source="${props.source}">
                 <ReferenceArrayField source="${props.source}" reference="${props.reference}" />
             </DataTable.Col>`,
   },
   string: {
     component: DataTable.Col,
-    representation: (props: any) =>
+    representation: (props: ComponentProps) =>
       `<DataTable.Col source="${props.source}" />`,
   },
 };

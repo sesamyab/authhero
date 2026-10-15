@@ -67,12 +67,10 @@ export const AutocompleteArrayInput = (
     ChoicesProps & {
       className?: string;
       disableValue?: string;
-      filterToQuery?: (searchText: string) => any;
+      filterToQuery?: (searchText: string) => unknown;
       translateChoice?: boolean;
       placeholder?: string;
-      inputText?:
-        | React.ReactNode
-        | ((option: any | undefined) => React.ReactNode);
+      inputText?: React.ReactNode | ((option: unknown) => React.ReactNode);
     },
 ) => {
   const { filterToQuery = DefaultFilterToQuery, inputText } = props;
@@ -101,9 +99,9 @@ export const AutocompleteArrayInput = (
   const listRef = React.useRef<HTMLDivElement>(null);
   const [open, setOpen] = React.useState(false);
 
-  const handleUnselect = useEvent((choice: any) => {
+  const handleUnselect = useEvent((choice: unknown) => {
     field.onChange(
-      field.value.filter((v: any) => v !== getChoiceValue(choice)),
+      field.value.filter((v: unknown) => v !== getChoiceValue(choice)),
     );
   });
 
@@ -131,7 +129,7 @@ export const AutocompleteArrayInput = (
   const [filterValue, setFilterValue] = React.useState("");
 
   const getInputText = useCallback(
-    (selectedChoice: any) => {
+    (selectedChoice: unknown) => {
       if (typeof inputText === "function") {
         return inputText(selectedChoice);
       }

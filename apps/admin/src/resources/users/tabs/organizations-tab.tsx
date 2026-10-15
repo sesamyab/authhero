@@ -210,7 +210,6 @@ function ManageRolesCell() {
   useEffect(() => {
     setSelected(new Set());
     if (open) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, orgId, userId]);
 
   if (!record || !userId) return null;

@@ -79,8 +79,8 @@ export function SendTestButton({ templateName }: SendTestButtonProps) {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             Renders the current (unsaved) subject and body with sample data and
-            sends it via the tenant's email provider. The subject is prefixed
-            with <code>[TEST]</code>.
+            sends it via the tenant&apos;s email provider. The subject is
+            prefixed with <code>[TEST]</code>.
           </p>
           <div className="flex flex-col gap-2">
             <Label htmlFor="test-email-to">Recipient</Label>

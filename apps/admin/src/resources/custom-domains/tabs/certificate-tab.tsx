@@ -90,7 +90,7 @@ export function CertificateTab() {
         />
         {certificate && !certValid && (
           <span className="text-xs text-destructive">
-            Doesn't look like a PEM-encoded certificate.
+            Doesn&apos;t look like a PEM-encoded certificate.
           </span>
         )}
       </div>
@@ -112,7 +112,7 @@ export function CertificateTab() {
         />
         {privateKey && !keyValid && (
           <span className="text-xs text-destructive">
-            Doesn't look like a PEM-encoded private key.
+            Doesn&apos;t look like a PEM-encoded private key.
           </span>
         )}
       </div>

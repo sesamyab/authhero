@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import type { InferredTypeMap } from "ra-core";
+import type { InferredType, InferredTypeMap } from "ra-core";
 import {
   EditBase,
   InferredElement,
@@ -62,9 +62,12 @@ const EditViewGuesser = (props: EditGuesserProps) => {
 
   useEffect(() => {
     if (record && !child) {
-      const inferredElements = getElementsFromRecords([record], editFieldTypes);
+      const inferredElements = getElementsFromRecords(
+        [record],
+        editFieldTypes as unknown as InferredTypeMap,
+      );
       const inferredChild = new InferredElement(
-        editFieldTypes.form,
+        editFieldTypes.form as unknown as InferredType,
         null,
         inferredElements,
       );
@@ -86,7 +89,6 @@ const EditViewGuesser = (props: EditGuesserProps) => {
         )
         .sort();
 
-      // eslint-disable-next-line no-console
       console.log(
         `Guessed Edit:
 
@@ -111,15 +113,21 @@ ${representation}
   return <EditView {...rest}>{child}</EditView>;
 };
 
+type ComponentProps = {
+  source: string;
+  reference: string;
+  children: ReactElement;
+};
+
 interface EditGuesserProps {
   enableLog?: boolean;
 }
 
-const editFieldTypes: InferredTypeMap = {
+const editFieldTypes = {
   form: {
-    component: (props: any) => <SimpleForm {...props} />,
+    component: (props: ComponentProps) => <SimpleForm {...props} />,
     representation: (
-      _props: any,
+      _props: ComponentProps,
       children: { getRepresentation: () => string }[],
     ) => `        <SimpleForm>
 ${children
@@ -128,28 +136,30 @@ ${children
         </SimpleForm>`,
   },
   reference: {
-    component: (props: any) => (
+    component: (props: ComponentProps) => (
       <ReferenceInput source={props.source} reference={props.reference}>
         <AutocompleteInput />
       </ReferenceInput>
     ),
-    representation: (props: any) =>
+    representation: (props: ComponentProps) =>
       `<ReferenceInput source="${props.source}" reference="${props.reference}">
                   <AutocompleteInput />
               </ReferenceInput>`,
   },
   referenceArray: {
-    component: (props: any) => <ReferenceArrayInput {...props} />,
-    representation: (props: any) =>
+    component: (props: ComponentProps) => <ReferenceArrayInput {...props} />,
+    representation: (props: ComponentProps) =>
       `<ReferenceArrayInput source="${props.source}" reference="${props.reference}" />`,
   },
   boolean: {
-    component: (props: any) => <BooleanInput {...props} />,
-    representation: (props: any) => `<BooleanInput source="${props.source}" />`,
+    component: (props: ComponentProps) => <BooleanInput {...props} />,
+    representation: (props: ComponentProps) =>
+      `<BooleanInput source="${props.source}" />`,
   },
   string: {
-    component: (props: any) => <TextInput {...props} />,
-    representation: (props: any) => `<TextInput source="${props.source}" />`,
+    component: (props: ComponentProps) => <TextInput {...props} />,
+    representation: (props: ComponentProps) =>
+      `<TextInput source="${props.source}" />`,
   },
 };
 

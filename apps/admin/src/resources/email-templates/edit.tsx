@@ -195,9 +195,9 @@ function EmailTemplateFormContent() {
             <div className="flex items-center justify-between gap-4">
               <p className="text-xs text-muted-foreground">
                 Templates contain zero-width Unicode characters that pad the
-                inbox preview text so email clients don't leak unrelated body
-                content into the preview line. They look odd in the editor but
-                should not be removed.
+                inbox preview text so email clients don&apos;t leak unrelated
+                body content into the preview line. They look odd in the editor
+                but should not be removed.
               </p>
               <div className="flex shrink-0 items-center gap-2">
                 <Switch
