@@ -92,7 +92,7 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-const REQUIRED_MARK = ' <span class="required" aria-hidden="true">*</span>';
+const REQUIRED_MARK = '<span class="required" aria-hidden="true">*</span>';
 
 /**
  * Markup follows the widget's own partial styling (`.prompt-partial` CSS):

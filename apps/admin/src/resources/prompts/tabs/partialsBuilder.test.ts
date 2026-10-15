@@ -44,7 +44,7 @@ describe("isValidMapTarget", () => {
 describe("serializeFields", () => {
   it("generates a required, mapped text field with a floating label and asterisk", () => {
     expect(serializeFields([firstName])).toBe(
-      '<div class="ulp-field"><input type="text" id="ulp-first-name" name="ulp-first-name" required data-authhero-map="given_name" placeholder=" "><label for="ulp-first-name">First name <span class="required" aria-hidden="true">*</span></label></div>',
+      '<div class="ulp-field"><input type="text" id="ulp-first-name" name="ulp-first-name" required data-authhero-map="given_name" placeholder=" "><label for="ulp-first-name">First name<span class="required" aria-hidden="true">*</span></label></div>',
     );
   });
 
@@ -66,7 +66,7 @@ describe("serializeFields", () => {
       { label: "Terms", name: "terms", type: "checkbox", required: true },
     ]);
     expect(html).toBe(
-      '<div class="ulp-field"><label for="ulp-terms"><input type="checkbox" id="ulp-terms" name="ulp-terms" required> Terms <span class="required" aria-hidden="true">*</span></label></div>',
+      '<div class="ulp-field"><label for="ulp-terms"><input type="checkbox" id="ulp-terms" name="ulp-terms" required> Terms<span class="required" aria-hidden="true">*</span></label></div>',
     );
   });
 
