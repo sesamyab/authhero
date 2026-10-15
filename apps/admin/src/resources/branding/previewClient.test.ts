@@ -1,6 +1,24 @@
 // @vitest-environment jsdom
 // @vitest-environment-options {"url": "https://localhost:3000/admin"}
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type Mock,
+} from "vitest";
+
+interface MockWindow {
+  document: {
+    write: Mock;
+    open: Mock;
+    close: Mock;
+    body: { appendChild: Mock; innerHTML: string };
+    createElement: Mock;
+  };
+}
 
 // Hoist mocks to avoid reference errors
 const { mockAuthorizedHttpClient, mockCreateOrganizationHttpClient } =
@@ -42,17 +60,17 @@ describe("previewClient", () => {
     vi.clearAllMocks();
     localStorage.clear();
     // Default mock implementations
-    (getDomainFromStorage as any).mockReturnValue([]);
-    (getSelectedDomainFromStorage as any).mockReturnValue("");
-    (formatDomain as any).mockImplementation((d: string) =>
+    (getDomainFromStorage as Mock).mockReturnValue([]);
+    (getSelectedDomainFromStorage as Mock).mockReturnValue("");
+    (formatDomain as Mock).mockImplementation((d: string) =>
       d.replace(/^https?:\/\//, "").trim(),
     );
-    (buildUrlWithProtocol as any).mockImplementation((url: string) => {
+    (buildUrlWithProtocol as Mock).mockImplementation((url: string) => {
       if (url.startsWith("http")) return url;
       return `https://${url}`;
     });
-    (getConfigValue as any).mockReturnValue("https://default-api.example.com");
-    (isSingleTenantForDomain as any).mockReturnValue(false);
+    (getConfigValue as Mock).mockReturnValue("https://default-api.example.com");
+    (isSingleTenantForDomain as Mock).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -61,14 +79,16 @@ describe("previewClient", () => {
 
   describe("getApiUrl", () => {
     it("returns the restApiUrl from domain config when available", () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (getDomainFromStorage as any).mockReturnValue([
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (getDomainFromStorage as Mock).mockReturnValue([
         {
           url: "https://auth.example.com",
           restApiUrl: "https://api.example.com/custom",
         },
       ]);
-      (formatDomain as any)
+      (formatDomain as Mock)
         .mockReturnValueOnce("auth.example.com") // for formatDomain(selectedDomain)
         .mockReturnValueOnce("auth.example.com"); // for formatDomain(d.url) in find
 
@@ -78,15 +98,17 @@ describe("previewClient", () => {
     });
 
     it("uses buildUrlWithProtocol for restApiUrl", () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (getDomainFromStorage as any).mockReturnValue([
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (getDomainFromStorage as Mock).mockReturnValue([
         {
           url: "auth.example.com",
           restApiUrl: "api.example.com",
         },
       ]);
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (buildUrlWithProtocol as any).mockImplementation((url: string) => {
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (buildUrlWithProtocol as Mock).mockImplementation((url: string) => {
         if (url === "api.example.com") return "https://api.example.com";
         return url;
       });
@@ -98,12 +120,16 @@ describe("previewClient", () => {
     });
 
     it("falls back to selected domain when restApiUrl is not available", () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (getDomainFromStorage as any).mockReturnValue([
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (getDomainFromStorage as Mock).mockReturnValue([
         { url: "auth.example.com" },
       ]);
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
 
       const result = getApiUrl();
 
@@ -112,10 +138,10 @@ describe("previewClient", () => {
     });
 
     it("falls back to config value when no domain config or selected domain", () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("");
-      (getDomainFromStorage as any).mockReturnValue([]);
-      (formatDomain as any).mockReturnValue("");
-      (buildUrlWithProtocol as any).mockImplementation((url: string) =>
+      (getSelectedDomainFromStorage as Mock).mockReturnValue("");
+      (getDomainFromStorage as Mock).mockReturnValue([]);
+      (formatDomain as Mock).mockReturnValue("");
+      (buildUrlWithProtocol as Mock).mockImplementation((url: string) =>
         url.startsWith("http") ? url : `https://${url}`,
       );
 
@@ -128,16 +154,16 @@ describe("previewClient", () => {
     });
 
     it("handles domain config lookup with formatted domain comparison", () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue(
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
         "https://auth.example.com",
       );
-      (getDomainFromStorage as any).mockReturnValue([
+      (getDomainFromStorage as Mock).mockReturnValue([
         {
           url: "auth.example.com",
           restApiUrl: "https://api.example.com",
         },
       ]);
-      (formatDomain as any)
+      (formatDomain as Mock)
         .mockReturnValueOnce("auth.example.com") // formatDomain(selectedDomain)
         .mockReturnValueOnce("auth.example.com"); // formatDomain(d.url)
 
@@ -149,10 +175,10 @@ describe("previewClient", () => {
     });
 
     it("skips domain config entries that don't match the selected domain", () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue(
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
         "target.example.com",
       );
-      (getDomainFromStorage as any).mockReturnValue([
+      (getDomainFromStorage as Mock).mockReturnValue([
         {
           url: "other.example.com",
           restApiUrl: "https://api-other.example.com",
@@ -162,7 +188,7 @@ describe("previewClient", () => {
           restApiUrl: "https://api-target.example.com",
         },
       ]);
-      (formatDomain as any)
+      (formatDomain as Mock)
         .mockReturnValueOnce("target.example.com") // formatDomain(selectedDomain)
         .mockReturnValueOnce("other.example.com") // formatDomain(d.url) first match
         .mockReturnValueOnce("target.example.com"); // formatDomain(d.url) second match
@@ -177,9 +203,11 @@ describe("previewClient", () => {
     const tenantId = "test-tenant-123";
 
     it("returns authorizedHttpClient for single-tenant domains", () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
 
       const client = getHttpClient(tenantId);
 
@@ -189,10 +217,12 @@ describe("previewClient", () => {
 
     it("returns createOrganizationHttpClient result for multi-tenant domains", () => {
       const mockOrgClient = vi.fn();
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(false);
-      (mockCreateOrganizationHttpClient as any).mockReturnValue(mockOrgClient);
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(false);
+      (mockCreateOrganizationHttpClient as Mock).mockReturnValue(mockOrgClient);
 
       const client = getHttpClient(tenantId);
 
@@ -201,11 +231,11 @@ describe("previewClient", () => {
     });
 
     it("formats the selected domain before checking if single-tenant", () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue(
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
         "https://auth.example.com  ",
       );
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
 
       getHttpClient(tenantId);
 
@@ -215,10 +245,12 @@ describe("previewClient", () => {
 
     it("passes the tenant id to createOrganizationHttpClient", () => {
       const mockOrgClient = vi.fn();
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(false);
-      (mockCreateOrganizationHttpClient as any).mockReturnValue(mockOrgClient);
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(false);
+      (mockCreateOrganizationHttpClient as Mock).mockReturnValue(mockOrgClient);
 
       const anotherTenantId = "other-tenant-456";
       getHttpClient(anotherTenantId);
@@ -231,7 +263,7 @@ describe("previewClient", () => {
 
   describe("openFullPreview", () => {
     const tenantId = "test-tenant";
-    let mockWindow: any;
+    let mockWindow: MockWindow;
 
     beforeEach(() => {
       // Setup mock window.open
@@ -250,7 +282,7 @@ describe("previewClient", () => {
           })),
         },
       };
-      vi.spyOn(window, "open").mockReturnValue(mockWindow);
+      vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
     });
 
     afterEach(() => {
@@ -258,14 +290,16 @@ describe("previewClient", () => {
     });
 
     it("opens a blank tab with a loading message", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
       mockAuthorizedHttpClient.mockResolvedValue({
         body: "<html><body>Preview content</body></html>",
       });
 
-      const windowOpenSpy = window.open as any;
+      const windowOpenSpy = window.open as Mock;
 
       await openFullPreview({ tenantId });
 
@@ -276,10 +310,14 @@ describe("previewClient", () => {
     });
 
     it("fetches the preview HTML from the branding templates endpoint", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
       mockAuthorizedHttpClient.mockResolvedValue({
         body: "<html><body>Preview content</body></html>",
       });
@@ -295,10 +333,14 @@ describe("previewClient", () => {
     });
 
     it("includes tenant-id and Content-Type headers in the request", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
       mockAuthorizedHttpClient.mockResolvedValue({
         body: "<html><body>Preview</body></html>",
       });
@@ -312,10 +354,14 @@ describe("previewClient", () => {
     });
 
     it("sends screen, body, branding, and theme options in the request body", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
       mockAuthorizedHttpClient.mockResolvedValue({
         body: "<html><body>Preview</body></html>",
       });
@@ -333,12 +379,16 @@ describe("previewClient", () => {
     });
 
     it("uses the correct HTTP client based on domain configuration", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(false);
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(false);
       const mockOrgClient = vi.fn();
-      (mockCreateOrganizationHttpClient as any).mockReturnValue(mockOrgClient);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (mockCreateOrganizationHttpClient as Mock).mockReturnValue(mockOrgClient);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
       mockOrgClient.mockResolvedValue({
         body: "<html><body>Preview</body></html>",
       });
@@ -351,10 +401,14 @@ describe("previewClient", () => {
     });
 
     it("replaces the loading shell with a sandboxed iframe containing the HTML", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
 
       const previewHtml = "<html><body>Preview content</body></html>";
       mockAuthorizedHttpClient.mockResolvedValue({ body: previewHtml });
@@ -389,10 +443,14 @@ describe("previewClient", () => {
     });
 
     it("handles response objects with a body property", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
 
       const previewHtml = "<html><body>Preview</body></html>";
       mockAuthorizedHttpClient.mockResolvedValue({ body: previewHtml });
@@ -409,10 +467,14 @@ describe("previewClient", () => {
     });
 
     it("throws an error if the response body is not a string", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
 
       mockAuthorizedHttpClient.mockResolvedValue({ body: 123 });
 
@@ -425,10 +487,14 @@ describe("previewClient", () => {
     });
 
     it("throws an error if the response body is an empty string", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
 
       mockAuthorizedHttpClient.mockResolvedValue({ body: "" });
 
@@ -441,10 +507,14 @@ describe("previewClient", () => {
     });
 
     it("renders error message when fetch fails", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
 
       mockAuthorizedHttpClient.mockRejectedValue(new Error("Network error"));
 
@@ -457,10 +527,14 @@ describe("previewClient", () => {
     });
 
     it("handles response without body property", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
 
       mockAuthorizedHttpClient.mockResolvedValue({});
 
@@ -470,10 +544,14 @@ describe("previewClient", () => {
     });
 
     it("closes the window document before appending the iframe", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
 
       const previewHtml = "<html><body>Preview</body></html>";
       mockAuthorizedHttpClient.mockResolvedValue({ body: previewHtml });
@@ -499,10 +577,14 @@ describe("previewClient", () => {
     });
 
     it("omits optional parameters when not provided", async () => {
-      (getSelectedDomainFromStorage as any).mockReturnValue("auth.example.com");
-      (formatDomain as any).mockReturnValue("auth.example.com");
-      (isSingleTenantForDomain as any).mockReturnValue(true);
-      (buildUrlWithProtocol as any).mockReturnValue("https://auth.example.com");
+      (getSelectedDomainFromStorage as Mock).mockReturnValue(
+        "auth.example.com",
+      );
+      (formatDomain as Mock).mockReturnValue("auth.example.com");
+      (isSingleTenantForDomain as Mock).mockReturnValue(true);
+      (buildUrlWithProtocol as Mock).mockReturnValue(
+        "https://auth.example.com",
+      );
       mockAuthorizedHttpClient.mockResolvedValue({
         body: "<html><body>Preview</body></html>",
       });

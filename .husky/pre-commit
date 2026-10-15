@@ -1,5 +1,9 @@
 set -e
 
+# Keep this hook fast (seconds, not minutes). The full build and every
+# package's test suite run in CI (.github/workflows/unit-tests.yml), which
+# branch protection requires before merge.
+
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "gitleaks not found. Install with: brew install gitleaks"
   exit 1
@@ -7,21 +11,16 @@ fi
 gitleaks protect --staged --verbose --redact
 
 # Format staged files and re-stage them, so formatting never accumulates into
-# unrelated diffs. Runs before the build so what is tested is what is committed.
+# unrelated diffs.
 pnpm exec lint-staged
 
-# Build every workspace package in dependency order. pnpm -r resolves the
-# topological order from workspace deps, so a package's dist/*.d.ts always
-# exist before the next package type-checks against them (the manual ordered
-# list this replaced was fragile: e.g. cloudflare built before multi-tenancy).
-pnpm -r --filter './packages/**' build
-
-pnpm kysely test
-pnpm drizzle test
-pnpm saml test
-pnpm authhero test
-pnpm aws-adapter test
-pnpm multi-tenancy test
-pnpm cloudflare test
-pnpm widget test
-pnpm admin test
+# Type-check only the packages/apps that have staged changes. Dependencies are
+# type-checked against their built dist/*.d.ts, so if this fails right after a
+# pull, run `pnpm -r --filter './packages/**' build` once.
+for dir in $(git diff --cached --name-only --diff-filter=ACMR \
+    | sed -nE 's#^((packages|apps)/[^/]+)/.*#\1#p' | sort -u); do
+  if [ -f "$dir/tsconfig.json" ] && [ "$dir" != "packages/ui-widget" ]; then
+    echo "Type-checking $dir"
+    (cd "$dir" && pnpm exec tsc --noEmit)
+  fi
+done

@@ -41,9 +41,10 @@ function ImportModeConfiguration() {
         <CardTitle>Upstream Auth Server (migration)</CardTitle>
         <CardDescription>
           Credentials of the upstream OIDC auth server (Auth0, Cognito, etc.) to
-          verify passwords against when Import Mode is enabled. The connection's
-          name is sent as the <code>realm</code> in the password-realm grant —
-          the upstream client must have the password grant type enabled.
+          verify passwords against when Import Mode is enabled. The
+          connection&apos;s name is sent as the <code>realm</code> in the
+          password-realm grant — the upstream client must have the password
+          grant type enabled.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

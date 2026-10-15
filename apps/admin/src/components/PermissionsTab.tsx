@@ -311,9 +311,9 @@ function AddPermissionButton({
             </div>
             {withOrgScope && orgsLoadFailed && (
               <p className="text-sm text-destructive">
-                Couldn't load organizations. Retry before adding a permission —
-                otherwise it may be granted tenant-wide instead of scoped to an
-                organization.
+                Couldn&apos;t load organizations. Retry before adding a
+                permission — otherwise it may be granted tenant-wide instead of
+                scoped to an organization.
               </p>
             )}
             {withOrgScope && organizations.length > 0 && (
@@ -418,9 +418,9 @@ function RemovePermissionCell({ resource }: { resource: "roles" | "users" }) {
             <DialogTitle>Remove permission</DialogTitle>
           </DialogHeader>
           <p className="text-sm">
-            Remove permission "{record.permission_name}" from "
-            {record.resource_server_name ?? record.resource_server_identifier}"?
-            This cannot be undone.
+            Remove permission &quot;{record.permission_name}&quot; from &quot;
+            {record.resource_server_name ?? record.resource_server_identifier}
+            &quot;? This cannot be undone.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>

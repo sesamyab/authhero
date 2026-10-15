@@ -1,6 +1,6 @@
 import { fetchUtils, type DataProvider, type UpdateParams } from "ra-core";
 import { createManagementClient, resolveAccessToken } from "./authProvider";
-import { ManagementClient } from "auth0";
+import { ManagementClient, type Management } from "auth0";
 import { unflattenDomainMetadata } from "./components/custom-domains/domainMetadataUtils";
 import {
   EMAIL_TEMPLATE_DEFINITIONS,
@@ -16,6 +16,18 @@ function isNotFoundError(err: unknown): boolean {
     (err as { statusCode?: number }).statusCode === 404
   );
 }
+
+type CustomTextArgs = Parameters<
+  ManagementClient["prompts"]["customText"]["get"]
+>;
+type MembersListQuery = NonNullable<
+  Parameters<ManagementClient["organizations"]["members"]["list"]>[1]
+>;
+type PartialGroup = Parameters<
+  ManagementClient["prompts"]["partials"]["get"]
+>[0];
+type CustomTextPrompt = CustomTextArgs[0];
+type CustomTextLanguage = CustomTextArgs[1];
 
 type EmailTemplateDefaults = Record<string, { body: string; subject: string }>;
 
@@ -80,20 +92,32 @@ async function fetchEmailTemplateRecord(
   }
 }
 
-// Add this at the top of the file with other imports
-function stringify(obj: Record<string, any>): string {
+// Loosely typed JSON object as returned by the management API
+type ApiRecord = Record<string, unknown>;
+
+// Unwrap the SDK response wrapper ({ response }) if present
+// List responses are either a bare array or an object holding the array under a key
+type ListResponse<K extends string> =
+  | ApiRecord[]
+  | ({ total?: number } & { [P in K]?: ApiRecord[] });
+
+function unwrapResponse<T = ApiRecord>(result: unknown): T {
+  return ((result as { response?: unknown }).response || result) as T;
+}
+
+function stringify(obj: ApiRecord): string {
   return Object.entries(obj)
     .filter(([_, value]) => value !== undefined)
     .map(
       ([key, value]) =>
-        `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
+        `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
     )
     .join("&");
 }
 
 // Remove null and undefined values from an object (used for create operations where empty form fields become null)
-function removeNullValues(data: Record<string, any>): Record<string, any> {
-  const cleaned: Record<string, any> = {};
+function removeNullValues(data: ApiRecord): ApiRecord {
+  const cleaned: ApiRecord = {};
   for (const key of Object.keys(data)) {
     if (data[key] !== null && data[key] !== undefined) {
       cleaned[key] = data[key];
@@ -144,7 +168,7 @@ function parseResource(resourcePath: string) {
 function escapeLuceneValue(value: unknown): string {
   const str = String(value);
   return str.replace(
-    /[\\"+\-!(){}\[\]^~*?:/]|&&|\|\|/g,
+    /[\\"+\-!(){}[\]^~*?:/]|&&|\|\|/g,
     (match) => `\\${match}`,
   );
 }
@@ -215,18 +239,19 @@ function splitScopeId(id: string | number): readonly [string, string] {
 async function fetchResourceServerScopes(
   managementClient: ManagementClient,
   rsId: string,
-): Promise<{ scopes: any[] }> {
+): Promise<{ scopes: Management.ResourceServerScope[] }> {
   const result = await managementClient.resourceServers.get(rsId);
-  const rs = (result as any).response || result;
+  const rs = unwrapResponse(result);
   return { scopes: Array.isArray(rs.scopes) ? rs.scopes : [] };
 }
 
 // Helper to normalize SDK response format variations
 function normalizeSDKResponse(
-  result: any,
+  result: unknown,
   resourceKey: string,
-): { data: any[]; total: number } {
-  const response = (result as any).response || {};
+): { data: ApiRecord[]; total: number } {
+  const response = ((result as { response?: unknown }).response ||
+    {}) as ApiRecord;
 
   // Handle direct array format
   if (Array.isArray(response)) {
@@ -235,9 +260,10 @@ function normalizeSDKResponse(
 
   // Handle SDK wrapper format with resource key
   if (response[resourceKey]) {
+    const items = response[resourceKey] as ApiRecord[];
     return {
-      data: response[resourceKey],
-      total: response.total || response.length || response[resourceKey].length,
+      data: items,
+      total: (response.total as number | undefined) || items.length,
     };
   }
 
@@ -261,7 +287,7 @@ function createHeaders(tenantId?: string): Headers {
 
 // Helper for client-side paging, sorting, and search on pre-fetched data
 interface ClientSideListParams {
-  data: any[];
+  data: ApiRecord[];
   page: number;
   perPage: number;
   sortField?: string;
@@ -280,13 +306,13 @@ function clientSideListHandler({
   searchQuery,
   searchFields = ["name"],
   idKey = "id",
-}: ClientSideListParams): { data: any[]; total: number } {
+}: ClientSideListParams): { data: ApiRecord[]; total: number } {
   let filtered = data;
 
   // Apply client-side search filter
   if (searchQuery) {
     const query = searchQuery.toLowerCase();
-    filtered = data.filter((item: any) =>
+    filtered = data.filter((item: ApiRecord) =>
       searchFields.some((field) =>
         item[field]?.toString().toLowerCase().includes(query),
       ),
@@ -295,7 +321,7 @@ function clientSideListHandler({
 
   // Apply client-side sorting
   if (sortField) {
-    filtered = [...filtered].sort((a: any, b: any) => {
+    filtered = [...filtered].sort((a: ApiRecord, b: ApiRecord) => {
       const aVal = a[sortField] || "";
       const bVal = b[sortField] || "";
       const comparison = String(aVal).localeCompare(String(bVal));
@@ -310,7 +336,7 @@ function clientSideListHandler({
   const paged = filtered.slice(startIndex, endIndex);
 
   return {
-    data: paged.map((item: any) => ({
+    data: paged.map((item: ApiRecord) => ({
       id: item[idKey] || item.id,
       ...item,
     })),
@@ -321,11 +347,11 @@ function clientSideListHandler({
 // Helper to handle singleton resource fetching
 async function fetchSingleton(
   resource: string,
-  fetcher: () => Promise<any>,
-): Promise<{ data: any[]; total: number }> {
+  fetcher: () => Promise<unknown>,
+): Promise<{ data: ApiRecord[]; total: number }> {
   try {
     const result = await fetcher();
-    const data = (result as any).response || result;
+    const data = unwrapResponse(result);
     // Spread data first, then override id to ensure it matches the resource name
     return {
       data: [{ ...data, id: resource }],
@@ -552,7 +578,7 @@ export default (
       const sdkHandlers: Record<
         string,
         {
-          fetch: (client: ManagementClient) => Promise<any>;
+          fetch: (client: ManagementClient) => Promise<unknown>;
           resourceKey: string;
           idKey: string;
         }
@@ -621,7 +647,7 @@ export default (
           idKey: "id",
         },
         hooks: {
-          fetch: (client: any) => client.hooks.list(),
+          fetch: (client) => client.hooks.list(),
           resourceKey: "hooks",
           idKey: "hook_id",
         },
@@ -636,7 +662,7 @@ export default (
           rsId,
         );
         return clientSideListHandler({
-          data: scopes.map((s: any) => ({
+          data: scopes.map((s: Management.ResourceServerScope) => ({
             id: `${rsId}:${s.value}`,
             resource_server_id: rsId,
             value: s.value,
@@ -660,7 +686,7 @@ export default (
           handler.resourceKey,
         );
         return {
-          data: data.map((item: any) => ({
+          data: data.map((item: ApiRecord) => ({
             id: item[handler.idKey] || item.id,
             ...item,
           })),
@@ -963,7 +989,7 @@ export default (
 
       // Handle custom-domains with client-side paging and search
       if (resource === "custom-domains" && !resourcePath.includes("/")) {
-        const result = await (managementClient as any).customDomains.list();
+        const result = await managementClient.customDomains.list();
         const { data: allDomains } = normalizeSDKResponse(
           result,
           "custom_domains",
@@ -1026,7 +1052,7 @@ export default (
           .join(" ");
         const mergedQ =
           [rawQ, extraLucene].filter(Boolean).join(" ") || undefined;
-        const query: any = {
+        const query: ApiRecord = {
           include_totals: true,
           page: page - 1,
           per_page: perPage,
@@ -1046,7 +1072,7 @@ export default (
         const logsArray = Array.isArray(logsData) ? logsData : [];
 
         return {
-          data: logsArray.map((log: any) => ({
+          data: logsArray.map((log: ApiRecord) => ({
             id: log.log_id || log.id,
             ...log,
           })),
@@ -1082,9 +1108,9 @@ export default (
           page: page - 1,
           per_page: perPage,
         });
-        const response = (result as any).response || result;
+        const response = unwrapResponse<ListResponse<"organizations">>(result);
 
-        let organizationsData: any[];
+        let organizationsData: ApiRecord[];
         let total: number;
 
         if (Array.isArray(response)) {
@@ -1099,7 +1125,7 @@ export default (
         }
 
         return {
-          data: organizationsData.map((org: any) => ({
+          data: organizationsData.map((org: ApiRecord) => ({
             id: org.id || org.organization_id,
             user_id: userId,
             name: org.name,
@@ -1119,7 +1145,7 @@ export default (
       const headers = createHeaders(tenantId);
 
       const { q, ...filterFields } = params.filter || {};
-      const query: any = {
+      const query: ApiRecord = {
         include_totals: true,
         page: page - 1,
         per_page: perPage,
@@ -1154,7 +1180,7 @@ export default (
           res.json[resource] ?? res.json[resource.replace(/-/g, "_")];
         return {
           data:
-            list?.map((item: any) => ({
+            list?.map((item: ApiRecord) => ({
               id: item.id,
               ...item,
             })) || [],
@@ -1171,7 +1197,7 @@ export default (
 
       if (resource === "partials") {
         const partials = await managementClient.prompts.partials.get(
-          params.id as any,
+          params.id as PartialGroup,
         );
         return { data: { id: params.id, partials } };
       }
@@ -1184,7 +1210,9 @@ export default (
           managementClient,
           rsId,
         );
-        const scope = scopes.find((s: any) => s.value === value);
+        const scope = scopes.find(
+          (s: Management.ResourceServerScope) => s.value === value,
+        );
         if (!scope) {
           throw new Error(
             `Scope "${value}" not found on resource server ${rsId}`,
@@ -1203,7 +1231,7 @@ export default (
       // SDK resource handlers for getOne
       const sdkGetHandlers: Record<
         string,
-        { fetch: (id: string) => Promise<any>; idKey: string }
+        { fetch: (id: string) => Promise<unknown>; idKey: string }
       > = {
         users: {
           fetch: (id) => managementClient.users.get(id),
@@ -1214,15 +1242,15 @@ export default (
           idKey: "client_id",
         },
         "custom-domains": {
-          fetch: (id) => (managementClient as any).customDomains.get(id),
+          fetch: (id) => managementClient.customDomains.get(id),
           idKey: "custom_domain_id",
         },
         flows: {
-          fetch: (id) => (managementClient as any).flows.get(id),
+          fetch: (id) => managementClient.flows.get(id),
           idKey: "id",
         },
         hooks: {
-          fetch: (id) => (managementClient as any).hooks.get(id),
+          fetch: (id) => managementClient.hooks.get(id),
           idKey: "hook_id",
         },
         forms: {
@@ -1235,7 +1263,7 @@ export default (
       if (handler) {
         const result = await handler.fetch(params.id as string);
         // Unwrap SDK response wrapper if present
-        const data = (result as any).response || result;
+        const data = unwrapResponse(result);
 
         const record = {
           id: data[handler.idKey] || data.id,
@@ -1390,8 +1418,8 @@ export default (
         }
         try {
           const result = await managementClient.prompts.customText.get(
-            prompt as any,
-            language as any,
+            prompt as CustomTextPrompt,
+            language as CustomTextLanguage,
           );
           return {
             data: {
@@ -1442,7 +1470,7 @@ export default (
 
           const tenants = res.json.tenants || [];
           const tenant = tenants.find(
-            (t: any) => t.id === params.id || t.tenant_id === params.id,
+            (t: ApiRecord) => t.id === params.id || t.tenant_id === params.id,
           );
 
           if (tenant) {
@@ -1553,7 +1581,7 @@ export default (
           rsId,
         );
         return clientSideListHandler({
-          data: scopes.map((s: any) => ({
+          data: scopes.map((s: Management.ResourceServerScope) => ({
             id: `${rsId}:${s.value}`,
             resource_server_id: rsId,
             value: s.value,
@@ -1581,7 +1609,7 @@ export default (
           { headers },
         );
         return {
-          data: res.json.sessions.map((item: any) => ({
+          data: res.json.sessions.map((item: ApiRecord) => ({
             id: item.id,
             ...item,
           })),
@@ -1623,7 +1651,7 @@ export default (
         );
         const grants = res.json.grants || [];
         return {
-          data: grants.map((item: any) => ({ id: item.id, ...item })),
+          data: grants.map((item: ApiRecord) => ({ id: item.id, ...item })),
           total: res.json.length || grants.length || 0,
         };
       }
@@ -1634,12 +1662,12 @@ export default (
           params.id as string,
           { page: 0, per_page: 100 },
         );
-        const permissions = (result as any).response || result;
+        const permissions = unwrapResponse<ListResponse<"permissions">>(result);
         const permissionsArray = Array.isArray(permissions)
           ? permissions
           : permissions.permissions || [];
         return clientSideListHandler({
-          data: permissionsArray.map((item: any) => ({
+          data: permissionsArray.map((item: ApiRecord) => ({
             id: `${item.resource_server_identifier}:${item.permission_name}`,
             ...item,
           })),
@@ -1663,12 +1691,12 @@ export default (
           params.id as string,
           { page: 0, per_page: 100 },
         );
-        const permissions = (result as any).response || result;
+        const permissions = unwrapResponse<ListResponse<"permissions">>(result);
         const permissionsArray = Array.isArray(permissions)
           ? permissions
           : permissions.permissions || [];
         return clientSideListHandler({
-          data: permissionsArray.map((item: any) => ({
+          data: permissionsArray.map((item: ApiRecord) => ({
             id: `${item.resource_server_identifier}:${item.permission_name}`,
             ...item,
           })),
@@ -1691,10 +1719,10 @@ export default (
         const result = await managementClient.users.roles.list(
           params.id as string,
         );
-        const roles = (result as any).response || result;
+        const roles = unwrapResponse(result);
         const rolesArray = Array.isArray(roles) ? roles : [];
         return {
-          data: rolesArray.map((item: any) => ({
+          data: rolesArray.map((item: ApiRecord) => ({
             id: item.id,
             ...item,
           })),
@@ -1712,22 +1740,26 @@ export default (
         // Auth0-style keyset checkpoint pagination — `from` is an opaque
         // cursor, not a numeric offset — and returns no total, which the
         // numbered <ListPagination> cannot consume.
+        // The SDK types only describe the checkpoint pagination parameters
+        const membersQuery = {
+          page: page - 1,
+          per_page: perPage,
+          include_totals: true,
+        };
         const result = await managementClient.organizations.members.list(
           params.id as string,
-          {
-            page: page - 1,
-            per_page: perPage,
-            include_totals: true,
-          } as any,
+          membersQuery as MembersListQuery,
         );
-        const response = (result as any).response || result;
+        const response = unwrapResponse<ListResponse<"members">>(result);
         const membersData = Array.isArray(response)
           ? response
           : response.members || [];
-        const total = response.total || membersData.length;
+        const total =
+          (Array.isArray(response) ? undefined : response.total) ||
+          membersData.length;
 
         return {
-          data: membersData.map((item: any) => ({
+          data: membersData.map((item: ApiRecord) => ({
             id: `${params.id}_${item.user_id}`,
             organization_id: params.id,
             ...item,
@@ -1748,14 +1780,16 @@ export default (
             per_page: perPage,
           },
         );
-        const response = (result as any).response || result;
+        const response = unwrapResponse<ListResponse<"invitations">>(result);
         const invitationsData = Array.isArray(response)
           ? response
           : response.invitations || [];
-        const total = response.total || invitationsData.length;
+        const total =
+          (Array.isArray(response) ? undefined : response.total) ||
+          invitationsData.length;
 
         return {
-          data: invitationsData.map((item: any) => ({
+          data: invitationsData.map((item: ApiRecord) => ({
             id: item.id,
             organization_id: params.id,
             ...item,
@@ -1773,9 +1807,9 @@ export default (
             per_page: perPage,
           },
         );
-        const response = (result as any).response || result;
+        const response = unwrapResponse<ListResponse<"organizations">>(result);
 
-        let organizationsData: any[];
+        let organizationsData: ApiRecord[];
         let total: number;
 
         if (Array.isArray(response)) {
@@ -1790,7 +1824,7 @@ export default (
         }
 
         return {
-          data: organizationsData.map((org: any) => ({
+          data: organizationsData.map((org: ApiRecord) => ({
             id: org.id || org.organization_id,
             user_id: params.id,
             name: org.name,
@@ -1812,14 +1846,16 @@ export default (
           ...buildPaginationParams(),
           client_id: params.id as string,
         });
-        const response = (result as any).response || result;
+        const response = unwrapResponse<ListResponse<"client_grants">>(result);
         const grantsData = Array.isArray(response)
           ? response
           : response.client_grants || [];
-        const total = response.total || grantsData.length;
+        const total =
+          (Array.isArray(response) ? undefined : response.total) ||
+          grantsData.length;
 
         return {
-          data: grantsData.map((item: any) => ({
+          data: grantsData.map((item: ApiRecord) => ({
             id: item.id,
             ...item,
           })),
@@ -1859,7 +1895,7 @@ export default (
         const logsArray = Array.isArray(logsData) ? logsData : [];
 
         return {
-          data: logsArray.map((log: any) => ({
+          data: logsArray.map((log: ApiRecord) => ({
             id: log.log_id || log.id,
             ...log,
           })),
@@ -1880,7 +1916,7 @@ export default (
       );
 
       return {
-        data: res.json[resource].map((item: any) => ({
+        data: res.json[resource].map((item: ApiRecord) => ({
           id: item.id,
           ...item,
         })),
@@ -1895,7 +1931,7 @@ export default (
 
       if (resource === "partials") {
         await managementClient.prompts.partials.set(
-          params.id as any,
+          params.id as PartialGroup,
           params.data.partials,
         );
         return { data: { id: params.id, partials: params.data.partials } };
@@ -1909,7 +1945,9 @@ export default (
           managementClient,
           rsId,
         );
-        const idx = scopes.findIndex((s: any) => s.value === originalValue);
+        const idx = scopes.findIndex(
+          (s: Management.ResourceServerScope) => s.value === originalValue,
+        );
         if (idx === -1) {
           throw new Error(`Scope "${originalValue}" no longer exists`);
         }
@@ -1918,12 +1956,16 @@ export default (
           cleanParams.data.description ?? scopes[idx].description ?? "";
         if (
           newValue !== originalValue &&
-          scopes.some((s: any, i: number) => i !== idx && s.value === newValue)
+          scopes.some(
+            (s: Management.ResourceServerScope, i: number) =>
+              i !== idx && s.value === newValue,
+          )
         ) {
           throw new Error(`Scope "${newValue}" already exists`);
         }
-        const newScopes = scopes.map((s: any, i: number) =>
-          i === idx ? { value: newValue, description: newDescription } : s,
+        const newScopes = scopes.map(
+          (s: Management.ResourceServerScope, i: number) =>
+            i === idx ? { value: newValue, description: newDescription } : s,
         );
         await managementClient.resourceServers.update(rsId, {
           scopes: newScopes,
@@ -2058,8 +2100,8 @@ export default (
           throw new Error("Invalid custom-text ID format");
         }
         await managementClient.prompts.customText.set(
-          prompt as any,
-          language as any,
+          prompt as CustomTextPrompt,
+          language as CustomTextLanguage,
           cleanParams.data.texts || {},
         );
         return {
@@ -2082,7 +2124,7 @@ export default (
           await managementClient.branding.update(brandingData);
 
         // Update themes if provided
-        const result: any = {
+        const result: ApiRecord = {
           id: resource,
           ...brandingResult,
         };
@@ -2232,13 +2274,13 @@ export default (
           patch.domain_metadata = data.domain_metadata;
         }
 
-        const result = await (managementClient as any).customDomains.update(
+        const result = await managementClient.customDomains.update(
           params.id as string,
           patch,
         );
         return {
           data: {
-            id: result.custom_domain_id || result.id,
+            id: result.custom_domain_id || (result as { id?: string }).id,
             ...result,
           },
         };
@@ -2296,7 +2338,9 @@ export default (
           managementClient,
           rsId,
         );
-        if (scopes.some((s: any) => s.value === value)) {
+        if (
+          scopes.some((s: Management.ResourceServerScope) => s.value === value)
+        ) {
           throw new Error(`Scope "${value}" already exists`);
         }
         const newScope = { value, description: description || "" };
@@ -2320,8 +2364,8 @@ export default (
           throw new Error("prompt and language are required");
         }
         await managementClient.prompts.customText.set(
-          prompt as any,
-          language as any,
+          prompt as CustomTextPrompt,
+          language as CustomTextLanguage,
           texts || {},
         );
         return {
@@ -2335,53 +2379,91 @@ export default (
       }
 
       // Helper for POST requests
-      const post = async (endpoint: string, body: any) =>
+      const post = async (endpoint: string, body: unknown) =>
         httpClient(`${apiUrl}/api/v2/${endpoint}`, {
           method: "POST",
           body: JSON.stringify(body),
           headers,
         });
 
+      // Adapt a typed SDK create method to take the untyped form data
+      const sdkCreate =
+        <A>(fn: (data: A) => Promise<unknown>) =>
+        (data: ApiRecord) =>
+          fn(data as A) as Promise<ApiRecord>;
+
       // SDK resource handlers for create
       const sdkCreateHandlers: Record<
         string,
-        { create: (data: any) => Promise<any>; idKey: string }
+        { create: (data: ApiRecord) => Promise<ApiRecord>; idKey: string }
       > = {
         users: {
-          create: (data) => managementClient.users.create(data),
+          create: sdkCreate(
+            (data: Parameters<typeof managementClient.users.create>[0]) =>
+              managementClient.users.create(data),
+          ),
           idKey: "user_id",
         },
         clients: {
-          create: (data) => managementClient.clients.create(data),
+          create: sdkCreate(
+            (data: Parameters<typeof managementClient.clients.create>[0]) =>
+              managementClient.clients.create(data),
+          ),
           idKey: "client_id",
         },
         connections: {
-          create: (data) => managementClient.connections.create(data),
+          create: sdkCreate(
+            (data: Parameters<typeof managementClient.connections.create>[0]) =>
+              managementClient.connections.create(data),
+          ),
           idKey: "id",
         },
         roles: {
-          create: (data) => managementClient.roles.create(data),
+          create: sdkCreate(
+            (data: Parameters<typeof managementClient.roles.create>[0]) =>
+              managementClient.roles.create(data),
+          ),
           idKey: "id",
         },
         "resource-servers": {
-          create: (data) => managementClient.resourceServers.create(data),
+          create: sdkCreate(
+            (
+              data: Parameters<
+                typeof managementClient.resourceServers.create
+              >[0],
+            ) => managementClient.resourceServers.create(data),
+          ),
           idKey: "id",
         },
         organizations: {
-          create: (data) => managementClient.organizations.create(data),
+          create: sdkCreate(
+            (
+              data: Parameters<typeof managementClient.organizations.create>[0],
+            ) => managementClient.organizations.create(data),
+          ),
           idKey: "id",
         },
         rules: {
-          create: (data) => managementClient.rules.create(data),
+          create: sdkCreate(
+            (data: Parameters<typeof managementClient.rules.create>[0]) =>
+              managementClient.rules.create(data),
+          ),
           idKey: "id",
         },
         "client-grants": {
-          create: (data) => managementClient.clientGrants.create(data),
+          create: sdkCreate(
+            (
+              data: Parameters<typeof managementClient.clientGrants.create>[0],
+            ) => managementClient.clientGrants.create(data),
+          ),
           idKey: "id",
         },
         "custom-domains": {
-          create: (data) =>
-            (managementClient as any).customDomains.create(data),
+          create: sdkCreate(
+            (
+              data: Parameters<typeof managementClient.customDomains.create>[0],
+            ) => managementClient.customDomains.create(data),
+          ),
           idKey: "custom_domain_id",
         },
       };
@@ -2476,7 +2558,7 @@ export default (
           payload,
         );
         const identities =
-          (result as any).data || (result as any).response || result;
+          (result as { data?: unknown }).data || unwrapResponse(result);
         return {
           data: {
             id: primaryUserId,
@@ -2541,7 +2623,9 @@ export default (
           managementClient,
           rsId,
         );
-        const newScopes = scopes.filter((s: any) => s.value !== value);
+        const newScopes = scopes.filter(
+          (s: Management.ResourceServerScope) => s.value !== value,
+        );
         await managementClient.resourceServers.update(rsId, {
           scopes: newScopes,
         });
@@ -2558,15 +2642,15 @@ export default (
         // Auth0 SDK doesn't have delete, so we set to empty object
         // Our backend also supports DELETE, but using set({}) is compatible with Auth0
         await managementClient.prompts.customText.set(
-          prompt as any,
-          language as any,
+          prompt as CustomTextPrompt,
+          language as CustomTextLanguage,
           {},
         );
         return { data: { id: params.id } };
       }
 
       // Helper for DELETE requests
-      const del = async (endpoint: string, body?: any) =>
+      const del = async (endpoint: string, body?: unknown) =>
         httpClient(`${apiUrl}/api/v2/${endpoint}`, {
           method: "DELETE",
           headers,
@@ -2654,9 +2738,7 @@ export default (
 
       // Custom-domains using SDK
       if (resource === "custom-domains") {
-        await (managementClient as any).customDomains.delete(
-          params.id as string,
-        );
+        await managementClient.customDomains.delete(params.id as string);
         return { data: { id: params.id } };
       }
 
@@ -2715,10 +2797,10 @@ export default (
         ? `${getApiPath(resource)}/${encodeURIComponent(String(params.id))}`
         : getApiPath(resource);
 
-      let body: any = undefined;
+      let body: unknown = undefined;
 
       if (isNestedPermissionsDelete) {
-        const prev: any = params?.previousData ?? {};
+        const prev: ApiRecord = params?.previousData ?? {};
         const parsedFromId = (() => {
           if (!hasId)
             return {

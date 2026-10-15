@@ -1,5 +1,10 @@
 import { Auth0AuthProvider } from "./auth0AuthProvider";
-import { Auth0Client, ICache } from "@auth0/auth0-spa-js";
+import {
+  Auth0Client,
+  ICache,
+  type RedirectLoginOptions,
+} from "@auth0/auth0-spa-js";
+import { fetchUtils, type AuthProvider } from "ra-core";
 import { ManagementClient } from "auth0";
 import {
   getSelectedDomainFromStorage,
@@ -99,7 +104,7 @@ export const createAuth0Client = (domain: string) => {
   // Patch the loginWithRedirect method to prevent multiple calls
   const originalLoginWithRedirect =
     auth0Client.loginWithRedirect.bind(auth0Client);
-  auth0Client.loginWithRedirect = async (options?: any) => {
+  auth0Client.loginWithRedirect = async (options?: RedirectLoginOptions) => {
     const now = Date.now();
 
     // Check if we already have an active session
@@ -351,7 +356,7 @@ export const getAuthProvider = (
         clearManagementClientCache();
         return Promise.resolve();
       },
-      checkError: async (error: any) => {
+      checkError: async (error: { status?: number; statusCode?: number }) => {
         if (error.status === 401 || error.statusCode === 401) {
           clearManagementClientCache();
           return Promise.reject();
@@ -415,7 +420,7 @@ export const getAuthProvider = (
   // Enhance the auth provider to signal when auth operations complete
   return {
     ...baseAuthProvider,
-    login: async (params: any) => {
+    login: async (params: Parameters<AuthProvider["login"]>[0]) => {
       try {
         const result = await baseAuthProvider.login(params);
         if (onAuthComplete) onAuthComplete();
@@ -426,7 +431,7 @@ export const getAuthProvider = (
         throw error;
       }
     },
-    logout: async (params: any) => {
+    logout: async (params: Parameters<AuthProvider["logout"]>[0]) => {
       try {
         clearManagementClientCache();
         const result = await baseAuthProvider.logout(params);
@@ -437,7 +442,9 @@ export const getAuthProvider = (
         throw error;
       }
     },
-    checkAuth: async (params: any): Promise<void> => {
+    checkAuth: async (
+      params: Parameters<AuthProvider["checkAuth"]>[0],
+    ): Promise<void> => {
       try {
         // Don't check auth while on the callback page - we're in the middle of authenticating
         if (window.location.pathname === getBasePath() + "/auth-callback") {
@@ -480,12 +487,16 @@ export const getAuthProvider = (
 const authProvider = getAuthProvider(getSelectedDomainFromStorage());
 
 // Create a debounced http client to prevent parallel token requests
-let pendingRequests = new Map<string, Promise<any>>();
+type HttpResponse = Awaited<ReturnType<typeof fetchUtils.fetchJson>>;
+const pendingRequests = new Map<string, Promise<HttpResponse>>();
 export interface HttpOptions extends RequestInit {
   headers?: HeadersInit;
 }
 
-const authorizedHttpClient = (url: string, options: HttpOptions = {}) => {
+const authorizedHttpClient = (
+  url: string,
+  options: HttpOptions = {},
+): Promise<HttpResponse> => {
   const requestKey = `${url}-${JSON.stringify(options)}`;
 
   // If there's already a pending request for this URL and options, return it
@@ -519,7 +530,7 @@ const authorizedHttpClient = (url: string, options: HttpOptions = {}) => {
     (authRequestInProgress || activeSessions.has(formattedSelectedDomain))
   ) {
     // Return a promise that waits for auth to complete
-    const delayedRequest = new Promise((resolve, reject) => {
+    const delayedRequest = new Promise<HttpResponse>((resolve, reject) => {
       const checkInterval = setInterval(() => {
         if (
           !authRequestInProgress &&
@@ -628,7 +639,7 @@ const authorizedHttpClient = (url: string, options: HttpOptions = {}) => {
         let json;
         try {
           json = JSON.parse(text);
-        } catch (e) {
+        } catch {
           json = text;
         }
 
@@ -688,7 +699,7 @@ const authorizedHttpClient = (url: string, options: HttpOptions = {}) => {
         let json;
         try {
           json = JSON.parse(text);
-        } catch (e) {
+        } catch {
           json = text;
         }
 
@@ -709,8 +720,10 @@ const authorizedHttpClient = (url: string, options: HttpOptions = {}) => {
             const certError = new Error(
               `Unable to connect to ${urlObj.origin}. This may be due to an untrusted SSL certificate.`,
             );
-            (certError as any).isCertificateError = true;
-            (certError as any).serverUrl = urlObj.origin;
+            Object.assign(certError, {
+              isCertificateError: true,
+              serverUrl: urlObj.origin,
+            });
             throw certError;
           }
         }
@@ -773,7 +786,7 @@ export const createOrganizationHttpClient = (organizationId: string) => {
       domainConfig?.connectionMethod === "login" &&
       (authRequestInProgress || activeSessions.has(formattedSelectedDomain))
     ) {
-      const delayedRequest = new Promise((resolve, reject) => {
+      const delayedRequest = new Promise<HttpResponse>((resolve, reject) => {
         const checkInterval = setInterval(() => {
           if (
             !authRequestInProgress &&
@@ -852,7 +865,7 @@ export const createOrganizationHttpClient = (organizationId: string) => {
           let json;
           try {
             json = JSON.parse(text);
-          } catch (e) {
+          } catch {
             json = text;
           }
 
@@ -876,8 +889,10 @@ export const createOrganizationHttpClient = (organizationId: string) => {
               const certError = new Error(
                 `Unable to connect to ${urlObj.origin}. This may be due to an untrusted SSL certificate.`,
               );
-              (certError as any).isCertificateError = true;
-              (certError as any).serverUrl = urlObj.origin;
+              Object.assign(certError, {
+                isCertificateError: true,
+                serverUrl: urlObj.origin,
+              });
               throw certError;
             }
           }

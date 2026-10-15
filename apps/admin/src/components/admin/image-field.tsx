@@ -29,7 +29,7 @@ import type { FieldProps } from "@/lib/field.type";
  * />
  */
 export const ImageField = <
-  RecordType extends Record<string, any> = Record<string, any>,
+  RecordType extends Record<string, unknown> = Record<string, unknown>,
 >(
   props: ImageFieldProps<RecordType>,
 ) => {
@@ -91,10 +91,10 @@ export const ImageField = <
 ImageField.displayName = "ImageField";
 
 export interface ImageFieldProps<
-  RecordType extends Record<string, any> = Record<string, any>,
+  RecordType extends Record<string, unknown> = Record<string, unknown>,
 >
   extends FieldProps<RecordType>, HTMLAttributes<HTMLSpanElement> {
-  defaultValue?: any;
+  defaultValue?: string | number | readonly string[];
   src?: string;
   title?: HintedString<ExtractRecordPaths<RecordType>>;
 }

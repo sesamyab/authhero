@@ -156,7 +156,10 @@ export function App({ tenantId, initialDomain, onAuthComplete }: AppProps) {
           ...args: unknown[]
         ) => {
           try {
-            return await (original as Function).apply(baseProvider, args);
+            return await (original as (...a: unknown[]) => unknown).apply(
+              baseProvider,
+              args,
+            );
           } catch (error) {
             const e = error as {
               isCertificateError?: boolean;

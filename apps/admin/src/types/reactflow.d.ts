@@ -64,8 +64,8 @@ declare module "reactflow" {
     onNodesChange?: (changes: NodeChange[]) => void;
     onEdgesChange?: (changes: EdgeChange[]) => void;
     onConnect?: (connection: Connection) => void;
-    nodeTypes?: Record<string, React.ComponentType<any>>;
-    edgeTypes?: Record<string, React.ComponentType<any>>;
+    nodeTypes?: Record<string, React.ComponentType<Record<string, unknown>>>;
+    edgeTypes?: Record<string, React.ComponentType<Record<string, unknown>>>;
     connectionLineType?: ConnectionLineType;
     fitView?: boolean;
     children?: React.ReactNode;
@@ -75,10 +75,10 @@ declare module "reactflow" {
   export const ReactFlowProvider: React.FC<{ children: React.ReactNode }>;
 
   // Export the Controls component
-  export const Controls: React.FC<any>;
+  export const Controls: React.FC<Record<string, unknown>>;
 
   // Export the Background component
-  export const Background: React.FC<any>;
+  export const Background: React.FC<Record<string, unknown>>;
 
   // Default export
   const ReactFlow: React.FC<ReactFlowProps>;

@@ -92,7 +92,7 @@ export const SimpleFormIterator = (props: SimpleFormIteratorProps) => {
   const records = get(record, finalSource);
   const getArrayInputNewItemDefaults = useGetArrayInputNewItemDefaults(fields);
 
-  const getItemDefaults = useEvent((item: any = undefined) => {
+  const getItemDefaults = useEvent((item: unknown = undefined) => {
     if (item != null) return item;
     return getArrayInputNewItemDefaults(children);
   });
@@ -151,7 +151,7 @@ export interface SimpleFormIteratorProps extends Partial<UseFieldArrayReturn> {
   inline?: boolean;
   meta?: {
     // the type defined in FieldArrayRenderProps says error is boolean, which is wrong.
-    error?: any;
+    error?: unknown;
     submitFailed?: boolean;
   };
   record?: RaRecord;
@@ -246,6 +246,7 @@ export const SimpleFormIteratorItem = React.forwardRef(
     );
   },
 );
+SimpleFormIteratorItem.displayName = "SimpleFormIteratorItem";
 
 export interface SimpleFormIteratorItemProps extends SimpleFormIteratorItemBaseProps {
   disabled?: boolean;

@@ -1,6 +1,6 @@
 {
   "name": "@authhero/admin",
-  "version": "0.21.6",
+  "version": "0.22.0",
   "private": false,
   "packageManager": "pnpm@10.32.1",
   "files": [
@@ -18,7 +18,8 @@
     "build": "vite build",
     "serve": "vite preview",
     "type-check": "tsc --noEmit",
-    "lint": "eslint --fix --ext .js,.jsx,.ts,.tsx ./src",
+    "lint": "eslint --quiet --ext .js,.jsx,.ts,.tsx ./src",
+    "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx ./src",
     "format": "prettier --write ./src",
     "test": "vitest run"
   },

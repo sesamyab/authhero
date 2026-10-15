@@ -290,7 +290,6 @@ export type SaveButtonProps<RecordType extends RaRecord = RaRecord> =
   Props<RecordType> & React.ComponentProps<"button">;
 
 export {
-  // eslint-disable-next-line react-refresh/only-export-components
   useFormField,
   Form,
   FormField,
