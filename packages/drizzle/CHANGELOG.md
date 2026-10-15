@@ -1,5 +1,11 @@
 # @authhero/drizzle
 
+## 1.13.0
+
+### Minor Changes
+
+- 1becf9b: Add the missing `organizationConnections`, `logStreams` and `migrationSources` adapters (with migration `0011`) so drizzle covers all DB-backed `DataAdapters` members.
+
 ## 1.12.0
 
 ### Minor Changes

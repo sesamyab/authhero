@@ -1,5 +1,11 @@
 # @authhero/widget
 
+## 0.41.1
+
+### Patch Changes
+
+- b3e7199: Match the resting label size of floating prompt partial fields to the built-in fields (16px instead of 14px).
+
 ## 0.41.0
 
 ### Minor Changes
