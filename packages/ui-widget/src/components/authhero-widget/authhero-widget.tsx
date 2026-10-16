@@ -2238,8 +2238,6 @@ export class AuthheroWidget {
               />
             ))}
             <div class="form-content">
-              {this.renderPromptPartial(screen, "form-content-start")}
-
               {/* Social buttons section - order controlled by CSS */}
               {socialComponents.length > 0 && (
                 <div class="social-section" part="social-section">
@@ -2277,6 +2275,10 @@ export class AuthheroWidget {
 
               {/* Form fields section - order controlled by CSS */}
               <div class="fields-section" part="fields-section">
+                {/* Inside the fields section so the partial follows the
+                    CSS-controlled order of social buttons / divider / fields
+                    instead of being pinned above the social buttons. */}
+                {this.renderPromptPartial(screen, "form-content-start")}
                 {isSearchableChoiceList && (
                   <input
                     type="text"
@@ -2342,9 +2344,8 @@ export class AuthheroWidget {
                       </div>
                     )}
                 </div>
+                {this.renderPromptPartial(screen, "form-content-end")}
               </div>
-
-              {this.renderPromptPartial(screen, "form-content-end")}
 
               {hasPromptPartials && (
                 <div class="form-footer" part="form-footer">
