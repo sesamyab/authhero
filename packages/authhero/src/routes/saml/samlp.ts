@@ -4,7 +4,11 @@ import { UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS } from "../../constants";
 import { X509Certificate } from "@peculiar/x509";
 import { nanoid } from "nanoid";
 import { Bindings, Variables } from "../../types";
-import { AuthorizationResponseMode } from "@authhero/adapter-interfaces";
+import {
+  AuthorizationResponseMode,
+  LogTypes,
+} from "@authhero/adapter-interfaces";
+import { logMessage } from "../../helpers/logging";
 import { createSamlMetadata, parseSamlRequestQuery } from "../../helpers/saml";
 import { stringifyAuth0Client } from "../../utils/client-info";
 import { setTenantId } from "../../helpers/set-tenant-id";
@@ -118,6 +122,14 @@ const getByClient_id = defineRoute({
     ctx.set("client_id", client.client_id);
     setTenantId(ctx, client.tenant.id);
 
+    // Fire-and-forget; never alters the response.
+    const logRejected = (description: string) =>
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_LOGIN,
+        description: `SAML: ${description}`,
+        details: { client_id, reason: description },
+      });
+
     const samlRequest = await parseSamlRequestQuery(SAMLRequest);
 
     // Fail closed when the deployer has flagged this client as requiring
@@ -130,6 +142,7 @@ const getByClient_id = defineRoute({
       | { require_signed_requests?: boolean }
       | undefined;
     if (samlpAddon?.require_signed_requests) {
+      logRejected("SAMLRequest signature required but cannot be verified");
       throw new JSONHTTPException(400, {
         error: "invalid_request",
         error_description:
@@ -146,6 +159,7 @@ const getByClient_id = defineRoute({
     const acsUrl =
       samlRequest["samlp:AuthnRequest"]["@_AssertionConsumerServiceURL"];
     if (!acsUrl) {
+      logRejected("AssertionConsumerServiceURL missing on SAMLRequest");
       throw new JSONHTTPException(400, {
         error: "invalid_request",
         error_description:
@@ -158,6 +172,9 @@ const getByClient_id = defineRoute({
         allowSubDomainWildcards: true,
       })
     ) {
+      logRejected(
+        `AssertionConsumerServiceURL ${acsUrl} is not in the client's allowed callbacks`,
+      );
       throw new JSONHTTPException(400, {
         error: "invalid_request",
         error_description:
@@ -190,6 +207,19 @@ const getByClient_id = defineRoute({
         auth0Client: stringifyAuth0Client(ctx.get("auth0_client")),
       },
     );
+
+    logMessage(ctx, client.tenant.id, {
+      type: LogTypes.INFORMATION,
+      description: "SAML authentication request received",
+      login_session_id: loginSession.id,
+      details: {
+        client_id,
+        issuer,
+        acs_url: acsUrl,
+        request_id: samlRequest["samlp:AuthnRequest"]["@_ID"],
+        login_session_id: loginSession.id,
+      },
+    });
 
     return ctx.redirect(`/u/login/identifier?state=${loginSession.id}`);
   },

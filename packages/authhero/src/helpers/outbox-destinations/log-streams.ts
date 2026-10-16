@@ -36,6 +36,7 @@ interface LogStreamData {
     };
     response?: { statusCode: number; body?: unknown };
     execution_id?: string;
+    login_session_id?: string;
   };
 }
 
@@ -96,6 +97,9 @@ function toPayload(event: AuditEvent): LogStreamPayload {
           },
         }),
         ...(event.execution_id ? { execution_id: event.execution_id } : {}),
+        ...(event.login_session_id
+          ? { login_session_id: event.login_session_id }
+          : {}),
       },
     },
   };
