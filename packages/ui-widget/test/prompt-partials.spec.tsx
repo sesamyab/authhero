@@ -49,14 +49,19 @@ describe("prompt partials", () => {
 
     const root = page.root!.shadowRoot!;
     const form = root.querySelector("form")!;
-    const formContent = form.querySelector(".form-content")!;
+    const fieldsSection = form.querySelector(".fields-section")!;
     const formFooter = form.querySelector(".form-footer")!;
     const secondaryActions = form.querySelector(".secondary-actions")!;
 
     expect(form.querySelectorAll(".prompt-partial")).toHaveLength(6);
+    // Inside the fields section so they follow the social/divider/fields
+    // ordering instead of being pinned above the social buttons.
     expect(
-      formContent.firstElementChild?.getAttribute("data-insertion-point"),
+      fieldsSection.firstElementChild?.getAttribute("data-insertion-point"),
     ).toBe("form-content-start");
+    expect(
+      fieldsSection.lastElementChild?.getAttribute("data-insertion-point"),
+    ).toBe("form-content-end");
     expect(
       formFooter.firstElementChild?.getAttribute("data-insertion-point"),
     ).toBe("form-footer-start");
