@@ -55,6 +55,9 @@ function toLogInsert(event: AuditEvent): LogInsert {
         },
       }),
       ...(event.execution_id ? { execution_id: event.execution_id } : {}),
+      ...(event.login_session_id
+        ? { login_session_id: event.login_session_id }
+        : {}),
     },
   };
 }

@@ -2077,6 +2077,7 @@ export async function createFrontChannelAuthResponse(
       params.authParams,
       samlUser,
       session_id,
+      params.loginSession?.id,
     );
   }
 

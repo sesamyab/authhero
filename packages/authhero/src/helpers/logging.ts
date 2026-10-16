@@ -177,6 +177,12 @@ export type LogParams = {
    */
   execution_id?: string;
   /**
+   * The login session (the `state`) this event belongs to. Merged into
+   * `details` so one login flow can be traced across /authorize, /u/* and
+   * /samlp/* log entries.
+   */
+  login_session_id?: string;
+  /**
    * If true, wait for the log to complete before returning.
    * If false (default), execute logging asynchronously in the background.
    * @default false
@@ -431,6 +437,9 @@ function buildAuditEvent(
     is_mobile: false,
     auth0_client: ctx.var.auth0_client,
     ...(params.execution_id ? { execution_id: params.execution_id } : {}),
+    ...(params.login_session_id
+      ? { login_session_id: params.login_session_id }
+      : {}),
     timestamp: new Date().toISOString(),
   };
 }
@@ -526,6 +535,9 @@ export async function logMessage(
           }),
         }),
         ...(params.execution_id ? { execution_id: params.execution_id } : {}),
+        ...(params.login_session_id
+          ? { login_session_id: params.login_session_id }
+          : {}),
       },
       isMobile: false,
       client_id: ctx.var.client_id,
