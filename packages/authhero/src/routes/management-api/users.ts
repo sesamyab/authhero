@@ -227,6 +227,13 @@ const connectedClientSchema = z.object({
 const connectedClientsWithTotalsSchema = withTotals({
   connected_clients: z.array(connectedClientSchema),
 });
+
+const connectedClientsWithNextSchema = z.object({
+  connected_clients: z.array(connectedClientSchema),
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
+});
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["users"],
@@ -1248,6 +1255,7 @@ const getByUser_idConnectedClients = defineRoute({
             schema: z.union([
               z.array(connectedClientSchema),
               connectedClientsWithTotalsSchema,
+              connectedClientsWithNextSchema,
             ]),
           },
         },
@@ -1258,13 +1266,16 @@ const getByUser_idConnectedClients = defineRoute({
   }),
   handler: async (ctx) => {
     const { user_id } = ctx.req.valid("param");
-    const { include_totals, page, per_page } = ctx.req.valid("query");
+    const { include_totals, page, per_page, from, take } =
+      ctx.req.valid("query");
     const tenantId = requireTenantId(ctx);
 
     const result = await ctx.env.data.clients.list(tenantId, {
       page,
       per_page,
       include_totals,
+      from,
+      take,
       q: `owner_user_id:${escapeLuceneValue(user_id)}`,
     });
 
@@ -1273,6 +1284,17 @@ const getByUser_idConnectedClients = defineRoute({
     const connectedClients = result.clients
       .filter((client) => client.client_metadata?.status !== "deleted")
       .map((client) => connectedClientSchema.parse(client));
+
+    // Checkpoint (from/take): { connected_clients, next }. The cursor comes
+    // from the adapter's unfiltered last row, so dropping soft-deleted clients
+    // can shorten a page but never breaks the walk. Checkpoint is an authhero
+    // extension here; Auth0 pages this endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      return ctx.json({
+        connected_clients: connectedClients,
+        next: result.totals?.next,
+      });
+    }
 
     if (!include_totals) {
       return ctx.json(connectedClients);
