@@ -1,10 +1,17 @@
 import { and, eq } from "drizzle-orm";
 import type {
+  ListParams,
   OrganizationConnection,
   OrganizationConnectionInsert,
   OrganizationConnectionsAdapter,
 } from "@authhero/adapter-interfaces";
 import { connections, organizationConnections } from "../schema/sqlite";
+import {
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
 type Row = typeof organizationConnections.$inferSelect;
@@ -98,6 +105,47 @@ export function createOrganizationConnectionsAdapter(
         );
       }
       return out;
+    },
+
+    // connection_id is unique per organization, so it is both the sort column
+    // and the keyset tiebreaker.
+    async listCheckpoint(
+      tenantId: string,
+      organizationId: string,
+      params: ListParams = {},
+    ) {
+      const cols = {
+        sortColumn: organizationConnections.connection_id,
+        idColumn: organizationConnections.connection_id,
+        sortOrder: "asc" as const,
+      };
+      const take = keysetTake(params);
+      const rows = await db
+        .select()
+        .from(organizationConnections)
+        .where(
+          and(
+            eq(organizationConnections.tenant_id, tenantId),
+            eq(organizationConnections.organization_id, organizationId),
+            keysetCondition(params, cols),
+          ),
+        )
+        .orderBy(...keysetOrderBy(cols))
+        .limit(take + 1)
+        .all();
+      const { rows: pageRows, next } = sliceWithNext(
+        rows,
+        take,
+        "connection_id",
+        "connection_id",
+      );
+      const out: OrganizationConnection[] = [];
+      for (const row of pageRows) {
+        out.push(
+          toDomain(row, await loadConnection(tenantId, row.connection_id)),
+        );
+      }
+      return { connections: out, next };
     },
 
     async get(tenantId: string, organizationId: string, connectionId: string) {
