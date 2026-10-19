@@ -4,10 +4,26 @@ import type { Form, ListParams } from "@authhero/adapter-interfaces";
 import { forms } from "../schema/sqlite";
 import { removeNullProperties, parseJsonIfString } from "../helpers/transform";
 import { buildLuceneFilter, sanitizeLuceneQuery } from "../helpers/filter";
+import {
+  isKeysetRequest,
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
 const JSON_FIELDS = ["nodes", "start", "ending"] as const;
 const ALLOWED_Q_FIELDS = ["name"];
+
+function sqlToForm(row: typeof forms.$inferSelect) {
+  const { tenant_id: _, ...rest } = row;
+  const parsed: any = { ...rest };
+  for (const field of JSON_FIELDS) {
+    parsed[field] = parseJsonIfString(rest[field] as string);
+  }
+  return removeNullProperties(parsed);
+}
 
 export function createFormsAdapter(db: DrizzleDb) {
   return {
@@ -110,6 +126,38 @@ export function createFormsAdapter(db: DrizzleDb) {
       }
       const whereClause = and(...conditions);
 
+      // Keyset (checkpoint) pagination: from/take. Fixed created_at desc order
+      // with an id tiebreaker and no total.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: forms.created_at,
+          idColumn: forms.id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const cond = keysetCondition(params, cols);
+        const rows = await db
+          .select()
+          .from(forms)
+          .where(cond ? and(whereClause, cond) : whereClause)
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1);
+        const { rows: pageRows, next } = sliceWithNext(
+          rows,
+          take,
+          "created_at",
+          "id",
+        );
+        const keysetForms = pageRows.map(sqlToForm);
+        return {
+          forms: keysetForms,
+          start: 0,
+          limit: take,
+          length: keysetForms.length,
+          next,
+        };
+      }
+
       let query = db.select().from(forms).where(whereClause).$dynamic();
 
       if (sort?.sort_by) {
@@ -122,14 +170,7 @@ export function createFormsAdapter(db: DrizzleDb) {
       }
 
       const results = await query.offset(page * per_page).limit(per_page);
-      const mapped = results.map((row) => {
-        const { tenant_id: _, ...rest } = row;
-        const parsed: any = { ...rest };
-        for (const field of JSON_FIELDS) {
-          parsed[field] = parseJsonIfString(rest[field] as string);
-        }
-        return removeNullProperties(parsed);
-      });
+      const mapped = results.map(sqlToForm);
 
       if (!include_totals) {
         return { forms: mapped };

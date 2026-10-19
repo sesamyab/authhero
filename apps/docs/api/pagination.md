@@ -57,6 +57,11 @@ GET /api/v2/users?take=50&from=eyJpIjoiZW1haWx8...
 | `GET /api/v2/resource-servers`                           | `resource_servers` |
 | `GET /api/v2/roles`                                      | `roles`            |
 | `GET /api/v2/roles/{id}/permissions`                     | `permissions`      |
+| `GET /api/v2/hooks`                                      | `hooks`            |
+| `GET /api/v2/actions/actions`                            | `actions`          |
+| `GET /api/v2/forms`                                      | `forms`            |
+| `GET /api/v2/flows`                                      | `flows`            |
+| `GET /api/v2/grants`                                     | `grants`           |
 | `GET /api/v2/users/{id}/sessions`                        | `sessions`         |
 | `GET /api/v2/users/{id}/logs`                            | `logs`             |
 | `GET /api/v2/users/{id}/organizations`                   | `organizations`    |
@@ -74,6 +79,7 @@ Other list endpoints accept `from`/`take` in their query schema but ignore them 
 - Checkpoint walks are ordered by creation time descending (users/logs also accept ascending). On `/users` only `sort=created_at:1|-1` is honored and on `/logs` only `sort=date:1|-1`; any other sort column returns `400`. `/roles/{id}/permissions` walks by resource server identifier, then permission name, ascending. `/roles` and `/roles/{id}/permissions` return `400` when `sort` is combined with checkpoint mode; the remaining endpoints use a fixed order and ignore `sort`.
 - `/users/{id}/permissions` walks by resource server identifier, permission name, then organization id, ascending, and returns `400` when `sort` or `q` is combined with checkpoint mode. `/users/{id}/roles` walks distinct global roles by role id; a role held under several organization scopes is not repeated. `/users/{id}/sessions` and `/users/{id}/organizations` walk newest first; `/users/{id}/logs` follows `/logs` (date, descending by default).
 - `/organizations/{id}/invitations` walks newest first and ignores `sort` in checkpoint mode. `/organizations/{id}/enabled_connections` walks by connection id ascending. `/organizations/{id}/members/{user_id}/roles` walks distinct roles by role id.
+- `/hooks`, `/actions/actions`, `/forms`, `/flows` and `/grants` walk newest first with a fixed order (`sort` is ignored); `q` and the `/grants` filters stay in effect.
 - A cursor is bound to the sort it was minted under — replaying it with a different `sort` returns `400`.
 - `GET /roles/{id}/users` caps `take` (and `per_page`) at 100, matching Auth0.
 

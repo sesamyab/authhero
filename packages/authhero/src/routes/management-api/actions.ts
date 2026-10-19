@@ -16,8 +16,12 @@ import { parseSort } from "../../utils/sort";
 import { HTTPException } from "hono/http-exception";
 
 import { defineRoute } from "../../utils/define-route";
-import { requireTenantId, withTotals, listResponse } from "./helpers";
+import { requireTenantId, withTotals, withNext, listResponse } from "./helpers";
 const actionsWithTotalsSchema = withTotals({
+  actions: z.array(actionResponseSchema),
+});
+
+const actionsWithNextSchema = withNext({
   actions: z.array(actionResponseSchema),
 });
 
@@ -91,6 +95,7 @@ const getRoot = defineRoute({
             schema: z.union([
               z.array(actionResponseSchema),
               actionsWithTotalsSchema,
+              actionsWithNextSchema,
             ]),
           },
         },
@@ -100,7 +105,8 @@ const getRoot = defineRoute({
   }),
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
-    const { page, per_page, include_totals, sort, q } = ctx.req.valid("query");
+    const { page, per_page, include_totals, sort, q, from, take } =
+      ctx.req.valid("query");
 
     const result = await ctx.env.data.actions.list(tenantId, {
       page,
@@ -108,6 +114,8 @@ const getRoot = defineRoute({
       include_totals,
       sort: parseSort(sort),
       q,
+      from,
+      take,
     });
 
     // Strip secret values from response
@@ -115,6 +123,12 @@ const getRoot = defineRoute({
       ...action,
       secrets: action.secrets?.map((s) => ({ name: s.name })),
     }));
+
+    // Checkpoint (from/take): { actions, next }. Checkpoint is an authhero
+    // extension here; Auth0 pages this endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      return ctx.json({ actions: actions, next: result.next });
+    }
 
     return ctx.json(
       listResponse(include_totals, { ...result, actions }, "actions"),
