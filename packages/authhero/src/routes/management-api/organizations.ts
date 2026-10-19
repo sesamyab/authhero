@@ -1178,7 +1178,14 @@ const getByIdInvitations = defineRoute({
         take,
         q: `organization_id:${escapeLuceneValue(organization.id)}`,
       });
-      return ctx.json({ invitations: keyset.invites, next: keyset.next });
+      // Defensive: adapters that ignore `q` (DynamoDB) must not hand back
+      // other organizations' invitations.
+      return ctx.json({
+        invitations: keyset.invites.filter(
+          (invite) => invite.organization_id === organization.id,
+        ),
+        next: keyset.next,
+      });
     }
 
     const result = await ctx.env.data.invites.list(tenant_id, {

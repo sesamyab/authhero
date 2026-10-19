@@ -2,6 +2,7 @@ import {
   UserRolesAdapter,
   Role,
   ListParams,
+  ListUserRolesCheckpointResponse,
   roleSchema,
 } from "@authhero/adapter-interfaces";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
@@ -10,6 +11,7 @@ import {
   putItem,
   deleteItem,
   queryItems,
+  queryWithPagination,
   getItem,
   stripDynamoDBFields,
   removeNullProperties,
@@ -111,6 +113,40 @@ export function createUserRolesAdapter(ctx: DynamoDBContext): UserRolesAdapter {
       }
 
       return roles;
+    },
+
+    // Ordered by the sort key, USER_ROLE#<role id>, within one partition. User
+    // roles are partitioned by organization, so (as with `list`) only the
+    // partition for `organizationId` is read: omitted or empty means the global
+    // partition. A page can come back shorter than `take` when an assignment
+    // points at a role that no longer exists. `take` is defaulted so a bare
+    // call still runs in keyset mode.
+    async listCheckpoint(
+      tenantId: string,
+      userId: string,
+      params: ListParams = {},
+      organizationId?: string,
+    ): Promise<ListUserRolesCheckpointResponse> {
+      const result = await queryWithPagination<UserRoleItem>(
+        ctx,
+        userRoleKeys.pk(tenantId, userId, organizationId),
+        { from: params.from, take: params.take ?? 50 },
+        { skPrefix: userRoleKeys.skPrefix() },
+      );
+
+      const roles: Role[] = [];
+      for (const userRole of result.items) {
+        const roleItem = await getItem<RoleItem>(
+          ctx,
+          roleKeys.pk(tenantId),
+          roleKeys.sk(userRole.role_id),
+        );
+        if (roleItem) {
+          roles.push(toRole(roleItem));
+        }
+      }
+
+      return { roles, next: result.next };
     },
   };
 }

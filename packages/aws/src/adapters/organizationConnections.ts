@@ -2,10 +2,19 @@ import {
   OrganizationConnection,
   OrganizationConnectionInsert,
   OrganizationConnectionsAdapter,
+  ListOrganizationConnectionsCheckpointResponse,
+  ListParams,
 } from "@authhero/adapter-interfaces";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
 import { organizationConnectionKeys, connectionKeys } from "../keys";
-import { getItem, putItem, deleteItem, queryItems, updateItem } from "../utils";
+import {
+  getItem,
+  putItem,
+  deleteItem,
+  queryItems,
+  queryWithPagination,
+  updateItem,
+} from "../utils";
 
 interface OrganizationConnectionItem extends DynamoDBBaseItem {
   tenant_id: string;
@@ -84,6 +93,31 @@ export function createOrganizationConnectionsAdapter(
         params.connection_id,
       );
       return toDomain(item, connection);
+    },
+
+    // Ordered by the sort key, ORG_CONNECTION#<connection id>. `take` is
+    // defaulted so a bare call still runs in keyset mode.
+    async listCheckpoint(
+      tenantId: string,
+      organizationId: string,
+      params: ListParams = {},
+    ): Promise<ListOrganizationConnectionsCheckpointResponse> {
+      const result = await queryWithPagination<OrganizationConnectionItem>(
+        ctx,
+        organizationConnectionKeys.pk(tenantId, organizationId),
+        { from: params.from, take: params.take ?? 50 },
+        { skPrefix: organizationConnectionKeys.skPrefix() },
+      );
+      const connections: OrganizationConnection[] = [];
+      for (const item of result.items) {
+        connections.push(
+          toDomain(
+            item,
+            await loadConnection(ctx, tenantId, item.connection_id),
+          ),
+        );
+      }
+      return { connections, next: result.next };
     },
 
     async list(

@@ -1282,7 +1282,13 @@ const getByUser_idConnectedClients = defineRoute({
     // Filter out soft-deleted clients and project to the slim shape so
     // we never leak secrets or internal config to the connected-apps UI.
     const connectedClients = result.clients
-      .filter((client) => client.client_metadata?.status !== "deleted")
+      .filter(
+        (client) =>
+          client.client_metadata?.status !== "deleted" &&
+          // Defensive: adapters that ignore `q` (DynamoDB) must not hand back
+          // other users' clients.
+          client.owner_user_id === user_id,
+      )
       .map((client) => connectedClientSchema.parse(client));
 
     // Checkpoint (from/take): { connected_clients, next }. The cursor comes
@@ -1362,7 +1368,12 @@ const getByUser_idSessions = defineRoute({
     // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
     // endpoint by offset only.
     if (from !== undefined || take !== undefined) {
-      return ctx.json({ sessions: sessions.sessions, next: sessions.next });
+      // Defensive: adapters that ignore `q` (DynamoDB) must not hand back other
+      // users' sessions.
+      return ctx.json({
+        sessions: sessions.sessions.filter((s) => s.user_id === user_id),
+        next: sessions.next,
+      });
     }
 
     return ctx.json(listResponse(include_totals, sessions, "sessions"));
