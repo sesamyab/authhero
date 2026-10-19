@@ -416,6 +416,11 @@ interface LinkUserToParams {
  * hook, or internal linking code — is safe by construction rather than by
  * remembering to call the right helper.
  *
+ * This performs several writes (repoint, and on promotion also unlink), so
+ * direct callers should pass an adapter bound to a transaction. The user-update
+ * hook already does this via `data.transaction`, so callers going through
+ * `users.update(id, { linked_to })` get atomicity automatically.
+ *
  * Returns the cluster root `userId` was actually linked to, which may differ
  * from the requested `primaryId`.
  */
@@ -433,9 +438,27 @@ export async function linkUserTo({
 
   const rootId = await resolveClusterRootId(userAdapter, tenant_id, primaryId);
 
-  // The target already resolves back to the user being demoted, so this link
-  // would close a loop rather than join a cluster.
+  // The target already resolves back to the user being demoted. When it is a
+  // direct secondary this is a promotion (e.g. the older secondary wins in
+  // post-login linking): swap the roles instead of closing a 2-cycle
+  // (issue #1251).
   if (rootId === userId) {
+    const target = await userAdapter.get(tenant_id, primaryId);
+    const separator = primaryId.indexOf("|");
+    if (target?.linked_to === userId && separator > 0) {
+      // Clear the promoted user's own link first so it is a root, then move
+      // the demoted user's other children onto it, then demote last.
+      await userAdapter.unlink(
+        tenant_id,
+        userId,
+        primaryId.slice(0, separator),
+        primaryId.slice(separator + 1),
+      );
+      await repointSecondaries(userAdapter, tenant_id, userId, primaryId);
+      await userAdapter.update(tenant_id, userId, { linked_to: primaryId });
+      return primaryId;
+    }
+
     throw new JSONHTTPException(400, {
       message: "Cannot link a user to itself",
     });

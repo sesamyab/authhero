@@ -378,23 +378,24 @@ describe("linkUserTo", () => {
     return (await users.get(tenant_id, `auth0|${id}`))?.linked_to;
   }
 
-  it("rejects linking a primary onto its own secondary and leaves both rows unchanged", async () => {
+  it("promotes a secondary when its primary is linked onto it, instead of closing a 2-cycle", async () => {
     const { env } = await getTestServer();
     const users = env.data.users;
     await seedUser(users, TENANT, "f");
     await seedUser(users, TENANT, "n", "f");
+    await seedUser(users, TENANT, "o", "f");
 
-    await expect(
-      linkUserTo({
-        userAdapter: users,
-        tenant_id: TENANT,
-        userId: "auth0|f",
-        primaryId: "auth0|n",
-      }),
-    ).rejects.toMatchObject({ status: 400 });
+    const root = await linkUserTo({
+      userAdapter: users,
+      tenant_id: TENANT,
+      userId: "auth0|f",
+      primaryId: "auth0|n",
+    });
 
-    expect(await linkedTo(users, TENANT, "f")).toBeUndefined();
-    expect(await linkedTo(users, TENANT, "n")).toBe("auth0|f");
+    expect(root).toBe("auth0|n");
+    expect(await linkedTo(users, TENANT, "n")).toBeUndefined();
+    expect(await linkedTo(users, TENANT, "f")).toBe("auth0|n");
+    expect(await linkedTo(users, TENANT, "o")).toBe("auth0|n");
   });
 
   it("rejects linking a user to itself", async () => {
