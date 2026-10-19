@@ -19,6 +19,13 @@ import type {
 } from "@authhero/adapter-interfaces";
 import { outboxEvents } from "../schema/sqlite";
 import { parseJsonIfString } from "../helpers/transform";
+import {
+  isKeysetRequest,
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 import type { SqliteBatchItem } from "./atomic";
 
@@ -60,6 +67,20 @@ export function buildOutboxInsert(
     claimed_by: null,
     claim_expires_at: null,
   }) as unknown as SqliteBatchItem;
+}
+
+function toFailedEvent(row: typeof outboxEvents.$inferSelect) {
+  return {
+    ...(parseJsonIfString(row.payload, {}) as Record<string, unknown>),
+    id: row.id,
+    created_at: row.created_at,
+    processed_at: row.processed_at,
+    retry_count: row.retry_count,
+    next_retry_at: row.next_retry_at,
+    error: row.error,
+    dead_lettered_at: row.dead_lettered_at,
+    final_error: row.final_error,
+  } as ListFailedEventsResponse["events"][number];
 }
 
 export function createOutboxAdapter(db: DrizzleDb): OutboxAdapter {
@@ -208,6 +229,43 @@ export function createOutboxAdapter(db: DrizzleDb): OutboxAdapter {
     ): Promise<ListFailedEventsResponse> {
       const { page = 0, per_page = 50, include_totals = false } = params;
 
+      // Keyset (checkpoint) pagination: from/take, most recently dead-lettered
+      // first with the event id as tiebreaker and no total.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: outboxEvents.dead_lettered_at,
+          idColumn: outboxEvents.id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const keysetRows = await db
+          .select()
+          .from(outboxEvents)
+          .where(
+            and(
+              eq(outboxEvents.tenant_id, tenantId),
+              isNotNull(outboxEvents.dead_lettered_at),
+              keysetCondition(params, cols),
+            ),
+          )
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1)
+          .all();
+        const { rows: pageRows, next } = sliceWithNext(
+          keysetRows,
+          take,
+          "dead_lettered_at",
+        );
+        const keysetEvents = pageRows.map(toFailedEvent);
+        return {
+          events: keysetEvents,
+          start: 0,
+          limit: take,
+          length: keysetEvents.length,
+          next,
+        };
+      }
+
       const rows = await db
         .select()
         .from(outboxEvents)
@@ -222,17 +280,7 @@ export function createOutboxAdapter(db: DrizzleDb): OutboxAdapter {
         .limit(per_page)
         .all();
 
-      const events = rows.map((row) => ({
-        ...(parseJsonIfString(row.payload, {}) as Record<string, unknown>),
-        id: row.id,
-        created_at: row.created_at,
-        processed_at: row.processed_at,
-        retry_count: row.retry_count,
-        next_retry_at: row.next_retry_at,
-        error: row.error,
-        dead_lettered_at: row.dead_lettered_at,
-        final_error: row.final_error,
-      })) as ListFailedEventsResponse["events"];
+      const events = rows.map(toFailedEvent);
 
       let length = events.length;
       if (include_totals) {
