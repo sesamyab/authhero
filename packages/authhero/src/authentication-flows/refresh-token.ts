@@ -445,19 +445,6 @@ export async function refreshTokenGrant(
       expiryUpdate.idle_expires_at !== undefined;
 
     if (hasExpiryUpdate) {
-      // The login session must outlive the token it backs. A cleared column
-      // contributes nothing, so a token that has just become non-expiring
-      // leaves the session on its own clock — exactly as one minted without
-      // expiries does.
-      const absoluteExpiryMs =
-        expiryUpdate.expires_at === null || !refreshToken.expires_at
-          ? 0
-          : new Date(refreshToken.expires_at).getTime();
-      const idleExpiryMs = expiryUpdate.idle_expires_at
-        ? new Date(expiryUpdate.idle_expires_at).getTime()
-        : 0;
-      const newLoginSessionExpiryMs = Math.max(absoluteExpiryMs, idleExpiryMs);
-
       await ctx.env.data.refreshTokens.update(
         client.tenant.id,
         refreshToken.id,
@@ -473,14 +460,6 @@ export async function refreshTokenGrant(
           }),
           ...upgrade,
         },
-        refreshToken.login_id && newLoginSessionExpiryMs > 0
-          ? {
-              loginSessionBump: {
-                login_id: refreshToken.login_id,
-                expires_at: new Date(newLoginSessionExpiryMs).toISOString(),
-              },
-            }
-          : undefined,
       );
     } else if (upgrade) {
       await ctx.env.data.refreshTokens.update(

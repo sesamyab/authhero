@@ -1,9 +1,6 @@
 import { Kysely } from "kysely";
 import { Database } from "../db";
-import {
-  RefreshTokenUpdate,
-  UpdateRefreshTokenOptions,
-} from "@authhero/adapter-interfaces";
+import { RefreshTokenUpdate } from "@authhero/adapter-interfaces";
 import { isoToDbDate } from "../utils/dateConversion";
 
 export function update(db: Kysely<Database>) {
@@ -11,7 +8,6 @@ export function update(db: Kysely<Database>) {
     tenant_id: string,
     id: string,
     refresh_token: RefreshTokenUpdate,
-    options?: UpdateRefreshTokenOptions,
   ) => {
     // Exclude old date fields from refresh token object
     const {
@@ -52,32 +48,12 @@ export function update(db: Kysely<Database>) {
         rotated_at !== undefined ? isoToDbDate(rotated_at) : undefined,
     };
 
-    const bump = options?.loginSessionBump;
-    const newLoginSessionExpiry = bump ? isoToDbDate(bump.expires_at) : null;
-
     const tokenResult = await db
       .updateTable("refresh_tokens")
       .set(updateData)
       .where("tenant_id", "=", tenant_id)
       .where("refresh_tokens.id", "=", id)
       .executeTakeFirst();
-
-    // Best-effort login_session bump. Idempotent (only extends, never
-    // shortens, and the next refresh will re-bump on transient failure), so a
-    // failure here must not reject the refresh exchange.
-    if (bump?.login_id && newLoginSessionExpiry && newLoginSessionExpiry > 0) {
-      await db
-        .updateTable("login_sessions")
-        .set({
-          expires_at_ts: newLoginSessionExpiry,
-          updated_at_ts: Date.now(),
-        })
-        .where("tenant_id", "=", tenant_id)
-        .where("id", "=", bump.login_id)
-        .where("expires_at_ts", "<", newLoginSessionExpiry)
-        .execute()
-        .catch(() => {});
-    }
 
     return (tokenResult?.numUpdatedRows ?? 0n) > 0n;
   };

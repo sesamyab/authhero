@@ -19,19 +19,6 @@ export interface ListRefreshTokenResponse extends Totals {
   refresh_tokens: RefreshToken[];
 }
 
-export interface UpdateRefreshTokenOptions {
-  /**
-   * When provided, the adapter also extends the parent login_session's
-   * `expires_at` to `expires_at` (only if the current value is smaller).
-   * The caller is expected to compute the new expiry so the adapter can
-   * avoid a read-before-write and parallelise the two UPDATEs.
-   */
-  loginSessionBump?: {
-    login_id: string;
-    expires_at: string;
-  };
-}
-
 /**
  * Update payload for a refresh token.
  *
@@ -75,7 +62,6 @@ export interface RefreshTokensAdapter {
     tenant_id: string,
     id: string,
     refresh_token: RefreshTokenUpdate,
-    options?: UpdateRefreshTokenOptions,
   ) => Promise<boolean>;
   remove: (tenant_id: string, id: string) => Promise<boolean>;
   /**
