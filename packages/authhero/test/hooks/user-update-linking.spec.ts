@@ -251,6 +251,45 @@ describe("user update auto-linking", () => {
     );
   });
 
+  it("promotes a secondary instead of closing a 2-cycle", async () => {
+    const { env } = await getTestServer();
+    const dataWithHooks = addDataHooks(createMockCtx(env), env.data);
+    const P = USERNAME_PASSWORD_PROVIDER;
+    const base = {
+      email_verified: true,
+      provider: P,
+      connection: Strategy.USERNAME_PASSWORD,
+    };
+
+    await env.data.users.create("tenantId", {
+      ...base,
+      user_id: `${P}|promo-f`,
+      email: "promo-f@example.com",
+    });
+    await env.data.users.create("tenantId", {
+      ...base,
+      user_id: `${P}|promo-n`,
+      email: "promo-n@example.com",
+      linked_to: `${P}|promo-f`,
+    });
+    await env.data.users.create("tenantId", {
+      ...base,
+      user_id: `${P}|promo-o`,
+      email: "promo-o@example.com",
+      linked_to: `${P}|promo-f`,
+    });
+
+    // Demote F onto its own secondary N.
+    await dataWithHooks.users.update("tenantId", `${P}|promo-f`, {
+      linked_to: `${P}|promo-n`,
+    });
+
+    const get = (id: string) => env.data.users.get("tenantId", `${P}|${id}`);
+    expect((await get("promo-n"))?.linked_to).toBeUndefined();
+    expect((await get("promo-f"))?.linked_to).toBe(`${P}|promo-n`);
+    expect((await get("promo-o"))?.linked_to).toBe(`${P}|promo-n`);
+  });
+
   it("should reject updates that link a user to itself", async () => {
     const { env } = await getTestServer();
     const dataWithHooks = addDataHooks(createMockCtx(env), env.data);
