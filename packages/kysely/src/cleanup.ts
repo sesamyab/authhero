@@ -31,11 +31,11 @@ type ExpiryColumn = "expires_at_ts" | "idle_expires_at_ts";
  * Create a scoped session cleanup function that can filter by tenant and/or user.
  * This is designed for lazy cleanup after login session creation.
  *
- * The refreshTokens.create and refreshTokens.update adapter methods bump the
- * parent login_sessions.expires_at_ts in the same transaction whenever a refresh
- * token's validity is extended. Likewise, silent auth bumps it when a session is
- * refreshed. This invariant means we can delete expired login_sessions
- * independently without expensive subqueries to check for active children.
+ * refreshTokens.create and silent auth bump the parent login_sessions.expires_at_ts
+ * so a login_session is not reaped while a session still references it. The
+ * refresh grant no longer resolves anything through the login_session, so a
+ * refresh exchange does not keep it alive. Cleanup deletes each table on its
+ * own clock without subqueries to check for children.
  *
  * Records are deleted only after they have been expired for the grace period (1 week).
  *
