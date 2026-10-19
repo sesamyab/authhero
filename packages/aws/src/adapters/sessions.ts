@@ -112,6 +112,7 @@ export function createSessionsAdapter(ctx: DynamoDBContext): SessionsAdapter {
         start: result.start,
         limit: result.limit,
         length: result.length,
+        next: result.next,
       };
     },
 

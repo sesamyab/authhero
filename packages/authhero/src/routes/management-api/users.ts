@@ -168,12 +168,47 @@ const refreshTokensWithNextSchema = z.object({
   }),
 });
 
+const userRolesWithNextSchema = z.object({
+  roles: roleListSchema,
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
+});
+
+const userPermissionsWithNextSchema = z.object({
+  permissions: userPermissionWithDetailsListSchema,
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
+});
+
+const sessionsWithNextSchema = z.object({
+  sessions: z.array(sessionSchema),
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
+});
+
+const logsWithNextSchema = z.object({
+  logs: z.array(logSchema),
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
+});
+
 const logsWithTotalsSchema = withTotals({
   logs: z.array(logSchema),
 });
 
 const userOrganizationsWithTotalsSchema = withTotals({
   organizations: z.array(organizationSchema),
+});
+
+const userOrganizationsWithNextSchema = z.object({
+  organizations: z.array(organizationSchema),
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
 });
 
 // Slim projection of a Client suitable for end-user "connected apps" UIs.
@@ -1276,7 +1311,11 @@ const getByUser_idSessions = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: z.union([z.array(sessionSchema), sessionsWithTotalsSchema]),
+            schema: z.union([
+              z.array(sessionSchema),
+              sessionsWithTotalsSchema,
+              sessionsWithNextSchema,
+            ]),
           },
         },
         description: "List of sessions",
@@ -1285,15 +1324,24 @@ const getByUser_idSessions = defineRoute({
   }),
   handler: async (ctx) => {
     const { user_id } = ctx.req.valid("param");
-    const { include_totals, page, per_page } = ctx.req.valid("query");
+    const { include_totals, page, per_page, from, take } =
+      ctx.req.valid("query");
     const tenantId = requireTenantId(ctx);
 
     const sessions = await ctx.env.data.sessions.list(tenantId, {
       page,
       per_page,
       include_totals,
+      from,
+      take,
       q: `user_id:${escapeLuceneValue(user_id)}`,
     });
+
+    // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
+    // endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      return ctx.json({ sessions: sessions.sessions, next: sessions.next });
+    }
 
     return ctx.json(listResponse(include_totals, sessions, "sessions"));
   },
@@ -1447,7 +1495,11 @@ const getByUser_idLogs = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: z.union([z.array(logSchema), logsWithTotalsSchema]),
+            schema: z.union([
+              z.array(logSchema),
+              logsWithTotalsSchema,
+              logsWithNextSchema,
+            ]),
           },
         },
         description: "List of logs across the user and any linked accounts",
@@ -1462,6 +1514,8 @@ const getByUser_idLogs = defineRoute({
       per_page,
       sort,
       q: callerQ,
+      from,
+      take,
     } = ctx.req.valid("query");
     const tenantId = requireTenantId(ctx);
 
@@ -1506,7 +1560,15 @@ const getByUser_idLogs = defineRoute({
       include_totals,
       sort: parseSort(sort),
       q,
+      from,
+      take,
     });
+
+    // Checkpoint (from/take): { logs, next }. The cursor is minted under the
+    // sort it was issued with, so a replay with a different sort is a 400.
+    if (from !== undefined || take !== undefined) {
+      return ctx.json({ logs: result.logs, next: result.next });
+    }
 
     return ctx.json(listResponse(include_totals, result, "logs"));
   },
@@ -1535,7 +1597,10 @@ const getByUser_idPermissions = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: userPermissionWithDetailsListSchema,
+            schema: z.union([
+              userPermissionWithDetailsListSchema,
+              userPermissionsWithNextSchema,
+            ]),
           },
         },
         description: "User permissions",
@@ -1545,8 +1610,17 @@ const getByUser_idPermissions = defineRoute({
   handler: async (ctx) => {
     const { user_id } = ctx.req.valid("param");
 
-    const { page, per_page, sort, q } = ctx.req.valid("query");
+    const { page, per_page, sort, q, from, take } = ctx.req.valid("query");
     const tenantId = requireTenantId(ctx);
+
+    // Checkpoint mode has a fixed (resource server, permission, organization)
+    // order and no free-text filter.
+    if ((from !== undefined || take !== undefined) && (sort || q)) {
+      throw new HTTPException(400, {
+        message:
+          "sort and q are not supported with checkpoint pagination for user permissions",
+      });
+    }
 
     // Check if user exists first
     const user = await ctx.env.data.users.get(tenantId, user_id);
@@ -1554,6 +1628,23 @@ const getByUser_idPermissions = defineRoute({
       throw new HTTPException(404, {
         message: "User not found",
       });
+    }
+
+    // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
+    // endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      const adapter = ctx.env.data.userPermissions;
+      if (!adapter.listCheckpoint) {
+        throw new HTTPException(501, {
+          message:
+            "Checkpoint pagination is not supported for user permissions by this data adapter",
+        });
+      }
+      const result = await adapter.listCheckpoint(tenantId, user_id, {
+        from,
+        take,
+      });
+      return ctx.json({ permissions: result.permissions, next: result.next });
     }
 
     // Get permissions assigned to this user using the new adapter
@@ -1749,22 +1840,47 @@ const getByUser_idRoles = defineRoute({
     path: "/{user_id}/roles",
     request: {
       params: z.object({ user_id: z.string() }),
+      query: querySchema,
       headers: z.object({ "tenant-id": z.string() }),
     },
     security: [{ Bearer: ["read:users", "auth:read"] }],
     responses: {
       200: {
-        content: { "application/json": { schema: roleListSchema } },
+        content: {
+          "application/json": {
+            schema: z.union([roleListSchema, userRolesWithNextSchema]),
+          },
+        },
         description: "User roles",
       },
     },
   }),
   handler: async (ctx) => {
     const { user_id } = ctx.req.valid("param");
+    const { from, take } = ctx.req.valid("query");
     const tenantId = requireTenantId(ctx);
 
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) throw new HTTPException(404, { message: "User not found" });
+
+    // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
+    // endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      const adapter = ctx.env.data.userRoles;
+      if (!adapter.listCheckpoint) {
+        throw new HTTPException(501, {
+          message:
+            "Checkpoint pagination is not supported for user roles by this data adapter",
+        });
+      }
+      const result = await adapter.listCheckpoint(
+        tenantId,
+        user_id,
+        { from, take },
+        "", // Global roles should have empty string organization_id
+      );
+      return ctx.json({ roles: result.roles, next: result.next });
+    }
 
     const roles = await ctx.env.data.userRoles.list(
       tenantId,
@@ -1906,6 +2022,7 @@ const getByUser_idOrganizations = defineRoute({
           "application/json": {
             schema: z.union([
               userOrganizationsWithTotalsSchema,
+              userOrganizationsWithNextSchema,
               z.array(organizationSchema),
             ]),
           },
@@ -1916,7 +2033,8 @@ const getByUser_idOrganizations = defineRoute({
   }),
   handler: async (ctx) => {
     const { user_id } = ctx.req.valid("param");
-    const { page, per_page, include_totals, sort } = ctx.req.valid("query");
+    const { page, per_page, include_totals, sort, from, take } =
+      ctx.req.valid("query");
     const tenantId = requireTenantId(ctx);
 
     // First verify user exists
@@ -1932,9 +2050,20 @@ const getByUser_idOrganizations = defineRoute({
       {
         page,
         per_page,
+        from,
+        take,
         sort: parseSort(sort),
       },
     );
+
+    // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
+    // endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      return ctx.json({
+        organizations: result.organizations,
+        next: result.next,
+      });
+    }
 
     if (include_totals) {
       return ctx.json({

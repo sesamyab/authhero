@@ -5,6 +5,13 @@ import { sessions, loginSessions } from "../schema/sqlite";
 import { removeNullProperties, parseJsonIfString } from "../helpers/transform";
 import { convertDatesToAdapter, isoToDbDate } from "../helpers/dates";
 import { buildLuceneFilter } from "../helpers/filter";
+import {
+  isKeysetRequest,
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 import { runAtomic } from "./atomic";
 import type { AtomicStatementList } from "./atomic";
@@ -225,6 +232,37 @@ export function createSessionsAdapter(db: DrizzleDb) {
       const whereClause = luceneFilter
         ? and(eq(sessions.tenant_id, tenant_id), luceneFilter)
         : eq(sessions.tenant_id, tenant_id);
+
+      // Keyset (checkpoint) pagination: from/take. Fixed created_at desc order
+      // with an id tiebreaker and no total.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: sessions.created_at_ts,
+          idColumn: sessions.id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const cond = keysetCondition(params, cols);
+        const rows = await db
+          .select()
+          .from(sessions)
+          .where(cond ? and(whereClause, cond) : whereClause)
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1);
+        const { rows: pageRows, next } = sliceWithNext(
+          rows,
+          take,
+          "created_at_ts",
+        );
+        const keysetSessions = pageRows.map(sqlToSession);
+        return {
+          sessions: keysetSessions,
+          start: 0,
+          limit: take,
+          length: keysetSessions.length,
+          next,
+        };
+      }
 
       let query = db.select().from(sessions).where(whereClause).$dynamic();
 

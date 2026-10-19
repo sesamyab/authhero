@@ -1,6 +1,40 @@
 import { Kysely } from "kysely";
 import { Database } from "../db";
 import { Organization, Totals, ListParams } from "@authhero/adapter-interfaces";
+import { isKeysetRequest, keysetPaginate } from "../helpers/paginate";
+
+type MembershipRow = {
+  id: string;
+  name: string;
+  display_name?: string | null;
+  branding: string | null;
+  metadata: string | null;
+  enabled_connections: string | null;
+  token_quota: string | null;
+  created_at: string;
+  updated_at: string;
+  joined_at: string;
+};
+
+function toOrganization(result: MembershipRow): Organization {
+  return {
+    id: result.id,
+    name: result.name,
+    display_name: result.display_name,
+    branding: result.branding ? JSON.parse(result.branding) : undefined,
+    metadata: result.metadata ? JSON.parse(result.metadata) : {},
+    enabled_connections: result.enabled_connections
+      ? JSON.parse(result.enabled_connections)
+      : [],
+    token_quota: result.token_quota
+      ? JSON.parse(result.token_quota)
+      : undefined,
+    created_at: result.created_at,
+    updated_at: result.updated_at,
+    // Add membership info
+    joined_at: result.joined_at,
+  } as Organization;
+}
 
 export function listUserOrganizations(db: Kysely<Database>) {
   return async (
@@ -35,6 +69,35 @@ export function listUserOrganizations(db: Kysely<Database>) {
       .where("user_organizations.tenant_id", "=", tenantId)
       .where("user_organizations.user_id", "=", userId);
 
+    // Keyset (checkpoint) pagination: from/take, newest membership first with
+    // the membership id as tiebreaker. The joined query is wrapped so the sort
+    // and id columns have bare, unambiguous names (organizations has its own
+    // created_at/id), which keeps the WHERE portable to MySQL.
+    if (isKeysetRequest(params)) {
+      const memberships = query
+        .select("user_organizations.id as membership_id")
+        .as("m");
+      const { rows, limit, next } = await keysetPaginate(
+        db.selectFrom(memberships).selectAll(),
+        params,
+        {
+          sortColumn: "joined_at",
+          sortOrder: "desc",
+          idColumn: "membership_id",
+        },
+      );
+      const keysetOrganizations = rows.map((r) =>
+        toOrganization(r as unknown as MembershipRow),
+      );
+      return {
+        organizations: keysetOrganizations,
+        start: 0,
+        limit,
+        length: keysetOrganizations.length,
+        next,
+      };
+    }
+
     query = query.orderBy("user_organizations.created_at", "desc");
 
     if (per_page > 0) {
@@ -56,23 +119,7 @@ export function listUserOrganizations(db: Kysely<Database>) {
       .where("user_organizations.user_id", "=", userId)
       .executeTakeFirst();
 
-    const organizations: Organization[] = results.map((result) => ({
-      id: result.id,
-      name: result.name,
-      display_name: result.display_name,
-      branding: result.branding ? JSON.parse(result.branding) : undefined,
-      metadata: result.metadata ? JSON.parse(result.metadata) : {},
-      enabled_connections: result.enabled_connections
-        ? JSON.parse(result.enabled_connections)
-        : [],
-      token_quota: result.token_quota
-        ? JSON.parse(result.token_quota)
-        : undefined,
-      created_at: result.created_at,
-      updated_at: result.updated_at,
-      // Add membership info
-      joined_at: result.joined_at,
-    }));
+    const organizations: Organization[] = results.map(toOrganization);
 
     return {
       organizations,

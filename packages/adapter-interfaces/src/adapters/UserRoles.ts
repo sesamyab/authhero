@@ -9,6 +9,12 @@ export interface ListUserRolesResponse {
   length: number;
 }
 
+export interface ListUserRolesCheckpointResponse {
+  roles: Role[];
+  /** Opaque checkpoint cursor for the next page; absent on the last page. */
+  next?: string;
+}
+
 export interface ListRoleUsersResponse {
   /** Distinct user ids holding the role, ordered by user_id ascending. */
   userIds: string[];
@@ -43,6 +49,20 @@ export interface UserRolesAdapter {
     params?: ListParams,
     organizationId?: string,
   ): Promise<Role[]>;
+  /**
+   * Checkpoint (from/take) pagination over the roles assigned to a user,
+   * ordered by role id ascending. Roles are distinct: one held under several
+   * organization scopes appears once (unlike `list`, which returns one row per
+   * assignment). `organizationId` filters exactly as it does for `list`.
+   * Optional so existing adapter implementations keep compiling; the
+   * management API answers checkpoint requests with 501 when it is missing.
+   */
+  listCheckpoint?(
+    tenantId: string,
+    userId: string,
+    params?: ListParams,
+    organizationId?: string,
+  ): Promise<ListUserRolesCheckpointResponse>;
   /**
    * List the distinct users assigned to a role, across all organization
    * scopes (a user holding the role in several organizations appears once).

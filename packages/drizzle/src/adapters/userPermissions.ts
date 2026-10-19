@@ -1,5 +1,13 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc, inArray, sql } from "drizzle-orm";
+import { HTTPException } from "hono/http-exception";
+import {
+  decodeCursor,
+  encodeCursor,
+  type ListParams,
+  type ListUserPermissionsCheckpointResponse,
+} from "@authhero/adapter-interfaces";
 import { userPermissions, resourceServers } from "../schema/sqlite";
+import { keysetTake } from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
 export function createUserPermissionsAdapter(db: DrizzleDb) {
@@ -81,6 +89,100 @@ export function createUserPermissionsAdapter(db: DrizzleDb) {
       );
 
       return mapped;
+    },
+
+    // Checkpoint (from/take) pagination. The composite key
+    // (resource_server_identifier, permission_name, organization_id) is unique
+    // per user, so it serves as sort + tiebreaker without a surrogate id. The
+    // cursor carries the first column in `s` and the other two in `i` as a
+    // JSON pair.
+    async listCheckpoint(
+      tenant_id: string,
+      user_id: string,
+      params: ListParams = {},
+      organization_id?: string,
+    ): Promise<ListUserPermissionsCheckpointResponse> {
+      const take = keysetTake(params);
+      const conditions = [
+        eq(userPermissions.tenant_id, tenant_id),
+        eq(userPermissions.user_id, user_id),
+      ];
+      if (organization_id !== undefined) {
+        conditions.push(eq(userPermissions.organization_id, organization_id));
+      }
+
+      const cursor = params.from ? decodeCursor(params.from) : null;
+      if (cursor) {
+        if (cursor.k !== undefined) {
+          throw new HTTPException(400, {
+            message:
+              "The `from` cursor was issued under a different sort and cannot be used with this request",
+          });
+        }
+        const [permission, org] = JSON.parse(cursor.i) as [string, string];
+        conditions.push(
+          sql`(${userPermissions.resource_server_identifier}, ${userPermissions.permission_name}, ${userPermissions.organization_id}) > (${cursor.s}, ${permission}, ${org})`,
+        );
+      }
+
+      const fetched = await db
+        .select()
+        .from(userPermissions)
+        .where(and(...conditions))
+        .orderBy(
+          asc(userPermissions.resource_server_identifier),
+          asc(userPermissions.permission_name),
+          asc(userPermissions.organization_id),
+        )
+        .limit(take + 1)
+        .all();
+
+      const hasMore = fetched.length > take;
+      const rows = hasMore ? fetched.slice(0, take) : fetched;
+      const last = rows[rows.length - 1];
+      const next =
+        hasMore && last
+          ? encodeCursor({
+              s: last.resource_server_identifier,
+              i: JSON.stringify([last.permission_name, last.organization_id]),
+            })
+          : undefined;
+
+      const identifiers = [
+        ...new Set(rows.map((r) => r.resource_server_identifier)),
+      ];
+      const nameMap = new Map<string, string>();
+      if (identifiers.length > 0) {
+        const rsRows = await db
+          .select({
+            identifier: resourceServers.identifier,
+            name: resourceServers.name,
+          })
+          .from(resourceServers)
+          .where(
+            and(
+              eq(resourceServers.tenant_id, tenant_id),
+              inArray(resourceServers.identifier, identifiers),
+            ),
+          )
+          .all();
+        for (const rs of rsRows) nameMap.set(rs.identifier, rs.name);
+      }
+
+      return {
+        permissions: rows.map((row) => ({
+          user_id: row.user_id,
+          resource_server_identifier: row.resource_server_identifier,
+          permission_name: row.permission_name,
+          resource_server_name:
+            nameMap.get(row.resource_server_identifier) ||
+            row.resource_server_identifier,
+          created_at: row.created_at,
+          organization_id:
+            row.organization_id === "" ? undefined : row.organization_id,
+        })),
+        next,
+      };
     },
 
     async remove(

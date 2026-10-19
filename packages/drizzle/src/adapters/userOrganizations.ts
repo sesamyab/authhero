@@ -182,6 +182,74 @@ export function createUserOrganizationsAdapter(db: DrizzleDb) {
     ) {
       const { page = 0, per_page = 50, include_totals = false } = params || {};
 
+      // Keyset (checkpoint) pagination: from/take, newest membership first
+      // with the membership id as tiebreaker.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: userOrganizations.created_at,
+          idColumn: userOrganizations.id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const cond = keysetCondition(params, cols);
+        const memberships = await db
+          .select()
+          .from(userOrganizations)
+          .where(
+            and(
+              eq(userOrganizations.tenant_id, tenantId),
+              eq(userOrganizations.user_id, userId),
+              cond,
+            ),
+          )
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1)
+          .all();
+        const { rows: pageRows, next } = sliceWithNext(
+          memberships,
+          take,
+          "created_at",
+        );
+        const orgs = await Promise.all(
+          pageRows.map((uo) =>
+            db
+              .select()
+              .from(organizations)
+              .where(
+                and(
+                  eq(organizations.tenant_id, tenantId),
+                  eq(organizations.id, uo.organization_id),
+                ),
+              )
+              .get(),
+          ),
+        );
+        const keysetOrganizations = orgs.filter(Boolean).map((org) => {
+          const {
+            tenant_id: _,
+            branding,
+            metadata,
+            enabled_connections,
+            token_quota,
+            ...rest
+          } = org!;
+          return removeNullProperties({
+            ...rest,
+            branding: parseJsonIfString(branding, {}),
+            metadata: parseJsonIfString(metadata, {}),
+            enabled_connections: parseJsonIfString(enabled_connections, []),
+            token_quota: parseJsonIfString(token_quota, {}),
+          });
+        });
+        return {
+          organizations: keysetOrganizations,
+          start: 0,
+          limit: take,
+          length: keysetOrganizations.length,
+          next,
+        };
+      }
+
       const userOrgs = await db
         .select()
         .from(userOrganizations)
