@@ -10,6 +10,25 @@ import { userPermissions, resourceServers } from "../schema/sqlite";
 import { keysetTake } from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
+// The composite tiebreaker travels as a JSON [permission_name, organization_id]
+// pair. A cursor minted by another endpoint (or edited by hand) is a client
+// error, not a server one.
+function parseCompositeCursor(raw: string): [string, string] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      parsed.every((part) => typeof part === "string")
+    ) {
+      return parsed as [string, string];
+    }
+  } catch {
+    // fall through
+  }
+  throw new HTTPException(400, { message: "The `from` cursor is not valid" });
+}
+
 export function createUserPermissionsAdapter(db: DrizzleDb) {
   return {
     async create(
@@ -119,7 +138,7 @@ export function createUserPermissionsAdapter(db: DrizzleDb) {
               "The `from` cursor was issued under a different sort and cannot be used with this request",
           });
         }
-        const [permission, org] = JSON.parse(cursor.i) as [string, string];
+        const [permission, org] = parseCompositeCursor(cursor.i);
         conditions.push(
           sql`(${userPermissions.resource_server_identifier}, ${userPermissions.permission_name}, ${userPermissions.organization_id}) > (${cursor.s}, ${permission}, ${org})`,
         );

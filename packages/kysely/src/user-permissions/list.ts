@@ -55,6 +55,25 @@ function baseQuery(
   }
 }
 
+// The composite tiebreaker travels as a JSON [permission_name, organization_id]
+// pair. A cursor minted by another endpoint (or edited by hand) is a client
+// error, not a server one.
+function parseCompositeCursor(raw: string): [string, string] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      parsed.every((part) => typeof part === "string")
+    ) {
+      return parsed as [string, string];
+    }
+  } catch {
+    // fall through
+  }
+  throw new HTTPException(400, { message: "The `from` cursor is not valid" });
+}
+
 type Row = {
   resource_server_identifier: string;
   permission_name: string;
@@ -122,7 +141,7 @@ export function listCheckpoint(db: Kysely<Database>) {
             "The `from` cursor was issued under a different sort and cannot be used with this request",
         });
       }
-      const [permission, org] = JSON.parse(cursor.i) as [string, string];
+      const [permission, org] = parseCompositeCursor(cursor.i);
       query = query.where(
         sql<SqlBool>`(user_permissions.resource_server_identifier, user_permissions.permission_name, user_permissions.organization_id) > (${cursor.s}, ${permission}, ${org})`,
       );
