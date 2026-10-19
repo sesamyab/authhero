@@ -2,6 +2,7 @@ import { eq, and, asc, sql } from "drizzle-orm";
 import type {
   ListParams,
   ListRoleUsersResponse,
+  ListUserRolesCheckpointResponse,
 } from "@authhero/adapter-interfaces";
 import { userRoles, roles } from "../schema/sqlite";
 import { removeNullProperties, parseJsonIfString } from "../helpers/transform";
@@ -99,6 +100,62 @@ export function createUserRolesAdapter(db: DrizzleDb) {
       );
 
       return roleResults.filter(Boolean) as any[];
+    },
+
+    // Checkpoint (from/take) pagination over distinct roles, ordered by role
+    // id. A role held under several organization scopes appears once, so the
+    // role id is both sort column and keyset tiebreaker.
+    async listCheckpoint(
+      tenant_id: string,
+      user_id: string,
+      params: ListParams = {},
+      organization_id?: string,
+    ): Promise<ListUserRolesCheckpointResponse> {
+      const conditions = [
+        eq(userRoles.tenant_id, tenant_id),
+        eq(userRoles.user_id, user_id),
+      ];
+      if (organization_id !== undefined) {
+        conditions.push(eq(userRoles.organization_id, organization_id));
+      }
+      const cols = {
+        sortColumn: roles.id,
+        idColumn: roles.id,
+        sortOrder: "asc" as const,
+      };
+      const keyset = keysetCondition(params, cols);
+      const take = keysetTake(params);
+      const rows = await db
+        .selectDistinct({ role: roles })
+        .from(userRoles)
+        .innerJoin(
+          roles,
+          and(
+            eq(roles.tenant_id, userRoles.tenant_id),
+            eq(roles.id, userRoles.role_id),
+          ),
+        )
+        .where(and(...conditions, keyset))
+        .orderBy(...keysetOrderBy(cols))
+        .limit(take + 1)
+        .all();
+      const { rows: pageRows, next } = sliceWithNext(
+        rows.map((r) => r.role),
+        take,
+        "id",
+        "id",
+      );
+      return {
+        roles: pageRows.map((role) => {
+          const { tenant_id: _, is_system, metadata, ...rest } = role;
+          return removeNullProperties({
+            ...rest,
+            is_system: is_system ? true : undefined,
+            metadata: parseJsonIfString(metadata),
+          });
+        }) as any[],
+        next,
+      };
     },
 
     async listUsers(

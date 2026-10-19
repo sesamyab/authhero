@@ -69,4 +69,29 @@ describe("role permissions adapter", () => {
       "create:custom_domains",
     ]);
   });
+
+  it("honors page and per_page in list", async () => {
+    await data.rolePermissions.assign(
+      tenantId,
+      roleId,
+      ["a", "b", "c", "d", "e"].map((n) => ({
+        resource_server_identifier: "urn:authhero:management",
+        permission_name: `read:${n}`,
+      })),
+    );
+
+    const first = await data.rolePermissions.list(tenantId, roleId, {
+      page: 0,
+      per_page: 2,
+    });
+    const second = await data.rolePermissions.list(tenantId, roleId, {
+      page: 1,
+      per_page: 2,
+    });
+    const all = await data.rolePermissions.list(tenantId, roleId);
+
+    expect(first.map((p) => p.permission_name)).toEqual(["read:a", "read:b"]);
+    expect(second.map((p) => p.permission_name)).toEqual(["read:c", "read:d"]);
+    expect(all).toHaveLength(5);
+  });
 });

@@ -55,7 +55,7 @@ function baseQuery(db: Kysely<Database>, tenant_id: string, role_id: string) {
         .onRef(
           "role_permissions.resource_server_identifier",
           "=",
-          "resource_servers.id",
+          "resource_servers.identifier",
         ),
     )
     .select([
