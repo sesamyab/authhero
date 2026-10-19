@@ -4,7 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { grantSchema } from "@authhero/adapter-interfaces";
 
 import { defineRoute } from "../../utils/define-route";
-import { requireTenantId, withTotals, listResponse } from "./helpers";
+import { requireTenantId, withTotals, withNext, listResponse } from "./helpers";
 
 const grantsQuerySchema = z.object({
   per_page: z
@@ -30,6 +30,17 @@ const grantsQuerySchema = z.object({
       description:
         "Return totals envelope (true) or a plain array (false, default).",
     }),
+  from: z.string().optional().openapi({
+    description: "Optional opaque cursor from which to start selection.",
+  }),
+  take: z
+    .string()
+    .optional()
+    .transform((t) => (t ? parseInt(t, 10) : undefined))
+    .openapi({
+      description:
+        "Number of results per page in checkpoint mode. Defaults to 50.",
+    }),
   user_id: z.string().optional().openapi({
     description: "Filter grants by user_id.",
   }),
@@ -42,6 +53,10 @@ const grantsQuerySchema = z.object({
 });
 
 const grantsWithTotalsSchema = withTotals({
+  grants: z.array(grantSchema),
+});
+
+const grantsWithNextSchema = withNext({
   grants: z.array(grantSchema),
 });
 
@@ -59,7 +74,11 @@ const getRoot = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: z.union([z.array(grantSchema), grantsWithTotalsSchema]),
+            schema: z.union([
+              z.array(grantSchema),
+              grantsWithTotalsSchema,
+              grantsWithNextSchema,
+            ]),
           },
         },
         description: "List of OAuth grants",
@@ -68,10 +87,22 @@ const getRoot = defineRoute({
   }),
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
-    const { page, per_page, include_totals, user_id, client_id, audience } =
-      ctx.req.valid("query");
+    const {
+      page,
+      per_page,
+      include_totals,
+      user_id,
+      client_id,
+      audience,
+      from,
+      take,
+    } = ctx.req.valid("query");
+    const checkpoint = from !== undefined || take !== undefined;
 
     if (!ctx.env.data.grants) {
+      if (checkpoint) {
+        return ctx.json({ grants: [] });
+      }
       if (!include_totals) {
         return ctx.json([]);
       }
@@ -89,8 +120,16 @@ const getRoot = defineRoute({
       page,
       per_page,
       include_totals,
+      from,
+      take,
       q: luceneQuery,
     });
+
+    // Checkpoint (from/take): { grants, next }. Checkpoint is an authhero
+    // extension here; Auth0 pages this endpoint by offset only.
+    if (checkpoint) {
+      return ctx.json({ grants: result.grants, next: result.next });
+    }
 
     return ctx.json(listResponse(include_totals, result, "grants"));
   },

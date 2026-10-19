@@ -11,6 +11,13 @@ import type {
 import { actions } from "../schema/sqlite";
 import { parseJsonIfString } from "../helpers/transform";
 import { buildLuceneFilter } from "../helpers/filter";
+import {
+  isKeysetRequest,
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
 type StoredSecret = { name: string; value?: string };
@@ -134,6 +141,38 @@ export function createActionsAdapter(db: DrizzleDb): ActionsAdapter {
         if (filter) conditions.push(filter);
       }
       const whereClause = and(...conditions);
+
+      // Keyset (checkpoint) pagination: from/take. Fixed created_at_ts desc order
+      // with an id tiebreaker and no total.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: actions.created_at_ts,
+          idColumn: actions.id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const cond = keysetCondition(params, cols);
+        const rows = await db
+          .select()
+          .from(actions)
+          .where(cond ? and(whereClause, cond) : whereClause)
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1);
+        const { rows: pageRows, next } = sliceWithNext(
+          rows,
+          take,
+          "created_at_ts",
+          "id",
+        );
+        const keysetActions = pageRows.map(rowToAction);
+        return {
+          actions: keysetActions,
+          start: 0,
+          limit: take,
+          length: keysetActions.length,
+          next,
+        };
+      }
 
       let query = db.select().from(actions).where(whereClause).$dynamic();
 

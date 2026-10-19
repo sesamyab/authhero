@@ -108,6 +108,7 @@ export function createFormsAdapter(ctx: DynamoDBContext): FormsAdapter {
         start: result.start,
         limit: result.limit,
         length: result.length,
+        next: result.next,
       };
     },
 

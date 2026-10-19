@@ -9,6 +9,13 @@ import type {
 import { grants } from "../schema/sqlite";
 import { parseJsonIfString } from "../helpers/transform";
 import { buildLuceneFilter } from "../helpers/filter";
+import {
+  isKeysetRequest,
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
 function sqlToGrant(row: {
@@ -138,6 +145,38 @@ export function createGrantsAdapter(db: DrizzleDb): GrantsAdapter {
       const whereCondition = luceneFilter
         ? and(eq(grants.tenant_id, tenant_id), luceneFilter)
         : eq(grants.tenant_id, tenant_id);
+
+      // Keyset (checkpoint) pagination: from/take. Fixed created_at desc order
+      // with an id tiebreaker and no total.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: grants.created_at,
+          idColumn: grants.id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const cond = keysetCondition(params, cols);
+        const rows = await db
+          .select()
+          .from(grants)
+          .where(cond ? and(whereCondition, cond) : whereCondition)
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1);
+        const { rows: pageRows, next } = sliceWithNext(
+          rows,
+          take,
+          "created_at",
+          "id",
+        );
+        const keysetGrants = pageRows.map(sqlToGrant);
+        return {
+          grants: keysetGrants,
+          start: 0,
+          limit: take,
+          length: keysetGrants.length,
+          next,
+        };
+      }
 
       let query = db.select().from(grants).where(whereCondition).$dynamic();
 

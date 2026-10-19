@@ -1,7 +1,9 @@
-import { Kysely } from "kysely";
+import { Kysely, Selectable } from "kysely";
 import { Action, ListParams } from "@authhero/adapter-interfaces";
 import { ListActionsResponse } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
+import { keysetPaginate, isKeysetRequest } from "../helpers/paginate";
+
 import { luceneFilter } from "../helpers/filter";
 import getCountAsInt from "../utils/getCountAsInt";
 import { convertDatesToAdapter } from "../utils/dateConversion";
@@ -13,6 +15,46 @@ function parseJsonField<T>(value: string | null | undefined): T | undefined {
   } catch {
     return undefined;
   }
+}
+
+function toActions(row: Selectable<Database["actions"]>) {
+  const {
+    created_at_ts,
+    updated_at_ts,
+    deployed_at_ts,
+    secrets,
+    dependencies,
+    supported_triggers,
+    is_system,
+    inherit,
+    tenant_id: _tenantId,
+    ...rest
+  } = row;
+
+  const dates = convertDatesToAdapter({ created_at_ts, updated_at_ts }, [
+    "created_at_ts",
+    "updated_at_ts",
+  ]);
+
+  return {
+    ...rest,
+    tenant_id: _tenantId,
+    ...dates,
+    runtime: rest.runtime ?? undefined,
+    status: (rest.status as "draft" | "built") || "built",
+    deployed_at: deployed_at_ts
+      ? new Date(Number(deployed_at_ts)).toISOString()
+      : undefined,
+    secrets: parseJsonField<Array<{ name: string; value?: string }>>(secrets),
+    dependencies:
+      parseJsonField<Array<{ name: string; version: string }>>(dependencies),
+    supported_triggers:
+      parseJsonField<Array<{ id: string; version?: string }>>(
+        supported_triggers,
+      ),
+    is_system: !!is_system,
+    inherit: !!inherit,
+  } as Action;
 }
 
 export function list(db: Kysely<Database>) {
@@ -30,52 +72,29 @@ export function list(db: Kysely<Database>) {
       query = luceneFilter(db, query, q, ["name"]);
     }
 
+    // Keyset (checkpoint) pagination: from/take. Fixed created_at_ts desc order with
+    // an id tiebreaker and no total, matching the other checkpoint lists.
+    if (isKeysetRequest(params)) {
+      const { rows, limit, next } = await keysetPaginate(
+        query.selectAll(),
+        params,
+        { sortColumn: "created_at_ts", sortOrder: "desc", idColumn: "id" },
+      );
+      const keysetActions = rows.map(toActions);
+      return {
+        actions: keysetActions,
+        start: 0,
+        limit,
+        length: keysetActions.length,
+        next,
+      };
+    }
+
     const filteredQuery = query.offset(page * per_page).limit(per_page);
 
     const results = await filteredQuery.selectAll().execute();
 
-    const actions = results.map((row) => {
-      const {
-        created_at_ts,
-        updated_at_ts,
-        deployed_at_ts,
-        secrets,
-        dependencies,
-        supported_triggers,
-        is_system,
-        inherit,
-        tenant_id: _tenantId,
-        ...rest
-      } = row;
-
-      const dates = convertDatesToAdapter({ created_at_ts, updated_at_ts }, [
-        "created_at_ts",
-        "updated_at_ts",
-      ]);
-
-      return {
-        ...rest,
-        tenant_id,
-        ...dates,
-        runtime: rest.runtime ?? undefined,
-        status: (rest.status as "draft" | "built") || "built",
-        deployed_at: deployed_at_ts
-          ? new Date(Number(deployed_at_ts)).toISOString()
-          : undefined,
-        secrets:
-          parseJsonField<Array<{ name: string; value?: string }>>(secrets),
-        dependencies:
-          parseJsonField<Array<{ name: string; version: string }>>(
-            dependencies,
-          ),
-        supported_triggers:
-          parseJsonField<Array<{ id: string; version?: string }>>(
-            supported_triggers,
-          ),
-        is_system: !!is_system,
-        inherit: !!inherit,
-      } as Action;
-    });
+    const actions = results.map(toActions);
 
     if (!include_totals) {
       // No count query is run, so `length` reports the size of this page
