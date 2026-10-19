@@ -416,6 +416,11 @@ interface LinkUserToParams {
  * hook, or internal linking code — is safe by construction rather than by
  * remembering to call the right helper.
  *
+ * This performs several writes (repoint, and on promotion also unlink), so
+ * direct callers should pass an adapter bound to a transaction. The user-update
+ * hook already does this via `data.transaction`, so callers going through
+ * `users.update(id, { linked_to })` get atomicity automatically.
+ *
  * Returns the cluster root `userId` was actually linked to, which may differ
  * from the requested `primaryId`.
  */
