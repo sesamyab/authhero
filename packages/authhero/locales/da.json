@@ -421,7 +421,8 @@
       "sendCodeText": "Log ind med kode",
       "sessionExpired": "Din session er udløbet. Prøv venligst igen.",
       "tooManyRequests": "For mange forsøg. Vent et øjeblik, og prøv igen.",
-      "unexpectedError": "Noget gik galt. Prøv igen."
+      "unexpectedError": "Noget gik galt. Prøv igen.",
+      "passwordResetSuccess": "Din adgangskode er blevet nulstillet. Log ind med din nye adgangskode."
     }
   },
   "login-passwordless": {

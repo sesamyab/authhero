@@ -421,7 +421,8 @@
       "sendCodeText": "Přihlásit se kódem",
       "sessionExpired": "Platnost vaší relace vypršela. Zkuste to prosím znovu.",
       "tooManyRequests": "Příliš mnoho pokusů. Chvíli počkejte a zkuste to znovu.",
-      "unexpectedError": "Něco se pokazilo. Zkuste to znovu."
+      "unexpectedError": "Něco se pokazilo. Zkuste to znovu.",
+      "passwordResetSuccess": "Vaše heslo bylo obnoveno. Přihlaste se pomocí nového hesla."
     }
   },
   "login-passwordless": {

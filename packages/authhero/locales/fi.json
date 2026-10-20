@@ -421,7 +421,8 @@
       "sendCodeText": "Kirjaudu koodilla",
       "sessionExpired": "Istuntosi on vanhentunut. Yritä uudelleen.",
       "tooManyRequests": "Liian monta yritystä. Odota hetki ja yritä uudelleen.",
-      "unexpectedError": "Jokin meni pieleen. Yritä uudelleen."
+      "unexpectedError": "Jokin meni pieleen. Yritä uudelleen.",
+      "passwordResetSuccess": "Salasanasi on nollattu. Kirjaudu sisään uudella salasanallasi."
     }
   },
   "login-passwordless": {
