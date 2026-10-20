@@ -136,7 +136,7 @@ export function createTenantsAdapter(db: DrizzleDb) {
       } = params || {};
 
       const filter = q
-        ? buildLuceneFilter(tenants, q, ["friendly_name"])
+        ? buildLuceneFilter(tenants, q, ["id", "friendly_name"])
         : undefined;
 
       let query = db.select().from(tenants).$dynamic();
