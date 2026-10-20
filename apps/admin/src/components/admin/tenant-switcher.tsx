@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { ChevronsUpDown, Check, Plus } from "lucide-react";
 import {
   Popover,
@@ -56,7 +55,6 @@ function useDebounced<T>(value: T, delayMs: number): T {
 
 export function TenantSwitcher() {
   const tenantId = useTenantId();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [tenants, setTenants] = useState<Tenant[] | null>(null);
   const [total, setTotal] = useState<number | null>(null);
@@ -227,7 +225,7 @@ export function TenantSwitcher() {
               <CommandItem
                 onSelect={() => {
                   setOpen(false);
-                  navigate(`${getBasePath()}/tenants`);
+                  window.location.href = `${getBasePath()}/tenants`;
                 }}
               >
                 <Plus className="size-4 mr-2" />
