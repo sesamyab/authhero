@@ -21,6 +21,7 @@ const listFailedEventsResponseSchema = z.object({
   start: z.number(),
   limit: z.number(),
   length: z.number(),
+  total: z.number().optional(),
 });
 
 // Checkpoint (keyset) pagination response: items plus an opaque cursor.
@@ -107,7 +108,8 @@ const getRoot = defineRoute({
       events: result.events,
       start: result.start,
       limit: result.limit,
-      length: result.length,
+      length: result.events.length,
+      total: result.length,
     });
   },
 });

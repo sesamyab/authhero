@@ -101,6 +101,7 @@ export function createTenantsOpenAPIRouter(
                 start: z.number().optional(),
                 limit: z.number().optional(),
                 length: z.number().optional(),
+                total: z.number().optional(),
               }),
             },
           },
@@ -146,6 +147,7 @@ export function createTenantsOpenAPIRouter(
             start: result.totals?.start ?? 0,
             limit: result.totals?.limit ?? per_page,
             length: result.tenants.length,
+            total: result.totals?.length,
           });
         }
 
@@ -191,6 +193,7 @@ export function createTenantsOpenAPIRouter(
               start: 0,
               limit: per_page ?? 50,
               length: 0,
+              total: 0,
             });
           }
           return ctx.json({ tenants: [] });
@@ -210,7 +213,8 @@ export function createTenantsOpenAPIRouter(
               tenants: [],
               start,
               limit: perPage,
-              length: totalAccessible,
+              length: 0,
+              total: totalAccessible,
             });
           }
           return ctx.json({ tenants: [] });
@@ -232,7 +236,8 @@ export function createTenantsOpenAPIRouter(
             tenants: result.tenants,
             start,
             limit: perPage,
-            length: totalAccessible,
+            length: result.tenants.length,
+            total: totalAccessible,
           });
         }
 
@@ -253,6 +258,7 @@ export function createTenantsOpenAPIRouter(
           start: result.totals?.start ?? 0,
           limit: result.totals?.limit ?? per_page,
           length: result.tenants.length,
+          total: result.totals?.length,
         });
       }
 

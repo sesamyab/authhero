@@ -254,12 +254,14 @@ describe("roles", () => {
       start: number;
       limit: number;
       length: number;
+      total: number;
       next?: string;
     };
     expect(offsetBody.roles).toHaveLength(3);
     expect(offsetBody.start).toBe(3);
     expect(offsetBody.limit).toBe(3);
-    expect(offsetBody.length).toBe(7);
+    expect(offsetBody.length).toBe(3);
+    expect(offsetBody.total).toBe(7);
     expect(offsetBody.next).toBeUndefined();
 
     const sortedCheckpoint = await client.roles.$get(

@@ -263,7 +263,12 @@ function normalizeSDKResponse(
     const items = response[resourceKey] as ApiRecord[];
     return {
       data: items,
-      total: (response.total as number | undefined) || items.length,
+      // Auth0 sends the overall count as `total`; `length` (the page size
+      // there) only matters for older servers that reported the count in it.
+      total:
+        (response.total as number | undefined) ||
+        (response.length as number | undefined) ||
+        items.length,
     };
   }
 
@@ -1613,7 +1618,7 @@ export default (
             id: item.id,
             ...item,
           })),
-          total: res.json.length || 0,
+          total: res.json.total ?? res.json.length ?? 0,
         };
       }
 
@@ -1633,7 +1638,7 @@ export default (
         const tokens: RefreshTokenResponse[] = res.json.tokens || [];
         return {
           data: tokens.map((item) => ({ ...item, id: item.id })),
-          total: res.json.length ?? tokens.length,
+          total: res.json.total ?? res.json.length ?? tokens.length,
         };
       }
 
@@ -1652,7 +1657,7 @@ export default (
         const grants = res.json.grants || [];
         return {
           data: grants.map((item: ApiRecord) => ({ id: item.id, ...item })),
-          total: res.json.length || grants.length || 0,
+          total: res.json.total ?? res.json.length ?? grants.length,
         };
       }
 
@@ -1899,7 +1904,7 @@ export default (
             id: log.log_id || log.id,
             ...log,
           })),
-          total: response.length || logsArray.length,
+          total: response.total ?? response.length ?? logsArray.length,
         };
       }
 

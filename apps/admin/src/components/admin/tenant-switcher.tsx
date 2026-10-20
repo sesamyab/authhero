@@ -115,13 +115,13 @@ export function TenantSwitcher() {
         if (
           !Array.isArray(data) &&
           isTenantsEnvelope(data) &&
-          typeof data.length === "number" &&
+          typeof (data.total ?? data.length) === "number" &&
           // Only update the total when there's no active search; otherwise we'd
           // overwrite the unfiltered total with the filtered result count and
           // hide the search input on the next open.
           !debouncedSearch
         ) {
-          setTotal(data.length);
+          setTotal((data.total ?? data.length) as number);
         }
       } catch (e) {
         if (cancelled) return;
@@ -243,7 +243,7 @@ export function TenantSwitcher() {
 
 function isTenantsEnvelope(
   v: unknown,
-): v is { tenants: Tenant[]; length?: number } {
+): v is { tenants: Tenant[]; length?: number; total?: number } {
   return (
     typeof v === "object" &&
     v !== null &&

@@ -1518,6 +1518,42 @@ describe("users management API endpoint", () => {
       ]);
     });
 
+    it("reports page size as length and the overall count as total, like Auth0", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+      const token = await getAdminToken();
+
+      for (const n of [1, 2, 3]) {
+        await env.data.users.create("tenantId", {
+          user_id: `email|paging${n}`,
+          email: `paging${n}@example.com`,
+          email_verified: true,
+          connection: "Username-Password-Authentication",
+          provider: "auth2",
+          is_social: false,
+        });
+      }
+
+      const response = await managementClient.users.$get(
+        {
+          query: { include_totals: "true", page: "0", per_page: "2" },
+          header: { "tenant-id": "tenantId" },
+        },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      if (!("users" in body)) {
+        throw new Error("Expected an users property");
+      }
+
+      expect(body.users).toHaveLength(2);
+      expect(body.limit).toBe(2);
+      expect(body.length).toBe(2);
+      expect(body.total).toBe(4);
+    });
+
     it("should return a list of users with totals", async () => {
       const { managementApp, env } = await getTestServer();
       const managementClient = testClient(managementApp, env);

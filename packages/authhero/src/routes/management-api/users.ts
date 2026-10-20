@@ -357,9 +357,10 @@ const getRoot = defineRoute({
       return ctx.json(
         usersWithTotalsSchema.parse({
           users: primarySqlUsers,
-          length: result.length,
           start: result.start,
           limit: result.limit,
+          length: primarySqlUsers.length,
+          total: result.length,
         }),
       );
     }
@@ -1454,7 +1455,8 @@ const getByUser_idRefreshTokens = defineRoute({
           tokens,
           start: result.start,
           limit: result.limit,
-          length: result.length,
+          length: tokens.length,
+          total: result.length,
         }),
       );
     }
@@ -2103,7 +2105,8 @@ const getByUser_idOrganizations = defineRoute({
         organizations: result.organizations,
         start: result.start,
         limit: result.limit,
-        length: result.length,
+        length: result.organizations.length,
+        total: result.length,
       });
     }
 

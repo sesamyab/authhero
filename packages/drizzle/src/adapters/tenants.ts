@@ -167,9 +167,11 @@ export function createTenantsAdapter(db: DrizzleDb) {
 
       return {
         tenants: mappedTenants,
-        start: page * per_page,
-        limit: per_page,
-        length: Number(countResult?.count ?? 0),
+        totals: {
+          start: page * per_page,
+          limit: per_page,
+          length: Number(countResult?.count ?? 0),
+        },
       };
     },
 
