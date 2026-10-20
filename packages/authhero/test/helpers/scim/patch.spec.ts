@@ -39,7 +39,11 @@ describe("SCIM patch applier", () => {
 
   it("updates a value-filtered multivalued attribute", () => {
     const out = applyScimPatch(base(), [
-      { op: "replace", path: 'emails[type eq "work"].value', value: "new@x.io" },
+      {
+        op: "replace",
+        path: 'emails[type eq "work"].value',
+        value: "new@x.io",
+      },
     ]);
     const emails = out.emails as { type: string; value: string }[];
     expect(emails.find((e) => e.type === "work")?.value).toBe("new@x.io");

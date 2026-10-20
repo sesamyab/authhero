@@ -37,6 +37,7 @@ interface LogStreamData {
     response?: { statusCode: number; body?: unknown };
     execution_id?: string;
     login_session_id?: string;
+    [key: string]: unknown;
   };
 }
 
@@ -78,6 +79,7 @@ function toPayload(event: AuditEvent): LogStreamPayload {
       auth0_client: event.auth0_client,
       location_info: event.location,
       details: {
+        ...(event.details || {}),
         request: {
           method: event.request.method,
           path: event.request.path,

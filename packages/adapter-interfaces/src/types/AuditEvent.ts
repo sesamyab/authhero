@@ -104,6 +104,9 @@ export const auditEventInsertSchema = z.object({
   /** The action execution this event resulted from (`details.execution_id` on the log). */
   execution_id: z.string().optional(),
 
+  /** Extra caller-supplied `details` (merged into the log's `details`; the request/response blocks win on key clashes). */
+  details: z.record(z.string(), z.unknown()).optional(),
+
   /** The login session (state) this event belongs to (`details.login_session_id` on the log). */
   login_session_id: z.string().optional(),
 

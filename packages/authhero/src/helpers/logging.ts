@@ -448,6 +448,7 @@ function buildAuditEvent(
     auth0_client: ctx.var.auth0_client,
     ...(params.execution_id ? { execution_id: params.execution_id } : {}),
     ...(loginSessionId ? { login_session_id: loginSessionId } : {}),
+    ...(params.details ? { details: params.details } : {}),
     timestamp: new Date().toISOString(),
   };
 }

@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../helpers/test-server";
 import { logMessage } from "../../src/helpers/logging";
+import { drainOutbox } from "../../src/helpers/outbox-relay";
+import { LogsDestination } from "../../src/helpers/outbox-destinations/logs";
 
 function makeCtx(env: any, vars: Record<string, unknown>): any {
   return {
@@ -82,6 +84,30 @@ describe("logMessage login_session_id", () => {
     expect(log.details).toMatchObject({
       foo: "bar",
       login_session_id: "ls_ctx",
+    });
+  });
+
+  it("keeps caller details and login_session_id through the outbox path", async () => {
+    const { env } = await getTestServer({ outbox: true });
+    const ctx = makeCtx(env, { loginSession: { id: "ls_ctx" } });
+    ctx.set = (key: string, value: unknown) => {
+      ctx.var[key] = value;
+    };
+
+    await logMessage(ctx, "tenantId", {
+      type: LogTypes.INFORMATION,
+      description: "probe",
+      details: { reason: "because", issuer: "https://sp.example/sp" },
+    });
+    await Promise.all(ctx.var.outboxEventPromises ?? []);
+    await drainOutbox(env.data.outbox!, [new LogsDestination(env.data.logs)]);
+
+    const log = await lastLog(env);
+    expect(log.details).toMatchObject({
+      reason: "because",
+      issuer: "https://sp.example/sp",
+      login_session_id: "ls_ctx",
+      request: { method: "GET" },
     });
   });
 });

@@ -187,6 +187,28 @@ describe("/samlp/{client_id} — SP-initiated SAML AuthnRequest", () => {
     expect(step?.details?.login_session_id).toBe(state);
   });
 
+  it("logs a failed login when the SAMLRequest cannot be parsed, without changing the failure", async () => {
+    const { samlApp, env } = await getTestServer();
+    const client = testClient(samlApp, env);
+
+    const response = await client[":client_id"].$get({
+      param: { client_id: "clientId" },
+      query: { SAMLRequest: "not-a-valid-request" },
+    });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+
+    await vi.waitFor(async () => {
+      const { logs } = await env.data.logs.list("tenantId", {
+        page: 0,
+        per_page: 50,
+        include_totals: true,
+      });
+      const entry = logs.find((l) => l.type === "f");
+      expect(entry?.description).toBe("SAML: SAMLRequest could not be parsed");
+      expect(entry?.details?.reason).toBe("SAMLRequest could not be parsed");
+    });
+  });
+
   it("logs a failed login when the ACS URL is not allowed, without changing the 400", async () => {
     const { samlApp, env } = await getTestServer();
     const client = testClient(samlApp, env);

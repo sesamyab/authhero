@@ -39,6 +39,7 @@ function toLogInsert(event: AuditEvent): LogInsert {
     isMobile: event.is_mobile || false,
     location_info: event.location,
     details: {
+      ...(event.details || {}),
       request: {
         method: event.request.method,
         path: event.request.path,

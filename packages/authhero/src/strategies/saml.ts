@@ -102,12 +102,20 @@ export async function samlCallback(
   // live (`revoked_at` in the future) and would otherwise have an even chance
   // of signing the assertion. The helper sorts `current_since` descending and
   // only ever returns a key that carries private material.
-  const [signingKey] = await resolveSigningKeys(
-    ctx.env.data.keys,
-    client.tenant.id,
-    ctx.env.signingKeyMode,
-    { purpose: "sign", type: "saml_encryption" },
-  );
+  let signingKey:
+    | Awaited<ReturnType<typeof resolveSigningKeys>>[number]
+    | undefined;
+  try {
+    [signingKey] = await resolveSigningKeys(
+      ctx.env.data.keys,
+      client.tenant.id,
+      ctx.env.signingKeyMode,
+      { purpose: "sign", type: "saml_encryption" },
+    );
+  } catch (err) {
+    logFailure("Failed to resolve signing key");
+    throw err;
+  }
   if (!signingKey) {
     fail(500, "No signing key found");
   }
@@ -146,7 +154,8 @@ export async function samlCallback(
       : undefined);
 
   const vimeoUserId = user.app_metadata?.vimeo?.user_id;
-  const nameId = vimeoUserId || user.user_id;
+  // Sent as the assertion's `id` attribute; the saml:NameID itself is the email.
+  const idAttribute = vimeoUserId || user.user_id;
   const assertionAudience = (audience || authParams.client_id) as string;
 
   let samlResponse: string;
@@ -157,7 +166,7 @@ export async function samlCallback(
         audience: assertionAudience,
         destination: redirectUrl.toString(),
         inResponseTo: state.requestId,
-        userId: nameId,
+        userId: idAttribute,
         email: user.email!,
         sessionIndex: sid!,
         signature: {
@@ -185,9 +194,11 @@ export async function samlCallback(
     login_session_id: loginSessionId,
     details: {
       client_id: client.client_id,
-      name_id: nameId,
-      name_id_source: vimeoUserId ? "app_metadata.vimeo.user_id" : "user_id",
-      email: user.email,
+      name_id: user.email,
+      id_attribute: idAttribute,
+      id_attribute_source: vimeoUserId
+        ? "app_metadata.vimeo.user_id"
+        : "user_id",
       audience: assertionAudience,
       destination: redirectUrl.toString(),
       signing_key_kid: signingKey.kid,

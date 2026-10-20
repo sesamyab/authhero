@@ -130,7 +130,13 @@ const getByClient_id = defineRoute({
         details: { client_id, reason: description },
       });
 
-    const samlRequest = await parseSamlRequestQuery(SAMLRequest);
+    let samlRequest: Awaited<ReturnType<typeof parseSamlRequestQuery>>;
+    try {
+      samlRequest = await parseSamlRequestQuery(SAMLRequest);
+    } catch (err) {
+      logRejected("SAMLRequest could not be parsed");
+      throw err;
+    }
 
     // Fail closed when the deployer has flagged this client as requiring
     // signed requests. Redirect-binding signature verification (xml-crypto

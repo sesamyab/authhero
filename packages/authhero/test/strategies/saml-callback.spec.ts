@@ -66,8 +66,9 @@ describe("samlCallback logging", () => {
     expect(params.login_session_id).toBe("ls_1");
     expect(params.details).toMatchObject({
       client_id: "saml-client",
-      name_id: "auth0|1",
-      name_id_source: "user_id",
+      name_id: "a@example.com",
+      id_attribute: "auth0|1",
+      id_attribute_source: "user_id",
       audience: "urn:sp",
       destination: "https://sp/acs",
       signing_key_kid: "kid1",
@@ -85,8 +86,9 @@ describe("samlCallback logging", () => {
       "sid",
     );
     expect(logMessage.mock.calls[0][2].details).toMatchObject({
-      name_id: "v123",
-      name_id_source: "app_metadata.vimeo.user_id",
+      name_id: "a@example.com",
+      id_attribute: "v123",
+      id_attribute_source: "app_metadata.vimeo.user_id",
     });
   });
 
@@ -159,6 +161,19 @@ describe("samlCallback logging", () => {
     expect(logMessage.mock.calls[0][2].description).toMatch(
       /No signing key found/,
     );
+  });
+
+  it("logs and rethrows when the signing key lookup throws", async () => {
+    const boom = new Error("keys unavailable");
+    resolveSigningKeys.mockRejectedValue(boom);
+    await expect(
+      samlCallback(ctx, makeClient(), authParams, user, "sid"),
+    ).rejects.toBe(boom);
+    expect(logMessage).toHaveBeenCalledTimes(1);
+    const params = logMessage.mock.calls[0][2];
+    expect(params.type).toBe(LogTypes.FAILED_LOGIN);
+    expect(params.description).toMatch(/Failed to resolve signing key/);
+    expect(JSON.stringify(params)).not.toContain("keys unavailable");
   });
 
   it("logs and rethrows when the state is not valid JSON", async () => {

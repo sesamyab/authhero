@@ -38,11 +38,7 @@ export function scimErrorBody(
 export class ScimError extends Error {
   status: ContentfulStatusCode;
   scimType?: string;
-  constructor(
-    status: ContentfulStatusCode,
-    detail: string,
-    scimType?: string,
-  ) {
+  constructor(status: ContentfulStatusCode, detail: string, scimType?: string) {
     super(detail);
     this.name = "ScimError";
     this.status = status;
