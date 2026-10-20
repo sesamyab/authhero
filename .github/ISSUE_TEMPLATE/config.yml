@@ -8,3 +8,6 @@ contact_links:
   - name: Documentation
     url: https://docs.authhero.net
     about: Setup, configuration, adapters, and the contributing guide.
+  - name: Report a security vulnerability
+    url: https://github.com/markusahlstrand/authhero/security/advisories/new
+    about: Report security issues privately. Please don't open a public issue for them. See SECURITY.md.
