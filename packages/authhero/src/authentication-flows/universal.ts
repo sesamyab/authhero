@@ -125,6 +125,8 @@ export async function universalAuth({
       auth0Client,
     },
   );
+  // Lets logMessage tag this request's log entries with the login session.
+  ctx.set("loginSession", loginSession);
 
   // Determine route prefix based on client metadata
   // Set client_metadata.universal_login_version to "2" to use /u2 routes

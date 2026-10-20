@@ -179,7 +179,8 @@ export type LogParams = {
   /**
    * The login session (the `state`) this event belongs to. Merged into
    * `details` so one login flow can be traced across /authorize, /u/* and
-   * /samlp/* log entries.
+   * /samlp/* log entries. Defaults to `ctx.var.loginSession?.id` when the
+   * request has resolved a login session.
    */
   login_session_id?: string;
   /**
@@ -329,6 +330,14 @@ async function resolveLogEnrichment(
   };
 }
 
+/** Explicit param wins; otherwise fall back to the request's login session. */
+function resolveLoginSessionId(
+  ctx: RequestContext,
+  params: LogParams,
+): string | undefined {
+  return params.login_session_id ?? ctx.var.loginSession?.id;
+}
+
 function buildAuditEvent(
   ctx: RequestContext,
   tenantId: string,
@@ -336,6 +345,7 @@ function buildAuditEvent(
   enrichment?: LogEnrichment,
 ): AuditEventInsert {
   const captureEntityState = ctx.env.outbox?.captureEntityState !== false;
+  const loginSessionId = resolveLoginSessionId(ctx, params);
   const beforeState = captureEntityState
     ? redactSensitiveFields(params.beforeState)
     : undefined;
@@ -437,9 +447,7 @@ function buildAuditEvent(
     is_mobile: false,
     auth0_client: ctx.var.auth0_client,
     ...(params.execution_id ? { execution_id: params.execution_id } : {}),
-    ...(params.login_session_id
-      ? { login_session_id: params.login_session_id }
-      : {}),
+    ...(loginSessionId ? { login_session_id: loginSessionId } : {}),
     timestamp: new Date().toISOString(),
   };
 }
@@ -496,6 +504,9 @@ export async function logMessage(
     return;
   }
 
+  // Read synchronously: the context may be gone once waitUntil runs.
+  const loginSessionId = resolveLoginSessionId(ctx, params);
+
   const createLogPromise = async () => {
     // Get geo information if adapter is available
     const [locationInfo, enrichment] = await Promise.all([
@@ -535,9 +546,7 @@ export async function logMessage(
           }),
         }),
         ...(params.execution_id ? { execution_id: params.execution_id } : {}),
-        ...(params.login_session_id
-          ? { login_session_id: params.login_session_id }
-          : {}),
+        ...(loginSessionId ? { login_session_id: loginSessionId } : {}),
       },
       isMobile: false,
       client_id: ctx.var.client_id,

@@ -137,6 +137,56 @@ describe("/samlp/{client_id} — SP-initiated SAML AuthnRequest", () => {
     });
   });
 
+  it("tags the Universal Login logs that follow with the same login session id", async () => {
+    const { samlApp, env } = await getTestServer();
+    const client = testClient(samlApp, env);
+
+    const response = await client[":client_id"].$get({
+      param: { client_id: "clientId" },
+      query: {
+        SAMLRequest: buildSamlRequest({
+          issuer: "https://sp.example/sp",
+          assertionConsumerServiceURL: "https://example.com/callback",
+        }),
+      },
+    });
+    const state = new URL(
+      response.headers.get("location")!,
+      "http://localhost",
+    ).searchParams.get("state")!;
+
+    // Any log written while a /u/* route has resolved the session carries it.
+    const { logMessage } = await import("../../../src/helpers/logging");
+    const loginSession = await env.data.loginSessions.get("tenantId", state);
+    await logMessage(
+      {
+        env,
+        var: { loginSession, client_id: "clientId", ip: "", useragent: "" },
+        set: () => {},
+        req: {
+          method: "POST",
+          path: "/u/login/identifier",
+          queries: () => ({}),
+          raw: { headers: new Headers() },
+        },
+      } as any,
+      "tenantId",
+      { type: "i", description: "flow-step", waitForCompletion: true },
+    );
+
+    const { logs } = await env.data.logs.list("tenantId", {
+      page: 0,
+      per_page: 50,
+      include_totals: true,
+    });
+    const entry = logs.find(
+      (l) => l.description === "SAML authentication request received",
+    );
+    const step = logs.find((l) => l.description === "flow-step");
+    expect(entry?.details?.login_session_id).toBe(state);
+    expect(step?.details?.login_session_id).toBe(state);
+  });
+
   it("logs a failed login when the ACS URL is not allowed, without changing the 400", async () => {
     const { samlApp, env } = await getTestServer();
     const client = testClient(samlApp, env);
