@@ -30,9 +30,9 @@ const { app } = init({
   dataAdapter,
   outbox: {
     enabled: true,
-    captureEntityState: true,  // capture before/after entity state (default: true)
-    retentionDays: 7,          // days to keep processed events (default: 7)
-    maxRetries: 5,             // max delivery retries per event (default: 5)
+    captureEntityState: true, // capture before/after entity state (default: true)
+    retentionDays: 7, // days to keep processed events (default: 7)
+    maxRetries: 5, // max delivery retries per event (default: 5)
   },
 });
 ```
@@ -43,17 +43,17 @@ When `outbox.enabled` is `false` (or omitted), behavior is identical to the defa
 
 Every audit event captures:
 
-| Field | Description |
-|-------|-------------|
-| `event_type` | What happened — e.g. `user.updated`, `role.created` |
-| `log_type` | Auth0-compatible log type code (e.g. `sapi`) |
-| `category` | `user_action`, `admin_action`, `system`, or `api` |
-| `actor` | Who performed the action — type, ID, email, scopes, client_id |
-| `target` | What was affected — entity type, ID, before/after state, diff |
-| `request` | HTTP method, path, query, body, IP, user agent, plus `redirect_uri` (and, on the event only, `authorization_url`) for logins |
-| `response` | Status code and response body |
-| `execution_id` | The post-login action execution the event resulted from, when actions ran |
-| `timestamp` | ISO 8601 timestamp |
+| Field          | Description                                                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `event_type`   | What happened — e.g. `user.updated`, `role.created`                                                                          |
+| `log_type`     | Auth0-compatible log type code (e.g. `sapi`)                                                                                 |
+| `category`     | `user_action`, `admin_action`, `system`, or `api`                                                                            |
+| `actor`        | Who performed the action — type, ID, email, scopes, client_id                                                                |
+| `target`       | What was affected — entity type, ID, before/after state, diff                                                                |
+| `request`      | HTTP method, path, query, body, IP, user agent, plus `redirect_uri` (and, on the event only, `authorization_url`) for logins |
+| `response`     | Status code and response body                                                                                                |
+| `execution_id` | The post-login action execution the event resulted from, when actions ran                                                    |
+| `timestamp`    | ISO 8601 timestamp                                                                                                           |
 
 ### Before/After State
 
@@ -107,20 +107,16 @@ For the per-request path, the outbox relay runs via `waitUntil` after each respo
 
 `authhero` exposes three cron-style helpers you can wire into a Cloudflare Worker `scheduled()` handler or any cron runner:
 
-| Helper | Purpose |
-|--------|---------|
-| `drainOutbox(outbox, destinations, options?)` | Sweep pending outbox events, deliver to destinations, handle retries / dead-letter. Also runs cleanup inline. |
-| `cleanupOutbox(outbox, { retentionDays })` | Delete processed outbox events older than the retention window (default 7 days). Use when you want cleanup on a separate schedule from `drainOutbox`. |
-| `cleanupSessions(data, { tenantId?, userId? })` | Delete expired `login_sessions`, `sessions`, and `refresh_tokens`. Unscoped by default. |
+| Helper                                          | Purpose                                                                                                                                               |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `drainOutbox(outbox, destinations, options?)`   | Sweep pending outbox events, deliver to destinations, handle retries / dead-letter. Also runs cleanup inline.                                         |
+| `cleanupOutbox(outbox, { retentionDays })`      | Delete processed outbox events older than the retention window (default 7 days). Use when you want cleanup on a separate schedule from `drainOutbox`. |
+| `cleanupSessions(data, { tenantId?, userId? })` | Delete expired `login_sessions`, `sessions`, and `refresh_tokens`. Unscoped by default.                                                               |
 
 ### Cloudflare Worker example
 
 ```typescript
-import {
-  drainOutbox,
-  cleanupOutbox,
-  cleanupSessions,
-} from "authhero";
+import { drainOutbox, cleanupOutbox, cleanupSessions } from "authhero";
 
 // Your event destinations — e.g. a logs writer, webhook dispatcher, or
 // Analytics Engine sink. Each must implement `{ name, transform, deliver }`
@@ -149,5 +145,6 @@ Wire up a `wrangler.toml` cron trigger (e.g. `crons = ["* * * * *"]`) to invoke 
 
 ## Related
 
+- [Log Stream Recipes](/features/log-streams-recipes) — forward events to Datadog and Splunk
 - [Architecture: Audit Events](/architecture/audit-events) — deep dive into the outbox pattern
 - [Outbox Adapter](/customization/adapter-interfaces/outbox) — adapter interface reference

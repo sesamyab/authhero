@@ -346,6 +346,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               link: "/features/tenant-export-import",
             },
             { text: "Audit Logging", link: "/features/audit-logging" },
+            {
+              text: "Log Stream Recipes",
+              link: "/features/log-streams-recipes",
+            },
           ],
         },
         {
