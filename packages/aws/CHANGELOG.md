@@ -1,5 +1,23 @@
 # @authhero/aws-adapter
 
+## 1.6.0
+
+### Minor Changes
+
+- 8d60bf1: DynamoDB: add `listCheckpoint` for user permissions, user roles and organization connections, and pass `next` through for invitations, so the checkpoint (`from`/`take`) endpoints work on this adapter. The sessions, invitations and connected-clients checkpoint routes now also filter results by the requested user or organization, so adapters that ignore `q` cannot return other users' or organizations' rows. Part of #1543.
+
+### Patch Changes
+
+- ac55cbf: Remove `loginSessionBump` from the refresh grant and from `refreshTokens.update`. Nothing resolves through the login session any more, so an exchange no longer extends its `expires_at`. The `login_id` revoke cascade is kept for legacy rows until they have aged out.
+- 4c889c4: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /users/{id}/sessions`, `/logs`, `/organizations`, `/permissions` and `/roles`. User permissions and roles get optional `listCheckpoint` adapter methods, `sessions.list` and `userOrganizations.listUserOrganizations` return `next` in checkpoint mode, and the kysely user-permissions list now joins resource servers on `identifier`. Part of #1098.
+- Updated dependencies [87a4bc7]
+- Updated dependencies [abb0d13]
+- Updated dependencies [ac55cbf]
+- Updated dependencies [f7c1e95]
+- Updated dependencies [4c889c4]
+  - @authhero/adapter-interfaces@4.21.0
+  - @authhero/proxy@0.11.7
+
 ## 1.5.0
 
 ### Minor Changes

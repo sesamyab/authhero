@@ -1,5 +1,32 @@
 # authhero
 
+## 9.24.0
+
+### Minor Changes
+
+- c352b2c: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /hooks`, `/actions/actions`, `/forms`, `/flows` and `/grants`. The hooks, actions, forms, flows and grants adapters return `next` in checkpoint mode (newest first, id tiebreaker); `page`/`per_page` behaviour is unchanged. Part of #1543.
+- 87a4bc7: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /users/{id}/connected-clients` and `GET /failed-events`. `outbox.listFailed` returns `next` in checkpoint mode (most recently dead-lettered first, event id tiebreaker). Part of #1543.
+- abb0d13: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /organizations/{id}/invitations`, `/enabled_connections` and `/members/{user_id}/roles`. Organization connections get an optional `listCheckpoint` adapter method and `invites.list` returns `next` in checkpoint mode with the organization filter applied in the query. A malformed `from` cursor on `GET /users/{id}/permissions` now returns 400 instead of 500. Part of #1543.
+- 95e7668: Implement the SAML IdP single logout endpoint at `/samlp/:client_id/logout` (redirect and POST bindings). It revokes the session identified by the request's `SessionIndex` (or the session cookie), logs `slo`/`flo` with client, user, session and `login_session_id`, and answers with a `LogoutResponse` to `addons.samlp.logout.callback` when configured.
+- 4c889c4: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /users/{id}/sessions`, `/logs`, `/organizations`, `/permissions` and `/roles`. User permissions and roles get optional `listCheckpoint` adapter methods, `sessions.list` and `userOrganizations.listUserOrganizations` return `next` in checkpoint mode, and the kysely user-permissions list now joins resource servers on `identifier`. Part of #1098.
+
+### Patch Changes
+
+- 8d60bf1: DynamoDB: add `listCheckpoint` for user permissions, user roles and organization connections, and pass `next` through for invitations, so the checkpoint (`from`/`take`) endpoints work on this adapter. The sessions, invitations and connected-clients checkpoint routes now also filter results by the requested user or organization, so adapters that ignore `q` cannot return other users' or organizations' rows. Part of #1543.
+- c735555: Fix 2-cycle in `linked_to` when the primary is demoted onto one of its own secondaries. `linkUserTo` now promotes the secondary (clears its link, repoints the former primary's other secondaries) instead of throwing, which previously failed the post-login hook.
+- ac55cbf: Remove `loginSessionBump` from the refresh grant and from `refreshTokens.update`. Nothing resolves through the login session any more, so an exchange no longer extends its `expires_at`. The `login_id` revoke cascade is kept for legacy rows until they have aged out.
+- f7c1e95: Log the SAML IdP flow: the `/samlp/:client_id` entry, assertion issuance (client, NameID and its source, audience, destination, signing `kid`, `inResponseTo`) and every failure path in `samlCallback`. Log entries can now carry `details.login_session_id` so a single login flow can be traced. `logMessage` now defaults `login_session_id` to the request's login session, so `/authorize`, `/u/*` and the post-login `SUCCESS_LOGIN` entries carry it too.
+- Updated dependencies [87a4bc7]
+- Updated dependencies [abb0d13]
+- Updated dependencies [ac55cbf]
+- Updated dependencies [f7c1e95]
+- Updated dependencies [95e7668]
+- Updated dependencies [4c889c4]
+  - @authhero/adapter-interfaces@4.21.0
+  - @authhero/saml@0.6.0
+  - @authhero/proxy@0.11.7
+  - @authhero/widget@0.41.3
+
 ## 9.23.1
 
 ### Patch Changes

@@ -1,5 +1,26 @@
 # @authhero/drizzle
 
+## 1.14.0
+
+### Minor Changes
+
+- c352b2c: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /hooks`, `/actions/actions`, `/forms`, `/flows` and `/grants`. The hooks, actions, forms, flows and grants adapters return `next` in checkpoint mode (newest first, id tiebreaker); `page`/`per_page` behaviour is unchanged. Part of #1543.
+- 87a4bc7: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /users/{id}/connected-clients` and `GET /failed-events`. `outbox.listFailed` returns `next` in checkpoint mode (most recently dead-lettered first, event id tiebreaker). Part of #1543.
+- abb0d13: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /organizations/{id}/invitations`, `/enabled_connections` and `/members/{user_id}/roles`. Organization connections get an optional `listCheckpoint` adapter method and `invites.list` returns `next` in checkpoint mode with the organization filter applied in the query. A malformed `from` cursor on `GET /users/{id}/permissions` now returns 400 instead of 500. Part of #1543.
+- 4c889c4: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /users/{id}/sessions`, `/logs`, `/organizations`, `/permissions` and `/roles`. User permissions and roles get optional `listCheckpoint` adapter methods, `sessions.list` and `userOrganizations.listUserOrganizations` return `next` in checkpoint mode, and the kysely user-permissions list now joins resource servers on `identifier`. Part of #1098.
+
+### Patch Changes
+
+- ac55cbf: Remove `loginSessionBump` from the refresh grant and from `refreshTokens.update`. Nothing resolves through the login session any more, so an exchange no longer extends its `expires_at`. The `login_id` revoke cascade is kept for legacy rows until they have aged out.
+- d260b80: Fix `rolePermissions.list`: the drizzle adapter now honors `page`/`per_page` (it previously returned every permission), and the kysely adapter joins resource servers on `identifier` so `resource_server_name` is resolved correctly.
+- Updated dependencies [87a4bc7]
+- Updated dependencies [abb0d13]
+- Updated dependencies [ac55cbf]
+- Updated dependencies [f7c1e95]
+- Updated dependencies [4c889c4]
+  - @authhero/adapter-interfaces@4.21.0
+  - @authhero/proxy@0.11.7
+
 ## 1.13.0
 
 ### Minor Changes
