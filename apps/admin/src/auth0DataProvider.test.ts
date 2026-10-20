@@ -155,6 +155,27 @@ describe("getList", () => {
     expect(new URL(calls[0].url).pathname).toBe("/api/v2/actions/actions");
   });
 
+  it("uses `length` as the total when the users API sends no `total`", async () => {
+    managementClient.users.list.mockResolvedValue({
+      response: {
+        users: [{ user_id: "auth0|1" }, { user_id: "auth0|2" }],
+        start: 0,
+        limit: 2,
+        length: 60,
+      },
+    });
+    const { client } = createHttpClient(() => ({}));
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    const result = await provider.getList("users", {
+      pagination: { page: 1, perPage: 2 },
+      sort: NO_SORT,
+      filter: {},
+    });
+
+    expect(result.total).toBe(60);
+  });
+
   it("merges extra user filters into the Lucene query and escapes them", async () => {
     managementClient.users.list.mockResolvedValue({
       response: { users: [{ user_id: "auth0|1", email: "a@b.com" }], total: 3 },

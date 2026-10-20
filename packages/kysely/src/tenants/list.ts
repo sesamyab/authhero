@@ -46,9 +46,11 @@ export function list(db: Kysely<Database>) {
 
     return {
       tenants: mappedTenants,
-      start: page * per_page,
-      limit: per_page,
-      length: countInt,
+      totals: {
+        start: page * per_page,
+        limit: per_page,
+        length: countInt,
+      },
     };
   };
 }

@@ -57,7 +57,7 @@ describe("tenants adapter", () => {
       q: "Acme",
     });
     expect(freeText.tenants.length).toBe(1);
-    expect(freeText.length).toBe(2);
+    expect(freeText.totals?.length).toBe(2);
 
     const excludeId = await data.tenants.list({
       page: 0,
@@ -66,7 +66,7 @@ describe("tenants adapter", () => {
       q: "-id:t3",
     });
     expect(excludeId.tenants.map((t) => t.id).sort()).toEqual(["t1", "t2"]);
-    expect(excludeId.length).toBe(2);
+    expect(excludeId.totals?.length).toBe(2);
   });
 
   it("should match q against id and friendly_name", async () => {

@@ -880,12 +880,14 @@ describe("resource-servers", () => {
         start: number;
         limit: number;
         length: number;
+        total: number;
         next?: string;
       };
       expect(body.resource_servers).toHaveLength(5);
       expect(body.start).toBe(0);
       expect(body.limit).toBe(5);
-      expect(body.length).toBe(12);
+      expect(body.length).toBe(5);
+      expect(body.total).toBe(12);
       // No cursor is minted for offset requests.
       expect(body.next).toBeUndefined();
     });

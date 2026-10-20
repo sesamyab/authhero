@@ -50,17 +50,40 @@ export function withNext<T extends z.ZodRawShape>(items: T) {
 }
 
 /**
+ * Builds the Auth0 `include_totals` envelope from an adapter list result.
+ *
+ * Adapters report the overall match count as `length` (the offset-list
+ * contract). Auth0's wire format differs: `length` is the number of items on
+ * the returned page and `total` is the overall count, so the two are
+ * remapped here. A result that already carries `total` keeps it. Checkpoint
+ * (`from`/`take`) responses are built by the callers and never come through
+ * this helper.
+ */
+export function withTotalsEnvelope<T extends { length: number }>(
+  result: T,
+  items: readonly unknown[],
+): T & { length: number; total: number } {
+  const total =
+    (result as { total?: number }).total ??
+    (result as { length: number }).length;
+  return { ...result, length: items.length, total };
+}
+
+/**
  * Picks the list-response body for the `include_totals` branch every list
- * handler repeats: the full totals envelope when `include_totals` is set,
- * otherwise the bare item array under `key`.
+ * handler repeats: the Auth0 totals envelope (`start`, `limit`, `length`,
+ * `total`) when `include_totals` is set, otherwise the bare item array under
+ * `key`.
  *
  * The caller keeps its own `ctx.json(...)` so hono's per-route response
  * typing still applies.
  */
-export function listResponse<T extends object, K extends keyof T>(
+export function listResponse<T extends { length: number }, K extends keyof T>(
   include_totals: boolean | undefined,
   result: T,
   key: K,
-): T | T[K] {
-  return include_totals ? result : result[key];
+): (T & { length: number; total: number }) | T[K] {
+  return include_totals
+    ? withTotalsEnvelope(result, result[key] as unknown as readonly unknown[])
+    : result[key];
 }
