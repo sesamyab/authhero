@@ -158,7 +158,12 @@ export async function enterPasswordScreen(
     title: m.title(),
     description,
     components,
-    messages: messages?.map((msg) => ({ text: msg.text, type: msg.type })),
+    messages: [
+      ...(messages ?? []),
+      ...(data?.message === "password_reset_success"
+        ? [{ text: m.passwordResetSuccess(), type: "success" as const }]
+        : []),
+    ].map((msg) => ({ text: msg.text, type: msg.type })),
     links: [
       {
         id: "back",

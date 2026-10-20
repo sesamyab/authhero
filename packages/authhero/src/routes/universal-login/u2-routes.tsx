@@ -199,15 +199,6 @@ function createScreenRouteHandler(screenId: string) {
       // Fallback to error code if no description provided
       errorMessages.push({ text: error, type: "error" });
     }
-    if (message === "password_reset_success" && screenId === "enter-password") {
-      const { m } = createTranslation(
-        "login-password",
-        "login-password",
-        language,
-        customText,
-      );
-      errorMessages.push({ text: m.passwordResetSuccess(), type: "success" });
-    }
 
     // Build screen context for SSR
     // Use client.connections which is already ordered per the client's configuration
@@ -218,6 +209,7 @@ function createScreenRouteHandler(screenId: string) {
     // Build screen-specific data
     const screenData: Record<string, unknown> = {
       email: loginSession.authParams.username,
+      message,
     };
 
     // For accept-invitation, surface the org/inviter metadata from state_data
