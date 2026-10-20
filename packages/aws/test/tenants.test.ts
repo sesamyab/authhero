@@ -62,6 +62,26 @@ describe("tenants", () => {
     expect(fetchedAfterDelete).toBeNull();
   });
 
+  it("should match q against id and friendly_name", async () => {
+    const { data } = await getTestServer();
+    const base = {
+      audience: "https://api.example.com",
+      sender_email: "noreply@example.com",
+      sender_name: "Test",
+    };
+    await data.tenants.create({
+      ...base,
+      id: "acme-prod",
+      friendly_name: "Acme",
+    });
+    await data.tenants.create({ ...base, id: "other", friendly_name: "Other" });
+
+    for (const q of ["acme-prod", "prod", "Acme"]) {
+      const res = await data.tenants.list({ q });
+      expect(res.tenants.map((t) => t.id)).toEqual(["acme-prod"]);
+    }
+  });
+
   it("should return null for non-existent tenant", async () => {
     const { data } = await getTestServer();
 

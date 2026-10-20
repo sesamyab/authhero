@@ -23,7 +23,7 @@ export function list(db: Kysely<Database>) {
     }
 
     if (q) {
-      query = luceneFilter(db, query, q, ["friendly_name"]);
+      query = luceneFilter(db, query, q, ["id", "friendly_name"]);
     }
 
     const filteredQuery = query.offset(page * per_page).limit(per_page);

@@ -69,6 +69,24 @@ describe("tenants adapter", () => {
     expect(excludeId.length).toBe(2);
   });
 
+  it("should match q against id and friendly_name", async () => {
+    await data.tenants.create({
+      id: "acme-prod",
+      name: "Acme Prod",
+      friendly_name: "Acme",
+    });
+    await data.tenants.create({
+      id: "other",
+      name: "Other",
+      friendly_name: "Other",
+    });
+
+    for (const q of ["acme-prod", "prod", "Acme", "ACME-PROD"]) {
+      const res = await data.tenants.list({ q });
+      expect(res.tenants.map((t) => t.id)).toEqual(["acme-prod"]);
+    }
+  });
+
   it("should update a tenant", async () => {
     await data.tenants.create({ id: "t1", name: "Original" });
     await data.tenants.update("t1", { name: "Updated" });

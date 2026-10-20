@@ -74,7 +74,41 @@ export function createTenantsAdapter(ctx: DynamoDBContext): TenantsDataAdapter {
       tenants: Tenant[];
       totals?: Totals;
     }> {
-      const { include_totals = false } = params;
+      const { include_totals = false, q } = params;
+
+      // Free-text `q` matches the slug (id) and friendly_name,
+      // case-insensitively and on partial matches. DynamoDB can't filter this
+      // server-side, and tenants are few, so filter in memory (offset mode only).
+      if (q && !isKeysetRequest(params)) {
+        const needle = q.toLowerCase();
+        const all = await queryWithPagination<TenantItem>(
+          ctx,
+          tenantKeys.gsi1pk(),
+          { page: 0, per_page: 100000 },
+          { indexName: "GSI1", skPrefix: "TENANT#" },
+        );
+        const matches = all.items
+          .map(toTenant)
+          .filter(
+            (t) =>
+              t.id.toLowerCase().includes(needle) ||
+              (t.friendly_name ?? "").toLowerCase().includes(needle),
+          );
+        const { page = 0, per_page = 50 } = params;
+        const tenants = matches.slice(page * per_page, (page + 1) * per_page);
+
+        if (include_totals) {
+          return {
+            tenants,
+            totals: {
+              start: page * per_page,
+              limit: per_page,
+              length: matches.length,
+            },
+          };
+        }
+        return { tenants };
+      }
 
       // Query all tenants using GSI1 where all tenants share GSI1PK="TENANTS"
       const result = await queryWithPagination<TenantItem>(
