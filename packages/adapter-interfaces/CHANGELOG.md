@@ -1,5 +1,18 @@
 # @authhero/adapter-interfaces
 
+## 4.21.0
+
+### Minor Changes
+
+- 87a4bc7: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /users/{id}/connected-clients` and `GET /failed-events`. `outbox.listFailed` returns `next` in checkpoint mode (most recently dead-lettered first, event id tiebreaker). Part of #1543.
+- abb0d13: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /organizations/{id}/invitations`, `/enabled_connections` and `/members/{user_id}/roles`. Organization connections get an optional `listCheckpoint` adapter method and `invites.list` returns `next` in checkpoint mode with the organization filter applied in the query. A malformed `from` cursor on `GET /users/{id}/permissions` now returns 400 instead of 500. Part of #1543.
+- ac55cbf: Remove `loginSessionBump` from the refresh grant and from `refreshTokens.update`. Nothing resolves through the login session any more, so an exchange no longer extends its `expires_at`. The `login_id` revoke cascade is kept for legacy rows until they have aged out.
+- 4c889c4: Add checkpoint pagination (`from`/`take` with an opaque `next` cursor) to `GET /users/{id}/sessions`, `/logs`, `/organizations`, `/permissions` and `/roles`. User permissions and roles get optional `listCheckpoint` adapter methods, `sessions.list` and `userOrganizations.listUserOrganizations` return `next` in checkpoint mode, and the kysely user-permissions list now joins resource servers on `identifier`. Part of #1098.
+
+### Patch Changes
+
+- f7c1e95: Log the SAML IdP flow: the `/samlp/:client_id` entry, assertion issuance (client, NameID and its source, audience, destination, signing `kid`, `inResponseTo`) and every failure path in `samlCallback`. Log entries can now carry `details.login_session_id` so a single login flow can be traced. `logMessage` now defaults `login_session_id` to the request's login session, so `/authorize`, `/u/*` and the post-login `SUCCESS_LOGIN` entries carry it too.
+
 ## 4.20.0
 
 ### Minor Changes
