@@ -1,8 +1,19 @@
 import { ListParams, ListGrantsResponse } from "@authhero/adapter-interfaces";
-import { Kysely } from "kysely";
+import { Kysely, Selectable } from "kysely";
 import { luceneFilter } from "../helpers/filter";
 import { Database } from "../db";
 import getCountAsInt from "../utils/getCountAsInt";
+import { keysetPaginate, isKeysetRequest } from "../helpers/paginate";
+
+function toGrant(row: Selectable<Database["grants"]>) {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    clientID: row.client_id,
+    audience: row.audience || undefined,
+    scope: row.scope ? JSON.parse(row.scope) : [],
+  };
+}
 
 export function list(db: Kysely<Database>) {
   return async (
@@ -19,6 +30,24 @@ export function list(db: Kysely<Database>) {
       query = luceneFilter(db, query, q, ["user_id", "client_id", "audience"]);
     }
 
+    // Keyset (checkpoint) pagination: from/take. Fixed created_at desc order
+    // with an id tiebreaker and no total, matching the other checkpoint lists.
+    if (isKeysetRequest(params)) {
+      const { rows, limit, next } = await keysetPaginate(
+        query.selectAll(),
+        params,
+        { sortColumn: "created_at", sortOrder: "desc", idColumn: "id" },
+      );
+      const keysetGrants = rows.map(toGrant);
+      return {
+        grants: keysetGrants,
+        start: 0,
+        limit,
+        length: keysetGrants.length,
+        next,
+      };
+    }
+
     let filteredQuery = query;
     if (sort && sort.sort_by) {
       const { ref } = db.dynamic;
@@ -27,13 +56,7 @@ export function list(db: Kysely<Database>) {
     filteredQuery = filteredQuery.offset(page * per_page).limit(per_page);
 
     const rows = await filteredQuery.selectAll().execute();
-    const grants = rows.map((row) => ({
-      id: row.id,
-      user_id: row.user_id,
-      clientID: row.client_id,
-      audience: row.audience || undefined,
-      scope: row.scope ? JSON.parse(row.scope) : [],
-    }));
+    const grants = rows.map(toGrant);
 
     if (!include_totals) {
       return { grants, start: 0, limit: 0, length: 0 };

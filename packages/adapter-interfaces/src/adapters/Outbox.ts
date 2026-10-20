@@ -23,6 +23,11 @@ export interface ListFailedEventsResponse {
   start: number;
   limit: number;
   length: number;
+  /**
+   * Opaque keyset cursor for the next page. Set only when the caller paginated
+   * with from/take and more rows may follow.
+   */
+  next?: string;
 }
 
 export interface OutboxAdapter {

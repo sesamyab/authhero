@@ -4,6 +4,7 @@ import {
   UserPermissionWithDetailsList,
   UserPermissionWithDetails,
   ListParams,
+  ListUserPermissionsCheckpointResponse,
   userPermissionWithDetailsSchema,
 } from "@authhero/adapter-interfaces";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
@@ -105,6 +106,30 @@ export function createUserPermissionsAdapter(
       );
 
       return result.items.map(toUserPermission);
+    },
+
+    // Ordered by the sort key, USER_PERMISSION#<resource server>#<permission>,
+    // within one partition. User permissions are partitioned by organization,
+    // so (as with `list`) only the partition for `organizationId` is read:
+    // omitted or empty means the global partition. `take` is defaulted so a
+    // bare call still runs in keyset mode.
+    async listCheckpoint(
+      tenantId: string,
+      userId: string,
+      params: ListParams = {},
+      organizationId?: string,
+    ): Promise<ListUserPermissionsCheckpointResponse> {
+      const result = await queryWithPagination<UserPermissionItem>(
+        ctx,
+        userPermissionKeys.pk(tenantId, userId, organizationId),
+        { from: params.from, take: params.take ?? 50 },
+        { skPrefix: userPermissionKeys.skPrefix() },
+      );
+
+      return {
+        permissions: result.items.map(toUserPermission),
+        next: result.next,
+      };
     },
   };
 }

@@ -80,16 +80,8 @@ describe("user permissions", () => {
     // A permission assigned outside an organization is reported without one,
     // not with the empty string the adapters store internally.
     expect(permissions[0].organization_id).toBeUndefined();
-    // Documents current behaviour, not desired behaviour: the kysely
-    // user-permissions list joins `resource_servers.id` against the stored
-    // `resource_server_identifier` (an audience URI), so the join never
-    // matches and the name always falls back to the identifier. The drizzle
-    // adapter joins on `resource_servers.identifier` and does resolve the
-    // name. Flagged for a human on the PR — if the kysely join is fixed, this
-    // assertion should become `"Permissions API"`.
-    expect(permissions[0].resource_server_name).toBe(
-      "https://permissions.example.com",
-    );
+    // The resource server name resolves via `resource_servers.identifier`.
+    expect(permissions[0].resource_server_name).toBe("Permissions API");
 
     const removeResponse = await client.users[":user_id"].permissions.$delete(
       {

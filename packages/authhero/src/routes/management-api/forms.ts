@@ -10,9 +10,13 @@ import {
 import { logMessage } from "../../helpers/logging";
 import { parseSort } from "../../utils/sort";
 import { defineRoute } from "../../utils/define-route";
-import { requireTenantId, withTotals, listResponse } from "./helpers";
+import { requireTenantId, withTotals, withNext, listResponse } from "./helpers";
 
 const formsWithTotalsSchema = withTotals({
+  forms: z.array(formSchema),
+});
+
+const formsWithNextSchema = withNext({
   forms: z.array(formSchema),
 });
 
@@ -33,7 +37,11 @@ const listForms = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: z.union([z.array(formSchema), formsWithTotalsSchema]),
+            schema: z.union([
+              z.array(formSchema),
+              formsWithTotalsSchema,
+              formsWithNextSchema,
+            ]),
           },
         },
         description: "List of forms",
@@ -48,6 +56,8 @@ const listForms = defineRoute({
       include_totals = false,
       sort,
       q,
+      from,
+      take,
     } = ctx.req.valid("query");
     const result = await ctx.env.data.forms.list(tenant_id, {
       page,
@@ -55,7 +65,15 @@ const listForms = defineRoute({
       include_totals,
       sort: parseSort(sort),
       q,
+      from,
+      take,
     });
+    // Checkpoint (from/take): { forms, next }. Checkpoint is an authhero
+    // extension here; Auth0 pages this endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      return ctx.json({ forms: result.forms, next: result.next });
+    }
+
     return ctx.json(listResponse(include_totals, result, "forms"));
   },
 });

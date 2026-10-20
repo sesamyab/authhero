@@ -4,10 +4,25 @@ import type { Flow, ListParams } from "@authhero/adapter-interfaces";
 import { flows } from "../schema/sqlite";
 import { removeNullProperties, parseJsonIfString } from "../helpers/transform";
 import { buildLuceneFilter, sanitizeLuceneQuery } from "../helpers/filter";
+import {
+  isKeysetRequest,
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
 // Fields flows.list() accepts in `q`. Excludes `tenant_id`.
 const ALLOWED_Q_FIELDS = ["id", "name"];
+
+function sqlToFlow(row: typeof flows.$inferSelect) {
+  const { tenant_id: _, actions, ...rest } = row;
+  return removeNullProperties({
+    ...rest,
+    actions: parseJsonIfString(actions, []),
+  });
+}
 
 export function createFlowsAdapter(db: DrizzleDb) {
   return {
@@ -96,6 +111,38 @@ export function createFlowsAdapter(db: DrizzleDb) {
       }
       const whereClause = and(...conditions);
 
+      // Keyset (checkpoint) pagination: from/take. Fixed created_at desc order
+      // with an id tiebreaker and no total.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: flows.created_at,
+          idColumn: flows.id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const cond = keysetCondition(params, cols);
+        const rows = await db
+          .select()
+          .from(flows)
+          .where(cond ? and(whereClause, cond) : whereClause)
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1);
+        const { rows: pageRows, next } = sliceWithNext(
+          rows,
+          take,
+          "created_at",
+          "id",
+        );
+        const keysetFlows = pageRows.map(sqlToFlow);
+        return {
+          flows: keysetFlows,
+          start: 0,
+          limit: take,
+          length: keysetFlows.length,
+          next,
+        };
+      }
+
       let query = db.select().from(flows).where(whereClause).$dynamic();
 
       if (sort?.sort_by) {
@@ -108,13 +155,7 @@ export function createFlowsAdapter(db: DrizzleDb) {
       }
 
       const results = await query.offset(page * per_page).limit(per_page);
-      const mapped = results.map((row) => {
-        const { tenant_id: _, actions, ...rest } = row;
-        return removeNullProperties({
-          ...rest,
-          actions: parseJsonIfString(actions, []),
-        });
-      });
+      const mapped = results.map(sqlToFlow);
 
       if (!include_totals) {
         return { flows: mapped };

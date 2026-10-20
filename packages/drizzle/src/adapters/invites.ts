@@ -4,6 +4,14 @@ import { HTTPException } from "hono/http-exception";
 import type { Invite, ListParams } from "@authhero/adapter-interfaces";
 import { invites } from "../schema/sqlite";
 import { removeNullProperties, parseJsonIfString } from "../helpers/transform";
+import { buildLuceneFilter } from "../helpers/filter";
+import {
+  isKeysetRequest,
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
 function generateInviteId(): string {
@@ -124,6 +132,46 @@ export function createInvitesAdapter(db: DrizzleDb) {
         include_totals = false,
         sort,
       } = params || {};
+
+      // Keyset (checkpoint) pagination: from/take, newest first with the
+      // invite id as tiebreaker. `q` (e.g. organization_id:<id>) stays in
+      // effect.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: invites.created_at,
+          idColumn: invites.id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const qFilter = params?.q
+          ? buildLuceneFilter(invites, params.q, ["invitee", "inviter"])
+          : undefined;
+        const rows = await db
+          .select()
+          .from(invites)
+          .where(
+            and(
+              eq(invites.tenant_id, tenantId),
+              qFilter,
+              keysetCondition(params, cols),
+            ),
+          )
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1);
+        const { rows: pageRows, next } = sliceWithNext(
+          rows,
+          take,
+          "created_at",
+        );
+        const keysetInvites = pageRows.map(sqlToInvite);
+        return {
+          invites: keysetInvites,
+          start: 0,
+          limit: take,
+          length: keysetInvites.length,
+          next,
+        };
+      }
 
       let query = db
         .select()

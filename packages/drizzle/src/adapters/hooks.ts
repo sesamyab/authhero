@@ -5,6 +5,13 @@ import { hooks } from "../schema/sqlite";
 import { removeNullProperties } from "../helpers/transform";
 import { convertDatesToAdapter } from "../helpers/dates";
 import { buildLuceneFilter } from "../helpers/filter";
+import {
+  isKeysetRequest,
+  keysetCondition,
+  keysetOrderBy,
+  keysetTake,
+  sliceWithNext,
+} from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
 function generateHookId(): string {
@@ -143,6 +150,38 @@ export function createHooksAdapter(db: DrizzleDb) {
       const whereClause = luceneFilter
         ? and(eq(hooks.tenant_id, tenant_id), luceneFilter)
         : eq(hooks.tenant_id, tenant_id);
+
+      // Keyset (checkpoint) pagination: from/take. Fixed created_at_ts desc order
+      // with an id tiebreaker and no total.
+      if (isKeysetRequest(params)) {
+        const cols = {
+          sortColumn: hooks.created_at_ts,
+          idColumn: hooks.hook_id,
+          sortOrder: "desc" as const,
+        };
+        const take = keysetTake(params);
+        const cond = keysetCondition(params, cols);
+        const rows = await db
+          .select()
+          .from(hooks)
+          .where(cond ? and(whereClause, cond) : whereClause)
+          .orderBy(...keysetOrderBy(cols))
+          .limit(take + 1);
+        const { rows: pageRows, next } = sliceWithNext(
+          rows,
+          take,
+          "created_at_ts",
+          "hook_id",
+        );
+        const keysetHooks = pageRows.map(sqlToHook);
+        return {
+          hooks: keysetHooks,
+          start: 0,
+          limit: take,
+          length: keysetHooks.length,
+          next,
+        };
+      }
 
       let query = db.select().from(hooks).where(whereClause).$dynamic();
 

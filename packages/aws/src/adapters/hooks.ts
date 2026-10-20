@@ -97,6 +97,7 @@ export function createHooksAdapter(ctx: DynamoDBContext): HooksAdapter {
         start: result.start,
         limit: result.limit,
         length: result.length,
+        next: result.next,
       };
     },
 

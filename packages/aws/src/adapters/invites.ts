@@ -128,6 +128,7 @@ export function createInvitesAdapter(ctx: DynamoDBContext): InvitesAdapter {
         start: result.start,
         limit: result.limit,
         length: result.length,
+        next: result.next,
       };
     },
 

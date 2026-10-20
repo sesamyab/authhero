@@ -23,6 +23,14 @@ const listFailedEventsResponseSchema = z.object({
   length: z.number(),
 });
 
+// Checkpoint (keyset) pagination response: items plus an opaque cursor.
+const listFailedEventsNextResponseSchema = z.object({
+  events: z.array(outboxEventSchema),
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
+});
+
 /**
  * Upper bound on a single bulk-retry or bulk-discard call. Each id is a
  * separate adapter round-trip, so an unbounded list would let one request
@@ -60,7 +68,10 @@ const getRoot = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: listFailedEventsResponseSchema,
+            schema: z.union([
+              listFailedEventsResponseSchema,
+              listFailedEventsNextResponseSchema,
+            ]),
           },
         },
         description: "Dead-lettered outbox events",
@@ -76,12 +87,21 @@ const getRoot = defineRoute({
       });
     }
 
-    const { page, per_page, include_totals } = ctx.req.valid("query");
+    const { page, per_page, include_totals, from, take } =
+      ctx.req.valid("query");
     const result = await outbox.listFailed(tenantId, {
       page,
       per_page,
       include_totals,
+      from,
+      take,
     });
+
+    // Checkpoint (from/take): { events, next }. Checkpoint is an authhero
+    // extension here; Auth0 has no equivalent endpoint.
+    if (from !== undefined || take !== undefined) {
+      return ctx.json({ events: result.events, next: result.next });
+    }
 
     return ctx.json({
       events: result.events,

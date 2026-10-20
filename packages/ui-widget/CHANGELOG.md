@@ -1,5 +1,11 @@
 # @authhero/widget
 
+## 0.41.2
+
+### Patch Changes
+
+- ab5cd8d: Render the `form-content-start` and `form-content-end` prompt partials inside the fields section so they follow the social-button/divider ordering instead of being pinned above the social buttons, and keep the form footer (submit button) directly after the fields wherever the social buttons are placed.
+
 ## 0.41.1
 
 ### Patch Changes

@@ -69,6 +69,17 @@ const invitationsQuerySchema = z.object({
       description:
         "Whether specified fields are to be included (true) or excluded (false). Defaults to true.",
     }),
+  from: z.string().optional().openapi({
+    description: "Optional opaque cursor from which to start selection.",
+  }),
+  take: z
+    .string()
+    .optional()
+    .transform((t) => (t ? parseInt(t, 10) : undefined))
+    .openapi({
+      description:
+        "Number of results per page in checkpoint mode. Defaults to 50.",
+    }),
   sort: z.string().optional().default("created_at:-1").openapi({
     description:
       "Field to sort by. Use field:order where order is 1 for ascending and -1 for descending. Defaults to created_at:-1.",
@@ -81,6 +92,22 @@ const invitationsListWithTotalsSchema = z.object({
   start: z.number(),
   limit: z.number(),
   length: z.number(),
+});
+
+// Checkpoint (keyset) pagination response for invitations.
+const invitationsListWithNextSchema = z.object({
+  invitations: z.array(inviteSchema),
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
+});
+
+// Checkpoint (keyset) pagination response for organization member roles.
+const memberRolesWithNextSchema = z.object({
+  roles: roleListSchema,
+  next: z.string().optional().openapi({
+    description: "Opaque cursor for the next page; absent on the last page.",
+  }),
 });
 
 // Request schema for creating invitations (organization_id and invitation_url come from API layer)
@@ -786,7 +813,7 @@ const getByIdMembersByUser_idRoles = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: roleListSchema,
+            schema: z.union([roleListSchema, memberRolesWithNextSchema]),
           },
         },
         description: "User roles in organization",
@@ -796,6 +823,7 @@ const getByIdMembersByUser_idRoles = defineRoute({
   handler: async (ctx) => {
     const tenant_id = requireTenantId(ctx);
     const { id: organizationId, user_id } = ctx.req.valid("param");
+    const { from, take } = ctx.req.valid("query");
 
     // First verify organization exists
     const organization = await ctx.env.data.organizations.get(
@@ -810,6 +838,25 @@ const getByIdMembersByUser_idRoles = defineRoute({
     const user = await ctx.env.data.users.get(tenant_id, user_id);
     if (!user) {
       throw new HTTPException(404, { message: "User not found" });
+    }
+
+    // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
+    // endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      const adapter = ctx.env.data.userRoles;
+      if (!adapter.listCheckpoint) {
+        throw new HTTPException(501, {
+          message:
+            "Checkpoint pagination is not supported for organization member roles by this data adapter",
+        });
+      }
+      const result = await adapter.listCheckpoint(
+        tenant_id,
+        user_id,
+        { from, take },
+        organization.id,
+      );
+      return ctx.json({ roles: result.roles, next: result.next });
     }
 
     // Get user roles in this organization
@@ -1091,6 +1138,7 @@ const getByIdInvitations = defineRoute({
             schema: z.union([
               z.array(inviteSchema),
               invitationsListWithTotalsSchema,
+              invitationsListWithNextSchema,
             ]),
           },
         },
@@ -1101,8 +1149,16 @@ const getByIdInvitations = defineRoute({
   handler: async (ctx) => {
     const tenant_id = requireTenantId(ctx);
     const { id: organization_id } = ctx.req.valid("param");
-    const { page, per_page, include_totals, fields, include_fields, sort } =
-      ctx.req.valid("query");
+    const {
+      page,
+      per_page,
+      include_totals,
+      fields,
+      include_fields,
+      sort,
+      from,
+      take,
+    } = ctx.req.valid("query");
 
     // Verify organization exists
     const organization = await ctx.env.data.organizations.get(
@@ -1111,6 +1167,25 @@ const getByIdInvitations = defineRoute({
     );
     if (!organization) {
       throw new HTTPException(404, { message: "Organization not found" });
+    }
+
+    // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
+    // endpoint by offset only. The organization filter is applied in the
+    // query, and the order is fixed (newest first), so `sort` is ignored.
+    if (from !== undefined || take !== undefined) {
+      const keyset = await ctx.env.data.invites.list(tenant_id, {
+        from,
+        take,
+        q: `organization_id:${escapeLuceneValue(organization.id)}`,
+      });
+      // Defensive: adapters that ignore `q` (DynamoDB) must not hand back
+      // other organizations' invitations.
+      return ctx.json({
+        invitations: keyset.invites.filter(
+          (invite) => invite.organization_id === organization.id,
+        ),
+        next: keyset.next,
+      });
     }
 
     const result = await ctx.env.data.invites.list(tenant_id, {
@@ -1428,6 +1503,17 @@ const getByIdEnabledConnections = defineRoute({
           .string()
           .optional()
           .transform((v) => (v ? parseInt(v, 10) : 50)),
+        from: z.string().optional().openapi({
+          description: "Optional opaque cursor from which to start selection.",
+        }),
+        take: z
+          .string()
+          .optional()
+          .transform((t) => (t ? parseInt(t, 10) : undefined))
+          .openapi({
+            description:
+              "Number of results per page in checkpoint mode. Defaults to 50.",
+          }),
       }),
     },
     security: [
@@ -1439,9 +1525,18 @@ const getByIdEnabledConnections = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: withTotals({
-              connections: z.array(organizationConnectionSchema),
-            }),
+            schema: z.union([
+              withTotals({
+                connections: z.array(organizationConnectionSchema),
+              }),
+              z.object({
+                connections: z.array(organizationConnectionSchema),
+                next: z.string().optional().openapi({
+                  description:
+                    "Opaque cursor for the next page; absent on the last page.",
+                }),
+              }),
+            ]),
           },
         },
         description: "Connections enabled for the organization",
@@ -1451,7 +1546,8 @@ const getByIdEnabledConnections = defineRoute({
   handler: async (ctx) => {
     const tenant_id = requireTenantId(ctx);
     const { id: organization_id } = ctx.req.valid("param");
-    const { include_totals, page, per_page } = ctx.req.valid("query");
+    const { include_totals, page, per_page, from, take } =
+      ctx.req.valid("query");
 
     const organization = await ctx.env.data.organizations.get(
       tenant_id,
@@ -1459,6 +1555,23 @@ const getByIdEnabledConnections = defineRoute({
     );
     if (!organization) {
       throw new HTTPException(404, { message: "Organization not found" });
+    }
+
+    // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
+    // endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      const adapter = ctx.env.data.organizationConnections;
+      if (!adapter.listCheckpoint) {
+        throw new HTTPException(501, {
+          message:
+            "Checkpoint pagination is not supported for organization connections by this data adapter",
+        });
+      }
+      const result = await adapter.listCheckpoint(tenant_id, organization.id, {
+        from,
+        take,
+      });
+      return ctx.json({ connections: result.connections, next: result.next });
     }
 
     const connections = await ctx.env.data.organizationConnections.list(

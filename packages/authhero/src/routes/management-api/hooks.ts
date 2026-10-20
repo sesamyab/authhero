@@ -14,8 +14,12 @@ import { generateHookId } from "../../utils/entity-id";
 import { invokeWebHook } from "../../hooks/webhooks";
 
 import { defineRoute } from "../../utils/define-route";
-import { requireTenantId, withTotals, listResponse } from "./helpers";
+import { requireTenantId, withTotals, withNext, listResponse } from "./helpers";
 const hooksWithTotalsSchema = withTotals({
+  hooks: z.array(hookSchema),
+});
+
+const hooksWithNextSchema = withNext({
   hooks: z.array(hookSchema),
 });
 const getRoot = defineRoute({
@@ -39,7 +43,11 @@ const getRoot = defineRoute({
       200: {
         content: {
           "application/json": {
-            schema: z.union([z.array(hookSchema), hooksWithTotalsSchema]),
+            schema: z.union([
+              z.array(hookSchema),
+              hooksWithTotalsSchema,
+              hooksWithNextSchema,
+            ]),
           },
         },
         description: "List of hooks",
@@ -48,7 +56,8 @@ const getRoot = defineRoute({
   }),
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
-    const { page, per_page, include_totals, sort, q } = ctx.req.valid("query");
+    const { page, per_page, include_totals, sort, q, from, take } =
+      ctx.req.valid("query");
 
     const hooks = await ctx.env.data.hooks.list(tenantId, {
       page,
@@ -56,7 +65,15 @@ const getRoot = defineRoute({
       include_totals,
       sort: parseSort(sort),
       q,
+      from,
+      take,
     });
+
+    // Checkpoint (from/take): { hooks, next }. Checkpoint is an authhero
+    // extension here; Auth0 pages this endpoint by offset only.
+    if (from !== undefined || take !== undefined) {
+      return ctx.json({ hooks: hooks.hooks, next: hooks.next });
+    }
 
     return ctx.json(listResponse(include_totals, hooks, "hooks"));
   },

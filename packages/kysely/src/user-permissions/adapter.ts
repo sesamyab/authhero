@@ -14,5 +14,7 @@ export function createUserPermissionsAdapter(
       repo.remove(tenant_id, user_id, permission, organization_id),
     list: (tenant_id, user_id, params, organization_id) =>
       repo.list(tenant_id, user_id, params, organization_id),
+    listCheckpoint: (tenant_id, user_id, params, organization_id) =>
+      repo.listCheckpoint(tenant_id, user_id, params, organization_id),
   };
 }

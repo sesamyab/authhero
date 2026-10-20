@@ -5,6 +5,7 @@ import {
   OrganizationConnectionsAdapter,
 } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
+import { keysetPaginate } from "../helpers/paginate";
 
 type Row = Database["organization_connections"];
 
@@ -94,6 +95,31 @@ export function createOrganizationConnectionsAdapter(
         out.push(toDomain(row, connection));
       }
       return out;
+    },
+
+    async listCheckpoint(tenantId, organizationId, params = {}) {
+      // connection_id is unique per organization, so it is both the sort
+      // column and the keyset tiebreaker.
+      const { rows, next } = await keysetPaginate(
+        db
+          .selectFrom("organization_connections")
+          .selectAll()
+          .where("tenant_id", "=", tenantId)
+          .where("organization_id", "=", organizationId),
+        params,
+        {
+          sortColumn: "connection_id",
+          idColumn: "connection_id",
+          sortOrder: "asc",
+        },
+      );
+      const connections: OrganizationConnection[] = [];
+      for (const row of rows) {
+        connections.push(
+          toDomain(row, await loadConnection(db, tenantId, row.connection_id)),
+        );
+      }
+      return { connections, next };
     },
 
     async get(tenantId, organizationId, connectionId) {

@@ -36,6 +36,20 @@ export function withTotals<T extends z.ZodRawShape>(items: T) {
 }
 
 /**
+ * Schema factory for the checkpoint (`from`/`take`) list-response shape:
+ * `{ <resource>: [...], next? }`. `next` is an opaque cursor, absent on the
+ * last page.
+ */
+export function withNext<T extends z.ZodRawShape>(items: T) {
+  return z.object({
+    ...items,
+    next: z.string().optional().openapi({
+      description: "Opaque cursor for the next page; absent on the last page.",
+    }),
+  });
+}
+
+/**
  * Picks the list-response body for the `include_totals` branch every list
  * handler repeats: the full totals envelope when `include_totals` is set,
  * otherwise the bare item array under `key`.

@@ -41,8 +41,11 @@ export function createRolePermissionsAdapter(db: DrizzleDb) {
       return true;
     },
 
-    async list(tenant_id: string, role_id: string, _params?: any) {
-      const results = await db
+    async list(tenant_id: string, role_id: string, params?: ListParams) {
+      // Offset pagination, matching kysely. Without an explicit per_page the
+      // full set is returned (callers such as the tenant export rely on it).
+      const perPage = params?.per_page;
+      const query = db
         .select({
           resource_server_identifier:
             rolePermissions.resource_server_identifier,
@@ -56,7 +59,17 @@ export function createRolePermissionsAdapter(db: DrizzleDb) {
             eq(rolePermissions.role_id, role_id),
           ),
         )
-        .all();
+        .orderBy(
+          rolePermissions.resource_server_identifier,
+          rolePermissions.permission_name,
+        )
+        .$dynamic();
+
+      const results = await (
+        perPage !== undefined
+          ? query.limit(perPage).offset((params?.page ?? 0) * perPage)
+          : query
+      ).all();
 
       return withResourceServerNames(db, tenant_id, results);
     },

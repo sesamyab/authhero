@@ -129,15 +129,12 @@ describe("role permissions keyset pagination (from/take)", () => {
     expect(seen).not.toContain("https://api-0.example.com|perm:foreign");
   });
 
-  it("leaves the offset list untouched", async () => {
-    // The drizzle offset list ignores page/per_page and returns the whole
-    // role; the management route slices it. Pinned here so checkpoint work
-    // doesn't change it by accident.
+  it("keeps the offset list paginated by page/per_page", async () => {
     const all = await data.rolePermissions.list(tenantId, roleId, {
       page: 0,
       per_page: 10,
     });
     expect(Array.isArray(all)).toBe(true);
-    expect(all).toHaveLength(25);
+    expect(all).toHaveLength(10);
   });
 });
