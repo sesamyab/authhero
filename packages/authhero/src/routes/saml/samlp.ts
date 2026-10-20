@@ -9,7 +9,15 @@ import {
   LogTypes,
 } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
-import { createSamlMetadata, parseSamlRequestQuery } from "../../helpers/saml";
+import {
+  createSamlLogoutResponse,
+  createSamlMetadata,
+  parseSamlLogoutRequestQuery,
+  parseSamlRequestQuery,
+} from "../../helpers/saml";
+import { clearAuthCookie, getAuthCookie } from "../../utils/cookies";
+import { sendBackchannelLogout } from "../../helpers/backchannel-logout";
+import { Context } from "hono";
 import { stringifyAuth0Client } from "../../utils/client-info";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { getEnrichedClient } from "../../helpers/client";
@@ -231,7 +239,196 @@ const getByClient_id = defineRoute({
   },
 });
 
+async function handleSamlLogout(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  client_id: string,
+  SAMLRequest: string,
+  RelayState: string | undefined,
+) {
+  const client = await getEnrichedClient(ctx.env, client_id);
+  ctx.set("client_id", client.client_id);
+  setTenantId(ctx, client.tenant.id);
+  const tenantId = client.tenant.id;
+
+  let requestId: string | undefined;
+  let sessionIndex: string | undefined;
+  let nameId: string | undefined;
+
+  const respond = async (
+    success: boolean,
+    description: string,
+    extra: Record<string, unknown> = {},
+  ) => {
+    logMessage(ctx, tenantId, {
+      type: success ? LogTypes.SUCCESS_LOGOUT : LogTypes.FAILED_LOGOUT,
+      description: `SAML: ${description}`,
+      userId: ctx.var.user_id,
+      details: {
+        client_id,
+        request_id: requestId,
+        session_index: sessionIndex,
+        name_id: nameId,
+        ...(success ? {} : { reason: description }),
+        ...extra,
+      },
+    });
+
+    const callback = (
+      client.addons?.samlp as { logout?: { callback?: string } } | undefined
+    )?.logout?.callback;
+
+    const headers = new Headers();
+    if (success) {
+      clearAuthCookie(tenantId, ctx.var.host).forEach((c) =>
+        headers.append("set-cookie", c),
+      );
+    }
+
+    if (!callback) {
+      headers.set("content-type", "text/html; charset=utf-8");
+      headers.set("cache-control", "no-store");
+      return new Response(
+        success ? "You have been logged out." : "Logout failed.",
+        { status: success ? 200 : 400, headers },
+      );
+    }
+
+    const url = new URL(callback);
+    url.searchParams.set(
+      "SAMLResponse",
+      await createSamlLogoutResponse({
+        issuer: ctx.env.ISSUER,
+        destination: callback,
+        inResponseTo: requestId,
+        success,
+        statusMessage: description,
+      }),
+    );
+    if (RelayState) url.searchParams.set("RelayState", RelayState);
+    headers.set("location", url.toString());
+    return new Response("Redirecting", { status: 302, headers });
+  };
+
+  const samlpAddon = client.addons?.samlp as
+    | { require_signed_requests?: boolean }
+    | undefined;
+  if (!samlpAddon) {
+    return respond(false, `SAML addon is not enabled for client ${client_id}`);
+  }
+  if (samlpAddon.require_signed_requests) {
+    return respond(
+      false,
+      "LogoutRequest signature required but cannot be verified",
+    );
+  }
+
+  try {
+    const request = (await parseSamlLogoutRequestQuery(SAMLRequest))[
+      "samlp:LogoutRequest"
+    ];
+    requestId = request["@_ID"];
+    sessionIndex = request["samlp:SessionIndex"]?.["#text"];
+    nameId = request["saml:NameID"]?.["#text"];
+  } catch (err) {
+    return respond(
+      false,
+      `Invalid LogoutRequest: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // The assertion's SessionIndex is the authhero session id; fall back to the
+  // browser's session cookie when the SP did not send one.
+  const cookie = ctx.req.header("cookie");
+  const sessionId =
+    sessionIndex || (cookie ? getAuthCookie(tenantId, cookie) : undefined);
+  if (!sessionId) {
+    return respond(false, "No session found for LogoutRequest");
+  }
+
+  const session = await ctx.env.data.sessions.get(tenantId, sessionId);
+  if (!session) {
+    return respond(false, "Session not found", { session_id: sessionId });
+  }
+
+  const user = await ctx.env.data.users.get(tenantId, session.user_id);
+  if (user) {
+    ctx.set("user_id", user.user_id);
+    ctx.set("connection", user.connection);
+  }
+
+  await ctx.env.data.sessions.update(tenantId, sessionId, {
+    revoked_at: new Date().toISOString(),
+  });
+  sendBackchannelLogout(ctx, tenantId, session);
+
+  return respond(true, "User successfully logged out", {
+    session_id: sessionId,
+    login_session_id: session.login_session_id,
+  });
+}
+
+const logoutResponses = {
+  200: { description: "Logged out" },
+  302: { description: "Redirect to the SP with a LogoutResponse" },
+  400: { description: "Bad Request" },
+};
+
+const getLogout = defineRoute({
+  route: createRoute({
+    tags: ["saml"],
+    method: "get",
+    path: "/{client_id}/logout",
+    request: {
+      query: z.object({
+        SAMLRequest: z.string(),
+        RelayState: z.string().optional(),
+        SigAlg: z.string().optional(),
+        Signature: z.string().optional(),
+      }),
+      params: z.object({ client_id: z.string() }),
+    },
+    responses: logoutResponses,
+  }),
+  handler: async (ctx) => {
+    const { client_id } = ctx.req.valid("param");
+    const { SAMLRequest, RelayState } = ctx.req.valid("query");
+    return handleSamlLogout(ctx, client_id, SAMLRequest, RelayState);
+  },
+});
+
+const postLogout = defineRoute({
+  route: createRoute({
+    tags: ["saml"],
+    method: "post",
+    path: "/{client_id}/logout",
+    request: {
+      params: z.object({ client_id: z.string() }),
+      body: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            schema: z.object({
+              SAMLRequest: z.string(),
+              RelayState: z.string().optional(),
+            }),
+          },
+        },
+      },
+    },
+    responses: logoutResponses,
+  }),
+  handler: async (ctx) => {
+    const { client_id } = ctx.req.valid("param");
+    const { SAMLRequest, RelayState } = ctx.req.valid("form");
+    return handleSamlLogout(ctx, client_id, SAMLRequest, RelayState);
+  },
+});
+
 export const samlpRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getMetadataByClient_id, getByClient_id] as const);
+}>().openapiRoutes([
+  getMetadataByClient_id,
+  getByClient_id,
+  getLogout,
+  postLogout,
+] as const);

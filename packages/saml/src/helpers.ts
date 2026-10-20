@@ -1,5 +1,9 @@
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
-import { samlRequestSchema, SAMLResponseJSON } from "./types";
+import {
+  samlLogoutRequestSchema,
+  samlRequestSchema,
+  SAMLResponseJSON,
+} from "./types";
 import { decodeBase64 } from "@authhero/adapter-interfaces";
 import { nanoid } from "nanoid";
 import { SamlSigner } from "./signer";
@@ -72,6 +76,63 @@ export async function parseSamlRequestQuery(samlRequestQuery: string) {
   const samlRequestJson = parser.parse(samlRequesteXml);
 
   return samlRequestSchema.parse(samlRequestJson);
+}
+
+export async function parseSamlLogoutRequestQuery(samlRequestQuery: string) {
+  const xml = await inflateDecompress(samlRequestQuery);
+  const parser = new XMLParser({
+    attributeNamePrefix: "@_",
+    alwaysCreateTextNode: true,
+    ignoreAttributes: false,
+  });
+  return samlLogoutRequestSchema.parse(parser.parse(xml));
+}
+
+export interface SAMLLogoutResponseParams {
+  issuer: string;
+  destination: string;
+  inResponseTo?: string;
+  success: boolean;
+  /** Only used when `success` is false. */
+  statusMessage?: string;
+}
+
+/**
+ * Builds an unsigned, HTTP-Redirect-encoded (raw deflate + base64) SAML
+ * LogoutResponse, ready to be URL-encoded into the `SAMLResponse` query param.
+ */
+export async function createSamlLogoutResponse(
+  params: SAMLLogoutResponseParams,
+): Promise<string> {
+  const esc = (v: string) =>
+    v
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const statusCode = params.success
+    ? "urn:oasis:names:tc:SAML:2.0:status:Success"
+    : "urn:oasis:names:tc:SAML:2.0:status:Responder";
+  const inResponseTo = params.inResponseTo
+    ? ` InResponseTo="${esc(params.inResponseTo)}"`
+    : "";
+  const statusMessage =
+    !params.success && params.statusMessage
+      ? `<samlp:StatusMessage>${esc(params.statusMessage)}</samlp:StatusMessage>`
+      : "";
+  const xml =
+    `<samlp:LogoutResponse xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_${nanoid()}" Version="2.0" IssueInstant="${new Date().toISOString()}" Destination="${esc(params.destination)}"${inResponseTo}>` +
+    `<saml:Issuer>${esc(params.issuer)}</saml:Issuer>` +
+    `<samlp:Status><samlp:StatusCode Value="${statusCode}"/>${statusMessage}</samlp:Status>` +
+    `</samlp:LogoutResponse>`;
+
+  const stream = new Blob([new TextEncoder().encode(xml)])
+    .stream()
+    .pipeThrough(new CompressionStream("deflate-raw"));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
 }
 
 export function createSamlMetadata(samlMetadataParams: SAMLMetadataParams) {

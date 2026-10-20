@@ -26,6 +26,17 @@ export const samlRequestSchema = z.object({
   }),
 });
 
+export const samlLogoutRequestSchema = z.object({
+  "samlp:LogoutRequest": z.object({
+    "saml:Issuer": samlIssuerSchema,
+    "saml:NameID": z.object({ "#text": z.string() }).optional(),
+    "samlp:SessionIndex": z.object({ "#text": z.string() }).optional(),
+    "@_ID": z.string(),
+    "@_Version": z.string().optional(),
+    "@_Destination": z.string().optional(),
+  }),
+});
+
 export const samlMetadataResponseSchema = z.array(
   z.object({
     ":@": z.object({

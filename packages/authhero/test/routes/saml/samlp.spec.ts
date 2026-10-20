@@ -358,3 +358,108 @@ describe("/samlp/metadata/{client_id}", () => {
     );
   });
 });
+
+describe("/samlp/{client_id}/logout — SAML single logout", () => {
+  function buildLogoutRequest(sessionIndex?: string): string {
+    const idx = sessionIndex
+      ? `<samlp:SessionIndex>${sessionIndex}</samlp:SessionIndex>`
+      : "";
+    return encodeSamlRequest(
+      `<samlp:LogoutRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_logout1" Version="2.0" IssueInstant="2026-01-01T00:00:00Z"><saml:Issuer>https://sp.example/sp</saml:Issuer><saml:NameID>email|userId</saml:NameID>${idx}</samlp:LogoutRequest>`,
+    );
+  }
+
+  async function logs(env: any) {
+    const { logs } = await env.data.logs.list("tenantId", {
+      page: 0,
+      per_page: 50,
+      include_totals: true,
+    });
+    return logs;
+  }
+
+  it("revokes the session, logs slo and redirects to the configured callback", async () => {
+    const { samlApp, env } = await getTestServer();
+    await env.data.clients.update("tenantId", "clientId", {
+      addons: { samlp: { logout: { callback: "https://sp.example/slo" } } },
+    });
+    const loginSession = await env.data.loginSessions.create("tenantId", {
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      csrf_token: "csrf",
+      authParams: { client_id: "clientId" },
+    });
+    const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+    await env.data.sessions.create("tenantId", {
+      id: "saml-sid",
+      user_id: "email|userId",
+      login_session_id: loginSession.id,
+      used_at: new Date().toISOString(),
+      device: {},
+      clients: ["clientId"],
+      expires_at: expiresAt,
+      idle_expires_at: expiresAt,
+    });
+
+    const client = testClient(samlApp, env);
+    const response = await client[":client_id"].logout.$get({
+      param: { client_id: "clientId" },
+      query: {
+        SAMLRequest: buildLogoutRequest("saml-sid"),
+        RelayState: "rs",
+      },
+    });
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe("https://sp.example/slo");
+    expect(location.searchParams.get("SAMLResponse")).toBeTruthy();
+    expect(location.searchParams.get("RelayState")).toBe("rs");
+
+    const session = await env.data.sessions.get("tenantId", "saml-sid");
+    expect(session?.revoked_at).toBeDefined();
+
+    await vi.waitFor(async () => {
+      const entry = (await logs(env)).find((l: any) => l.type === "slo");
+      expect(entry).toBeDefined();
+      expect(entry.details?.client_id).toBe("clientId");
+      expect(entry.details?.session_id).toBe("saml-sid");
+      expect(entry.details?.login_session_id).toBe(loginSession.id);
+    });
+  });
+
+  it("logs flo with a reason when the session does not exist", async () => {
+    const { samlApp, env } = await getTestServer();
+    const client = testClient(samlApp, env);
+    await env.data.clients.update("tenantId", "clientId", {
+      addons: { samlp: {} },
+    });
+
+    const response = await client[":client_id"].logout.$get({
+      param: { client_id: "clientId" },
+      query: { SAMLRequest: buildLogoutRequest("missing") },
+    });
+
+    expect(response.status).toBe(400);
+    await vi.waitFor(async () => {
+      const entry = (await logs(env)).find((l: any) => l.type === "flo");
+      expect(entry).toBeDefined();
+      expect(entry.details?.reason).toBe("Session not found");
+    });
+  });
+
+  it("logs flo when the SAML addon is not enabled", async () => {
+    const { samlApp, env } = await getTestServer();
+    const client = testClient(samlApp, env);
+
+    const response = await client[":client_id"].logout.$get({
+      param: { client_id: "clientId" },
+      query: { SAMLRequest: buildLogoutRequest("x") },
+    });
+
+    expect(response.status).toBe(400);
+    await vi.waitFor(async () => {
+      const entry = (await logs(env)).find((l: any) => l.type === "flo");
+      expect(entry?.details?.reason).toMatch(/SAML addon is not enabled/);
+    });
+  });
+});
