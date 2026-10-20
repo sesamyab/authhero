@@ -231,9 +231,20 @@ Trigger a login, then in Splunk search `sourcetype="authhero:log"`. If nothing a
 
 ## Datadog through a relay (optional)
 
-Reach for a relay with Datadog only if you need to set `message`, `ddsource`, `service` or `ddtags` at the source rather than in a Datadog pipeline, or to keep the API key out of AuthHero. The shape is the same as the Splunk Worker: authenticate the caller, map each event to
-`{ ddsource: "authhero", service: "authhero", ddtags: `tenant:${e.data.tenant_name}`, hostname: e.data.hostname, message: e.description, ...e }`,
-`POST` the array to `https://http-intake.logs.<site>/api/v2/logs` with a `DD-API-KEY` header, and return a non-2xx when Datadog doesn't answer `202`.
+Reach for a relay with Datadog only if you need to set `message`, `ddsource`, `service` or `ddtags` at the source rather than in a Datadog pipeline, or to keep the API key out of AuthHero. The shape is the same as the Splunk Worker: authenticate the caller, map each event to this shape:
+
+```ts
+const log = {
+  ddsource: "authhero",
+  service: "authhero",
+  ddtags: `tenant:${e.data.tenant_name}`,
+  hostname: e.data.hostname,
+  message: e.description,
+  ...e,
+};
+```
+
+Then `POST` the array to `https://http-intake.logs.<site>/api/v2/logs` with a `DD-API-KEY` header, and return a non-2xx when Datadog doesn't answer `202`.
 
 ## Notes
 
