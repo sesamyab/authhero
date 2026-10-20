@@ -17,6 +17,7 @@ Only the latest major version of each published package receives security fixes.
 | `@authhero/proxy`              | 0.x       |
 | `@authhero/widget`             | 0.x       |
 | `create-authhero`              | 0.x       |
+| `@authhero/admin`              | 0.x       |
 
 Packages on 0.x are covered by the same rule: the latest 0.x release is the supported one.
 
