@@ -39,6 +39,7 @@ function toLogInsert(event: AuditEvent): LogInsert {
     isMobile: event.is_mobile || false,
     location_info: event.location,
     details: {
+      ...(event.details || {}),
       request: {
         method: event.request.method,
         path: event.request.path,
@@ -55,6 +56,9 @@ function toLogInsert(event: AuditEvent): LogInsert {
         },
       }),
       ...(event.execution_id ? { execution_id: event.execution_id } : {}),
+      ...(event.login_session_id
+        ? { login_session_id: event.login_session_id }
+        : {}),
     },
   };
 }

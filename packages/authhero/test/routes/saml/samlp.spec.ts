@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { testClient } from "hono/testing";
 import { deflateRawSync } from "node:zlib";
 import { X509Certificate } from "@peculiar/x509";
@@ -98,6 +98,141 @@ describe("/samlp/{client_id} — SP-initiated SAML AuthnRequest", () => {
     expect(response.headers.get("location")).toMatch(
       /^\/u\/login\/identifier\?state=/,
     );
+  });
+
+  it("logs the AuthnRequest entry with the login session id", async () => {
+    const { samlApp, env } = await getTestServer();
+    const client = testClient(samlApp, env);
+
+    const response = await client[":client_id"].$get({
+      param: { client_id: "clientId" },
+      query: {
+        SAMLRequest: buildSamlRequest({
+          id: "_logged",
+          issuer: "https://sp.example/sp",
+          assertionConsumerServiceURL: "https://example.com/callback",
+        }),
+      },
+    });
+    expect(response.status).toBe(302);
+    const stateId = new URL(
+      response.headers.get("location")!,
+      "http://localhost",
+    ).searchParams.get("state");
+
+    await vi.waitFor(async () => {
+      const { logs } = await env.data.logs.list("tenantId", {
+        page: 0,
+        per_page: 50,
+        include_totals: true,
+      });
+      const entry = logs.find(
+        (l) => l.description === "SAML authentication request received",
+      );
+      expect(entry).toBeDefined();
+      expect(entry!.type).toBe("i");
+      expect(entry!.details?.login_session_id).toBe(stateId);
+      expect(entry!.details?.request_id).toBe("_logged");
+      expect(entry!.details?.acs_url).toBe("https://example.com/callback");
+    });
+  });
+
+  it("tags the Universal Login logs that follow with the same login session id", async () => {
+    const { samlApp, env } = await getTestServer();
+    const client = testClient(samlApp, env);
+
+    const response = await client[":client_id"].$get({
+      param: { client_id: "clientId" },
+      query: {
+        SAMLRequest: buildSamlRequest({
+          issuer: "https://sp.example/sp",
+          assertionConsumerServiceURL: "https://example.com/callback",
+        }),
+      },
+    });
+    const state = new URL(
+      response.headers.get("location")!,
+      "http://localhost",
+    ).searchParams.get("state")!;
+
+    // Any log written while a /u/* route has resolved the session carries it.
+    const { logMessage } = await import("../../../src/helpers/logging");
+    const loginSession = await env.data.loginSessions.get("tenantId", state);
+    await logMessage(
+      {
+        env,
+        var: { loginSession, client_id: "clientId", ip: "", useragent: "" },
+        set: () => {},
+        req: {
+          method: "POST",
+          path: "/u/login/identifier",
+          queries: () => ({}),
+          raw: { headers: new Headers() },
+        },
+      } as any,
+      "tenantId",
+      { type: "i", description: "flow-step", waitForCompletion: true },
+    );
+
+    const { logs } = await env.data.logs.list("tenantId", {
+      page: 0,
+      per_page: 50,
+      include_totals: true,
+    });
+    const entry = logs.find(
+      (l) => l.description === "SAML authentication request received",
+    );
+    const step = logs.find((l) => l.description === "flow-step");
+    expect(entry?.details?.login_session_id).toBe(state);
+    expect(step?.details?.login_session_id).toBe(state);
+  });
+
+  it("logs a failed login when the SAMLRequest cannot be parsed, without changing the failure", async () => {
+    const { samlApp, env } = await getTestServer();
+    const client = testClient(samlApp, env);
+
+    const response = await client[":client_id"].$get({
+      param: { client_id: "clientId" },
+      query: { SAMLRequest: "not-a-valid-request" },
+    });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+
+    await vi.waitFor(async () => {
+      const { logs } = await env.data.logs.list("tenantId", {
+        page: 0,
+        per_page: 50,
+        include_totals: true,
+      });
+      const entry = logs.find((l) => l.type === "f");
+      expect(entry?.description).toBe("SAML: SAMLRequest could not be parsed");
+      expect(entry?.details?.reason).toBe("SAMLRequest could not be parsed");
+    });
+  });
+
+  it("logs a failed login when the ACS URL is not allowed, without changing the 400", async () => {
+    const { samlApp, env } = await getTestServer();
+    const client = testClient(samlApp, env);
+
+    const response = await client[":client_id"].$get({
+      param: { client_id: "clientId" },
+      query: {
+        SAMLRequest: buildSamlRequest({
+          issuer: "https://attacker.example/sp",
+          assertionConsumerServiceURL: "https://attacker.example/acs",
+        }),
+      },
+    });
+    expect(response.status).toBe(400);
+
+    await vi.waitFor(async () => {
+      const { logs } = await env.data.logs.list("tenantId", {
+        page: 0,
+        per_page: 50,
+        include_totals: true,
+      });
+      const entry = logs.find((l) => l.type === "f");
+      expect(entry?.description).toMatch(/SAML: AssertionConsumerServiceURL/);
+    });
   });
 
   it("rejects an unsigned request when the client has require_signed_requests enabled", async () => {

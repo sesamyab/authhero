@@ -1,9 +1,10 @@
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
-import { AuthParams, User } from "@authhero/adapter-interfaces";
+import { AuthParams, LogTypes, User } from "@authhero/adapter-interfaces";
 import { EnrichedClient } from "../helpers/client";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { resolveSigningKeys } from "../helpers/signing-keys";
+import { logMessage } from "../helpers/logging";
 // Use core import to avoid xml-crypto dependency
 import { createSamlResponse, HttpSamlSigner } from "@authhero/saml/core";
 
@@ -66,17 +67,34 @@ export async function samlCallback(
   authParams: AuthParams,
   user: User,
   sid: string,
+  loginSessionId?: string,
 ) {
-  if (!authParams.redirect_uri) {
-    throw new JSONHTTPException(400, {
-      message: "Missing redirect_uri in authParams",
+  // Logging is fire-and-forget and must never change the outcome of the flow.
+  const logFailure = (reason: string) =>
+    logMessage(ctx, client.tenant.id, {
+      type: LogTypes.FAILED_LOGIN,
+      description: `SAML: ${reason}`,
+      userId: user?.user_id,
+      username: user?.email,
+      login_session_id: loginSessionId,
+      details: {
+        client_id: client.client_id,
+        reason,
+        redirect_uri: authParams.redirect_uri,
+      },
     });
+
+  function fail(status: 400 | 500, message: string): never {
+    logFailure(message);
+    throw new JSONHTTPException(status, { message });
+  }
+
+  if (!authParams.redirect_uri) {
+    fail(400, "Missing redirect_uri in authParams");
   }
 
   if (!user.email) {
-    throw new JSONHTTPException(400, {
-      message: "Missing email in user",
-    });
+    fail(400, "Missing email in user");
   }
 
   // Resolve through the shared helper rather than taking the first row of an
@@ -84,35 +102,46 @@ export async function samlCallback(
   // live (`revoked_at` in the future) and would otherwise have an even chance
   // of signing the assertion. The helper sorts `current_since` descending and
   // only ever returns a key that carries private material.
-  const [signingKey] = await resolveSigningKeys(
-    ctx.env.data.keys,
-    client.tenant.id,
-    ctx.env.signingKeyMode,
-    { purpose: "sign", type: "saml_encryption" },
-  );
+  let signingKey:
+    | Awaited<ReturnType<typeof resolveSigningKeys>>[number]
+    | undefined;
+  try {
+    [signingKey] = await resolveSigningKeys(
+      ctx.env.data.keys,
+      client.tenant.id,
+      ctx.env.signingKeyMode,
+      { purpose: "sign", type: "saml_encryption" },
+    );
+  } catch (err) {
+    logFailure("Failed to resolve signing key");
+    throw err;
+  }
   if (!signingKey) {
-    throw new JSONHTTPException(500, {
-      message: "No signing key found",
-    });
+    fail(500, "No signing key found");
   }
 
   if (!client.addons?.samlp) {
-    throw new JSONHTTPException(400, {
-      message: `SAML Addon is not enabled for client ${client.client_id}`,
-    });
+    fail(400, `SAML Addon is not enabled for client ${client.client_id}`);
   }
 
-  const { recipient, audience } = client.addons.samlp;
+  const { recipient, audience } = client.addons!.samlp;
   const inResponseTo = authParams.state || "";
 
   if (!recipient || !inResponseTo || !user || !authParams.state) {
-    throw new JSONHTTPException(400, {
-      message: `Missing recipient or inResponseTo`,
-    });
+    fail(400, `Missing recipient or inResponseTo`);
   }
 
-  const state = JSON.parse(authParams.state);
-  const redirectUrl = new URL(authParams.redirect_uri);
+  let state: { requestId: string; relayState?: string };
+  let redirectUrl: URL;
+  try {
+    state = JSON.parse(authParams.state!);
+    redirectUrl = new URL(authParams.redirect_uri!);
+  } catch (err) {
+    logFailure(
+      `Invalid state or redirect_uri: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    throw err;
+  }
 
   // Priority order for SAML signer:
   // 1. Configured signer instance (ctx.env.samlSigner)
@@ -124,23 +153,58 @@ export async function samlCallback(
       ? new HttpSamlSigner(ctx.env.SAML_SIGN_URL)
       : undefined);
 
-  const samlResponse = await createSamlResponse(
-    {
-      issuer: ctx.env.ISSUER,
-      audience: audience || authParams.client_id,
-      destination: redirectUrl.toString(),
-      inResponseTo: state.requestId,
-      userId: user.app_metadata?.vimeo?.user_id || user.user_id,
-      email: user.email,
-      sessionIndex: sid!,
-      signature: {
-        privateKeyPem: signingKey.pkcs7!,
-        cert: signingKey.cert,
-        kid: signingKey.kid,
+  const vimeoUserId = user.app_metadata?.vimeo?.user_id;
+  // Sent as the assertion's `id` attribute; the saml:NameID itself is the email.
+  const idAttribute = vimeoUserId || user.user_id;
+  const assertionAudience = (audience || authParams.client_id) as string;
+
+  let samlResponse: string;
+  try {
+    samlResponse = await createSamlResponse(
+      {
+        issuer: ctx.env.ISSUER,
+        audience: assertionAudience,
+        destination: redirectUrl.toString(),
+        inResponseTo: state.requestId,
+        userId: idAttribute,
+        email: user.email!,
+        sessionIndex: sid!,
+        signature: {
+          privateKeyPem: signingKey.pkcs7!,
+          cert: signingKey.cert,
+          kid: signingKey.kid,
+        },
       },
+      signer,
+    );
+  } catch (err) {
+    logFailure(
+      `Failed to create SAML response: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    throw err;
+  }
+
+  // Never log the assertion itself, only what it was built from.
+  logMessage(ctx, client.tenant.id, {
+    type: LogTypes.INFORMATION,
+    description: "SAML assertion issued",
+    userId: user.user_id,
+    username: user.email,
+    audience: assertionAudience,
+    login_session_id: loginSessionId,
+    details: {
+      client_id: client.client_id,
+      name_id: user.email,
+      id_attribute: idAttribute,
+      id_attribute_source: vimeoUserId
+        ? "app_metadata.vimeo.user_id"
+        : "user_id",
+      audience: assertionAudience,
+      destination: redirectUrl.toString(),
+      signing_key_kid: signingKey.kid,
+      in_response_to: state.requestId,
     },
-    signer,
-  );
+  });
 
   return samlResponseForm(
     redirectUrl.toString(),
