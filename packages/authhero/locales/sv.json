@@ -421,7 +421,8 @@
       "sendCodeText": "Logga in med kod",
       "sessionExpired": "Din session har gått ut. Försök igen.",
       "tooManyRequests": "För många försök. Vänta en stund och försök igen.",
-      "unexpectedError": "Något gick fel. Försök igen."
+      "unexpectedError": "Något gick fel. Försök igen.",
+      "passwordResetSuccess": "Ditt lösenord har återställts. Logga in med ditt nya lösenord."
     }
   },
   "login-passwordless": {

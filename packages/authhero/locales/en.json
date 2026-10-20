@@ -421,7 +421,8 @@
       "sendCodeText": "Log in with a code",
       "sessionExpired": "Your session has expired. Please try again.",
       "tooManyRequests": "Too many attempts. Please wait a moment and try again.",
-      "unexpectedError": "Something went wrong. Please try again."
+      "unexpectedError": "Something went wrong. Please try again.",
+      "passwordResetSuccess": "Your password has been reset. Log in with your new password."
     }
   },
   "login-passwordless": {

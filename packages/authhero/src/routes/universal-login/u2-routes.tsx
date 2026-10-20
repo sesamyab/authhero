@@ -112,7 +112,7 @@ async function fetchCustomText(
  */
 function createScreenRouteHandler(screenId: string) {
   return async (ctx: any) => {
-    const { state, error, error_description, ui_locales } =
+    const { state, error, error_description, ui_locales, message } =
       ctx.req.valid("query");
 
     let theme, branding, client, loginSession;
@@ -198,6 +198,15 @@ function createScreenRouteHandler(screenId: string) {
     } else if (error) {
       // Fallback to error code if no description provided
       errorMessages.push({ text: error, type: "error" });
+    }
+    if (message === "password_reset_success" && screenId === "enter-password") {
+      const { m } = createTranslation(
+        "login-password",
+        "login-password",
+        language,
+        customText,
+      );
+      errorMessages.push({ text: m.passwordResetSuccess(), type: "success" });
     }
 
     // Build screen context for SSR
@@ -386,6 +395,9 @@ const screenQuerySchema = z.object({
   }),
   ui_locales: z.string().optional().openapi({
     description: "Language override from the language picker (e.g. 'en', 'sv')",
+  }),
+  message: z.enum(["password_reset_success"]).optional().openapi({
+    description: "Informational message to show on the screen",
   }),
 });
 

@@ -292,7 +292,9 @@ export const resetPasswordCodeScreenDefinition: ScreenDefinition = {
       });
 
       if ("success" in result) {
-        const redirectUrl = `${context.routePrefix}/login/identifier?state=${encodeURIComponent(state)}&message=password_reset_success`;
+        // Send the user straight to the password step: they just set a
+        // password, so don't let the identifier screen pick an OTP strategy.
+        const redirectUrl = `${context.routePrefix}/enter-password?state=${encodeURIComponent(state)}&message=password_reset_success`;
         return { redirect: redirectUrl };
       }
 

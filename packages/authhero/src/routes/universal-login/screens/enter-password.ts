@@ -50,7 +50,8 @@ async function canSwitchToEmailCode(
 export async function enterPasswordScreen(
   context: ScreenContext,
 ): Promise<ScreenResult> {
-  const { branding, state, errors, data, customText, routePrefix } = context;
+  const { branding, state, errors, messages, data, customText, routePrefix } =
+    context;
 
   // Initialize i18n with locale and custom text overrides
   const locale = context.language || "en";
@@ -157,6 +158,7 @@ export async function enterPasswordScreen(
     title: m.title(),
     description,
     components,
+    messages: messages?.map((msg) => ({ text: msg.text, type: msg.type })),
     links: [
       {
         id: "back",
