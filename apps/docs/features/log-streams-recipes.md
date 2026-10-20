@@ -82,7 +82,7 @@ Custom headers are applied last, so they override `Content-Type` and `Authorizat
 - A request that returns a non-2xx status, or doesn't finish within **10 seconds**, counts as a failure. Redirects are followed by `fetch`.
 - A failure is retried by the outbox relay with exponential backoff: `1s × 2^n`, capped at 5 minutes, for up to **5 retries**. After that the event is dead-lettered and not delivered to the stream again.
 - The error text (`Log stream <id> returned <status>: <first 256 chars of response body>`) is stored on the outbox event, which is the first place to look when a sink isn't receiving data.
-- Retries are per event, not per stream. If a tenant has several active streams and one fails, the whole event is retried and streams that already accepted it receive it again. Keep a stream that is often down separate from one you care about, or deduplicate on `log_id`.
+- Retries are per event, not per stream. A tenant's active streams are tried in order and delivery stops at the first failure. Streams before it have already received the event and receive it again on each retry; streams after it don't receive it until a retry gets past the failing one, and never receive it if the retries run out. One unreliable stream can therefore delay or drop delivery to the others, so make sure each sink answers reliably, and deduplicate on `log_id`.
 - A relay or sink must therefore return a 2xx **only** once it has accepted the event, and a non-2xx when it hasn't. Don't swallow errors.
 
 ## Datadog: direct, no relay
@@ -106,7 +106,7 @@ Create the stream with the Management API (`POST /api/v2/log-streams`):
 }
 ```
 
-Use the intake URL for your Datadog site (for example `https://http-intake.logs.datadoghq.eu/api/v2/logs` for EU1). Datadog answers `202 Accepted`. Datadog documents limits of 1000 entries and 5 MB per request, and 1 MB per log; a single AuthHero event is well inside those.
+Use the intake URL for your Datadog site (for example `https://http-intake.logs.datadoghq.eu/api/v2/logs` for EU1). Datadog answers `202 Accepted`. Datadog documents limits of 1000 entries and 5 MB per request, and 1 MB per log; the entry count is never an issue because AuthHero sends one event per request. The 1 MB per-log limit can be: the payload includes `details.request.body` and `details.response.body`, and Datadog truncates an oversized log while still answering `202`, so AuthHero counts the event as delivered. If your tenants produce large bodies, trim them in a relay before forwarding.
 
 ### Make the logs readable in Datadog
 
@@ -122,7 +122,7 @@ If you'd rather set these fields at the source, use the relay below and send `me
 
 Splunk HEC's `/services/collector/event` endpoint expects each event inside an envelope, with the payload under an `event` key and the timestamp in `time`. AuthHero's log stream can set the URL, headers and content type, but it cannot wrap the body, so the request has to pass through a small relay. The Worker below also translates the credentials, so the Splunk HEC token never has to live in AuthHero's database.
 
-Check the envelope against the [Splunk HEC documentation](https://docs.splunk.com/Documentation/Splunk/latest/Data/FormateventsforHTTPEventCollector) for your Splunk version before deploying.
+The HEC token must not have indexer acknowledgment enabled: with acknowledgment on, HEC requires a channel identifier on every request, which this relay doesn't send, and every event would fail. Check the envelope against the [Splunk HEC documentation](https://docs.splunk.com/Documentation/Splunk/latest/Data/FormateventsforHTTPEventCollector) for your Splunk version before deploying.
 
 ### 1. The relay Worker
 
@@ -191,6 +191,18 @@ export default {
 
 Returning `502` on any upstream failure matters: it is what makes AuthHero retry. The relay itself does no retrying, because AuthHero already backs off and retries for you.
 
+Give the Worker a name in `wrangler.jsonc` so the commands below know which Worker to target:
+
+```jsonc
+{
+  "name": "authhero-splunk-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+}
+```
+
+Then set the secrets and deploy:
+
 ```bash
 npx wrangler secret put RELAY_TOKEN
 npx wrangler secret put SPLUNK_HEC_TOKEN
@@ -220,7 +232,7 @@ Trigger a login, then in Splunk search `sourcetype="authhero:log"`. If nothing a
 ## Datadog through a relay (optional)
 
 Reach for a relay with Datadog only if you need to set `message`, `ddsource`, `service` or `ddtags` at the source rather than in a Datadog pipeline, or to keep the API key out of AuthHero. The shape is the same as the Splunk Worker: authenticate the caller, map each event to
-`{ ddsource: "authhero", service: "authhero", ddtags: "tenant:<tenant_name>", hostname, message: description, ...e }`,
+`{ ddsource: "authhero", service: "authhero", ddtags: `tenant:${e.data.tenant_name}`, hostname: e.data.hostname, message: e.description, ...e }`,
 `POST` the array to `https://http-intake.logs.<site>/api/v2/logs` with a `DD-API-KEY` header, and return a non-2xx when Datadog doesn't answer `202`.
 
 ## Notes
