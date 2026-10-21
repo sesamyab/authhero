@@ -22,6 +22,9 @@ export const LogTypes = {
   // Deprecation & System notices
   DEPRECATION_NOTICE: "depnote",
 
+  // AuthHero: config inheritance shadow-mode difference (not an Auth0 code)
+  CONFIG_INHERITANCE_DIFF: "cfgdiff",
+
   // Failed operations
   FAILED_LOGIN: "f",
   FAILED_BY_CONNECTOR: "fc",
@@ -231,6 +234,7 @@ export const logTypeDescriptions: Record<string, string> = {
   [LogTypes.CODE_LINK_SENT]: "Code/Link Sent",
   [LogTypes.CODE_SENT]: "Code Sent",
   [LogTypes.DEPRECATION_NOTICE]: "Deprecation Notice",
+  [LogTypes.CONFIG_INHERITANCE_DIFF]: "Config Inheritance Shadow Difference",
   [LogTypes.FAILED_LOGIN]: "Failed Login",
   [LogTypes.FAILED_BY_CONNECTOR]: "Failed by Connector",
   [LogTypes.FAILED_CHANGE_EMAIL]: "Failed Change Email",
@@ -483,6 +487,7 @@ export const logTypeCategories: Record<string, LogCategory> = (() => {
       name === "INFORMATION_FROM_SS_SSO_OPERATION" ||
       name === "MANAGEMENT_API_READ_OPERATION" ||
       name === "APPI" ||
+      name === "CONFIG_INHERITANCE_DIFF" ||
       name === "ACLS_SUMMARY" ||
       name === "ORGANIZATION_MEMBER_ADDED"
     ) {

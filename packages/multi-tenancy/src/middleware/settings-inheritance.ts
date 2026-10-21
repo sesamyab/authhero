@@ -7,11 +7,15 @@ import {
   connectionSchema,
   connectionOptionsSchema,
 } from "authhero";
+import {
+  InheritanceShadowOptions,
+  createShadowReporter,
+} from "../inheritance/report";
 
 /**
  * Merges a connection with control plane fallback options.
  */
-function mergeConnectionWithFallback(
+export function mergeConnectionWithFallback(
   connection: Connection,
   controlPlaneConnections: Connection[],
 ): Connection {
@@ -56,7 +60,7 @@ function mergeUrlArrays(
  * Merges resource server scopes with control plane fallback.
  * Tenant-specific scopes override control plane scopes with the same value.
  */
-function mergeResourceServerScopes(
+export function mergeResourceServerScopes(
   tenantScopes: ResourceServerScope[] | undefined,
   controlPlaneScopes: ResourceServerScope[] | undefined,
 ): ResourceServerScope[] {
@@ -83,7 +87,7 @@ function mergeResourceServerScopes(
 /**
  * Merges a resource server with control plane fallback scopes.
  */
-function mergeResourceServerWithFallback(
+export function mergeResourceServerWithFallback(
   resourceServer: ResourceServer,
   controlPlaneResourceServer: ResourceServer | null,
 ): ResourceServer {
@@ -337,6 +341,16 @@ export interface RuntimeFallbackConfig {
    * control plane id.
    */
   resolveControlPlane?: ControlPlaneResolver;
+
+  /**
+   * Shadow mode for config inheritance. When set, reads also start a
+   * background comparison of the parent chain resolver against the result of
+   * this adapter and log differences with log type `cfgdiff`. The comparison
+   * never changes what a request sees. `true` uses the defaults.
+   *
+   * @default false
+   */
+  inheritanceShadow?: boolean | InheritanceShadowOptions;
 }
 
 /**
@@ -378,13 +392,30 @@ export function createRuntimeFallbackAdapter(
   baseAdapters: DataAdapters,
   config: RuntimeFallbackConfig,
 ): DataAdapters {
-  const { controlPlaneTenantId, controlPlaneClientId, resolveControlPlane } =
-    config;
-  const resolve = buildResolver({
+  const {
+    controlPlaneTenantId,
+    controlPlaneClientId,
+    resolveControlPlane,
+    inheritanceShadow,
+  } = config;
+  const resolveLegacy = buildResolver({
     controlPlaneTenantId,
     controlPlaneClientId,
     resolveControlPlane,
   });
+  const shadow = inheritanceShadow
+    ? createShadowReporter(
+        baseAdapters,
+        inheritanceShadow === true ? {} : inheritanceShadow,
+      )
+    : undefined;
+  const resolve: typeof resolveLegacy = shadow
+    ? async (tenantId) => {
+        const resolved = await resolveLegacy(tenantId);
+        shadow.schedule(tenantId, resolved?.tenantId);
+        return resolved;
+      }
+    : resolveLegacy;
 
   return {
     ...baseAdapters,
@@ -542,7 +573,7 @@ export function createRuntimeFallbackAdapter(
  * control-plane row drives behaviour fleet-wide. Reads `metadata.inheritable`
  * on any hook variant (web/form/template/code).
  */
-function isInheritableHook(hook: unknown): boolean {
+export function isInheritableHook(hook: unknown): boolean {
   if (!hook || typeof hook !== "object") return false;
   const metadata = (hook as { metadata?: unknown }).metadata;
   if (!metadata || typeof metadata !== "object") return false;
