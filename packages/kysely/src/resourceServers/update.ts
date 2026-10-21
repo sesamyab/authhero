@@ -2,6 +2,7 @@ import { Kysely } from "kysely";
 import { ResourceServer } from "@authhero/adapter-interfaces";
 import { Database, sqlResourceServerSchema } from "../db";
 import { z } from "@hono/zod-openapi";
+import { enforceToSql } from "../utils/configInheritance";
 
 // Get the database schema type from db.ts
 type ResourceServerDbUpdate = Partial<z.infer<typeof sqlResourceServerSchema>>;
@@ -19,6 +20,7 @@ export function update(db: Kysely<Database>) {
       skip_consent_for_verifiable_first_party_clients,
       allow_offline_access,
       is_system,
+      enforce,
       metadata,
       ...rest
     } = params;
@@ -65,6 +67,9 @@ export function update(db: Kysely<Database>) {
     }
     if (allow_offline_access !== undefined) {
       updates.allow_offline_access = allow_offline_access ? 1 : 0;
+    }
+    if (enforce !== undefined) {
+      updates.enforce = enforceToSql(enforce);
     }
     if (is_system !== undefined) {
       updates.is_system = is_system ? 1 : 0;

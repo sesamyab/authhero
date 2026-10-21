@@ -101,6 +101,9 @@ export function createConnectionsAdapter(db: DrizzleDb) {
         updateData.response_type = params.response_type;
       if (params.response_mode !== undefined)
         updateData.response_mode = params.response_mode;
+      if (params.scope !== undefined) updateData.scope = params.scope;
+      if (params.override !== undefined) updateData.override = params.override;
+      if (params.enforce !== undefined) updateData.enforce = params.enforce;
 
       await db
         .update(connections)

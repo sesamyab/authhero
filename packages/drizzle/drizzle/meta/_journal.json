@@ -85,6 +85,13 @@
       "when": 1792056769015,
       "tag": "0011_org_connections_log_streams_migration_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792582732883,
+      "tag": "0012_config_inheritance",
+      "breakpoints": true
     }
   ]
 }

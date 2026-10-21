@@ -11,6 +11,7 @@ import { luceneFilter } from "../helpers/filter";
 import { removeNullProperties } from "../helpers/remove-nulls";
 import { keysetPaginate, isKeysetRequest } from "../helpers/paginate";
 import { z } from "@hono/zod-openapi";
+import { enforceFromSql } from "../utils/configInheritance";
 
 type ResourceServerDbRow = z.infer<typeof sqlResourceServerSchema>;
 
@@ -22,6 +23,7 @@ function transformResourceServer(row: ResourceServerDbRow): ResourceServer {
     skip_consent_for_verifiable_first_party_clients,
     allow_offline_access,
     is_system,
+    enforce,
     metadata,
     ...rest
   } = row;
@@ -34,6 +36,7 @@ function transformResourceServer(row: ResourceServerDbRow): ResourceServer {
       !!skip_consent_for_verifiable_first_party_clients,
     allow_offline_access: !!allow_offline_access,
     is_system: is_system ? true : undefined,
+    enforce: enforceFromSql(enforce),
     metadata: metadata ? JSON.parse(metadata) : undefined,
     // Convert verification_key back to verificationKey for API
     verificationKey: verification_key,

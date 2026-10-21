@@ -2,6 +2,7 @@ import { Kysely } from "kysely";
 import { removeNullProperties } from "../helpers/remove-nulls";
 import { Branding } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
+import { enforceFromSql } from "../utils/configInheritance";
 
 export function get(db: Kysely<Database>) {
   return async (tenant_id: string): Promise<Branding | null> => {
@@ -23,6 +24,7 @@ export function get(db: Kysely<Database>) {
       colors_page_background_end,
       colors_page_background_angle_dev,
       font_url,
+      enforce,
       ...rest
     } = branding;
 
@@ -38,6 +40,7 @@ export function get(db: Kysely<Database>) {
         },
       },
       font: font_url ? { url: font_url } : undefined,
+      enforce: enforceFromSql(enforce as number | null | undefined),
     });
   };
 }

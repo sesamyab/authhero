@@ -1,10 +1,11 @@
 import { EmailProvider } from "@authhero/adapter-interfaces";
 import { Kysely } from "kysely";
 import { Database } from "../db";
+import { enforceToSql } from "../utils/configInheritance";
 
 export function update(db: Kysely<Database>) {
   return async (tenant_id: string, emailProvider: Partial<EmailProvider>) => {
-    const { credentials, settings, enabled, ...rest } = emailProvider;
+    const { credentials, settings, enabled, enforce, ...rest } = emailProvider;
 
     await db
       .updateTable("email_providers")
@@ -12,6 +13,7 @@ export function update(db: Kysely<Database>) {
         ...rest,
         credentials: credentials ? JSON.stringify(credentials) : undefined,
         settings: settings ? JSON.stringify(settings) : undefined,
+        enforce: enforceToSql(enforce),
         enabled: enabled !== undefined ? (enabled ? 1 : 0) : undefined,
       })
       .where("tenant_id", "=", tenant_id)

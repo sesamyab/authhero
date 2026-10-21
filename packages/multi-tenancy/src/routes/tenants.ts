@@ -17,6 +17,7 @@ import {
   TenantHookContext,
 } from "../types";
 import { getRequestData } from "../middleware/request-data";
+import { validateTenantParent } from "../utils/tenant-tree";
 
 /**
  * The subset of token claims we read off `ctx.var.user` to make tenant
@@ -327,6 +328,12 @@ export function createTenantsOpenAPIRouter(
         body = await hooks.tenants.beforeCreate(hookCtx, body);
       }
 
+      await validateTenantParent({
+        tenantId: body.id,
+        parentTenantId: body.parent_tenant_id,
+        getTenant: (id) => getRequestData(ctx).tenants.get(id),
+      });
+
       // Create the tenant - adapter will throw HTTPException(409) if tenant ID already exists
       const tenant = await getRequestData(ctx).tenants.create(body);
 
@@ -594,6 +601,14 @@ export function createTenantsOpenAPIRouter(
             });
           }
         }
+      }
+
+      if ("parent_tenant_id" in sanitizedUpdates) {
+        await validateTenantParent({
+          tenantId: ctx.var.tenant_id,
+          parentTenantId: sanitizedUpdates.parent_tenant_id,
+          getTenant: (id) => getRequestData(ctx).tenants.get(id),
+        });
       }
 
       // Deep merge with updates to preserve nested object properties

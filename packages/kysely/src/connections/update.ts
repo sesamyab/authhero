@@ -1,6 +1,7 @@
 import { Kysely } from "kysely";
 import { ConnectionInsert } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
+import { enforceToSql } from "../utils/configInheritance";
 
 export function update(db: Kysely<Database>) {
   return async (
@@ -8,13 +9,14 @@ export function update(db: Kysely<Database>) {
     connection_id: string,
     connection: Partial<ConnectionInsert>,
   ): Promise<boolean> => {
-    const { is_system, ...rest } = connection;
+    const { is_system, enforce, ...rest } = connection;
     // `enabled_clients` is virtual (join-table backed) and not a column.
     delete rest.enabled_clients;
 
     const sqlConnection = {
       ...rest,
       is_system: is_system !== undefined ? (is_system ? 1 : 0) : undefined,
+      enforce: enforceToSql(enforce),
       updated_at: new Date().toISOString(),
     };
 

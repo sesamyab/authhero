@@ -11,6 +11,9 @@ export interface CreateTenantParams {
   session_lifetime?: number;
   idle_session_lifetime?: number;
 
+  // Config inheritance: the tenant this one inherits published config from.
+  parent_tenant_id?: string | null;
+
   // Deployment / provisioning. See `Tenant` for field semantics; included here
   // so the adapter can write the initial row atomically when a wfp tenant is
   // created.

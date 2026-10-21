@@ -7,11 +7,13 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants";
 import { connections } from "./connections";
+import { configInheritanceColumns } from "./configInheritance";
 
 export const branding = sqliteTable("branding", {
   tenant_id: text("tenant_id", { length: 191 })
     .primaryKey()
     .references(() => tenants.id, { onDelete: "cascade" }),
+  ...configInheritanceColumns(),
   logo_url: text("logo_url", { length: 512 }),
   favicon_url: text("favicon_url", { length: 512 }),
   font_url: text("font_url", { length: 512 }),
@@ -211,6 +213,7 @@ export const flows = sqliteTable(
 
 export const promptSettings = sqliteTable("prompt_settings", {
   tenant_id: text("tenant_id", { length: 191 }).primaryKey(),
+  ...configInheritanceColumns(),
   universal_login_experience: text("universal_login_experience", { length: 16 })
     .notNull()
     .default("new"),
@@ -234,6 +237,7 @@ export const promptSettings = sqliteTable("prompt_settings", {
 
 export const emailProviders = sqliteTable("email_providers", {
   tenant_id: text("tenant_id", { length: 191 }).primaryKey(),
+  ...configInheritanceColumns(),
   name: text("name", { length: 255 }).notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull(),
   default_from_address: text("default_from_address", { length: 255 }),
@@ -290,6 +294,7 @@ export const hooks = sqliteTable(
     page_id: text("page_id", { length: 64 }), // only required for page type hooks
     permission_required: text("permission_required", { length: 255 }), // optional gate for page type hooks
     metadata: text("metadata"), // JSON property bag (inheritable flag, template options)
+    ...configInheritanceColumns(),
   },
   (table) => [index("hooks_tenant_id_idx").on(table.tenant_id)],
 );

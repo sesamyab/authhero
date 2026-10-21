@@ -36,6 +36,9 @@ interface ResourceServerItem extends DynamoDBBaseItem {
   options?: string; // JSON string
   verification_key?: string;
   is_system?: boolean;
+  scope?: ResourceServerInsert["scope"];
+  override?: ResourceServerInsert["override"];
+  enforce?: boolean;
   metadata?: Record<string, unknown>;
 }
 
@@ -89,6 +92,9 @@ export function createResourceServersAdapter(
         options: params.options ? JSON.stringify(params.options) : undefined,
         verification_key: params.verificationKey,
         is_system: params.is_system ?? false,
+        scope: params.scope,
+        override: params.override,
+        enforce: params.enforce,
         metadata: params.metadata,
         created_at: now,
         updated_at: now,

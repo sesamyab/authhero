@@ -7,6 +7,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants";
+import { configInheritanceColumns } from "./configInheritance";
 
 export const connections = sqliteTable(
   "connections",
@@ -26,6 +27,7 @@ export const connections = sqliteTable(
     is_domain_connection: integer("is_domain_connection"),
     show_as_button: integer("show_as_button"),
     is_system: integer("is_system").notNull().default(0),
+    ...configInheritanceColumns(),
     metadata: text("metadata", { length: 4096 }),
   },
   (table) => [

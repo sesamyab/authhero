@@ -7,6 +7,7 @@ import { keysetPaginate, isKeysetRequest } from "../helpers/paginate";
 import { luceneFilter } from "../helpers/filter";
 import getCountAsInt from "../utils/getCountAsInt";
 import { convertDatesToAdapter } from "../utils/dateConversion";
+import { enforceFromSql } from "../utils/configInheritance";
 
 function parseJsonField<T>(value: string | null | undefined): T | undefined {
   if (!value) return undefined;
@@ -27,6 +28,9 @@ function toActions(row: Selectable<Database["actions"]>) {
     supported_triggers,
     is_system,
     inherit,
+    scope,
+    override,
+    enforce,
     tenant_id: _tenantId,
     ...rest
   } = row;
@@ -54,6 +58,9 @@ function toActions(row: Selectable<Database["actions"]>) {
       ),
     is_system: !!is_system,
     inherit: !!inherit,
+    scope: scope ?? undefined,
+    override: override ?? undefined,
+    enforce: enforceFromSql(enforce),
   } as Action;
 }
 

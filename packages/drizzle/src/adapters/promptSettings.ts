@@ -29,6 +29,9 @@ export function createPromptSettingsAdapter(db: DrizzleDb) {
         password_first: !!result.password_first,
         webauthn_platform_first_factor: !!result.webauthn_platform_first_factor,
         show_last_used_connection: !!result.show_last_used_connection,
+        ...(result.scope ? { scope: result.scope } : {}),
+        ...(result.override ? { override: result.override } : {}),
+        ...(result.enforce != null ? { enforce: !!result.enforce } : {}),
       };
     },
 
@@ -42,6 +45,9 @@ export function createPromptSettingsAdapter(db: DrizzleDb) {
           password_first: data.password_first,
           webauthn_platform_first_factor: data.webauthn_platform_first_factor,
           show_last_used_connection: data.show_last_used_connection,
+          scope: data.scope,
+          override: data.override,
+          enforce: data.enforce,
         })
         .onConflictDoUpdate({
           target: promptSettings.tenant_id,
@@ -51,6 +57,9 @@ export function createPromptSettingsAdapter(db: DrizzleDb) {
             password_first: data.password_first,
             webauthn_platform_first_factor: data.webauthn_platform_first_factor,
             show_last_used_connection: data.show_last_used_connection,
+            scope: data.scope,
+            override: data.override,
+            enforce: data.enforce,
           },
         });
     },

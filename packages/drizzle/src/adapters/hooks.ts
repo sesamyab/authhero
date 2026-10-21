@@ -72,6 +72,9 @@ export function createHooksAdapter(db: DrizzleDb) {
         code_id: hook.code_id,
         page_id: hook.page_id,
         permission_required: hook.permission_required,
+        scope: hook.scope,
+        override: hook.override,
+        enforce: hook.enforce,
         metadata: hook.metadata ? JSON.stringify(hook.metadata) : null,
         created_at_ts: now,
         updated_at_ts: now,
@@ -116,6 +119,9 @@ export function createHooksAdapter(db: DrizzleDb) {
       if (params.page_id !== undefined) updateData.page_id = params.page_id;
       if (params.permission_required !== undefined)
         updateData.permission_required = params.permission_required;
+      if (params.scope !== undefined) updateData.scope = params.scope;
+      if (params.override !== undefined) updateData.override = params.override;
+      if (params.enforce !== undefined) updateData.enforce = params.enforce;
       if (params.metadata !== undefined)
         updateData.metadata =
           params.metadata === null ? null : JSON.stringify(params.metadata);

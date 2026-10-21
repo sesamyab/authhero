@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
+import { configInheritanceShape } from "./ConfigInheritance";
 
 export const promptSettingSchema = z.object({
+  ...configInheritanceShape,
   universal_login_experience: z.enum(["new", "classic"]).default("new"),
   identifier_first: z.boolean().default(true),
   password_first: z.boolean().default(false),

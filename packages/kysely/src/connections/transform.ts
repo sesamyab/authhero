@@ -2,6 +2,7 @@ import { Connection } from "@authhero/adapter-interfaces";
 import { removeNullProperties } from "../helpers/remove-nulls";
 import { Database } from "../db";
 import { Selectable } from "kysely";
+import { enforceFromSql } from "../utils/configInheritance";
 
 type DbConnection = Selectable<Database["connections"]>;
 
@@ -13,10 +14,11 @@ type DbConnection = Selectable<Database["connections"]>;
  * - Removing null properties
  */
 export function transformConnection(dbConnection: DbConnection): Connection {
-  const { is_system, ...rest } = dbConnection;
+  const { is_system, enforce, ...rest } = dbConnection;
   return removeNullProperties({
     ...rest,
     is_system: is_system ? true : undefined,
+    enforce: enforceFromSql(enforce as number | null | undefined),
     options:
       typeof dbConnection.options === "string"
         ? JSON.parse(dbConnection.options)

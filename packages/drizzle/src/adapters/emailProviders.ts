@@ -13,6 +13,9 @@ export function createEmailProvidersAdapter(db: DrizzleDb) {
         name: data.name,
         enabled: data.enabled,
         default_from_address: data.default_from_address,
+        scope: data.scope,
+        override: data.override,
+        enforce: data.enforce,
         credentials: JSON.stringify(data.credentials || {}),
         settings: JSON.stringify(data.settings || {}),
         created_at: now,
@@ -51,6 +54,9 @@ export function createEmailProvidersAdapter(db: DrizzleDb) {
       if (data.enabled !== undefined) updateData.enabled = data.enabled;
       if (data.default_from_address !== undefined)
         updateData.default_from_address = data.default_from_address;
+      if (data.scope !== undefined) updateData.scope = data.scope;
+      if (data.override !== undefined) updateData.override = data.override;
+      if (data.enforce !== undefined) updateData.enforce = data.enforce;
       if (data.credentials !== undefined)
         updateData.credentials = JSON.stringify(data.credentials);
       if (data.settings !== undefined)

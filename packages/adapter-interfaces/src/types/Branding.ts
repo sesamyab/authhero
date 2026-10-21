@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
+import { configInheritanceShape } from "./ConfigInheritance";
 
 export const brandingSchema = z.object({
+  ...configInheritanceShape,
   colors: z
     .object({
       primary: z.string(),

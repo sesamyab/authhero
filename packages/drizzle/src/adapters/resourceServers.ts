@@ -94,6 +94,9 @@ export function createResourceServersAdapter(db: DrizzleDb) {
         scopes: JSON.stringify(params.scopes || []),
         options: JSON.stringify(params.options || {}),
         metadata: params.metadata ? JSON.stringify(params.metadata) : undefined,
+        scope: params.scope,
+        override: params.override,
+        enforce: params.enforce,
         verification_key: params.verificationKey || params.verification_key,
         created_at: now,
         updated_at: now,
@@ -160,6 +163,9 @@ export function createResourceServersAdapter(db: DrizzleDb) {
       }
       if (params.metadata !== undefined)
         updateData.metadata = JSON.stringify(params.metadata);
+      if (params.scope !== undefined) updateData.scope = params.scope;
+      if (params.override !== undefined) updateData.override = params.override;
+      if (params.enforce !== undefined) updateData.enforce = params.enforce;
       if ((params as any).verificationKey !== undefined)
         updateData.verification_key = (params as any).verificationKey;
 
