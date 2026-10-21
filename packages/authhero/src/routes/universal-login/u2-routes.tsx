@@ -188,16 +188,16 @@ function createScreenRouteHandler(screenId: string) {
       language,
     );
 
-    // Build error messages if present from query params
-    const errorMessages: Array<{
+    // Build screen messages (errors, confirmations) from query params
+    const screenMessages: Array<{
       text: string;
       type: "error" | "info" | "success" | "warning";
     }> = [];
     if (error_description) {
-      errorMessages.push({ text: error_description, type: "error" });
+      screenMessages.push({ text: error_description, type: "error" });
     } else if (error) {
       // Fallback to error code if no description provided
-      errorMessages.push({ text: error, type: "error" });
+      screenMessages.push({ text: error, type: "error" });
     }
     if (message === "password_reset_success" && screenId === "enter-password") {
       const { m } = createTranslation(
@@ -206,7 +206,7 @@ function createScreenRouteHandler(screenId: string) {
         language,
         customText,
       );
-      errorMessages.push({ text: m.passwordResetSuccess(), type: "success" });
+      screenMessages.push({ text: m.passwordResetSuccess(), type: "success" });
     }
 
     // Build screen context for SSR
@@ -277,7 +277,7 @@ function createScreenRouteHandler(screenId: string) {
       language,
       promptScreen,
       routePrefix,
-      messages: errorMessages.length > 0 ? errorMessages : undefined,
+      messages: screenMessages.length > 0 ? screenMessages : undefined,
     };
 
     // Fetch screen data for SSR
