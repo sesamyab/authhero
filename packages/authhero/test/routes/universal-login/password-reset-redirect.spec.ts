@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { testClient } from "hono/testing";
 import bcryptjs from "bcryptjs";
 import {
   AuthorizationResponseType,
+  LogTypes,
   Strategy,
 } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../../helpers/test-server";
@@ -13,6 +14,8 @@ import {
   readSessionNotice,
   setSessionNotice,
 } from "../../../src/helpers/session-notice";
+
+afterEach(() => vi.restoreAllMocks());
 
 const EMAIL = "both@example.com";
 const USER_ID = `${USERNAME_PASSWORD_PROVIDER}|bothUserId`;
@@ -380,6 +383,93 @@ describe("password reset request ownership", () => {
       form: { code, password, confirm_password: password },
     });
   }
+
+  it.each([
+    { transport: "u2", failure: "throw" },
+    { transport: "legacy", failure: "throw" },
+    { transport: "u2", failure: "false" },
+    { transport: "legacy", failure: "false" },
+  ])(
+    "reports a successful $transport reset when completion persistence returns $failure",
+    async ({ transport, failure }) => {
+      const ctx = await setup();
+      let code: string;
+      if (transport === "u2") {
+        code = await requestCode(ctx);
+      } else {
+        await ctx.env.data.connections.update(
+          "tenantId",
+          Strategy.USERNAME_PASSWORD,
+          {
+            options: { attributes: { email: { verification_method: "link" } } },
+          },
+        );
+        await u2Screen(ctx.u2App, ctx.env, "reset-password/request").$post({
+          query: { state: ctx.state },
+          form: { email: EMAIL },
+        });
+        const emails = ctx.getSentEmails();
+        code = new URL(
+          emails[emails.length - 1].data.passwordResetUrl!,
+        ).searchParams.get("code")!;
+      }
+      const originalUpdate = ctx.env.data.loginSessions.update.bind(
+        ctx.env.data.loginSessions,
+      );
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.spyOn(ctx.env.data.loginSessions, "update").mockImplementation(
+        async (tenant, id, fields) => {
+          if (
+            fields.state_data &&
+            JSON.parse(fields.state_data).passwordReset?.state === "completed"
+          ) {
+            if (failure === "false") return false;
+            throw new Error("completion store unavailable");
+          }
+          return originalUpdate(tenant, id, fields);
+        },
+      );
+      const response =
+        transport === "u2"
+          ? await submitCode(ctx, code)
+          : await ctx.universalApp.request(
+              `/reset-password?${new URLSearchParams({ state: ctx.state, code })}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                  password: NEW_PASSWORD,
+                  "re-enter-password": NEW_PASSWORD,
+                }),
+              },
+              ctx.env,
+            );
+      expect(response.status).toBe(transport === "u2" ? 302 : 200);
+      expect(
+        await bcryptjs.compare(
+          NEW_PASSWORD,
+          (await ctx.env.data.passwords.get("tenantId", USER_ID))!.password,
+        ),
+      ).toBe(true);
+      expect(
+        (await ctx.env.data.codes.get("tenantId", code, "password_reset"))
+          ?.used_at,
+      ).toBeTruthy();
+      expect(warning).toHaveBeenCalledWith(
+        "Failed to record password reset completion",
+        expect.objectContaining({ loginSessionId: ctx.state }),
+      );
+      const { logs } = await ctx.env.data.logs.list("tenantId");
+      expect(
+        logs.some((log) => log.type === LogTypes.SUCCESS_CHANGE_PASSWORD),
+      ).toBe(true);
+      expect(
+        logs.some((log) => log.type === LogTypes.FAILED_CHANGE_PASSWORD),
+      ).toBe(false);
+    },
+  );
 
   it("rejects completion without a machine-recorded request", async () => {
     const ctx = await setup();

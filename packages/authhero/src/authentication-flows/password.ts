@@ -1,5 +1,11 @@
-import { updateLoginSessionData } from "../state-machines/login-session-data";
-import { LoginSessionEventType } from "../state-machines/login-session";
+import {
+  FinalizedLoginSessionError,
+  updateLoginSessionData,
+} from "../state-machines/login-session-data";
+import {
+  canTransition,
+  LoginSessionEventType,
+} from "../state-machines/login-session";
 import { Context } from "hono";
 import bcryptjs from "bcryptjs";
 import { logMessage } from "../helpers/logging";
@@ -7,6 +13,7 @@ import { JSONHTTPException } from "../errors/json-http-exception";
 import {
   AuthParams,
   LoginSession,
+  LoginSessionState,
   LogTypes,
   RateLimitDecision,
   Strategy,
@@ -256,6 +263,39 @@ export async function recordPasswordReset(
     });
   } catch (error) {
     console.error("Failed to record last_password_reset:", error);
+  }
+}
+
+/**
+ * The password has already changed. Failure to persist the completion notice or
+ * flow state must not turn that successful change into a reported failure.
+ * The credential was consumed before the password write and remains single-use.
+ */
+export async function recordPasswordResetCompletion(
+  data: Bindings["data"],
+  tenantId: string,
+  loginSessionId: string,
+  requestId: string,
+  fields: Omit<Partial<LoginSession>, "state_data"> = {},
+): Promise<void> {
+  try {
+    const updated = await updateLoginSessionData(
+      data.loginSessions,
+      tenantId,
+      loginSessionId,
+      {
+        type: LoginSessionEventType.PASSWORD_RESET_COMPLETED,
+        requestId,
+      },
+      fields,
+    );
+    if (!updated) throw new Error("Login session update was not persisted");
+  } catch (error) {
+    console.warn("Failed to record password reset completion", {
+      tenantId,
+      loginSessionId,
+      error,
+    });
   }
 }
 
@@ -723,6 +763,16 @@ export async function requestPasswordReset(
     state,
   );
 
+  if (
+    existingSession &&
+    !canTransition(
+      existingSession.state || LoginSessionState.PENDING,
+      LoginSessionEventType.PASSWORD_RESET_REQUESTED,
+    )
+  ) {
+    return;
+  }
+
   if (!existingSession) {
     const ip = ctx.get("ip");
     const useragent = ctx.get("useragent");
@@ -753,24 +803,30 @@ export async function requestPasswordReset(
   // Record every request before account lookup so reloads have the same flow
   // even when signup policy silently prevents issuing a reset credential.
   const requestId = nanoid();
-  await updateLoginSessionData(
-    ctx.env.data.loginSessions,
-    client.tenant.id,
-    loginSessionId,
-    {
-      type: LoginSessionEventType.PASSWORD_RESET_REQUESTED,
-      requestId,
-      username: email,
-      method: verification_method ?? "link",
-    },
-    {
-      authParams: {
-        ...existingSession?.authParams,
-        client_id: client.client_id,
+  try {
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      client.tenant.id,
+      loginSessionId,
+      {
+        type: LoginSessionEventType.PASSWORD_RESET_REQUESTED,
+        requestId,
         username: email,
+        method: verification_method ?? "link",
       },
-    },
-  );
+      {
+        authParams: {
+          ...existingSession?.authParams,
+          client_id: client.client_id,
+          username: email,
+        },
+      },
+    );
+  } catch (error) {
+    // The session may finalize between our first read and persistence.
+    if (error instanceof FinalizedLoginSessionError) return;
+    throw error;
+  }
 
   // A reset request lazily creates the native user so the emailed link has a
   // user to update. When the user doesn't exist yet, only create one if the

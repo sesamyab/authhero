@@ -24,6 +24,14 @@ export type LoginSessionDataEvent = Extract<
   }
 >;
 
+/** A terminal session cannot accept further context events. */
+export class FinalizedLoginSessionError extends Error {
+  constructor(id: string) {
+    super(`Cannot update context of finalized login session ${id}`);
+    this.name = "FinalizedLoginSessionError";
+  }
+}
+
 function serialize(data: LoginSessionData): string {
   const json = JSON.stringify(data);
   // Adapters skip undefined; clearing the last key must write an empty string.
@@ -45,6 +53,15 @@ export async function updateLoginSessionData(
 ): Promise<boolean> {
   const current = await sessions.get(tenantId, id);
   if (!current) throw new Error(`Login session ${id} not found`);
+  if (
+    [
+      LoginSessionState.COMPLETED,
+      LoginSessionState.FAILED,
+      LoginSessionState.EXPIRED,
+    ].includes(current.state as LoginSessionState)
+  ) {
+    throw new FinalizedLoginSessionError(id);
+  }
   const { context } = transitionLoginSession(
     current.state || LoginSessionState.PENDING,
     event,

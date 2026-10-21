@@ -1,4 +1,8 @@
-/** Keep persisted login context behind the state-machine persistence boundary. */
+/**
+ * Keep persisted login context behind the state-machine persistence boundary.
+ * Alias tracking covers variable declarations, including destructured defaults;
+ * parameter-bound and reassignment-based aliases are not fully tracked.
+ */
 export const noDirectStateData = {
   meta: {
     type: "problem",
@@ -78,7 +82,9 @@ export const noDirectStateData = {
                   property.type === "Property" &&
                   staticName(property.key, property.computed) ===
                     "loginSessions" &&
-                  property.value.name === node.name,
+                  (property.value.type === "AssignmentPattern"
+                    ? property.value.left.name
+                    : property.value.name) === node.name,
               );
             return sessionAdapter(declaration.init, seen);
           });

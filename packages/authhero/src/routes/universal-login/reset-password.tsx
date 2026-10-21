@@ -1,7 +1,4 @@
-import {
-  readLoginSessionData,
-  updateLoginSessionData,
-} from "../../state-machines/login-session-data";
+import { readLoginSessionData } from "../../state-machines/login-session-data";
 import {
   canTransition,
   LoginSessionEventType,
@@ -17,7 +14,10 @@ import { initJSXRoute } from "./common";
 import ResetPasswordPage from "../../components/ResetPasswordPage";
 import MessagePage from "../../components/MessagePage";
 import { getUsernamePasswordUser } from "../../utils/username-password-provider";
-import { recordPasswordReset } from "../../authentication-flows/password";
+import {
+  recordPasswordReset,
+  recordPasswordResetCompletion,
+} from "../../authentication-flows/password";
 import { logMessage } from "../../helpers/logging";
 import { resolvePasswordConnection } from "../../helpers/password-connection";
 import { defineRoute } from "../../utils/define-route";
@@ -269,14 +269,11 @@ const postRoot = defineRoute({
       // Clear any failed-login lockout and stamp last_password_reset.
       await recordPasswordReset(env.data, client.tenant.id, user);
 
-      await updateLoginSessionData(
-        env.data.loginSessions,
+      await recordPasswordResetCompletion(
+        env.data,
         client.tenant.id,
         loginSession.id,
-        {
-          type: LoginSessionEventType.PASSWORD_RESET_COMPLETED,
-          requestId: reset.requestId,
-        },
+        reset.requestId,
       );
 
       // Log the successful password change. ctx.connection isn't set in this
