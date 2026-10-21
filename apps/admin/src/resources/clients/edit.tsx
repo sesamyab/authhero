@@ -10,6 +10,8 @@ import { AdvancedTab } from "./tabs/advanced-tab";
 import { RefreshTokensTab } from "./tabs/refresh-tokens-tab";
 import { RawJsonTab } from "@/common/RawJsonTab";
 import { CimdBanner } from "./cimd";
+import { ClientLoginButton } from "./login-button";
+import { DeleteButton } from "@/components/admin/delete-button";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -44,7 +46,16 @@ function transformClient(data: Record<string, unknown>) {
 
 export function ClientEdit() {
   return (
-    <Edit mutationMode="pessimistic" transform={transformClient as never}>
+    <Edit
+      mutationMode="pessimistic"
+      transform={transformClient as never}
+      actions={
+        <div className="flex justify-end items-center gap-2">
+          <ClientLoginButton />
+          <DeleteButton />
+        </div>
+      }
+    >
       <SimpleForm className="max-w-none">
         <CimdBanner />
         <UrlTabs defaultValue="details" className="w-full">
