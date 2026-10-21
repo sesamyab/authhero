@@ -127,6 +127,37 @@ describe("encrypted action and hook_code secrets", () => {
     expect((await rawActionSecrets(created.id))[0]!.value).toBe(first!.value);
   });
 
+  it("encrypts action version secrets at rest and decrypts on get and list", async () => {
+    const action = await ctx.data.actions.create("t1", {
+      name: "versioned",
+      code: CODE,
+      secrets: [{ name: "V", value: "snap" }],
+    });
+    const version = await ctx.data.actionVersions.create("t1", {
+      action_id: action.id,
+      code: CODE,
+      secrets: [{ name: "V", value: "snap" }],
+    } as any);
+
+    const row = await ctx.db
+      .selectFrom("action_versions")
+      .select("secrets")
+      .where("action_id", "=", action.id)
+      .executeTakeFirst();
+    const stored = JSON.parse(row!.secrets!) as Array<{ value: string }>;
+    expect(stored[0]!.value).toMatch(/^enc:v1:/);
+    expect(stored[0]!.value).not.toContain("snap");
+
+    expect(version.secrets).toEqual([{ name: "V", value: "snap" }]);
+    expect(
+      (await ctx.data.actionVersions.get("t1", action.id, version.id))?.secrets,
+    ).toEqual([{ name: "V", value: "snap" }]);
+    expect(
+      (await ctx.data.actionVersions.list("t1", action.id)).versions[0]
+        ?.secrets,
+    ).toEqual([{ name: "V", value: "snap" }]);
+  });
+
   it("encrypts hook_code secrets at rest and decrypts on get", async () => {
     const created = await ctx.data.hookCode.create("t1", {
       code: CODE,

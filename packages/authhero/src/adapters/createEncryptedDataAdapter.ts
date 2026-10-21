@@ -1,5 +1,7 @@
 import {
   Action,
+  ActionVersion,
+  ActionVersionsAdapter,
   ActionsAdapter,
   AuthenticationMethodsAdapter,
   ClientConnectionsAdapter,
@@ -423,6 +425,47 @@ function wrapActions(
   };
 }
 
+// Versions snapshot an action's secrets, values included, so they get the same
+// treatment as the action itself.
+function wrapActionVersions(
+  base: ActionVersionsAdapter,
+  codecFor: (tenantId: string) => FieldCodec,
+): ActionVersionsAdapter {
+  return {
+    create: async (tenant_id, version, options) => {
+      const codec = codecFor(tenant_id);
+      return mapActionSecrets<ActionVersion>(
+        await base.create(
+          tenant_id,
+          await mapActionSecrets(version, codec.encrypt),
+          options,
+        ),
+        codec.decrypt,
+      );
+    },
+    get: async (tenant_id, action_id, version_id) => {
+      const version = await base.get(tenant_id, action_id, version_id);
+      return version
+        ? mapActionSecrets<ActionVersion>(version, codecFor(tenant_id).decrypt)
+        : version;
+    },
+    list: async (tenant_id, action_id, params) => {
+      const codec = codecFor(tenant_id);
+      const result = await base.list(tenant_id, action_id, params);
+      return {
+        ...result,
+        versions: await Promise.all(
+          result.versions.map((version) =>
+            mapActionSecrets<ActionVersion>(version, codec.decrypt),
+          ),
+        ),
+      };
+    },
+    removeForAction: (tenant_id, action_id) =>
+      base.removeForAction(tenant_id, action_id),
+  };
+}
+
 function wrapHookCode(
   base: HookCodeAdapter,
   codecFor: (tenantId: string) => FieldCodec,
@@ -504,6 +547,7 @@ function wrapWithCodecFactory(
     clientConnections: wrapClientConnections(data.clientConnections, codecFor),
     emailProviders: wrapEmailProviders(data.emailProviders, codecFor),
     actions: wrapActions(data.actions, codecFor),
+    actionVersions: wrapActionVersions(data.actionVersions, codecFor),
     hookCode: wrapHookCode(data.hookCode, codecFor),
     authenticationMethods: wrapAuthenticationMethods(
       data.authenticationMethods,
@@ -532,7 +576,7 @@ function wrapWithCodecFactory(
  * (client_secret/app_secret/twilio_token/configuration.client_secret),
  * email_providers.credentials, authentication_methods.totp_secret,
  * migration_sources.credentials.client_secret, actions.secrets[].value,
- * hook_code.secrets values.
+ * action_versions.secrets[].value, hook_code.secrets values.
  *
  * clientConnections.listByClient is also wrapped so its returned Connection
  * objects are decrypted — getEnrichedClient uses this path to load connections
