@@ -15,5 +15,6 @@ export {
   decryptFieldWithRing,
   parseKeyId,
   isEncrypted,
+  canDecrypt,
 } from "../utils/field-encryption";
 export type { KeyRing } from "../utils/field-encryption";

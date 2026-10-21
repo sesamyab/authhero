@@ -1,4 +1,6 @@
 import {
+  Action,
+  ActionsAdapter,
   AuthenticationMethodsAdapter,
   ClientConnectionsAdapter,
   ClientsAdapter,
@@ -6,6 +8,7 @@ import {
   ConnectionsAdapter,
   DataAdapters,
   EmailProvidersAdapter,
+  HookCodeAdapter,
   MigrationSourcesAdapter,
 } from "@authhero/adapter-interfaces";
 import {
@@ -153,6 +156,34 @@ async function mapMigrationSource<
       client_secret: await transform(entity.credentials.client_secret),
     },
   };
+}
+
+// Action secrets are `{ name, value? }` pairs. A secret without a value (an
+// update that keeps the stored value) is passed through untouched.
+async function mapActionSecrets<
+  T extends { secrets?: Array<{ name: string; value?: string }> },
+>(entity: T, transform: Transform): Promise<T> {
+  if (!entity.secrets) return entity;
+  const secrets = await Promise.all(
+    entity.secrets.map(async (secret) =>
+      typeof secret.value === "string"
+        ? { ...secret, value: await transform(secret.value) }
+        : secret,
+    ),
+  );
+  return { ...entity, secrets };
+}
+
+// Hook code secrets are a name -> value record.
+async function mapHookCodeSecrets<
+  T extends { secrets?: Record<string, string> },
+>(entity: T, transform: Transform): Promise<T> {
+  if (!entity.secrets) return entity;
+  const secrets: Record<string, string> = {};
+  for (const [name, value] of Object.entries(entity.secrets)) {
+    secrets[name] = typeof value === "string" ? await transform(value) : value;
+  }
+  return { ...entity, secrets };
 }
 
 function wrapClients(
@@ -348,6 +379,82 @@ function wrapAuthenticationMethods(
   };
 }
 
+function wrapActions(
+  base: ActionsAdapter,
+  codecFor: (tenantId: string) => FieldCodec,
+): ActionsAdapter {
+  return {
+    create: async (tenant_id, action, options) => {
+      const codec = codecFor(tenant_id);
+      return mapActionSecrets(
+        await base.create(
+          tenant_id,
+          await mapActionSecrets(action, codec.encrypt),
+          options,
+        ),
+        codec.decrypt,
+      );
+    },
+    get: async (tenant_id, action_id) => {
+      const action = await base.get(tenant_id, action_id);
+      return action
+        ? mapActionSecrets<Action>(action, codecFor(tenant_id).decrypt)
+        : action;
+    },
+    update: async (tenant_id, action_id, action) =>
+      base.update(
+        tenant_id,
+        action_id,
+        await mapActionSecrets(action, codecFor(tenant_id).encrypt),
+      ),
+    remove: (tenant_id, action_id) => base.remove(tenant_id, action_id),
+    list: async (tenant_id, params) => {
+      const codec = codecFor(tenant_id);
+      const result = await base.list(tenant_id, params);
+      return {
+        ...result,
+        actions: await Promise.all(
+          result.actions.map((action) =>
+            mapActionSecrets<Action>(action, codec.decrypt),
+          ),
+        ),
+      };
+    },
+  };
+}
+
+function wrapHookCode(
+  base: HookCodeAdapter,
+  codecFor: (tenantId: string) => FieldCodec,
+): HookCodeAdapter {
+  return {
+    create: async (tenant_id, hookCode, options) => {
+      const codec = codecFor(tenant_id);
+      return mapHookCodeSecrets(
+        await base.create(
+          tenant_id,
+          await mapHookCodeSecrets(hookCode, codec.encrypt),
+          options,
+        ),
+        codec.decrypt,
+      );
+    },
+    get: async (tenant_id, id) => {
+      const hookCode = await base.get(tenant_id, id);
+      return hookCode
+        ? mapHookCodeSecrets(hookCode, codecFor(tenant_id).decrypt)
+        : hookCode;
+    },
+    update: async (tenant_id, id, hookCode) =>
+      base.update(
+        tenant_id,
+        id,
+        await mapHookCodeSecrets(hookCode, codecFor(tenant_id).encrypt),
+      ),
+    remove: (tenant_id, id) => base.remove(tenant_id, id),
+  };
+}
+
 function wrapMigrationSources(
   base: MigrationSourcesAdapter,
   codecFor: (tenantId: string) => FieldCodec,
@@ -396,6 +503,8 @@ function wrapWithCodecFactory(
     connections: wrapConnections(data.connections, codecFor),
     clientConnections: wrapClientConnections(data.clientConnections, codecFor),
     emailProviders: wrapEmailProviders(data.emailProviders, codecFor),
+    actions: wrapActions(data.actions, codecFor),
+    hookCode: wrapHookCode(data.hookCode, codecFor),
     authenticationMethods: wrapAuthenticationMethods(
       data.authenticationMethods,
       codecFor,
@@ -422,7 +531,8 @@ function wrapWithCodecFactory(
  * Encrypted columns: clients.client_secret, connections.options
  * (client_secret/app_secret/twilio_token/configuration.client_secret),
  * email_providers.credentials, authentication_methods.totp_secret,
- * migration_sources.credentials.client_secret.
+ * migration_sources.credentials.client_secret, actions.secrets[].value,
+ * hook_code.secrets values.
  *
  * clientConnections.listByClient is also wrapped so its returned Connection
  * objects are decrypted — getEnrichedClient uses this path to load connections
