@@ -6,5 +6,20 @@ export {
   getValidEvents,
   LoginSessionEventType,
   type LoginSessionContext,
+  type LoginSessionData,
   type LoginSessionEvent,
 } from "./login-session";
+
+export {
+  readLoginSessionData,
+  updateLoginSessionData,
+  createLoginSessionWithData,
+  type LoginSessionDataEvent,
+} from "./login-session-data";
+
+export {
+  passwordResetMachine,
+  transitionPasswordReset,
+  canCompletePasswordReset,
+  type PasswordResetFlow,
+} from "./password-reset";

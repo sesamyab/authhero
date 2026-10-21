@@ -62,11 +62,12 @@ jobs:
       - name: Type-check apps
         run: pnpm type-check
 
-      # ESLint gate. Covers apps/website and apps/admin. The packages (~760
-      # findings in authhero alone) still have a backlog that needs a rules
-      # decision before they can be added (see #1015).
+      # ESLint gate: app lint plus the login-session context ownership rule.
+      # Full package lint still has a backlog (~760 findings in authhero alone)
+      # that needs a rules decision before enabling it (see #1015).
       - name: Lint
         run: |
+          pnpm lint:state-data
           pnpm website lint
           pnpm admin lint
 

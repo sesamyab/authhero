@@ -481,7 +481,7 @@ export const acceptInvitationScreenDefinition: ScreenDefinition = {
       await ctx.env.data.loginSessions.update(
         client.tenant.id,
         loginSession.id,
-        loginSession,
+        { authParams: loginSession.authParams },
       );
 
       try {

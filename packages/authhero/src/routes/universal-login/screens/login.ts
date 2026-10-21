@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Login screen - combined identifier + password screen (Identifier + Password flow)
  *
@@ -424,18 +426,15 @@ export async function loginScreen(
 
     // Store the challenge in the login session (reuse the earlier fetch).
     if (loginSessionForPasskeys) {
-      const stateData = loginSessionForPasskeys.state_data
-        ? JSON.parse(loginSessionForPasskeys.state_data)
-        : {};
-      await context.ctx.env.data.loginSessions.update(
+      await updateLoginSessionData(
+        context.ctx.env.data.loginSessions,
         context.client.tenant.id,
         state,
         {
-          state_data: JSON.stringify({
-            ...stateData,
-            webauthn_challenge: options.challenge,
-          }),
+          type: LoginSessionEventType.UPDATE_CONTEXT,
+          data: { webauthn_challenge: options.challenge },
         },
+        {},
       );
     }
 
@@ -710,7 +709,7 @@ export const loginScreenDefinition: ScreenDefinition = {
       await ctx.env.data.loginSessions.update(
         client.tenant.id,
         loginSession.id,
-        loginSession,
+        { authParams: loginSession.authParams },
       );
 
       try {

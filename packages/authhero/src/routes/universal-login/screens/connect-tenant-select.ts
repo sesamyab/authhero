@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Connect Tenant Select screen — control-plane-only step in the consent flow.
  *
@@ -312,18 +314,21 @@ async function handleConnectTenantSelectSubmit(
     };
   }
 
-  const previousState = loginSession.state_data
-    ? JSON.parse(loginSession.state_data)
-    : {};
-  await ctx.env.data.loginSessions.update(tenant.id, state, {
-    state_data: JSON.stringify({
-      ...previousState,
-      connect: {
-        ...connect,
-        target_tenant_id: selectedTenantId,
+  await updateLoginSessionData(
+    ctx.env.data.loginSessions,
+    tenant.id,
+    state,
+    {
+      type: LoginSessionEventType.UPDATE_CONTEXT,
+      data: {
+        connect: {
+          ...connect,
+          target_tenant_id: selectedTenantId,
+        },
       },
-    }),
-  });
+    },
+    {},
+  );
 
   return {
     redirect: `${routePrefix}/connect/start?state=${encodeURIComponent(state)}`,

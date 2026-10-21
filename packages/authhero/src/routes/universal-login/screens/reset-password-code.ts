@@ -1,3 +1,6 @@
+import { RedirectException } from "../../../errors/redirect-exception";
+import { readLoginSessionData } from "../../../state-machines/login-session-data";
+import { canCompletePasswordReset } from "../../../state-machines/password-reset";
 /**
  * Reset Password Code screen - enter code + new password
  *
@@ -15,7 +18,6 @@ import { escapeHtml } from "../sanitization-utils";
 import { createTranslation } from "../../../i18n";
 import { requestPasswordReset } from "../../../authentication-flows/password";
 import { executePasswordReset } from "./reset-password";
-import { setSessionNotice } from "../../../helpers/session-notice";
 import { localizePasswordPolicyError } from "./signup";
 
 /**
@@ -169,7 +171,23 @@ export const resetPasswordCodeScreenDefinition: ScreenDefinition = {
   name: "Reset Password Code",
   description: "Enter reset code and new password screen",
   handler: {
-    get: resetPasswordCodeScreen,
+    get: async (context) => {
+      const session = await context.ctx.env.data.loginSessions.get(
+        context.tenant.id,
+        context.state,
+      );
+      if (
+        !canCompletePasswordReset(
+          readLoginSessionData(session?.state_data).passwordReset,
+          "code",
+        )
+      ) {
+        throw new RedirectException(
+          `${context.routePrefix ?? "/u2"}/reset-password/request?state=${encodeURIComponent(context.state)}`,
+        );
+      }
+      return resetPasswordCodeScreen(context);
+    },
     post: async (context, data) => {
       const { ctx, client, state } = context;
 
@@ -188,7 +206,10 @@ export const resetPasswordCodeScreenDefinition: ScreenDefinition = {
           state,
         );
 
-        if (!loginSession?.authParams?.username) {
+        const reset = readLoginSessionData(
+          loginSession?.state_data,
+        ).passwordReset;
+        if (!loginSession || !canCompletePasswordReset(reset, "code")) {
           const errorMessage = m.sessionExpired();
           return {
             error: errorMessage,
@@ -203,7 +224,7 @@ export const resetPasswordCodeScreenDefinition: ScreenDefinition = {
           await requestPasswordReset(
             ctx,
             client,
-            loginSession.authParams.username,
+            reset.username,
             state,
             "code",
           );
@@ -267,13 +288,13 @@ export const resetPasswordCodeScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Get the login session to find the username
+      // The active reset request owns the account being reset.
       const loginSession = await ctx.env.data.loginSessions.get(
         client.tenant.id,
         state,
       );
 
-      if (!loginSession?.authParams?.username) {
+      if (!loginSession) {
         const errorMessage = m.sessionExpired();
         return {
           error: errorMessage,
@@ -289,16 +310,11 @@ export const resetPasswordCodeScreenDefinition: ScreenDefinition = {
         client,
         code,
         password,
-        username: loginSession.authParams.username,
+        loginSessionId: state,
+        method: "code",
       });
 
       if ("success" in result) {
-        await setSessionNotice(
-          ctx.env.data,
-          client.tenant.id,
-          loginSession,
-          "password_reset_success",
-        );
         // Send the user straight to the password step: they just set a
         // password, so don't let the identifier screen pick an OTP strategy.
         const redirectUrl = `${context.routePrefix}/enter-password?state=${encodeURIComponent(state)}`;

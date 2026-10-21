@@ -779,7 +779,7 @@ export const signupScreenDefinition: ScreenDefinition = {
       await ctx.env.data.loginSessions.update(
         client.tenant.id,
         loginSession.id,
-        loginSession,
+        { authParams: loginSession.authParams },
       );
 
       const provider = await resolveUsernamePasswordProvider(

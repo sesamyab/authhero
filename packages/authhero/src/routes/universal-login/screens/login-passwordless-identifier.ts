@@ -342,7 +342,7 @@ export const loginPasswordlessIdentifierScreenDefinition: ScreenDefinition = {
       await ctx.env.data.loginSessions.update(
         client.tenant.id,
         loginSession.id,
-        loginSession,
+        { authParams: loginSession.authParams },
       );
 
       // Extract language from ui_locales

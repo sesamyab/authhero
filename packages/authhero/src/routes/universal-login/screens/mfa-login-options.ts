@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * MFA Login Options screen - factor selection when multiple MFA methods are available
  *
@@ -206,10 +208,6 @@ export const mfaLoginOptionsScreenDefinition: ScreenDefinition = {
         throw new HTTPException(400, { message: "Login session not found" });
       }
 
-      const stateData = loginSession.state_data
-        ? JSON.parse(loginSession.state_data)
-        : {};
-
       // Determine which button was clicked by checking the data keys
       // Each button submits as factor_<id>
       const selectedKey = Object.keys(data).find((k) =>
@@ -304,12 +302,16 @@ export const mfaLoginOptionsScreenDefinition: ScreenDefinition = {
       }
 
       // Store the selected enrollment ID in state_data
-      await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-        state_data: JSON.stringify({
-          ...stateData,
-          authenticationMethodId: selectedEnrollment.id,
-        }),
-      });
+      await updateLoginSessionData(
+        ctx.env.data.loginSessions,
+        client.tenant.id,
+        state,
+        {
+          type: LoginSessionEventType.UPDATE_CONTEXT,
+          data: { authenticationMethodId: selectedEnrollment.id },
+        },
+        {},
+      );
 
       if (selectedEnrollment.type === "totp") {
         return {

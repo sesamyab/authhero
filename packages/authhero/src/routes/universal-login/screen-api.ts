@@ -332,6 +332,9 @@ async function buildScreenContext(
   if (notice) {
     data.notice = notice;
   }
+  if (screenId === "reset-password") {
+    data.code = ctx.req.query("code");
+  }
   const username = loginSession?.authParams?.username;
   if (username) {
     if (
@@ -688,7 +691,7 @@ screenApiRoutes.openapi(
       // Use relative URLs - browser will resolve against current origin
       const screen = {
         ...builtInResult.screen,
-        action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}`,
+        action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}${screenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
         // Update links to use u2 routes
         links: builtInResult.screen.links?.map((link) => ({
           ...link,
@@ -855,7 +858,7 @@ screenApiRoutes.openapi(
           screen: {
             ...renderedScreen,
             // Widget will POST JSON here when JS is enabled
-            action: `/u2/screen/${nextScreenId}?state=${encodeURIComponent(state)}`,
+            action: `/u2/screen/${nextScreenId}?state=${encodeURIComponent(state)}${nextScreenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
             links: renderedScreen.links?.map((link) => ({
               ...link,
               href: link.href

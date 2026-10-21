@@ -169,11 +169,9 @@ const postRoot = defineRoute({
       );
       if (hrdConnection) {
         loginSession.authParams.username = username;
-        await env.data.loginSessions.update(
-          client.tenant.id,
-          loginSession.id,
-          loginSession,
-        );
+        await env.data.loginSessions.update(client.tenant.id, loginSession.id, {
+          authParams: loginSession.authParams,
+        });
         return connectionAuth(
           ctx,
           client,
@@ -324,11 +322,9 @@ const postRoot = defineRoute({
 
     // Add the username to the state
     loginSession.authParams.username = username;
-    await env.data.loginSessions.update(
-      client.tenant.id,
-      loginSession.id,
-      loginSession,
-    );
+    await env.data.loginSessions.update(client.tenant.id, loginSession.id, {
+      authParams: loginSession.authParams,
+    });
 
     const loginStrategy = await getLoginStrategy(
       ctx,

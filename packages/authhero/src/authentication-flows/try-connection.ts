@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../state-machines/login-session-data";
+import { LoginSessionEventType } from "../state-machines/login-session";
 import { Context } from "hono";
 import { LoginSession } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../types";
@@ -54,13 +56,16 @@ export async function writeTryConnectionResult(
   loginSession: LoginSession,
   result: TryConnectionResult,
 ): Promise<Response> {
-  const merged = {
-    ...parseStateData(loginSession.state_data),
-    [TRY_CONNECTION_STATE_KEY]: result,
-  };
-  await ctx.env.data.loginSessions.update(tenantId, loginSession.id, {
-    state_data: JSON.stringify(merged),
-  });
+  await updateLoginSessionData(
+    ctx.env.data.loginSessions,
+    tenantId,
+    loginSession.id,
+    {
+      type: LoginSessionEventType.UPDATE_CONTEXT,
+      data: { [TRY_CONNECTION_STATE_KEY]: result },
+    },
+    {},
+  );
 
   const redirectUri = loginSession.authParams.redirect_uri;
   if (!redirectUri) {

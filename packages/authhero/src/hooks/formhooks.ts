@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../state-machines/login-session-data";
+import { LoginSessionEventType } from "../state-machines/login-session";
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
 import {
@@ -114,12 +116,16 @@ export async function accumulateFormValues(
     if (!changed) return merged;
   }
 
-  await ctx.env.data.loginSessions.update(tenantId, loginSessionId, {
-    state_data: JSON.stringify({
-      ...stateData,
-      [FORM_VALUES_KEY]: persistable,
-    }),
-  });
+  await updateLoginSessionData(
+    ctx.env.data.loginSessions,
+    tenantId,
+    loginSessionId,
+    {
+      type: LoginSessionEventType.UPDATE_CONTEXT,
+      data: { [FORM_VALUES_KEY]: persistable },
+    },
+    {},
+  );
 
   return merged;
 }

@@ -1,3 +1,4 @@
+import { stateDataConfig } from "./tools/eslint/state-data.mjs";
 import globals from "globals";
 import pluginJs from "@eslint/js";
 import tseslint from "typescript-eslint";
@@ -5,6 +6,7 @@ import pluginReactConfig from "eslint-plugin-react/configs/recommended.js";
 import { fixupConfigRules } from "@eslint/compat";
 
 export default [
+  stateDataConfig,
   { files: ["**/*.{js,mjs,cjs,ts,jsx,tsx}"] },
   { languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } } },
   { languageOptions: { globals: { ...globals.browser, ...globals.node } } },

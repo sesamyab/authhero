@@ -1,3 +1,4 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
 /**
  * MFA Phone Challenge screen - for verifying SMS MFA code
  *
@@ -382,13 +383,16 @@ export const mfaPhoneChallengeScreenDefinition: ScreenDefinition = {
 
         // Persist the MFA completion before calling createFrontChannelAuthResponse,
         // which re-reads the session and would redirect back to MFA if still AWAITING_MFA
-        await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-          state: newState,
-          state_data: JSON.stringify({
-            ...stateData,
-            mfa_verified: true,
-          }),
-        });
+        await updateLoginSessionData(
+          ctx.env.data.loginSessions,
+          client.tenant.id,
+          state,
+          {
+            type: LoginSessionEventType.UPDATE_CONTEXT,
+            data: { mfa_verified: true },
+          },
+          { state: newState },
+        );
 
         // Get user to continue the auth flow
         const user = await ctx.env.data.users.get(

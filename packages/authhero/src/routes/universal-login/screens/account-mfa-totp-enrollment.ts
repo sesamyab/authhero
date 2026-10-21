@@ -1,3 +1,6 @@
+import { RedirectException } from "../../../errors/redirect-exception";
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Account MFA TOTP Enrollment screen - enroll authenticator app from account settings
  *
@@ -140,23 +143,31 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
       const { ctx, tenant, state } = context;
       const { user } = await resolveAccountUser(context);
 
-      // Generate a new TOTP secret
-      const secretBase32 = generateTotpSecret();
-
-      // Store the secret in login session state_data
       const loginSession = await ctx.env.data.loginSessions.get(
         tenant.id,
         state,
       );
-      const stateData = loginSession?.state_data
-        ? JSON.parse(loginSession.state_data)
-        : {};
-      await ctx.env.data.loginSessions.update(tenant.id, state, {
-        state_data: JSON.stringify({
-          ...stateData,
-          totpSecret: secretBase32,
-        }),
-      });
+      if (!loginSession) {
+        throw new RedirectException(
+          `${context.routePrefix ?? "/u2"}/account/security?state=${encodeURIComponent(state)}`,
+        );
+      }
+
+      // Generate a new TOTP secret
+      const secretBase32 = generateTotpSecret();
+
+      // Store the secret in login session state_data
+
+      await updateLoginSessionData(
+        ctx.env.data.loginSessions,
+        tenant.id,
+        state,
+        {
+          type: LoginSessionEventType.UPDATE_CONTEXT,
+          data: { totpSecret: secretBase32 },
+        },
+        {},
+      );
 
       logMessage(ctx, tenant.id, {
         type: LogTypes.MFA_ENROLL_STARTED,
@@ -252,12 +263,16 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
       });
 
       // Clean up state_data
-      await ctx.env.data.loginSessions.update(tenant.id, state, {
-        state_data: JSON.stringify({
-          ...stateData,
-          totpSecret: undefined,
-        }),
-      });
+      await updateLoginSessionData(
+        ctx.env.data.loginSessions,
+        tenant.id,
+        state,
+        {
+          type: LoginSessionEventType.UPDATE_CONTEXT,
+          data: { totpSecret: undefined },
+        },
+        {},
+      );
 
       // Redirect back to security settings with success
       const routePrefix = context.routePrefix || "/u2";

@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * MFA TOTP Enrollment screen - for setting up authenticator app MFA
  *
@@ -191,13 +193,19 @@ export const mfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         );
 
         // Store the secret and enrollment ID in state_data
-        await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-          state_data: JSON.stringify({
-            ...stateData,
-            totpSecret: secretBase32,
-            authenticationMethodId: enrollment.id,
-          }),
-        });
+        await updateLoginSessionData(
+          ctx.env.data.loginSessions,
+          client.tenant.id,
+          state,
+          {
+            type: LoginSessionEventType.UPDATE_CONTEXT,
+            data: {
+              totpSecret: secretBase32,
+              authenticationMethodId: enrollment.id,
+            },
+          },
+          {},
+        );
 
         logMessage(ctx, client.tenant.id, {
           type: LogTypes.MFA_ENROLL_STARTED,

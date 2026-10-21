@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Passkey Enrollment screen — WebAuthn registration ceremony
  *
@@ -188,16 +190,16 @@ async function generateFreshOptionsJSON(
     timeout: 60000,
   });
 
-  const stateData = loginSession.state_data
-    ? JSON.parse(loginSession.state_data)
-    : {};
-
-  await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-    state_data: JSON.stringify({
-      ...stateData,
-      webauthn_challenge: options.challenge,
-    }),
-  });
+  await updateLoginSessionData(
+    ctx.env.data.loginSessions,
+    client.tenant.id,
+    state,
+    {
+      type: LoginSessionEventType.UPDATE_CONTEXT,
+      data: { webauthn_challenge: options.challenge },
+    },
+    {},
+  );
 
   return JSON.stringify(options);
 }
@@ -304,12 +306,16 @@ export const passkeyEnrollmentScreenDefinition: ScreenDefinition = {
       });
 
       // Store the challenge in state_data for verification
-      await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-        state_data: JSON.stringify({
-          ...stateData,
-          webauthn_challenge: options.challenge,
-        }),
-      });
+      await updateLoginSessionData(
+        ctx.env.data.loginSessions,
+        client.tenant.id,
+        state,
+        {
+          type: LoginSessionEventType.UPDATE_CONTEXT,
+          data: { webauthn_challenge: options.challenge },
+        },
+        {},
+      );
 
       logMessage(ctx, client.tenant.id, {
         type: LogTypes.MFA_ENROLL_STARTED,
@@ -422,15 +428,16 @@ export const passkeyEnrollmentScreenDefinition: ScreenDefinition = {
           state,
         );
         if (currentSession) {
-          const sd = currentSession.state_data
-            ? JSON.parse(currentSession.state_data)
-            : {};
-          await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-            state_data: JSON.stringify({
-              ...sd,
-              passkey_nudge_completed: true,
-            }),
-          });
+          await updateLoginSessionData(
+            ctx.env.data.loginSessions,
+            client.tenant.id,
+            state,
+            {
+              type: LoginSessionEventType.UPDATE_CONTEXT,
+              data: { passkey_nudge_completed: true },
+            },
+            {},
+          );
         }
 
         // Update snooze so they aren't asked again immediately
@@ -599,15 +606,16 @@ export const passkeyEnrollmentScreenDefinition: ScreenDefinition = {
           state,
         );
         if (currentSession) {
-          const sd = currentSession.state_data
-            ? JSON.parse(currentSession.state_data)
-            : {};
-          await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-            state_data: JSON.stringify({
-              ...sd,
-              passkey_nudge_completed: true,
-            }),
-          });
+          await updateLoginSessionData(
+            ctx.env.data.loginSessions,
+            client.tenant.id,
+            state,
+            {
+              type: LoginSessionEventType.UPDATE_CONTEXT,
+              data: { passkey_nudge_completed: true },
+            },
+            {},
+          );
         }
 
         // Resume auth flow

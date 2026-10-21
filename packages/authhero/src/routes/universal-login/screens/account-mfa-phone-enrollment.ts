@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Account MFA Phone Enrollment screen - enroll SMS MFA from account settings
  *
@@ -270,13 +272,19 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
           const stateData = loginSession.state_data
             ? JSON.parse(loginSession.state_data)
             : {};
-          await ctx.env.data.loginSessions.update(tenant.id, state, {
-            state_data: JSON.stringify({
-              ...stateData,
-              authenticationMethodId: enrollment.id,
-              phoneNumber: normalizedPhone,
-            }),
-          });
+          await updateLoginSessionData(
+            ctx.env.data.loginSessions,
+            tenant.id,
+            state,
+            {
+              type: LoginSessionEventType.UPDATE_CONTEXT,
+              data: {
+                authenticationMethodId: enrollment.id,
+                phoneNumber: normalizedPhone,
+              },
+            },
+            {},
+          );
 
           // Send OTP
           try {
@@ -287,9 +295,19 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
               tenant.id,
               enrollment.id,
             );
-            await ctx.env.data.loginSessions.update(tenant.id, state, {
-              state_data: JSON.stringify(stateData),
-            });
+            await updateLoginSessionData(
+              ctx.env.data.loginSessions,
+              tenant.id,
+              state,
+              {
+                type: LoginSessionEventType.UPDATE_CONTEXT,
+                data: {
+                  authenticationMethodId: stateData.authenticationMethodId,
+                  phoneNumber: stateData.phoneNumber,
+                },
+              },
+              {},
+            );
             throw otpErr;
           }
 
@@ -397,13 +415,16 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
         });
 
         // Clean up state_data
-        await ctx.env.data.loginSessions.update(tenant.id, state, {
-          state_data: JSON.stringify({
-            ...stateData,
-            authenticationMethodId: undefined,
-            phoneNumber: undefined,
-          }),
-        });
+        await updateLoginSessionData(
+          ctx.env.data.loginSessions,
+          tenant.id,
+          state,
+          {
+            type: LoginSessionEventType.UPDATE_CONTEXT,
+            data: { authenticationMethodId: undefined, phoneNumber: undefined },
+          },
+          {},
+        );
 
         // Redirect back to security settings
         const routePrefix = context.routePrefix || "/u2";

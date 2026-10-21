@@ -1,14 +1,23 @@
+import { readLoginSessionData } from "../../state-machines/login-session-data";
+import {
+  canTransition,
+  LoginSessionEventType,
+} from "../../state-machines/login-session";
+import { canCompletePasswordReset } from "../../state-machines/password-reset";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import bcryptjs from "bcryptjs";
-import { LogTypes } from "@authhero/adapter-interfaces";
+import { LoginSessionState, LogTypes } from "@authhero/adapter-interfaces";
 import i18next from "i18next";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
 import ResetPasswordPage from "../../components/ResetPasswordPage";
 import MessagePage from "../../components/MessagePage";
 import { getUsernamePasswordUser } from "../../utils/username-password-provider";
-import { recordPasswordReset } from "../../authentication-flows/password";
+import {
+  recordPasswordReset,
+  recordPasswordResetCompletion,
+} from "../../authentication-flows/password";
 import { logMessage } from "../../helpers/logging";
 import { resolvePasswordConnection } from "../../helpers/password-connection";
 import { defineRoute } from "../../utils/define-route";
@@ -186,6 +195,19 @@ const postRoot = defineRoute({
         400,
       );
 
+    const reset = readLoginSessionData(loginSession.state_data).passwordReset;
+    if (
+      !canCompletePasswordReset(reset, "link") ||
+      reset.username !== username ||
+      !canTransition(
+        loginSession.state || LoginSessionState.PENDING,
+        LoginSessionEventType.PASSWORD_RESET_COMPLETED,
+        { stateData: readLoginSessionData(loginSession.state_data) },
+      )
+    ) {
+      return renderCodeExpired();
+    }
+
     try {
       const foundCode = await env.data.codes.get(
         client.tenant.id,
@@ -193,7 +215,13 @@ const postRoot = defineRoute({
         "password_reset",
       );
 
-      if (!foundCode) {
+      if (
+        !foundCode ||
+        foundCode.login_id !== loginSession.id ||
+        foundCode.nonce !== reset.requestId ||
+        foundCode.used_at ||
+        Date.parse(foundCode.expires_at) <= Date.now()
+      ) {
         // surely we should check this on the GET rather than have the user waste time entering a new password?
         // THEN we can assume here it works and throw a hono exception if it doesn't... because it's an issue with our system
         // ALTHOUGH the user could have taken a long time to enter the password...
@@ -240,6 +268,13 @@ const postRoot = defineRoute({
 
       // Clear any failed-login lockout and stamp last_password_reset.
       await recordPasswordReset(env.data, client.tenant.id, user);
+
+      await recordPasswordResetCompletion(
+        env.data,
+        client.tenant.id,
+        loginSession.id,
+        reset.requestId,
+      );
 
       // Log the successful password change. ctx.connection isn't set in this
       // flow, so pass the resolved connection explicitly — otherwise both

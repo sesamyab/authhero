@@ -197,21 +197,6 @@ export const forgotPasswordScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Update the login session with the email for subsequent screens
-      const loginSession = await ctx.env.data.loginSessions.get(
-        client.tenant.id,
-        state,
-      );
-
-      if (loginSession) {
-        await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-          authParams: {
-            ...loginSession.authParams,
-            username: email,
-          },
-        });
-      }
-
       // Check the connection's verification_method. In the u2 flow we default
       // to "code" when unset, so the user stays on-page instead of relying on
       // an emailed link (the link points at the legacy /u routes).
