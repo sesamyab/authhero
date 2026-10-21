@@ -1,5 +1,13 @@
 # @authhero/admin
 
+## 0.22.4
+
+### Patch Changes
+
+- 56a0205: Fix list pagination. With `include_totals=true` the management API now follows Auth0: `length` is the number of items on the returned page and `total` is the overall match count (previously `length` carried the overall count and `total` was missing for most lists, e.g. `/users`). The tenants list now reports `total` too, and the drizzle/kysely tenants adapters return their counts under `totals` as the adapter interface specifies. The admin UI reads `total`, so all pages in tables such as users are reachable.
+- 8cafab8: Move the Login link from the applications list to a Login button on the application detail page
+- be20349: Fix "Manage tenants" in the tenant switcher showing Not Found by doing a full navigation to the tenants page
+
 ## 0.22.3
 
 ### Patch Changes

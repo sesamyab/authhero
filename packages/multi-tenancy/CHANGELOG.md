@@ -1,5 +1,15 @@
 # @authhero/multi-tenancy
 
+## 15.1.2
+
+### Patch Changes
+
+- 56a0205: Fix list pagination. With `include_totals=true` the management API now follows Auth0: `length` is the number of items on the returned page and `total` is the overall match count (previously `length` carried the overall count and `total` was missing for most lists, e.g. `/users`). The tenants list now reports `total` too, and the drizzle/kysely tenants adapters return their counts under `totals` as the adapter interface specifies. The admin UI reads `total`, so all pages in tables such as users are reachable.
+- Updated dependencies [56a0205]
+- Updated dependencies [b5576e2]
+- Updated dependencies [406f0b2]
+  - authhero@9.24.1
+
 ## 15.1.1
 
 ### Patch Changes
