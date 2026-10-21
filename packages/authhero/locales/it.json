@@ -421,7 +421,8 @@
       "sendCodeText": "Accedi con un codice",
       "sessionExpired": "La sessione è scaduta. Riprova.",
       "tooManyRequests": "Troppi tentativi. Attendi qualche istante e riprova.",
-      "unexpectedError": "Qualcosa è andato storto. Riprova."
+      "unexpectedError": "Qualcosa è andato storto. Riprova.",
+      "passwordResetSuccess": "La tua password è stata reimpostata. Accedi con la nuova password."
     }
   },
   "login-passwordless": {

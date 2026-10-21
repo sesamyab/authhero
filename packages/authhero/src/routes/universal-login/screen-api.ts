@@ -48,6 +48,7 @@ import {
 import { resolveLanguage } from "../../utils/locale";
 import { withHandlerError } from "./screens/handler-error";
 import { getPromptScreenForScreen } from "./screen-prompt-map";
+import { readSessionNotice } from "../../helpers/session-notice";
 
 /**
  * Fetch custom text for a screen and language
@@ -327,6 +328,10 @@ async function buildScreenContext(
 
   // Build screen-specific data from the login session
   const data: Record<string, unknown> = {};
+  const notice = readSessionNotice(loginSession);
+  if (notice) {
+    data.notice = notice;
+  }
   const username = loginSession?.authParams?.username;
   if (username) {
     if (

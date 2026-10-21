@@ -57,6 +57,7 @@ import { UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS } from "../../constants";
 import { defineRoute } from "../../utils/define-route";
 import { withHandlerError } from "./screens/handler-error";
 import { getPromptScreenForScreen } from "./screen-prompt-map";
+import { readSessionNotice } from "../../helpers/session-notice";
 
 /**
  * Fetch custom text for a screen and language, with fallbacks
@@ -209,6 +210,7 @@ function createScreenRouteHandler(screenId: string) {
     // Build screen-specific data
     const screenData: Record<string, unknown> = {
       email: loginSession.authParams.username,
+      notice: readSessionNotice(loginSession),
     };
 
     // For accept-invitation, surface the org/inviter metadata from state_data

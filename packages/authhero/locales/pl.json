@@ -421,7 +421,8 @@
       "sendCodeText": "Zaloguj się kodem",
       "sessionExpired": "Twoja sesja wygasła. Spróbuj ponownie.",
       "tooManyRequests": "Zbyt wiele prób. Poczekaj chwilę i spróbuj ponownie.",
-      "unexpectedError": "Coś poszło nie tak. Spróbuj ponownie."
+      "unexpectedError": "Coś poszło nie tak. Spróbuj ponownie.",
+      "passwordResetSuccess": "Twoje hasło zostało zresetowane. Zaloguj się, używając nowego hasła."
     }
   },
   "login-passwordless": {
