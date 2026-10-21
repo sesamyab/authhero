@@ -125,6 +125,38 @@ describe("config inheritance shadow mode", () => {
     );
   });
 
+  it("reports duplicate-strategy connections individually", async () => {
+    await seedMatching();
+    await base.connections.create(child, {
+      name: "google-second",
+      strategy: "google-oauth2",
+      options: { client_id: "second" },
+    });
+    const diffs = await compareShadow({
+      adapters: base,
+      tenantId: child,
+      legacyControlPlane: cp,
+    });
+    expect(diffs.filter((d) => !d.expected)).toEqual([]);
+  });
+
+  it("leaves platform rows out of the diff", async () => {
+    await seedMatching();
+    await base.resourceServers.create(cp, {
+      identifier: "https://secret.example.com",
+      name: "platform-api",
+      scope: "platform",
+    });
+    const diffs = await compareShadow({
+      adapters: base,
+      tenantId: child,
+      legacyControlPlane: cp,
+    });
+    expect(
+      diffs.find((d) => d.key === "https://secret.example.com"),
+    ).toBeUndefined();
+  });
+
   it("never throws into the request when the comparison fails", async () => {
     const broken = {
       ...base,

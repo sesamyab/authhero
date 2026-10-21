@@ -89,7 +89,7 @@ const KEYS: Record<
   Exclude<ConfigEntity, "emailProvider" | "branding" | "promptSettings">,
   (row: any) => string
 > = {
-  connection: (r) => r.strategy,
+  connection: (r) => `${r.strategy}:${r.name}`,
   resourceServer: (r) => r.identifier,
   hook: (r) => r.hook_id,
   action: (r) => r.name,
@@ -214,6 +214,12 @@ export async function compareShadow(params: {
       ? await readConfigRows(adapters, legacyControlPlane)
       : undefined;
 
-  const { hidden: _hidden, ...resolved } = mergeConfig(chainRows, tenantRows);
-  return diffConfig(computeLegacyConfig(tenantRows, legacyRows), resolved);
+  const { hidden, ...resolved } = mergeConfig(chainRows, tenantRows);
+  const hiddenKeys = new Set(hidden);
+  const diffs = await diffConfig(
+    computeLegacyConfig(tenantRows, legacyRows),
+    resolved,
+  );
+  // Platform rows are run-only and never shown to the tenant.
+  return diffs.filter((d) => !hiddenKeys.has(`${d.entity}:${d.key}`));
 }

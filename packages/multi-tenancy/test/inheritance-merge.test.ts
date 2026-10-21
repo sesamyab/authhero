@@ -202,7 +202,7 @@ describe("mergeConfig", () => {
       rows({}),
     );
     expect(merged.connections.map((c) => c.strategy)).toEqual(["github"]);
-    expect(merged.hidden).toContain("connection:github");
+    expect(merged.hidden).toContain("connection:github:google");
   });
 
   it("adds hooks up and layers action secrets", () => {
@@ -266,5 +266,41 @@ describe("mergeConfig", () => {
       rows({}),
     );
     expect(merged.emailProvider).toMatchObject({ name: "mailgun" });
+  });
+
+  it("keeps every own connection, even with the same strategy", () => {
+    const merged = mergeConfig(
+      [
+        rows({
+          connections: [
+            google({ name: "google", options: { client_id: "cp" } }),
+          ],
+        }),
+      ],
+      rows({
+        connections: [
+          google({ id: "a", name: "google-a", options: { x: "a" } }),
+          google({ id: "b", name: "google-b", options: { x: "b" } }),
+        ],
+      }),
+    );
+    expect(merged.connections.map((c) => c.name).sort()).toEqual([
+      "google-a",
+      "google-b",
+    ]);
+    expect(merged.connections.every((c) => c.options!.client_id === "cp")).toBe(
+      true,
+    );
+  });
+
+  it("adds ancestor connections whose strategy the tenant does not own", () => {
+    const merged = mergeConfig(
+      [rows({ connections: [google({ strategy: "github", name: "github" })] })],
+      rows({ connections: [google({ id: "own" })] }),
+    );
+    expect(merged.connections.map((c) => c.strategy).sort()).toEqual([
+      "github",
+      "google-oauth2",
+    ]);
   });
 });

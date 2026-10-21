@@ -170,12 +170,17 @@ export function mergeConfig(chain: Layer[], tenant: Layer): ResolvedConfig {
 
   const out = emptyConfigRows();
 
-  const connectionKey = (c: Connection) => c.strategy;
+  // Connections inherit by strategy, but a tenant may own several connections
+  // with the same strategy, so rows are identified by strategy and name.
+  const connectionKey = (c: Connection) => `${c.strategy}:${c.name}`;
   const resourceServerKey = (r: ResourceServer) => r.identifier;
   const hookKey = (h: Hook) => (h as { hook_id?: string }).hook_id ?? "";
   const actionKey = (a: Action) => a.name;
 
-  let connections = new Map<string, Connection>();
+  // Ancestor connections folded by strategy: the row an own connection with
+  // that strategy overlays.
+  const inheritedConnections = new Map<string, Connection>();
+  const ownConnections: Connection[] = [];
   let resourceServers = new Map<string, ResourceServer>();
   const hooks = new Map<string, Hook>();
   const actions = new Map<string, Action>();
@@ -189,11 +194,16 @@ export function mergeConfig(chain: Layer[], tenant: Layer): ResolvedConfig {
       isOwn,
       connectionKey,
     )) {
-      const below = connections.get(connectionKey(row));
-      connections.set(
-        connectionKey(row),
-        below ? overlayConnection(below, row) : row,
-      );
+      const below = inheritedConnections.get(row.strategy);
+      if (isOwn) {
+        // Every own connection is kept, as read-time inheritance does.
+        ownConnections.push(below ? overlayConnection(below, row) : row);
+      } else {
+        inheritedConnections.set(
+          row.strategy,
+          below ? overlayConnection(below, row) : row,
+        );
+      }
     }
     for (const row of visible(
       "resourceServer",
@@ -231,7 +241,15 @@ export function mergeConfig(chain: Layer[], tenant: Layer): ResolvedConfig {
     }
   });
 
-  out.connections = [...connections.values()];
+  const ownStrategies = new Set(
+    layers[layers.length - 1]!.connections.map((c) => c.strategy),
+  );
+  out.connections = [
+    ...ownConnections,
+    ...[...inheritedConnections.values()].filter(
+      (c) => !ownStrategies.has(c.strategy),
+    ),
+  ];
   out.resourceServers = [...resourceServers.values()];
   out.hooks = [...hooks.values()];
   out.actions = [...actions.values()];
