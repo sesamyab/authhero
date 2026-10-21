@@ -1,3 +1,4 @@
+import { RedirectException } from "../../../errors/redirect-exception";
 /**
  * Reset Password screen - set new password after reset
  *
@@ -5,13 +6,21 @@
  */
 
 import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
-import { LogTypes } from "@authhero/adapter-interfaces";
+import { LoginSessionState, LogTypes } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import bcryptjs from "bcryptjs";
 import { getUsernamePasswordUser } from "../../../utils/username-password-provider";
 import { recordPasswordReset } from "../../../authentication-flows/password";
 import { logMessage } from "../../../helpers/logging";
-import { setSessionNotice } from "../../../helpers/session-notice";
+import {
+  readLoginSessionData,
+  updateLoginSessionData,
+} from "../../../state-machines/login-session-data";
+import {
+  canTransition,
+  LoginSessionEventType,
+} from "../../../state-machines/login-session";
+import { canCompletePasswordReset } from "../../../state-machines/password-reset";
 import { resolvePasswordConnection } from "../../../helpers/password-connection";
 import {
   getPasswordPolicy,
@@ -32,7 +41,8 @@ export async function executePasswordReset(params: {
   client: EnrichedClient;
   code: string;
   password: string;
-  username: string;
+  loginSessionId: string;
+  method: "code" | "link";
 }): Promise<
   | { success: true }
   | {
@@ -41,8 +51,27 @@ export async function executePasswordReset(params: {
     }
   | { error: "password_policy"; field: "password"; policyError: unknown }
 > {
-  const { ctx, client, code, password, username } = params;
+  const { ctx, client, code, password, loginSessionId, method } = params;
   const { env } = ctx;
+
+  const loginSession = await env.data.loginSessions.get(
+    client.tenant.id,
+    loginSessionId,
+  );
+  const reset = readLoginSessionData(loginSession?.state_data).passwordReset;
+  if (
+    !loginSession ||
+    Date.parse(loginSession.expires_at) <= Date.now() ||
+    !canCompletePasswordReset(reset, method) ||
+    !canTransition(
+      loginSession.state || LoginSessionState.PENDING,
+      LoginSessionEventType.PASSWORD_RESET_COMPLETED,
+      { stateData: readLoginSessionData(loginSession.state_data) },
+    )
+  ) {
+    return { error: "code_expired", field: "code" };
+  }
+  const username = reset.username;
 
   // Get the user
   const user = await getUsernamePasswordUser({
@@ -85,7 +114,13 @@ export async function executePasswordReset(params: {
     "password_reset",
   );
 
-  if (!foundCode) {
+  if (
+    !foundCode ||
+    foundCode.login_id !== loginSessionId ||
+    foundCode.nonce !== reset.requestId ||
+    foundCode.used_at ||
+    Date.parse(foundCode.expires_at) <= Date.now()
+  ) {
     return { error: "code_expired", field: "code" };
   }
 
@@ -132,6 +167,17 @@ export async function executePasswordReset(params: {
 
     // Clear any failed-login lockout and stamp last_password_reset.
     await recordPasswordReset(env.data, client.tenant.id, user);
+
+    await updateLoginSessionData(
+      env.data.loginSessions,
+      client.tenant.id,
+      loginSessionId,
+      {
+        type: LoginSessionEventType.PASSWORD_RESET_COMPLETED,
+        requestId: reset.requestId,
+      },
+      { authParams: { ...loginSession.authParams, username } },
+    );
 
     // Log the successful password change. This flow never sets ctx.connection,
     // so pass the resolved connection explicitly — otherwise both connection
@@ -229,7 +275,7 @@ export async function resetPasswordScreen(
   const screen: UiScreen = {
     name: "reset-password",
     // Action points to HTML endpoint for no-JS fallback
-    action: `${routePrefix}/reset-password?state=${encodeURIComponent(state)}`,
+    action: `${routePrefix}/reset-password?state=${encodeURIComponent(state)}${context.data?.code ? `&code=${encodeURIComponent(String(context.data.code))}` : ""}`,
     method: "POST",
     title: m.title(),
     description: m.description(),
@@ -251,7 +297,23 @@ export const resetPasswordScreenDefinition: ScreenDefinition = {
   name: "Reset Password",
   description: "Set new password screen",
   handler: {
-    get: resetPasswordScreen,
+    get: async (context) => {
+      const session = await context.ctx.env.data.loginSessions.get(
+        context.tenant.id,
+        context.state,
+      );
+      if (
+        !canCompletePasswordReset(
+          readLoginSessionData(session?.state_data).passwordReset,
+          "link",
+        )
+      ) {
+        throw new RedirectException(
+          `${context.routePrefix ?? "/u2"}/reset-password/request?state=${encodeURIComponent(context.state)}`,
+        );
+      }
+      return resetPasswordScreen(context);
+    },
     post: async (context, data) => {
       const { ctx, client, state } = context;
       const { env } = ctx;
@@ -292,13 +354,13 @@ export const resetPasswordScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Get the login session to find the username
+      // The active reset request owns the account being reset.
       const loginSession = await env.data.loginSessions.get(
         client.tenant.id,
         state,
       );
 
-      if (!loginSession || !loginSession.authParams?.username) {
+      if (!loginSession) {
         const errorMessage = m.sessionExpired();
         return {
           error: errorMessage,
@@ -327,16 +389,11 @@ export const resetPasswordScreenDefinition: ScreenDefinition = {
         client,
         code: codeParam,
         password,
-        username: loginSession.authParams.username,
+        loginSessionId: state,
+        method: "link",
       });
 
       if ("success" in result) {
-        await setSessionNotice(
-          ctx.env.data,
-          client.tenant.id,
-          loginSession,
-          "password_reset_success",
-        );
         // Send the user straight to the password step: they just set a
         // password, so don't let the identifier screen pick an OTP strategy.
         const redirectUrl = `${context.routePrefix}/enter-password?state=${encodeURIComponent(state)}`;

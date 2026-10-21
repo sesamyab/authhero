@@ -490,10 +490,12 @@ export async function verifyPasskeyAuthentication(
       updateFields,
     );
 
-    const updatedLoginSession = (await ctx.env.data.loginSessions.get(
+    const updatedLoginSession = await ctx.env.data.loginSessions.get(
       client.tenant.id,
       state,
-    ))!;
+    );
+    if (!updatedLoginSession)
+      return { success: false, error: "Session not found" };
 
     return {
       success: true,

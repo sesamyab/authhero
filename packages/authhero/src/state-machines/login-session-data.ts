@@ -16,7 +16,12 @@ export { readLoginSessionData } from "./login-session";
 
 export type LoginSessionDataEvent = Extract<
   LoginSessionEvent,
-  { type: LoginSessionEventType.UPDATE_CONTEXT }
+  {
+    type:
+      | LoginSessionEventType.UPDATE_CONTEXT
+      | LoginSessionEventType.PASSWORD_RESET_REQUESTED
+      | LoginSessionEventType.PASSWORD_RESET_COMPLETED;
+  }
 >;
 
 function serialize(data: LoginSessionData): string {
@@ -46,7 +51,9 @@ export async function updateLoginSessionData(
     { stateData: readLoginSessionData(current.state_data) },
   );
   if (!context.stateData) {
-    throw new Error(`Cannot update context of finalized login session ${id}`);
+    throw new Error(
+      `Invalid context event ${event.type} for finalized or unrequested login session ${id}`,
+    );
   }
   const stateData = serialize(context.stateData);
   if (
@@ -63,7 +70,7 @@ export function createLoginSessionWithData(
   sessions: LoginSessionsAdapter,
   tenantId: string,
   fields: Omit<LoginSessionInsert, "state_data">,
-  data: LoginSessionData,
+  data: Omit<LoginSessionData, "passwordReset">,
 ): Promise<LoginSession> {
   const { context } = transitionLoginSession(LoginSessionState.PENDING, {
     type: LoginSessionEventType.UPDATE_CONTEXT,

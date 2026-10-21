@@ -1,8 +1,14 @@
+import {
+  transitionPasswordReset,
+  canCompletePasswordReset,
+  type PasswordResetFlow,
+} from "./password-reset";
 import { setup, assign, transition } from "xstate";
 import { LoginSession, LoginSessionState } from "@authhero/adapter-interfaces";
 
 /** Persisted context, grouped by responsibility in types, flat on disk. */
 export interface LoginSessionData {
+  passwordReset?: PasswordResetFlow;
   // Authentication and MFA
   mfa_verified?: boolean;
   authenticationMethodId?: string;
@@ -62,6 +68,8 @@ export interface LoginSessionContext {
  * Event types for the login session state machine
  */
 export enum LoginSessionEventType {
+  PASSWORD_RESET_REQUESTED = "PASSWORD_RESET_REQUESTED",
+  PASSWORD_RESET_COMPLETED = "PASSWORD_RESET_COMPLETED",
   UPDATE_CONTEXT = "UPDATE_CONTEXT",
   AUTHENTICATE = "AUTHENTICATE",
   REQUIRE_EMAIL_VERIFICATION = "REQUIRE_EMAIL_VERIFICATION",
@@ -83,8 +91,15 @@ export enum LoginSessionEventType {
  */
 export type LoginSessionEvent =
   | {
+      type: LoginSessionEventType.PASSWORD_RESET_REQUESTED;
+      username: string;
+      requestId: string;
+      method: "code" | "link";
+    }
+  | { type: LoginSessionEventType.PASSWORD_RESET_COMPLETED; requestId: string }
+  | {
       type: LoginSessionEventType.UPDATE_CONTEXT;
-      data: Partial<LoginSessionData>;
+      data: Partial<Omit<LoginSessionData, "passwordReset">>;
     }
   | { type: LoginSessionEventType.AUTHENTICATE; userId: string }
   | { type: LoginSessionEventType.REQUIRE_EMAIL_VERIFICATION }
@@ -131,10 +146,47 @@ export const loginSessionMachine = setup({
     context: {} as LoginSessionContext,
     events: {} as LoginSessionEvent,
   },
+  guards: {
+    passwordResetRequested: ({ context, event }) =>
+      event.type === LoginSessionEventType.PASSWORD_RESET_COMPLETED &&
+      canCompletePasswordReset(context.stateData?.passwordReset) &&
+      context.stateData.passwordReset.requestId === event.requestId,
+  },
   actions: {
+    requestPasswordReset: assign(({ context, event }) => {
+      if (event.type !== LoginSessionEventType.PASSWORD_RESET_REQUESTED)
+        return {};
+      return {
+        stateData: {
+          ...context.stateData,
+          notice: undefined,
+          passwordReset: transitionPasswordReset(
+            context.stateData?.passwordReset,
+            {
+              type: event.method === "code" ? "REQUEST_CODE" : "REQUEST_LINK",
+              username: event.username,
+              requestId: event.requestId,
+            },
+          ),
+        },
+      };
+    }),
+    completePasswordReset: assign(({ context }) => ({
+      stateData: {
+        ...context.stateData,
+        passwordReset: transitionPasswordReset(
+          context.stateData?.passwordReset,
+          { type: "COMPLETE" },
+        ),
+        notice: "password_reset_success" as const,
+      },
+    })),
     updateContext: assign(({ context, event }) => {
       if (event.type !== LoginSessionEventType.UPDATE_CONTEXT) return {};
-      const stateData = { ...context.stateData, ...event.data };
+      // Workflow state can only be changed by password-reset domain events.
+      const { passwordReset: _reset, ...patch } =
+        event.data as Partial<LoginSessionData>;
+      const stateData = { ...context.stateData, ...patch };
       for (const key of Object.keys(stateData) as (keyof LoginSessionData)[]) {
         if (stateData[key] === undefined) delete stateData[key];
       }
@@ -185,6 +237,11 @@ export const loginSessionMachine = setup({
     pending: {
       on: {
         UPDATE_CONTEXT: { actions: "updateContext" },
+        PASSWORD_RESET_REQUESTED: { actions: "requestPasswordReset" },
+        PASSWORD_RESET_COMPLETED: {
+          guard: "passwordResetRequested",
+          actions: "completePasswordReset",
+        },
         AUTHENTICATE: {
           target: "authenticated",
           actions: "setUserId",
@@ -201,6 +258,11 @@ export const loginSessionMachine = setup({
     authenticated: {
       on: {
         UPDATE_CONTEXT: { actions: "updateContext" },
+        PASSWORD_RESET_REQUESTED: { actions: "requestPasswordReset" },
+        PASSWORD_RESET_COMPLETED: {
+          guard: "passwordResetRequested",
+          actions: "completePasswordReset",
+        },
         REQUIRE_EMAIL_VERIFICATION: {
           target: "awaiting_email_verification",
         },
@@ -233,6 +295,11 @@ export const loginSessionMachine = setup({
     awaiting_email_verification: {
       on: {
         UPDATE_CONTEXT: { actions: "updateContext" },
+        PASSWORD_RESET_REQUESTED: { actions: "requestPasswordReset" },
+        PASSWORD_RESET_COMPLETED: {
+          guard: "passwordResetRequested",
+          actions: "completePasswordReset",
+        },
         // Return to AUTHENTICATED hub to check if more steps are needed
         // Also support COMPLETE for backward compatibility (direct completion)
         COMPLETE: {
@@ -250,6 +317,11 @@ export const loginSessionMachine = setup({
     awaiting_mfa: {
       on: {
         UPDATE_CONTEXT: { actions: "updateContext" },
+        PASSWORD_RESET_REQUESTED: { actions: "requestPasswordReset" },
+        PASSWORD_RESET_COMPLETED: {
+          guard: "passwordResetRequested",
+          actions: "completePasswordReset",
+        },
         // Return to AUTHENTICATED hub after MFA verification
         COMPLETE_MFA: {
           target: "authenticated",
@@ -266,6 +338,11 @@ export const loginSessionMachine = setup({
     awaiting_consent: {
       on: {
         UPDATE_CONTEXT: { actions: "updateContext" },
+        PASSWORD_RESET_REQUESTED: { actions: "requestPasswordReset" },
+        PASSWORD_RESET_COMPLETED: {
+          guard: "passwordResetRequested",
+          actions: "completePasswordReset",
+        },
         // Return to AUTHENTICATED hub after consent is granted
         COMPLETE_CONSENT: {
           target: "authenticated",
@@ -282,6 +359,11 @@ export const loginSessionMachine = setup({
     awaiting_hook: {
       on: {
         UPDATE_CONTEXT: { actions: "updateContext" },
+        PASSWORD_RESET_REQUESTED: { actions: "requestPasswordReset" },
+        PASSWORD_RESET_COMPLETED: {
+          guard: "passwordResetRequested",
+          actions: "completePasswordReset",
+        },
         // Return to AUTHENTICATED hub to check if more steps are needed
         COMPLETE_HOOK: {
           target: "authenticated",
@@ -304,6 +386,11 @@ export const loginSessionMachine = setup({
     awaiting_continuation: {
       on: {
         UPDATE_CONTEXT: { actions: "updateContext" },
+        PASSWORD_RESET_REQUESTED: { actions: "requestPasswordReset" },
+        PASSWORD_RESET_COMPLETED: {
+          guard: "passwordResetRequested",
+          actions: "completePasswordReset",
+        },
         // Return to AUTHENTICATED hub to check if more steps are needed
         COMPLETE_CONTINUATION: {
           target: "authenticated",
@@ -403,6 +490,20 @@ export function canTransition(
   // Create a minimal event for checking (some events need required properties)
   let event: LoginSessionEvent;
   switch (eventType) {
+    case LoginSessionEventType.PASSWORD_RESET_COMPLETED:
+      event = {
+        type: eventType,
+        requestId: context.stateData?.passwordReset?.requestId ?? "",
+      };
+      break;
+    case LoginSessionEventType.PASSWORD_RESET_REQUESTED:
+      event = {
+        type: eventType,
+        username: "test@example.com",
+        requestId: "request",
+        method: "code",
+      };
+      break;
     case LoginSessionEventType.UPDATE_CONTEXT:
       event = { type: eventType, data: {} };
       break;

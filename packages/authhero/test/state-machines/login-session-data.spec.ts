@@ -14,6 +14,7 @@ import {
   transitionLoginSession,
   transitionLoginSessionFromEntity,
   canTransition,
+  type LoginSessionData,
 } from "../../src/state-machines/login-session";
 import {
   completeLoginSessionHook,
@@ -48,7 +49,7 @@ function setup(
   } as unknown as Context;
   return { sessions, ctx, current: () => session };
 }
-const patch = (data: Parameters<typeof updateLoginSessionData>[3]["data"]) => ({
+const patch = (data: Partial<Omit<LoginSessionData, "passwordReset">>) => ({
   type: LoginSessionEventType.UPDATE_CONTEXT as const,
   data,
 });

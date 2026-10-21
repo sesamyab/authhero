@@ -16,3 +16,10 @@ export {
   createLoginSessionWithData,
   type LoginSessionDataEvent,
 } from "./login-session-data";
+
+export {
+  passwordResetMachine,
+  transitionPasswordReset,
+  canCompletePasswordReset,
+  type PasswordResetFlow,
+} from "./password-reset";

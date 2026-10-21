@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../state-machines/login-session-data";
+import { LoginSessionEventType } from "../state-machines/login-session";
 import { Context } from "hono";
 import bcryptjs from "bcryptjs";
 import { logMessage } from "../helpers/logging";
@@ -712,6 +714,64 @@ export async function requestPasswordReset(
   // account and persist the mixed case onto the new one.
   const email = normalizeEmail(emailInput);
 
+  // Reuse existing login session if one exists for the given state,
+  // otherwise create a new one. This ensures the email link's state
+  // always references a valid session that the reset-password screen can find.
+  let loginSessionId = state;
+  const existingSession = await ctx.env.data.loginSessions.get(
+    client.tenant.id,
+    state,
+  );
+
+  if (!existingSession) {
+    const ip = ctx.get("ip");
+    const useragent = ctx.get("useragent");
+    const auth0_client = ctx.get("auth0_client");
+
+    // Convert structured auth0_client back to string for storage
+    const auth0Client = stringifyAuth0Client(auth0_client);
+
+    const newSession = await ctx.env.data.loginSessions.create(
+      client.tenant.id,
+      {
+        expires_at: new Date(
+          Date.now() + LOGIN_SESSION_EXPIRATION_TIME,
+        ).toISOString(),
+        authParams: {
+          client_id: client.client_id,
+          username: email,
+        },
+        csrf_token: nanoid(),
+        ip,
+        useragent,
+        auth0Client,
+      },
+    );
+    loginSessionId = newSession.id;
+  }
+
+  // Record every request before account lookup so reloads have the same flow
+  // even when signup policy silently prevents issuing a reset credential.
+  const requestId = nanoid();
+  await updateLoginSessionData(
+    ctx.env.data.loginSessions,
+    client.tenant.id,
+    loginSessionId,
+    {
+      type: LoginSessionEventType.PASSWORD_RESET_REQUESTED,
+      requestId,
+      username: email,
+      method: verification_method ?? "link",
+    },
+    {
+      authParams: {
+        ...existingSession?.authParams,
+        client_id: client.client_id,
+        username: email,
+      },
+    },
+  );
+
   // A reset request lazily creates the native user so the emailed link has a
   // user to update. When the user doesn't exist yet, only create one if the
   // connection still permits signups — otherwise creation would throw (signup
@@ -763,44 +823,9 @@ export async function requestPasswordReset(
     );
   }
 
-  // Reuse existing login session if one exists for the given state,
-  // otherwise create a new one. This ensures the email link's state
-  // always references a valid session that the reset-password screen can find.
-  let loginSessionId = state;
-  const existingSession = await ctx.env.data.loginSessions.get(
-    client.tenant.id,
-    state,
-  );
-
-  if (!existingSession) {
-    const ip = ctx.get("ip");
-    const useragent = ctx.get("useragent");
-    const auth0_client = ctx.get("auth0_client");
-
-    // Convert structured auth0_client back to string for storage
-    const auth0Client = stringifyAuth0Client(auth0_client);
-
-    const newSession = await ctx.env.data.loginSessions.create(
-      client.tenant.id,
-      {
-        expires_at: new Date(
-          Date.now() + LOGIN_SESSION_EXPIRATION_TIME,
-        ).toISOString(),
-        authParams: {
-          client_id: client.client_id,
-          username: email,
-        },
-        csrf_token: nanoid(),
-        ip,
-        useragent,
-        auth0Client,
-      },
-    );
-    loginSessionId = newSession.id;
-  }
-
   const createdCode = await ctx.env.data.codes.create(client.tenant.id, {
     code_id,
+    nonce: requestId,
     code_type: "password_reset",
     login_id: loginSessionId,
     expires_at: new Date(

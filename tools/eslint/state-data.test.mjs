@@ -36,6 +36,12 @@ new RuleTester({
         "data.loginSessions.update(tenant, id, session);",
         "data.loginSessions.update(tenant, id, { ...session });",
         "data.loginSessions.create(tenant, payload);",
+        "loginSessions.update(tenant, id, payload);",
+        "data.loginSessions?.update(tenant, id, payload);",
+        "data.loginSessions.update?.(tenant, id, payload);",
+        "data['loginSessions']['update'](tenant, id, payload);",
+        "const { loginSessions: sessions } = data; sessions.update(tenant, id, payload);",
+        "const sessions = data.loginSessions; sessions.create(tenant, payload);",
       ].map((code) => ({ code, errors: [{ messageId: "opaque" }] })),
     ),
 });

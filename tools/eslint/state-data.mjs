@@ -50,6 +50,42 @@ export const noDirectStateData = {
       }
       return false;
     }
+    function staticName(node, computed = false) {
+      if (!computed && node?.type === "Identifier") return node.name;
+      if (node?.type === "Literal") return node.value;
+      if (node?.type === "TemplateLiteral" && node.expressions.length === 0)
+        return node.quasis[0].value.cooked;
+    }
+    function sessionAdapter(node, seen = new Set()) {
+      if (node?.type === "ChainExpression")
+        return sessionAdapter(node.expression, seen);
+      if (node?.type === "MemberExpression")
+        return staticName(node.property, node.computed) === "loginSessions";
+      if (node?.type !== "Identifier") return false;
+      if (node.name === "loginSessions") return true;
+      if (seen.has(node.name)) return false;
+      seen.add(node.name);
+      let scope = context.sourceCode.getScope(node);
+      while (scope) {
+        const variable = scope.set.get(node.name);
+        if (variable)
+          return variable.defs.some((definition) => {
+            const declaration = definition.node;
+            if (declaration.type !== "VariableDeclarator") return false;
+            if (declaration.id.type === "ObjectPattern")
+              return declaration.id.properties.some(
+                (property) =>
+                  property.type === "Property" &&
+                  staticName(property.key, property.computed) ===
+                    "loginSessions" &&
+                  property.value.name === node.name,
+              );
+            return sessionAdapter(declaration.init, seen);
+          });
+        scope = scope.upper;
+      }
+      return false;
+    }
     return {
       // Includes payloads in variables/spreads, shorthand, and computed keys;
       // destructuring a session for reading remains allowed.
@@ -67,15 +103,21 @@ export const noDirectStateData = {
         if (node.operator === "delete") checkTarget(node.argument);
       },
       CallExpression(node) {
-        const callee = node.callee;
+        const callee =
+          node.callee.type === "ChainExpression"
+            ? node.callee.expression
+            : node.callee;
         if (
           callee.type === "MemberExpression" &&
-          callee.object.type === "MemberExpression" &&
-          callee.object.property.name === "loginSessions" &&
-          ["create", "update"].includes(callee.property.name)
+          sessionAdapter(callee.object) &&
+          ["create", "update"].includes(
+            staticName(callee.property, callee.computed),
+          )
         ) {
           const payload =
-            node.arguments[callee.property.name === "create" ? 1 : 2];
+            node.arguments[
+              staticName(callee.property, callee.computed) === "create" ? 1 : 2
+            ];
           if (!explicitPayload(payload))
             context.report({ node: payload ?? node, messageId: "opaque" });
         }

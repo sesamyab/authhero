@@ -217,6 +217,10 @@ function createScreenRouteHandler(screenId: string) {
       notice: readSessionNotice(loginSession),
     };
 
+    if (screenId === "reset-password") {
+      screenData.code = ctx.req.query("code");
+    }
+
     // For accept-invitation, surface the org/inviter metadata from state_data
     // so the screen can render them in the title/description.
     if (screenId === "accept-invitation" && loginSession?.state_data) {
@@ -305,7 +309,7 @@ function createScreenRouteHandler(screenId: string) {
     // The screen handlers return /u/widget/:screenId but we want /u2/screen/:screenId
     const screen = {
       ...result.screen,
-      action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}`,
+      action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}${screenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
       // Update links to use u2 routes
       links: result.screen.links?.map((link) => ({
         ...link,
@@ -477,6 +481,9 @@ function createScreenPostHandler(screenId: string) {
       },
       data: {
         email: loginSession.authParams.username,
+        ...(screenId === "reset-password"
+          ? { code: ctx.req.query("code") }
+          : {}),
       },
       customText,
       language,

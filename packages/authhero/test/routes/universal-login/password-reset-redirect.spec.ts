@@ -359,3 +359,237 @@ describe("session notice helper", () => {
     expect(readSessionNotice(undefined)).toBeUndefined();
   });
 });
+
+describe("password reset request ownership", () => {
+  async function requestCode(ctx: Setup, state = ctx.state) {
+    await u2Screen(ctx.u2App, ctx.env, "reset-password/request").$post({
+      query: { state },
+      form: { email: EMAIL },
+    });
+    const emails = ctx.getSentEmails();
+    return emails[emails.length - 1].data.code!;
+  }
+  function submitCode(
+    ctx: Setup,
+    code: string,
+    state = ctx.state,
+    password = NEW_PASSWORD,
+  ) {
+    return u2Screen(ctx.u2App, ctx.env, "reset-password/code").$post({
+      query: { state },
+      form: { code, password, confirm_password: password },
+    });
+  }
+
+  it("rejects completion without a machine-recorded request", async () => {
+    const ctx = await setup();
+    await ctx.env.data.loginSessions.update("tenantId", ctx.state, {
+      authParams: {
+        ...(await ctx.env.data.loginSessions.get("tenantId", ctx.state))!
+          .authParams,
+        username: EMAIL,
+      },
+    });
+    await ctx.env.data.codes.create("tenantId", {
+      code_id: "123456",
+      code_type: "password_reset",
+      login_id: ctx.state,
+      expires_at: new Date(Date.now() + 3600000).toISOString(),
+    });
+    expect((await submitCode(ctx, "123456")).status).toBe(400);
+    expect(
+      (await ctx.env.data.codes.get("tenantId", "123456", "password_reset"))
+        ?.used_at,
+    ).toBeUndefined();
+    expect(
+      await bcryptjs.compare(
+        OLD_PASSWORD,
+        (await ctx.env.data.passwords.get("tenantId", USER_ID))!.password,
+      ),
+    ).toBe(true);
+  });
+
+  it("requires a request before showing the code step", async () => {
+    const ctx = await setup();
+    const before = await u2Screen(
+      ctx.u2App,
+      ctx.env,
+      "reset-password/code",
+    ).$get({ query: { state: ctx.state } });
+    expect(before.status).toBe(302);
+    expect(locationPath(before).pathname).toMatch(/reset-password\/request$/);
+    await requestCode(ctx);
+    expect(
+      (
+        await u2Screen(ctx.u2App, ctx.env, "reset-password/code").$get({
+          query: { state: ctx.state },
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  it("keeps the same code-screen flow for an unknown account when signup is disabled", async () => {
+    const ctx = await setup();
+    await ctx.env.data.connections.update(
+      "tenantId",
+      Strategy.USERNAME_PASSWORD,
+      { options: { disable_signup: true } },
+    );
+    const response = await u2Screen(
+      ctx.u2App,
+      ctx.env,
+      "reset-password/request",
+    ).$post({
+      query: { state: ctx.state },
+      form: { email: "unknown@example.com" },
+    });
+    expect(response.status).toBe(200);
+    expect(ctx.getSentEmails()).toHaveLength(0);
+    const reloaded = await u2Screen(
+      ctx.u2App,
+      ctx.env,
+      "reset-password/code",
+    ).$get({ query: { state: ctx.state } });
+    expect(reloaded.status).toBe(200);
+  });
+
+  it("does not consume a code belonging to another login session", async () => {
+    const ctx = await setup();
+    const code = await requestCode(ctx);
+    const session = (await ctx.env.data.loginSessions.get(
+      "tenantId",
+      ctx.state,
+    ))!;
+    const second = await ctx.env.data.loginSessions.create("tenantId", {
+      authParams: session.authParams,
+      csrf_token: "csrf",
+      expires_at: session.expires_at,
+    });
+    await requestCode(ctx, second.id);
+    expect((await submitCode(ctx, code, second.id)).status).toBe(400);
+    expect(
+      (await ctx.env.data.codes.get("tenantId", code, "password_reset"))
+        ?.used_at,
+    ).toBeUndefined();
+    expect((await submitCode(ctx, code)).status).toBe(302);
+  });
+
+  it("invalidates the previous request when a new code is requested", async () => {
+    const ctx = await setup();
+    const oldCode = await requestCode(ctx);
+    const newCode = await requestCode(ctx);
+    expect((await submitCode(ctx, oldCode)).status).toBe(400);
+    expect((await submitCode(ctx, newCode)).status).toBe(302);
+    expect((await submitCode(ctx, newCode)).status).toBe(400);
+  });
+
+  it("keeps the request available after validation failure", async () => {
+    const ctx = await setup();
+    const code = await requestCode(ctx);
+    expect((await submitCode(ctx, code, ctx.state, "")).status).toBe(400);
+    expect(
+      (await ctx.env.data.codes.get("tenantId", code, "password_reset"))
+        ?.used_at,
+    ).toBeUndefined();
+    expect((await submitCode(ctx, code)).status).toBe(302);
+  });
+
+  it("resets the requested account even if the login identifier changes", async () => {
+    const ctx = await setup();
+    const code = await requestCode(ctx);
+    const session = (await ctx.env.data.loginSessions.get(
+      "tenantId",
+      ctx.state,
+    ))!;
+    await ctx.env.data.loginSessions.update("tenantId", ctx.state, {
+      authParams: { ...session.authParams, username: "another@example.com" },
+    });
+    expect((await submitCode(ctx, code)).status).toBe(302);
+    expect(
+      await bcryptjs.compare(
+        NEW_PASSWORD,
+        (await ctx.env.data.passwords.get("tenantId", USER_ID))!.password,
+      ),
+    ).toBe(true);
+    expect(
+      (await ctx.env.data.loginSessions.get("tenantId", ctx.state))!.authParams
+        .username,
+    ).toBe(EMAIL);
+  });
+
+  it.each([false, true])(
+    "completes an emailed-link request through %s JSON transport",
+    async (json) => {
+      const ctx = await setup();
+      await ctx.env.data.connections.update(
+        "tenantId",
+        Strategy.USERNAME_PASSWORD,
+        { options: { attributes: { email: { verification_method: "link" } } } },
+      );
+      await u2Screen(ctx.u2App, ctx.env, "reset-password/request").$post({
+        query: { state: ctx.state },
+        form: { email: EMAIL },
+      });
+      const emails = ctx.getSentEmails();
+      const url = new URL(emails[emails.length - 1].data.passwordResetUrl!);
+      const code = url.searchParams.get("code")!;
+      const query = { state: ctx.state, code };
+      const get = json
+        ? await ctx.u2App.request(
+            `/screen/reset-password?${new URLSearchParams(query)}`,
+            {},
+            ctx.env,
+          )
+        : await u2Screen(ctx.u2App, ctx.env, "reset-password").$get({ query });
+      expect(get.status).toBe(200);
+      const body = await get.text();
+      expect(body).toContain(`code=${code}`);
+      // A link credential cannot be submitted through the code flow.
+      expect((await submitCode(ctx, code)).status).toBe(400);
+      const mismatch = json
+        ? await ctx.u2App.request(
+            `/screen/reset-password?${new URLSearchParams(query)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                data: { password: NEW_PASSWORD, confirm_password: "mismatch" },
+              }),
+            },
+            ctx.env,
+          )
+        : await u2Screen(ctx.u2App, ctx.env, "reset-password").$post({
+            query,
+            form: { password: NEW_PASSWORD, confirm_password: "mismatch" },
+          });
+      expect(mismatch.status).toBe(400);
+      expect(await mismatch.text()).toContain(`code=${code}`);
+      const result = json
+        ? await ctx.u2App.request(
+            `/screen/reset-password?${new URLSearchParams(query)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                data: {
+                  password: NEW_PASSWORD,
+                  confirm_password: NEW_PASSWORD,
+                },
+              }),
+            },
+            ctx.env,
+          )
+        : await u2Screen(ctx.u2App, ctx.env, "reset-password").$post({
+            query,
+            form: { password: NEW_PASSWORD, confirm_password: NEW_PASSWORD },
+          });
+      expect(result.status).toBe(json ? 200 : 302);
+      expect(
+        await bcryptjs.compare(
+          NEW_PASSWORD,
+          (await ctx.env.data.passwords.get("tenantId", USER_ID))!.password,
+        ),
+      ).toBe(true);
+    },
+  );
+});

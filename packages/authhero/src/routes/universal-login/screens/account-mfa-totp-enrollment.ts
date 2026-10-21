@@ -1,3 +1,4 @@
+import { RedirectException } from "../../../errors/redirect-exception";
 import { updateLoginSessionData } from "../../../state-machines/login-session-data";
 import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
@@ -141,6 +142,16 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
     get: async (context) => {
       const { ctx, tenant, state } = context;
       const { user } = await resolveAccountUser(context);
+
+      const loginSession = await ctx.env.data.loginSessions.get(
+        tenant.id,
+        state,
+      );
+      if (!loginSession) {
+        throw new RedirectException(
+          `${context.routePrefix ?? "/u2"}/account/security?state=${encodeURIComponent(state)}`,
+        );
+      }
 
       // Generate a new TOTP secret
       const secretBase32 = generateTotpSecret();
