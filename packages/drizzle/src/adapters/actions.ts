@@ -40,6 +40,9 @@ function rowToAction(row: any): Action {
     supported_triggers,
     is_system,
     inherit,
+    scope,
+    override,
+    enforce,
     tenant_id,
     runtime,
     status,
@@ -64,6 +67,9 @@ function rowToAction(row: any): Action {
       ),
     is_system: !!is_system,
     inherit: !!inherit,
+    scope: scope ?? undefined,
+    override: override ?? undefined,
+    enforce: enforce ?? undefined,
     created_at: new Date(Number(created_at_ts)).toISOString(),
     updated_at: new Date(Number(updated_at_ts)).toISOString(),
   } as Action;
@@ -91,6 +97,9 @@ export function createActionsAdapter(db: DrizzleDb): ActionsAdapter {
           : null,
         is_system: action.is_system ? 1 : 0,
         inherit: action.inherit ? 1 : 0,
+        scope: action.scope ?? null,
+        override: action.override ?? null,
+        enforce: action.enforce ?? null,
         created_at_ts: now,
         updated_at_ts: now,
       });
@@ -108,6 +117,9 @@ export function createActionsAdapter(db: DrizzleDb): ActionsAdapter {
         supported_triggers: action.supported_triggers,
         is_system: action.is_system ?? false,
         inherit: action.inherit ?? false,
+        scope: action.scope,
+        override: action.override,
+        enforce: action.enforce,
         created_at: new Date(now).toISOString(),
         updated_at: new Date(now).toISOString(),
       };
@@ -256,6 +268,9 @@ export function createActionsAdapter(db: DrizzleDb): ActionsAdapter {
       if (action.is_system !== undefined) {
         updateData.is_system = action.is_system ? 1 : 0;
       }
+      if (action.scope !== undefined) updateData.scope = action.scope;
+      if (action.override !== undefined) updateData.override = action.override;
+      if (action.enforce !== undefined) updateData.enforce = action.enforce;
       if (action.inherit !== undefined) {
         updateData.inherit = action.inherit ? 1 : 0;
       }

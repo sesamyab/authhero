@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { baseEntitySchema } from "./BaseEntity";
+import { configInheritanceShape } from "./ConfigInheritance";
 
 // Define allowed trigger IDs for different hook types
 const webHookAllowedTriggers = z.enum([
@@ -162,6 +163,7 @@ const hookBaseCommonProperties = {
    * Everything else is opaque to the runtime. Persisted as JSON.
    */
   metadata: z.record(z.string(), z.unknown()).optional(),
+  ...configInheritanceShape,
 };
 
 const webHookInsertSchema = z.object({

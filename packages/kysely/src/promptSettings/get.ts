@@ -2,6 +2,7 @@ import { Kysely } from "kysely";
 import { removeNullProperties } from "../helpers/remove-nulls";
 import { PromptSetting } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
+import { enforceFromSql } from "../utils/configInheritance";
 
 export function get(db: Kysely<Database>) {
   return async (tenant_id: string): Promise<PromptSetting> => {
@@ -19,6 +20,9 @@ export function get(db: Kysely<Database>) {
       show_last_used_connection: !!promptSetting?.show_last_used_connection,
       universal_login_experience:
         promptSetting?.universal_login_experience || "new",
+      scope: promptSetting?.scope ?? undefined,
+      override: promptSetting?.override ?? undefined,
+      enforce: enforceFromSql(promptSetting?.enforce),
     });
   };
 }

@@ -2,6 +2,7 @@ import { Kysely } from "kysely";
 import { CreateOptions, Hook, HookInsert } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 import { generateHookId } from "../utils/entity-id";
+import { enforceToSql } from "../utils/configInheritance";
 
 export function create(db: Kysely<Database>) {
   return async (
@@ -15,7 +16,14 @@ export function create(db: Kysely<Database>) {
     const updatedAt = importMetadata?.updated_at ?? now;
     const hookId = importMetadata?.id ?? (hook.hook_id || generateHookId());
 
-    const { hook_id: _hookId, enabled, synchronous, metadata, ...rest } = hook;
+    const {
+      hook_id: _hookId,
+      enabled,
+      synchronous,
+      metadata,
+      enforce,
+      ...rest
+    } = hook;
 
     await db
       .insertInto("hooks")
@@ -25,6 +33,7 @@ export function create(db: Kysely<Database>) {
         tenant_id,
         enabled: enabled ? 1 : 0,
         synchronous: synchronous ? 1 : 0,
+        enforce: enforceToSql(enforce),
         metadata: metadata ? JSON.stringify(metadata) : null,
         created_at_ts: new Date(createdAt).getTime(),
         updated_at_ts: new Date(updatedAt).getTime(),
@@ -33,6 +42,7 @@ export function create(db: Kysely<Database>) {
 
     return {
       ...rest,
+      ...(enforce !== undefined ? { enforce } : {}),
       hook_id: hookId,
       enabled: enabled ?? false,
       synchronous: synchronous ?? false,

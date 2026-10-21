@@ -1,4 +1,5 @@
 export * from "./Action";
+export * from "./ConfigInheritance";
 export * from "./ActionExecution";
 export * from "./ActionVersion";
 export * from "./AuditEvent";

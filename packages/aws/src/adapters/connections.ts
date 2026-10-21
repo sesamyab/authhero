@@ -26,6 +26,9 @@ interface ConnectionItem extends DynamoDBBaseItem {
   strategy: string;
   options?: string; // JSON string
   is_system?: boolean;
+  scope?: ConnectionInsert["scope"];
+  override?: ConnectionInsert["override"];
+  enforce?: boolean;
 }
 
 function toConnection(item: ConnectionItem): Connection {
@@ -63,6 +66,9 @@ export function createConnectionsAdapter(
         strategy: params.strategy,
         options: params.options ? JSON.stringify(params.options) : undefined,
         is_system: params.is_system ?? false,
+        scope: params.scope,
+        override: params.override,
+        enforce: params.enforce,
         created_at: now,
         updated_at: now,
       };

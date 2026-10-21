@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { configInheritanceShape } from "./ConfigInheritance";
 
 export const resourceServerScopeSchema = z.object({
   value: z.string(),
@@ -35,6 +36,7 @@ export const resourceServerInsertSchema = z.object({
   verificationKey: z.string().optional(),
   options: resourceServerOptionsSchema.optional(),
   is_system: z.boolean().optional(),
+  ...configInheritanceShape,
   metadata: z.record(z.string(), z.any()).optional(),
 });
 export type ResourceServerInsert = z.input<typeof resourceServerInsertSchema>;

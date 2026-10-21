@@ -6,6 +6,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 import { generateConnectionId } from "../utils/entity-id";
+import { enforceToSql } from "../utils/configInheritance";
 
 export function create(db: Kysely<Database>) {
   return async (
@@ -14,7 +15,7 @@ export function create(db: Kysely<Database>) {
     options?: CreateOptions,
   ): Promise<Connection> => {
     const importMetadata = options?.importMetadata;
-    const { is_system, ...rest } = params;
+    const { is_system, enforce, ...rest } = params;
     // `enabled_clients` is a virtual field surfaced via the join table; it has
     // no column on `connections` and would break the SQL insert.
     delete rest.enabled_clients;
@@ -24,6 +25,7 @@ export function create(db: Kysely<Database>) {
       ...rest,
       id: importMetadata?.id ?? rest.id ?? generateConnectionId(),
       is_system: is_system ? true : undefined,
+      ...(enforce !== undefined ? { enforce } : {}),
       created_at: importMetadata?.created_at ?? now,
       updated_at: importMetadata?.updated_at ?? now,
     };
@@ -33,6 +35,7 @@ export function create(db: Kysely<Database>) {
       .values({
         ...connection,
         is_system: is_system ? 1 : 0,
+        enforce: enforceToSql(enforce),
         // The connection options will have many different properties depending on the strategy
         options: JSON.stringify(connection.options || {}),
         tenant_id,

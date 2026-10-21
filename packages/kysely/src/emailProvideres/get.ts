@@ -2,6 +2,7 @@ import { Kysely } from "kysely";
 import { removeNullProperties } from "../helpers/remove-nulls";
 import { EmailProvider } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
+import { enforceFromSql } from "../utils/configInheritance";
 
 export function get(db: Kysely<Database>) {
   return async (tenant_id: string): Promise<EmailProvider | null> => {
@@ -20,6 +21,7 @@ export function get(db: Kysely<Database>) {
       credentials,
       settings,
       enabled,
+      enforce,
       ...rest
     } = emailProvider;
 
@@ -28,6 +30,7 @@ export function get(db: Kysely<Database>) {
       credentials: JSON.parse(credentials),
       settings: JSON.parse(settings),
       enabled: Boolean(enabled),
+      enforce: enforceFromSql(enforce),
     });
   };
 }

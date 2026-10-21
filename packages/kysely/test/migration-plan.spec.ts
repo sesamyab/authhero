@@ -22,6 +22,16 @@ async function tableNames(db: Kysely<Database>): Promise<string[]> {
   return rows.map((row) => row.name);
 }
 
+async function columnNames(
+  db: Kysely<Database>,
+  table: string,
+): Promise<string[]> {
+  const { rows } = await sql<{
+    name: string;
+  }>`SELECT name FROM pragma_table_info(${table})`.execute(db);
+  return rows.map((row) => row.name);
+}
+
 describe("planMigrations", () => {
   it("lists every migration on an empty database without writing anything", async () => {
     const db = createDb();
@@ -56,7 +66,7 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-10-13T12:00:00_prompt_partials";
+    const last = "2026-10-21T12:00:00_config_inheritance";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
 
@@ -65,12 +75,12 @@ describe("planMigrations", () => {
     expect(plan.pending.map((it) => it.name)).toEqual([last]);
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
-    expect(output).toMatch(/create table if not exists "prompt_partials"/i);
-    expect(await tableNames(db)).not.toContain("prompt_partials");
+    expect(output).toMatch(/alter table "connections" add column "scope"/i);
+    expect(await columnNames(db, "connections")).not.toContain("scope");
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    expect(await tableNames(db)).toContain("prompt_partials");
+    expect(await columnNames(db, "connections")).toContain("scope");
     await db.destroy();
   });
 });

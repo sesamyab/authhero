@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { baseEntitySchema } from "./BaseEntity";
+import { configInheritanceShape } from "./ConfigInheritance";
 
 export const actionTriggerSchema = z.object({
   id: z.string(),
@@ -29,6 +30,7 @@ export const actionInsertSchema = z.object({
   // Other tenants can opt-in by creating a row with the same `name` and
   // `inherit: true`; at execute time the loader reads code from this row.
   is_system: z.boolean().optional(),
+  ...configInheritanceShape,
   // On a non-control-plane tenant, indicates the action's `code` should be
   // read through from the control-plane system action with a matching name.
   // The local `secrets` still override (local-first then upstream fallback).

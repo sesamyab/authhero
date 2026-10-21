@@ -23,6 +23,8 @@ import {
   userSchema,
   resourceServerSchema,
   roleSchema,
+  configScopeSchema,
+  configOverrideSchema,
 } from "@authhero/adapter-interfaces";
 import { flattenSchema } from "./utils/flatten";
 
@@ -67,6 +69,8 @@ const sqlConnectionSchema = flattenSchema(connectionSchema).extend({
   tenant_id: z.string(),
   // Store booleans as integers in SQL
   is_system: z.number().optional(),
+  // Config inheritance: boolean stored as integer; NULL reads as false.
+  enforce: z.number().nullish(),
   // `options` is persisted as a JSON-encoded string; the in-memory schema
   // types it as a parsed object, so override here for the DB row shape.
   options: z.string(),
@@ -74,6 +78,8 @@ const sqlConnectionSchema = flattenSchema(connectionSchema).extend({
 
 const sqlBrandingSchema = flattenSchema(brandingSchema).extend({
   tenant_id: z.string(),
+  // Config inheritance: boolean stored as integer; NULL reads as false.
+  enforce: z.number().nullish(),
 });
 
 const sqlUniversalLoginTemplateSchema = z.object({
@@ -107,6 +113,8 @@ const sqlPromptSettingSchema = promptSettingSchema.extend({
   // Nullable: column added after baseline; NULL reads back as "off".
   show_last_used_connection: z.number().nullable(),
   tenant_id: z.string(),
+  // Config inheritance: boolean stored as integer; NULL reads as false.
+  enforce: z.number().nullish(),
 });
 
 const sqlPasswordSchema = z.object({
@@ -151,6 +159,9 @@ const sqlHookSchema = z.object({
   page_id: z.string().optional().nullable(),
   permission_required: z.string().optional().nullable(),
   metadata: z.string().optional().nullable(),
+  scope: configScopeSchema.optional().nullable(),
+  override: configOverrideSchema.optional().nullable(),
+  enforce: z.number().optional().nullable(),
 });
 
 export const sqlActionSchema = z.object({
@@ -166,6 +177,9 @@ export const sqlActionSchema = z.object({
   deployed_at_ts: z.number().optional().nullable(),
   is_system: z.number().optional().nullable(),
   inherit: z.number().optional().nullable(),
+  scope: configScopeSchema.optional().nullable(),
+  override: configOverrideSchema.optional().nullable(),
+  enforce: z.number().optional().nullable(),
   created_at_ts: z.number(),
   updated_at_ts: z.number(),
 });
@@ -207,6 +221,8 @@ export const sqlHookCodeSchema = z.object({
 
 const sqlEmailProvidersSchema = emailProviderSchema.extend({
   tenant_id: z.string(),
+  // Config inheritance: boolean stored as integer; NULL reads as false.
+  enforce: z.number().nullish(),
   credentials: z.string(),
   settings: z.string(),
   enabled: z.number(),
@@ -339,6 +355,8 @@ export const sqlResourceServerSchema = resourceServerSchema
     skip_consent_for_verifiable_first_party_clients: z.number().optional(),
     allow_offline_access: z.number().optional(),
     is_system: z.number().optional(),
+    // Config inheritance: boolean stored as integer; NULL reads as false.
+    enforce: z.number().nullish(),
     // Store metadata as JSON string in SQL
     metadata: z.string().optional(),
     // Handle verification_key as snake_case in database but verificationKey in interface

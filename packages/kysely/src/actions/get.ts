@@ -2,6 +2,7 @@ import { Kysely } from "kysely";
 import { Action } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 import { convertDatesToAdapter } from "../utils/dateConversion";
+import { enforceFromSql } from "../utils/configInheritance";
 
 function parseJsonField<T>(value: string | null | undefined): T | undefined {
   if (!value) return undefined;
@@ -37,6 +38,9 @@ export function get(db: Kysely<Database>) {
       supported_triggers,
       is_system,
       inherit,
+      scope,
+      override,
+      enforce,
       tenant_id: _tenantId,
       ...rest
     } = row;
@@ -64,6 +68,9 @@ export function get(db: Kysely<Database>) {
         ),
       is_system: !!is_system,
       inherit: !!inherit,
+      scope: scope ?? undefined,
+      override: override ?? undefined,
+      enforce: enforceFromSql(enforce),
     } as Action;
   };
 }

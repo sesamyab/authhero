@@ -12,6 +12,7 @@ import { keysetPaginate, isKeysetRequest } from "../helpers/paginate";
 
 import getCountAsInt from "../utils/getCountAsInt";
 import { convertDatesToAdapter } from "../utils/dateConversion";
+import { enforceFromSql } from "../utils/configInheritance";
 
 function toHooks(hook: Selectable<Database["hooks"]>) {
   const {
@@ -21,6 +22,7 @@ function toHooks(hook: Selectable<Database["hooks"]>) {
     created_at_ts,
     updated_at_ts,
     metadata,
+    enforce,
     ...rest
   } = hook;
 
@@ -34,6 +36,7 @@ function toHooks(hook: Selectable<Database["hooks"]>) {
     ...dates,
     enabled: !!enabled,
     synchronous: !!synchronous,
+    enforce: enforceFromSql(enforce),
     metadata: parseJsonObjectIfDefined(metadata),
   });
 }

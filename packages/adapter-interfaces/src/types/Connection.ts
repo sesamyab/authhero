@@ -3,6 +3,7 @@ import {
   AuthorizationResponseMode,
   AuthorizationResponseType,
 } from "./AuthParams";
+import { configInheritanceShape } from "./ConfigInheritance";
 
 export const connectionOptionsSchema = z.object({
   kid: z.string().optional(),
@@ -247,6 +248,7 @@ export const connectionInsertSchema = z.object({
   show_as_button: z.boolean().optional(),
   metadata: z.record(z.string(), z.any()).optional(),
   is_system: z.boolean().optional(),
+  ...configInheritanceShape,
 });
 export type ConnectionInsert = z.infer<typeof connectionInsertSchema>;
 

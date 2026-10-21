@@ -4,6 +4,10 @@ import { attackProtectionSchema } from "./AttackProtection";
 export const tenantInsertSchema = z.object({
   id: z.string().optional(),
 
+  // Config inheritance: the tenant this one inherits published config from.
+  // Null/unset means no parent (no inheritance).
+  parent_tenant_id: z.string().nullish(),
+
   // Basic settings
   audience: z.string().optional(),
   friendly_name: z.string(), // Required - replaces the old 'name' field

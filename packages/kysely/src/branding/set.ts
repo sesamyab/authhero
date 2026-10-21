@@ -1,10 +1,11 @@
 import { Branding } from "@authhero/adapter-interfaces";
 import { Kysely } from "kysely";
 import { Database } from "../db";
+import { enforceToSql } from "../utils/configInheritance";
 
 export function set(db: Kysely<Database>) {
   return async (tenant_id: string, branding: Branding) => {
-    const { colors, font, ...rest } = branding;
+    const { colors, font, enforce, ...rest } = branding;
 
     // Auth0 allows page_background to be either a hex string or a gradient
     // object. Persist gradient fields only when an object is provided.
@@ -25,6 +26,7 @@ export function set(db: Kysely<Database>) {
           colors_page_background_end: gradient?.end,
           colors_page_background_angle_dev: gradient?.angle_deg,
           font_url: branding.font?.url,
+          enforce: enforceToSql(enforce),
           tenant_id,
         })
         .execute();
@@ -39,6 +41,7 @@ export function set(db: Kysely<Database>) {
           colors_page_background_end: gradient?.end,
           colors_page_background_angle_dev: gradient?.angle_deg,
           font_url: branding.font?.url,
+          enforce: enforceToSql(enforce),
         })
         .where("tenant_id", "=", tenant_id)
         .execute();

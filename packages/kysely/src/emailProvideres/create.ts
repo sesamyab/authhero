@@ -1,6 +1,7 @@
 import { CreateOptions, EmailProvider } from "@authhero/adapter-interfaces";
 import { Kysely } from "kysely";
 import { Database } from "../db";
+import { enforceToSql } from "../utils/configInheritance";
 
 export function create(db: Kysely<Database>) {
   return async (
@@ -10,13 +11,14 @@ export function create(db: Kysely<Database>) {
   ) => {
     const importMetadata = options?.importMetadata;
     const now = new Date().toISOString();
-    const { credentials, settings, enabled, ...rest } = emailProvider;
+    const { credentials, settings, enabled, enforce, ...rest } = emailProvider;
 
     await db
       .insertInto("email_providers")
       .values({
         ...rest,
         enabled: enabled ? 1 : 0,
+        enforce: enforceToSql(enforce),
         credentials: JSON.stringify(credentials),
         settings: JSON.stringify(settings),
         tenant_id: tenant_id,

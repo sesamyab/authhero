@@ -1,6 +1,7 @@
 import { Kysely } from "kysely";
 import { HookInsert } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
+import { enforceToSql } from "../utils/configInheritance";
 
 export function update(db: Kysely<Database>) {
   return async (
@@ -8,11 +9,12 @@ export function update(db: Kysely<Database>) {
     hook_id: string,
     hook: Partial<HookInsert>,
   ): Promise<boolean> => {
-    const { hook_id: _hookId, metadata, ...rest } = hook;
+    const { hook_id: _hookId, metadata, enforce, ...rest } = hook;
 
     const sqlHook = {
       ...rest,
       updated_at_ts: Date.now(),
+      enforce: enforceToSql(enforce),
       enabled: hook.enabled !== undefined ? (hook.enabled ? 1 : 0) : undefined,
       synchronous:
         hook.synchronous !== undefined ? (hook.synchronous ? 1 : 0) : undefined,

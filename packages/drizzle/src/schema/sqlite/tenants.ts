@@ -2,6 +2,7 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 
 export const tenants = sqliteTable("tenants", {
   id: text("id", { length: 191 }).primaryKey(),
+  parent_tenant_id: text("parent_tenant_id", { length: 191 }),
   name: text("name", { length: 255 }),
   audience: text("audience", { length: 255 }),
   sender_email: text("sender_email", { length: 255 }),

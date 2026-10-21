@@ -7,6 +7,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants";
+import { configInheritanceColumns } from "./configInheritance";
 
 // Mirrors the kysely `actions` table. Dates are stored as epoch-millisecond
 // integers (`_ts` suffix) and surfaced as ISO strings by the adapter, matching
@@ -29,6 +30,7 @@ export const actions = sqliteTable(
     deployed_at_ts: integer("deployed_at_ts"),
     is_system: integer("is_system"),
     inherit: integer("inherit"),
+    ...configInheritanceColumns(),
     created_at_ts: integer("created_at_ts").notNull(),
     updated_at_ts: integer("updated_at_ts").notNull(),
   },

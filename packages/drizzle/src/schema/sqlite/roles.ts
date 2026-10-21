@@ -5,6 +5,7 @@ import {
   primaryKey,
   index,
 } from "drizzle-orm/sqlite-core";
+import { configInheritanceColumns } from "./configInheritance";
 
 export const roles = sqliteTable(
   "roles",
@@ -134,6 +135,7 @@ export const resourceServers = sqliteTable(
     verification_key: text("verification_key", { length: 4096 }),
     options: text("options", { length: 4096 }),
     is_system: integer("is_system").notNull().default(0),
+    ...configInheritanceColumns(),
     metadata: text("metadata", { length: 4096 }),
     created_at: text("created_at", { length: 35 }).notNull(),
     updated_at: text("updated_at", { length: 35 }).notNull(),

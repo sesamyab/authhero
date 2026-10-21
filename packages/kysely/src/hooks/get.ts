@@ -4,6 +4,7 @@ import { parseJsonObjectIfDefined } from "../helpers/parse";
 import { Hook } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 import { convertDatesToAdapter } from "../utils/dateConversion";
+import { enforceFromSql } from "../utils/configInheritance";
 
 export function get(db: Kysely<Database>) {
   return async (tenant_id: string, hook_id: string): Promise<Hook | null> => {
@@ -23,6 +24,7 @@ export function get(db: Kysely<Database>) {
       created_at_ts,
       updated_at_ts,
       metadata,
+      enforce,
       ...rest
     } = hook;
 
@@ -36,6 +38,7 @@ export function get(db: Kysely<Database>) {
       ...dates,
       enabled: !!rest.enabled,
       synchronous: !!rest.synchronous,
+      enforce: enforceFromSql(enforce),
       metadata: parseJsonObjectIfDefined(metadata),
     });
   };

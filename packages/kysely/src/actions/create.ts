@@ -6,6 +6,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 import { generateActionId } from "../utils/entity-id";
+import { enforceToSql } from "../utils/configInheritance";
 
 export function create(db: Kysely<Database>) {
   return async (
@@ -41,6 +42,9 @@ export function create(db: Kysely<Database>) {
           : null,
         is_system: action.is_system ? 1 : 0,
         inherit: action.inherit ? 1 : 0,
+        scope: action.scope ?? null,
+        override: action.override ?? null,
+        enforce: enforceToSql(action.enforce),
         created_at_ts: createdAtTs,
         updated_at_ts: updatedAtTs,
       })
@@ -58,6 +62,9 @@ export function create(db: Kysely<Database>) {
       supported_triggers: action.supported_triggers,
       is_system: action.is_system ?? false,
       inherit: action.inherit ?? false,
+      scope: action.scope,
+      override: action.override,
+      enforce: action.enforce,
       created_at: new Date(createdAtTs).toISOString(),
       updated_at: new Date(updatedAtTs).toISOString(),
     };

@@ -1,6 +1,7 @@
 import { PromptSetting } from "@authhero/adapter-interfaces";
 import { Kysely } from "kysely";
 import { Database } from "../db";
+import { enforceToSql } from "../utils/configInheritance";
 
 // Picks only the known prompt_settings columns and coerces booleans to 0/1
 // for SQLite. Spreading the raw input is unsafe: callers (including the
@@ -13,6 +14,9 @@ function toRow(promptSetting: Partial<PromptSetting>) {
     webauthn_platform_first_factor?: number;
     show_last_used_connection?: number;
     universal_login_experience?: "new" | "classic";
+    scope?: PromptSetting["scope"];
+    override?: PromptSetting["override"];
+    enforce?: number | null;
   } = {};
   if (typeof promptSetting.identifier_first === "boolean") {
     row.identifier_first = promptSetting.identifier_first ? 1 : 0;
@@ -32,6 +36,11 @@ function toRow(promptSetting: Partial<PromptSetting>) {
   if (promptSetting.universal_login_experience) {
     row.universal_login_experience = promptSetting.universal_login_experience;
   }
+  if (promptSetting.scope) row.scope = promptSetting.scope;
+  if (promptSetting.override) row.override = promptSetting.override;
+  if (promptSetting.enforce !== undefined) {
+    row.enforce = enforceToSql(promptSetting.enforce);
+  }
   return row;
 }
 
@@ -50,6 +59,9 @@ export function set(db: Kysely<Database>) {
             row.webauthn_platform_first_factor ?? 0,
           show_last_used_connection: row.show_last_used_connection ?? 0,
           universal_login_experience: row.universal_login_experience ?? "new",
+          scope: row.scope,
+          override: row.override,
+          enforce: row.enforce,
         })
         .execute();
     } catch {

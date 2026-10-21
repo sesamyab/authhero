@@ -1,6 +1,7 @@
 import { Kysely } from "kysely";
 import { ActionUpdate } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
+import { enforceToSql } from "../utils/configInheritance";
 
 type StoredSecret = { name: string; value?: string };
 
@@ -70,6 +71,15 @@ export function update(db: Kysely<Database>) {
     }
     if (action.is_system !== undefined) {
       sqlValues.is_system = action.is_system ? 1 : 0;
+    }
+    if (action.scope !== undefined) {
+      sqlValues.scope = action.scope;
+    }
+    if (action.override !== undefined) {
+      sqlValues.override = action.override;
+    }
+    if (action.enforce !== undefined) {
+      sqlValues.enforce = enforceToSql(action.enforce);
     }
     if (action.inherit !== undefined) {
       sqlValues.inherit = action.inherit ? 1 : 0;
