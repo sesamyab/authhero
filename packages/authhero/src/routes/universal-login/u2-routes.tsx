@@ -397,7 +397,8 @@ const screenQuerySchema = z.object({
     description: "Language override from the language picker (e.g. 'en', 'sv')",
   }),
   message: z.enum(["password_reset_success"]).optional().openapi({
-    description: "Informational message to show on the screen",
+    description:
+      "Confirmation banner to show after a flow completes. Currently only 'password_reset_success' on the enter-password screen; ignored on other screens.",
   }),
 });
 
