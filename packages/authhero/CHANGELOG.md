@@ -1,5 +1,16 @@
 # authhero
 
+## 9.24.1
+
+### Patch Changes
+
+- 56a0205: Fix list pagination. With `include_totals=true` the management API now follows Auth0: `length` is the number of items on the returned page and `total` is the overall match count (previously `length` carried the overall count and `total` was missing for most lists, e.g. `/users`). The tenants list now reports `total` too, and the drizzle/kysely tenants adapters return their counts under `totals` as the adapter interface specifies. The admin UI reads `total`, so all pages in tables such as users are reachable.
+- b5576e2: Route login session context writes through state-machine events and a shared persistence boundary. Preserve unrelated context when completing hooks and continuations, and enforce ownership with an ESLint rule.
+
+  Model password resets as a session-owned state machine for code and emailed-link requests. Require a matching, single-use credential from the active request before changing a password, and preserve link credentials across HTML and JSON submissions.
+
+- 406f0b2: After a password reset in the u2 flow, send the user straight to the password step with a "password reset" confirmation instead of the identifier screen. Previously a tenant with both code and password connections could land on the OTP step right after setting a new password.
+
 ## 9.24.0
 
 ### Minor Changes

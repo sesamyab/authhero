@@ -1,5 +1,12 @@
 # @authhero/kysely-adapter
 
+## 12.15.1
+
+### Patch Changes
+
+- 56a0205: Fix list pagination. With `include_totals=true` the management API now follows Auth0: `length` is the number of items on the returned page and `total` is the overall match count (previously `length` carried the overall count and `total` was missing for most lists, e.g. `/users`). The tenants list now reports `total` too, and the drizzle/kysely tenants adapters return their counts under `totals` as the adapter interface specifies. The admin UI reads `total`, so all pages in tables such as users are reachable.
+- a68f2c5: Tenant list free-text search (`q`) now matches the tenant id (slug) as well as friendly_name. The AWS adapter now implements `q` filtering.
+
 ## 12.15.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @authhero/aws-adapter
 
+## 1.6.1
+
+### Patch Changes
+
+- a68f2c5: Tenant list free-text search (`q`) now matches the tenant id (slug) as well as friendly_name. The AWS adapter now implements `q` filtering.
+
 ## 1.6.0
 
 ### Minor Changes
