@@ -311,7 +311,9 @@ interface RuntimeFallbackConfig {
   resolveControlPlane?: ControlPlaneResolver; // Per-tenant override (see below)
 }
 
-type ControlPlaneResolver = (params: { tenant_id: string }) =>
+type ControlPlaneResolver = (params: {
+  tenant_id: string;
+}) =>
   | { tenantId: string; clientId?: string }
   | undefined
   | Promise<{ tenantId: string; clientId?: string } | undefined>;
@@ -348,6 +350,39 @@ API to validate cross-tenant access. Only inheritance lookups (connection
 secrets, inheritable hooks, `is_system` resource server scopes, email
 providers) consult the resolver.
 :::
+
+### Shadow Mode for Config Inheritance
+
+Tenant config inheritance (parent tenants and per-row `scope`, `override` and
+`enforce`) is being introduced step by step. Shadow mode lets you see how the new
+parent-chain resolver would differ from the runtime fallback described on this
+page, before anything depends on it.
+
+```typescript
+initMultiTenant({
+  dataAdapter,
+  controlPlane: { tenantId: "main", clientId: "default" },
+  inheritanceShadow: true, // or { sample: 0.1, intervalMs: 60_000 }
+});
+```
+
+When enabled, wrapped reads also start a background comparison per tenant. The
+resolver walks `parent_tenant_id` (a tenant without a parent uses the control
+plane as its implicit parent), merges the chain, and compares the result with
+what this adapter returns. Differences are written to the tenant's logs with
+type `cfgdiff`:
+
+```
+GET /api/v2/logs?q=type:cfgdiff
+```
+
+- The comparison never changes a response, and failures are swallowed.
+- Each log has the entity, key, kind (`missing`, `extra`, `changed`) and the
+  names of the differing fields. Secret values are never logged.
+- Rows the new model would copy into a tenant but the fallback only overlays are
+  `expected` and are skipped unless `includeExpected: true`.
+- Comparisons are limited to one per tenant per `intervalMs` (default 60 s) and
+  repeated differences are logged once per hour.
 
 ## Migration from @authhero/authhero
 
