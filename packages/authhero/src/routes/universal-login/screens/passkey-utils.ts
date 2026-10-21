@@ -1,3 +1,4 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
 /**
  * Shared WebAuthn/passkey utilities used by passkey-enrollment, account-passkeys,
  * passkey-challenge, and conditional mediation on identifier/login screens.
@@ -470,10 +471,6 @@ export async function verifyPasskeyAuthentication(
     const currentState = loginSession.state || LoginSessionState.PENDING;
     const updateFields: Record<string, unknown> = {
       user_id: primaryUser.user_id,
-      state_data: JSON.stringify({
-        ...stateData,
-        mfa_verified: true,
-      }),
     };
     if (currentState === LoginSessionState.AWAITING_MFA) {
       const { state: newState } = transitionLoginSession(
@@ -482,13 +479,21 @@ export async function verifyPasskeyAuthentication(
       );
       updateFields.state = newState;
     }
-    await ctx.env.data.loginSessions.update(
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
       client.tenant.id,
       state,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { mfa_verified: true },
+      },
       updateFields,
     );
 
-    const updatedLoginSession = { ...loginSession, ...updateFields };
+    const updatedLoginSession = (await ctx.env.data.loginSessions.get(
+      client.tenant.id,
+      state,
+    ))!;
 
     return {
       success: true,

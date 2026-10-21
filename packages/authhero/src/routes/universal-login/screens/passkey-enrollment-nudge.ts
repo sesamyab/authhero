@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Passkey Enrollment Nudge screen
  *
@@ -139,15 +141,16 @@ async function resumeAuthFlow(context: ScreenContext) {
     state,
   );
   if (currentSession) {
-    const currentStateData = currentSession.state_data
-      ? JSON.parse(currentSession.state_data)
-      : {};
-    await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-      state_data: JSON.stringify({
-        ...currentStateData,
-        passkey_nudge_completed: true,
-      }),
-    });
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      client.tenant.id,
+      state,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { passkey_nudge_completed: true },
+      },
+      {},
+    );
   }
 
   // Get user and continue the auth flow

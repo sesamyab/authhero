@@ -1,3 +1,4 @@
+import { createLoginSessionWithData } from "../../state-machines/login-session-data";
 /**
  * U2 Routes - Universal login with SSR + hydration + client-side navigation
  *
@@ -32,7 +33,10 @@ import {
 import type { ScreenContext } from "./screens/types";
 import { HTTPException } from "hono/http-exception";
 import { RedirectException } from "../../errors/redirect-exception";
-import { LogTypes } from "@authhero/adapter-interfaces";
+import {
+  AuthorizationResponseType,
+  LogTypes,
+} from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
 import { sanitizeUrl } from "./sanitization-utils";
 import type { CustomText, Branding, Theme } from "@authhero/adapter-interfaces";
@@ -1065,28 +1069,32 @@ const getAcceptInvitation = defineRoute({
       });
     }
 
-    const loginSession = await ctx.env.data.loginSessions.create(tenantId, {
-      expires_at: new Date(
-        Date.now() + UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS * 1000,
-      ).toISOString(),
-      csrf_token: nanoid(),
-      authorization_url: ctx.req.url,
-      authParams: {
-        client_id: invite.client_id,
-        redirect_uri: redirectUri,
-        response_type: "code",
-        scope: "openid profile email",
-        username: invite.invitee?.email,
+    const loginSession = await createLoginSessionWithData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      {
+        expires_at: new Date(
+          Date.now() + UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS * 1000,
+        ).toISOString(),
+        csrf_token: nanoid(),
+        authorization_url: ctx.req.url,
+        authParams: {
+          client_id: invite.client_id,
+          redirect_uri: redirectUri,
+          response_type: AuthorizationResponseType.CODE,
+          scope: "openid profile email",
+          username: invite.invitee?.email,
+        },
       },
-      state_data: JSON.stringify({
+      {
         invitation_id: invite.id,
         organization_id: invite.organization_id,
         organization_name:
           organization.display_name || organization.name || organization.id,
         inviter_name: invite.inviter?.name,
         roles: invite.roles || [],
-      }),
-    });
+      },
+    );
 
     return ctx.redirect(
       `/u2/accept-invitation?state=${encodeURIComponent(loginSession.id)}`,
@@ -1528,7 +1536,7 @@ const getPasswordChangeTicket = defineRoute({
       authParams: {
         client_id: clientId,
         redirect_uri: redirectUri,
-        response_type: "code",
+        response_type: AuthorizationResponseType.CODE,
         scope: "openid profile email",
         username: user.email,
       },

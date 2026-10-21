@@ -9,6 +9,7 @@
     "format": "prettier --write \"./**/*.{js,jsx,ts,tsx,json}\"",
     "format:check": "prettier --check \"./**/*.{js,jsx,ts,tsx,json}\"",
     "type-check": "pnpm admin type-check && pnpm website type-check",
+    "lint:state-data": "eslint --quiet --config eslint.state-data.config.mjs packages/authhero/src && node --test tools/eslint/state-data.test.mjs",
     "lint:changelog": "node tools/changelog-week.mjs",
     "admin": "pnpm --filter @authhero/admin",
     "authhero": "pnpm --filter authhero",

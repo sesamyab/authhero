@@ -1,6 +1,47 @@
 import { setup, assign, transition } from "xstate";
 import { LoginSession, LoginSessionState } from "@authhero/adapter-interfaces";
 
+/** Persisted context, grouped by responsibility in types, flat on disk. */
+export interface LoginSessionData {
+  // Authentication and MFA
+  mfa_verified?: boolean;
+  authenticationMethodId?: string;
+  phoneNumber?: string;
+  totpSecret?: string;
+  guardian_enrollment?: boolean;
+  pending_email_verification?: unknown;
+  // Hooks and continuation
+  hookId?: string;
+  form_values?: Record<string, unknown>;
+  continuationScope?: string[];
+  continuationReturnUrl?: string;
+  // Passkeys
+  webauthn_challenge?: string;
+  passkey_nudge_completed?: boolean;
+  // UI and invitation/integration flows
+  notice?: "password_reset_success";
+  invitation_id?: string;
+  organization_id?: string;
+  organization_name?: string;
+  inviter_name?: string;
+  roles?: string[];
+  connect?: Record<string, unknown>;
+  try_connection_result?: unknown;
+}
+
+/** The on-disk JSON shape stays flat for compatibility with existing sessions. */
+export function readLoginSessionData(raw?: string | null): LoginSessionData {
+  if (!raw) return {};
+  try {
+    const value: unknown = JSON.parse(raw);
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as LoginSessionData)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Context for the login session state machine
  */
@@ -14,13 +55,14 @@ export interface LoginSessionContext {
   /** Continuation scope - which pages are allowed during AWAITING_CONTINUATION */
   continuationScope?: string[];
   /** Additional state data */
-  stateData?: Record<string, unknown>;
+  stateData?: LoginSessionData;
 }
 
 /**
  * Event types for the login session state machine
  */
 export enum LoginSessionEventType {
+  UPDATE_CONTEXT = "UPDATE_CONTEXT",
   AUTHENTICATE = "AUTHENTICATE",
   REQUIRE_EMAIL_VERIFICATION = "REQUIRE_EMAIL_VERIFICATION",
   REQUIRE_MFA = "REQUIRE_MFA",
@@ -40,6 +82,10 @@ export enum LoginSessionEventType {
  * Events that can trigger state transitions
  */
 export type LoginSessionEvent =
+  | {
+      type: LoginSessionEventType.UPDATE_CONTEXT;
+      data: Partial<LoginSessionData>;
+    }
   | { type: LoginSessionEventType.AUTHENTICATE; userId: string }
   | { type: LoginSessionEventType.REQUIRE_EMAIL_VERIFICATION }
   | { type: LoginSessionEventType.REQUIRE_MFA }
@@ -86,6 +132,14 @@ export const loginSessionMachine = setup({
     events: {} as LoginSessionEvent,
   },
   actions: {
+    updateContext: assign(({ context, event }) => {
+      if (event.type !== LoginSessionEventType.UPDATE_CONTEXT) return {};
+      const stateData = { ...context.stateData, ...event.data };
+      for (const key of Object.keys(stateData) as (keyof LoginSessionData)[]) {
+        if (stateData[key] === undefined) delete stateData[key];
+      }
+      return { stateData };
+    }),
     // Type-safe action that only sets userId from AUTHENTICATE events
     setUserId: assign(({ event }) => {
       if (event.type === LoginSessionEventType.AUTHENTICATE) {
@@ -124,11 +178,13 @@ export const loginSessionMachine = setup({
   // (Stately Studio / VS Code extension) can parse the machine. The editor does static
   // analysis and cannot resolve computed property names or enum values at design time.
   // The string values match LoginSessionState and LoginSessionEventType enums.
+  // Context updates are targetless: notices/challenges do not authenticate a user.
   initial: "pending",
   context: {},
   states: {
     pending: {
       on: {
+        UPDATE_CONTEXT: { actions: "updateContext" },
         AUTHENTICATE: {
           target: "authenticated",
           actions: "setUserId",
@@ -144,6 +200,7 @@ export const loginSessionMachine = setup({
     },
     authenticated: {
       on: {
+        UPDATE_CONTEXT: { actions: "updateContext" },
         REQUIRE_EMAIL_VERIFICATION: {
           target: "awaiting_email_verification",
         },
@@ -175,6 +232,7 @@ export const loginSessionMachine = setup({
     },
     awaiting_email_verification: {
       on: {
+        UPDATE_CONTEXT: { actions: "updateContext" },
         // Return to AUTHENTICATED hub to check if more steps are needed
         // Also support COMPLETE for backward compatibility (direct completion)
         COMPLETE: {
@@ -191,6 +249,7 @@ export const loginSessionMachine = setup({
     },
     awaiting_mfa: {
       on: {
+        UPDATE_CONTEXT: { actions: "updateContext" },
         // Return to AUTHENTICATED hub after MFA verification
         COMPLETE_MFA: {
           target: "authenticated",
@@ -206,6 +265,7 @@ export const loginSessionMachine = setup({
     },
     awaiting_consent: {
       on: {
+        UPDATE_CONTEXT: { actions: "updateContext" },
         // Return to AUTHENTICATED hub after consent is granted
         COMPLETE_CONSENT: {
           target: "authenticated",
@@ -221,6 +281,7 @@ export const loginSessionMachine = setup({
     },
     awaiting_hook: {
       on: {
+        UPDATE_CONTEXT: { actions: "updateContext" },
         // Return to AUTHENTICATED hub to check if more steps are needed
         COMPLETE_HOOK: {
           target: "authenticated",
@@ -242,6 +303,7 @@ export const loginSessionMachine = setup({
     },
     awaiting_continuation: {
       on: {
+        UPDATE_CONTEXT: { actions: "updateContext" },
         // Return to AUTHENTICATED hub to check if more steps are needed
         COMPLETE_CONTINUATION: {
           target: "authenticated",
@@ -306,6 +368,9 @@ export function transitionLoginSession(
   const newContext = nextSnapshot.context;
   const oldContext = context;
 
+  if (newContext.stateData !== oldContext.stateData) {
+    contextDiff.stateData = newContext.stateData;
+  }
   if (newContext.userId !== oldContext.userId) {
     contextDiff.userId = newContext.userId;
   }
@@ -328,7 +393,7 @@ export function transitionLoginSession(
 /**
  * Check if a login session can transition with the given event
  *
- * Uses XState's transition - if the state changes, the transition is valid.
+ * Includes targetless context updates as well as authentication transitions.
  */
 export function canTransition(
   currentState: LoginSessionState,
@@ -338,6 +403,9 @@ export function canTransition(
   // Create a minimal event for checking (some events need required properties)
   let event: LoginSessionEvent;
   switch (eventType) {
+    case LoginSessionEventType.UPDATE_CONTEXT:
+      event = { type: eventType, data: {} };
+      break;
     case LoginSessionEventType.AUTHENTICATE:
       event = { type: eventType, userId: "" };
       break;
@@ -358,8 +426,10 @@ export function canTransition(
     event,
   );
 
-  // Transition is valid if state changed
-  return nextSnapshot.value !== currentState;
+  return (
+    nextSnapshot.value !== currentState ||
+    nextSnapshot.context !== currentSnapshot.context
+  );
 }
 
 /**
@@ -369,15 +439,14 @@ export function transitionLoginSessionFromEntity(
   loginSession: LoginSession,
   event: LoginSessionEvent,
 ): { state: LoginSessionState; context: Partial<LoginSessionContext> } {
-  // Parse existing context from state_data if available
-  let existingContext: LoginSessionContext = {};
-  if (loginSession.state_data) {
-    try {
-      existingContext = JSON.parse(loginSession.state_data);
-    } catch {
-      // Ignore parse errors
-    }
-  }
+  const data = readLoginSessionData(loginSession.state_data);
+  const existingContext: LoginSessionContext = {
+    userId: loginSession.user_id,
+    failureReason: loginSession.failure_reason,
+    hookId: data.hookId,
+    continuationScope: data.continuationScope,
+    stateData: data,
+  };
 
   return transitionLoginSession(
     loginSession.state || LoginSessionState.PENDING,

@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * MFA Phone Enrollment screen - for setting up SMS MFA
  *
@@ -225,12 +227,16 @@ export const mfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
         const existingStateData = loginSession.state_data
           ? JSON.parse(loginSession.state_data)
           : {};
-        await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-          state_data: JSON.stringify({
-            ...existingStateData,
-            authenticationMethodId: enrollment.id,
-          }),
-        });
+        await updateLoginSessionData(
+          ctx.env.data.loginSessions,
+          client.tenant.id,
+          state,
+          {
+            type: LoginSessionEventType.UPDATE_CONTEXT,
+            data: { authenticationMethodId: enrollment.id },
+          },
+          {},
+        );
 
         // Send OTP SMS only after the session is updated
         try {
@@ -242,9 +248,19 @@ export const mfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
             enrollment.id,
           );
           // Revert session state_data so it no longer references the removed enrollment
-          await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-            state_data: JSON.stringify(existingStateData),
-          });
+          await updateLoginSessionData(
+            ctx.env.data.loginSessions,
+            client.tenant.id,
+            state,
+            {
+              type: LoginSessionEventType.UPDATE_CONTEXT,
+              data: {
+                authenticationMethodId:
+                  existingStateData.authenticationMethodId,
+              },
+            },
+            {},
+          );
           throw otpErr;
         }
 

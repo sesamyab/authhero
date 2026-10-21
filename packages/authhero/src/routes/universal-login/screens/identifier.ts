@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Identifier screen - the first screen in the login flow
  *
@@ -361,18 +363,15 @@ export async function identifierScreen(
       state,
     );
     if (loginSession) {
-      const stateData = loginSession.state_data
-        ? JSON.parse(loginSession.state_data)
-        : {};
-      await context.ctx.env.data.loginSessions.update(
+      await updateLoginSessionData(
+        context.ctx.env.data.loginSessions,
         context.client.tenant.id,
         state,
         {
-          state_data: JSON.stringify({
-            ...stateData,
-            webauthn_challenge: options.challenge,
-          }),
+          type: LoginSessionEventType.UPDATE_CONTEXT,
+          data: { webauthn_challenge: options.challenge },
         },
+        {},
       );
     }
 
@@ -521,7 +520,7 @@ export const identifierScreenDefinition: ScreenDefinition = {
             await ctx.env.data.loginSessions.update(
               client.tenant.id,
               loginSession.id,
-              loginSession,
+              { authParams: loginSession.authParams },
             );
             const authResult = await connectionAuth(
               ctx,
@@ -679,7 +678,7 @@ export const identifierScreenDefinition: ScreenDefinition = {
       await ctx.env.data.loginSessions.update(
         client.tenant.id,
         loginSession.id,
-        loginSession,
+        { authParams: loginSession.authParams },
       );
 
       // Determine login strategy

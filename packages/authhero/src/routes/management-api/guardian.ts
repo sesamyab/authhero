@@ -1,3 +1,4 @@
+import { createLoginSessionWithData } from "../../state-machines/login-session-data";
 import { Bindings, Variables } from "../../types";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
@@ -542,17 +543,21 @@ const postEnrollmentsTicket = defineRoute({
 
     // Create a login session for the enrollment flow
     // Set state to AWAITING_MFA so MFA screens accept the session
-    const loginSession = await ctx.env.data.loginSessions.create(tenantId, {
-      expires_at: expiresAt,
-      authParams: {
-        client_id: clientId,
-        username: email || user.email,
+    const loginSession = await createLoginSessionWithData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      {
+        expires_at: expiresAt,
+        authParams: {
+          client_id: clientId,
+          username: email || user.email,
+        },
+        csrf_token: nanoid(),
+        user_id,
+        state: LoginSessionState.AWAITING_MFA,
       },
-      csrf_token: nanoid(),
-      user_id,
-      state: LoginSessionState.AWAITING_MFA,
-      state_data: JSON.stringify({ guardian_enrollment: true }),
-    });
+      { guardian_enrollment: true },
+    );
 
     // Create the ticket code
     const ticketId = nanoid();

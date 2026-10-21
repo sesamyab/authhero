@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Passkey Challenge screen — WebAuthn authentication ceremony
  *
@@ -170,16 +172,16 @@ async function generateFreshAuthenticationOptions(
     ...(allowCredentials ? { allowCredentials } : {}),
   });
 
-  const stateData = loginSession.state_data
-    ? JSON.parse(loginSession.state_data)
-    : {};
-
-  await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-    state_data: JSON.stringify({
-      ...stateData,
-      webauthn_challenge: options.challenge,
-    }),
-  });
+  await updateLoginSessionData(
+    ctx.env.data.loginSessions,
+    client.tenant.id,
+    state,
+    {
+      type: LoginSessionEventType.UPDATE_CONTEXT,
+      data: { webauthn_challenge: options.challenge },
+    },
+    {},
+  );
 
   return JSON.stringify(options);
 }

@@ -1,3 +1,5 @@
+import { updateLoginSessionData } from "../state-machines/login-session-data";
+import { LoginSessionEventType } from "../state-machines/login-session";
 import { Context } from "hono";
 import {
   LogTypes,
@@ -108,14 +110,16 @@ export async function setPendingLoginEmailVerification(
     loginSessionId,
   );
   if (!current) return;
-  const stateData = parseStateData(current.state_data);
-  delete stateData[PENDING_LOGIN_EMAIL_VERIFICATION_KEY];
-  if (pending) {
-    stateData[PENDING_LOGIN_EMAIL_VERIFICATION_KEY] = pending;
-  }
-  await ctx.env.data.loginSessions.update(tenantId, loginSessionId, {
-    state_data: JSON.stringify(stateData),
-  });
+  await updateLoginSessionData(
+    ctx.env.data.loginSessions,
+    tenantId,
+    loginSessionId,
+    {
+      type: LoginSessionEventType.UPDATE_CONTEXT,
+      data: { [PENDING_LOGIN_EMAIL_VERIFICATION_KEY]: pending ?? undefined },
+    },
+    {},
+  );
 }
 
 function isRateLimitDecision(value: unknown): value is RateLimitDecision {

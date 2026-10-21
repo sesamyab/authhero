@@ -1,3 +1,4 @@
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
 /**
  * MFA TOTP Challenge screen - for verifying authenticator app MFA code
  *
@@ -272,13 +273,16 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
         });
 
         // Persist the MFA completion
-        await ctx.env.data.loginSessions.update(client.tenant.id, state, {
-          state: newState,
-          state_data: JSON.stringify({
-            ...stateData,
-            mfa_verified: true,
-          }),
-        });
+        await updateLoginSessionData(
+          ctx.env.data.loginSessions,
+          client.tenant.id,
+          state,
+          {
+            type: LoginSessionEventType.UPDATE_CONTEXT,
+            data: { mfa_verified: true },
+          },
+          { state: newState },
+        );
 
         // Get user to continue the auth flow
         const user = await ctx.env.data.users.get(

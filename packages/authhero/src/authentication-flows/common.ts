@@ -1,4 +1,8 @@
 import {
+  readLoginSessionData,
+  updateLoginSessionData,
+} from "../state-machines/login-session-data";
+import {
   AuthorizationResponseMode,
   AuthorizationResponseType,
   AuthParams,
@@ -1218,12 +1222,16 @@ export async function startLoginSessionHook(
 
   // Only update if transition is valid and state changed
   if (newState !== currentState) {
-    await ctx.env.data.loginSessions.update(tenantId, loginSession.id, {
-      state: newState,
-      state_data: context.hookId
-        ? JSON.stringify({ hookId: context.hookId })
-        : undefined,
-    });
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      loginSession.id,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { hookId: context.hookId },
+      },
+      { state: newState },
+    );
   }
 }
 
@@ -1257,15 +1265,16 @@ export async function completeLoginSessionHook(
 
   // Only update if transition is valid and state changed
   if (newState !== currentState) {
-    await ctx.env.data.loginSessions.update(tenantId, loginSession.id, {
-      // Clear the hook's scratch data — the hook id, and the form answers
-      // accumulated across a multi-step form, which must not outlive it.
-      // Written as "" rather than `undefined`: every adapter's update skips
-      // undefined properties, so passing it left the column untouched and the
-      // data in place.
-      state: newState,
-      state_data: "",
-    });
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      loginSession.id,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { hookId: undefined, form_values: undefined },
+      },
+      { state: newState },
+    );
   }
 }
 
@@ -1343,24 +1352,16 @@ export async function startLoginSessionContinuation(
 
   // Only update if transition is valid and state changed
   if (newState !== currentState) {
-    // Merge continuation keys with existing state_data to preserve flags like mfa_verified
-    let existingData: Record<string, unknown> = {};
-    if (currentSession.state_data) {
-      try {
-        existingData = JSON.parse(currentSession.state_data);
-      } catch {
-        // ignore parse errors
-      }
-    }
-
-    await ctx.env.data.loginSessions.update(tenantId, loginSession.id, {
-      state: newState,
-      state_data: JSON.stringify({
-        ...existingData,
-        continuationScope: scope,
-        continuationReturnUrl: returnUrl,
-      }),
-    });
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      loginSession.id,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { continuationScope: scope, continuationReturnUrl: returnUrl },
+      },
+      { state: newState },
+    );
   } else {
     // Log when state transition is invalid (state didn't change)
     console.warn(
@@ -1394,24 +1395,9 @@ export async function completeLoginSessionContinuation(
     return undefined;
   }
 
-  // Parse state_data to get return URL and preserve non-continuation keys
-  let returnUrl: string | undefined;
-  let restoredData: Record<string, unknown> = {};
-  if (currentSession.state_data) {
-    try {
-      const data = JSON.parse(currentSession.state_data);
-      returnUrl = data.continuationReturnUrl;
-      // Remove only continuation-specific keys, preserve the rest
-      const {
-        continuationScope: _scope,
-        continuationReturnUrl: _url,
-        ...rest
-      } = data;
-      restoredData = rest;
-    } catch {
-      // Ignore parse errors
-    }
-  }
+  const returnUrl = readLoginSessionData(
+    currentSession.state_data,
+  ).continuationReturnUrl;
 
   const currentState = currentSession.state || LoginSessionState.PENDING;
   const { state: newState } = transitionLoginSession(currentState, {
@@ -1420,13 +1406,19 @@ export async function completeLoginSessionContinuation(
 
   // Only update if transition is valid and state changed
   if (newState !== currentState) {
-    await ctx.env.data.loginSessions.update(tenantId, loginSession.id, {
-      state: newState,
-      state_data:
-        Object.keys(restoredData).length > 0
-          ? JSON.stringify(restoredData)
-          : undefined,
-    });
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      loginSession.id,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: {
+          continuationScope: undefined,
+          continuationReturnUrl: undefined,
+        },
+      },
+      { state: newState },
+    );
   } else {
     console.warn(
       `completeLoginSessionContinuation: State transition from ${currentState} with COMPLETE_CONTINUATION was invalid or no-op`,
@@ -1809,16 +1801,15 @@ export async function createFrontChannelAuthResponse(
           }
 
           // Single enrollment - redirect directly to challenge
-          await ctx.env.data.loginSessions.update(
+          await updateLoginSessionData(
+            ctx.env.data.loginSessions,
             client.tenant.id,
             params.loginSession.id,
             {
-              state: newState,
-              state_data: JSON.stringify({
-                ...stateData,
-                authenticationMethodId: mfaCheck.enrollment.id,
-              }),
+              type: LoginSessionEventType.UPDATE_CONTEXT,
+              data: { authenticationMethodId: mfaCheck.enrollment.id },
             },
+            { state: newState },
           );
 
           if (mfaCheck.enrollment.type === "totp") {

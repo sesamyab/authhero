@@ -1,3 +1,8 @@
+import {
+  readLoginSessionData,
+  updateLoginSessionData,
+} from "../state-machines/login-session-data";
+import { LoginSessionEventType } from "../state-machines/login-session";
 import { DataAdapters, LoginSession } from "@authhero/adapter-interfaces";
 
 /** Key under `state_data` holding a one-shot notice for the next screen. */
@@ -10,22 +15,10 @@ export const SESSION_NOTICE_STATE_KEY = "notice";
  */
 export type SessionNotice = "password_reset_success";
 
-function parseStateData(raw?: string): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? { ...parsed }
-      : {};
-  } catch {
-    return {};
-  }
-}
-
 export function readSessionNotice(
   loginSession?: LoginSession | null,
 ): SessionNotice | undefined {
-  const notice = parseStateData(loginSession?.state_data)[
+  const notice = readLoginSessionData(loginSession?.state_data)[
     SESSION_NOTICE_STATE_KEY
   ];
   return notice === "password_reset_success" ? notice : undefined;
@@ -37,12 +30,16 @@ export async function setSessionNotice(
   loginSession: LoginSession,
   notice: SessionNotice,
 ): Promise<void> {
-  await data.loginSessions.update(tenantId, loginSession.id, {
-    state_data: JSON.stringify({
-      ...parseStateData(loginSession.state_data),
-      [SESSION_NOTICE_STATE_KEY]: notice,
-    }),
-  });
+  await updateLoginSessionData(
+    data.loginSessions,
+    tenantId,
+    loginSession.id,
+    {
+      type: LoginSessionEventType.UPDATE_CONTEXT,
+      data: { [SESSION_NOTICE_STATE_KEY]: notice },
+    },
+    {},
+  );
 }
 
 /**
@@ -55,12 +52,11 @@ export async function clearSessionNotice(
   tenantId: string,
   loginSession: LoginSession,
 ): Promise<void> {
-  const stateData = parseStateData(loginSession.state_data);
-  if (!(SESSION_NOTICE_STATE_KEY in stateData)) return;
-
-  delete stateData[SESSION_NOTICE_STATE_KEY];
-  await data.loginSessions.update(tenantId, loginSession.id, {
-    state_data:
-      Object.keys(stateData).length > 0 ? JSON.stringify(stateData) : "",
-  });
+  await updateLoginSessionData(
+    data.loginSessions,
+    tenantId,
+    loginSession.id,
+    { type: LoginSessionEventType.UPDATE_CONTEXT, data: { notice: undefined } },
+    {},
+  );
 }

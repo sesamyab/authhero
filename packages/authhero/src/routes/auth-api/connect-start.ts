@@ -1,3 +1,4 @@
+import { createLoginSessionWithData } from "../../state-machines/login-session-data";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { nanoid } from "nanoid";
 import { Bindings, Variables } from "../../types";
@@ -177,16 +178,20 @@ const getRoot = defineRoute({
       Date.now() + UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS * 1000,
     ).toISOString();
 
-    const loginSession = await ctx.env.data.loginSessions.create(tenant_id, {
-      expires_at: expiresAt,
-      authParams: {
-        client_id: anchorClient.client_id,
-        state,
+    const loginSession = await createLoginSessionWithData(
+      ctx.env.data.loginSessions,
+      tenant_id,
+      {
+        expires_at: expiresAt,
+        authParams: {
+          client_id: anchorClient.client_id,
+          state,
+        },
+        csrf_token: nanoid(),
+        ip: ctx.var.ip,
+        useragent: ctx.var.useragent,
       },
-      csrf_token: nanoid(),
-      ip: ctx.var.ip,
-      useragent: ctx.var.useragent,
-      state_data: JSON.stringify({
+      {
         connect: {
           integration_type,
           domain,
@@ -196,8 +201,8 @@ const getRoot = defineRoute({
           caller_state: state,
           is_local_dev: returnCheck.isLoopback || returnCheck.isAllowlisted,
         },
-      }),
-    });
+      },
+    );
 
     return ctx.redirect(
       `/u2/connect/start?state=${encodeURIComponent(loginSession.id)}`,
