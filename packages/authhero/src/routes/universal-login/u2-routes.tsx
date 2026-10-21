@@ -57,6 +57,7 @@ import { UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS } from "../../constants";
 import { defineRoute } from "../../utils/define-route";
 import { withHandlerError } from "./screens/handler-error";
 import { getPromptScreenForScreen } from "./screen-prompt-map";
+import { readSessionNotice } from "../../helpers/session-notice";
 
 /**
  * Fetch custom text for a screen and language, with fallbacks
@@ -112,7 +113,7 @@ async function fetchCustomText(
  */
 function createScreenRouteHandler(screenId: string) {
   return async (ctx: any) => {
-    const { state, error, error_description, ui_locales, message } =
+    const { state, error, error_description, ui_locales } =
       ctx.req.valid("query");
 
     let theme, branding, client, loginSession;
@@ -188,25 +189,16 @@ function createScreenRouteHandler(screenId: string) {
       language,
     );
 
-    // Build screen messages (errors, confirmations) from query params
-    const screenMessages: Array<{
+    // Build error messages if present from query params
+    const errorMessages: Array<{
       text: string;
       type: "error" | "info" | "success" | "warning";
     }> = [];
     if (error_description) {
-      screenMessages.push({ text: error_description, type: "error" });
+      errorMessages.push({ text: error_description, type: "error" });
     } else if (error) {
       // Fallback to error code if no description provided
-      screenMessages.push({ text: error, type: "error" });
-    }
-    if (message === "password_reset_success" && screenId === "enter-password") {
-      const { m } = createTranslation(
-        "login-password",
-        "login-password",
-        language,
-        customText,
-      );
-      screenMessages.push({ text: m.passwordResetSuccess(), type: "success" });
+      errorMessages.push({ text: error, type: "error" });
     }
 
     // Build screen context for SSR
@@ -218,6 +210,7 @@ function createScreenRouteHandler(screenId: string) {
     // Build screen-specific data
     const screenData: Record<string, unknown> = {
       email: loginSession.authParams.username,
+      notice: readSessionNotice(loginSession),
     };
 
     // For accept-invitation, surface the org/inviter metadata from state_data
@@ -277,7 +270,7 @@ function createScreenRouteHandler(screenId: string) {
       language,
       promptScreen,
       routePrefix,
-      messages: screenMessages.length > 0 ? screenMessages : undefined,
+      messages: errorMessages.length > 0 ? errorMessages : undefined,
     };
 
     // Fetch screen data for SSR
@@ -395,10 +388,6 @@ const screenQuerySchema = z.object({
   }),
   ui_locales: z.string().optional().openapi({
     description: "Language override from the language picker (e.g. 'en', 'sv')",
-  }),
-  message: z.enum(["password_reset_success"]).optional().openapi({
-    description:
-      "Confirmation banner to show after a flow completes. Currently only 'password_reset_success' on the enter-password screen; ignored on other screens.",
   }),
 });
 

@@ -15,6 +15,7 @@ import { AuthError } from "../../../types/AuthError";
 import { userExistsByEmail } from "../../../helpers/users";
 import { validateSignupEmail } from "../../../hooks";
 import { sendLoginOtp } from "./login-otp";
+import { clearSessionNotice } from "../../../helpers/session-notice";
 import { emailOtpChallengeScreen } from "./email-otp-challenge";
 import {
   emailVerificationRequiredScreen,
@@ -50,8 +51,7 @@ async function canSwitchToEmailCode(
 export async function enterPasswordScreen(
   context: ScreenContext,
 ): Promise<ScreenResult> {
-  const { branding, state, errors, messages, data, customText, routePrefix } =
-    context;
+  const { branding, state, errors, data, customText, routePrefix } = context;
 
   // Initialize i18n with locale and custom text overrides
   const locale = context.language || "en";
@@ -150,6 +150,15 @@ export async function enterPasswordScreen(
 
   const loginPath = await getLoginPath(context);
 
+  // One-shot confirmation left on the login session by the password reset.
+  // The widget's JSON screen context is built from the session before the POST
+  // handler clears the notice, so a re-render after a failed password still
+  // carries it. Skip it then: the field error is the news, not the reset.
+  const messages =
+    data?.notice === "password_reset_success" && !errors?.password
+      ? [{ text: m.passwordResetSuccess(), type: "success" as const }]
+      : undefined;
+
   const screen: UiScreen = {
     name: "enter-password",
     // Action points to HTML endpoint for no-JS fallback
@@ -158,7 +167,7 @@ export async function enterPasswordScreen(
     title: m.title(),
     description,
     components,
-    messages: messages?.map((msg) => ({ text: msg.text, type: msg.type })),
+    messages,
     links: [
       {
         id: "back",
@@ -230,6 +239,9 @@ export const enterPasswordScreenDefinition: ScreenDefinition = {
           }),
         };
       }
+
+      // The reset confirmation has done its job once the user submits.
+      await clearSessionNotice(ctx.env.data, client.tenant.id, loginSession);
 
       try {
         const result = await loginWithPassword(
