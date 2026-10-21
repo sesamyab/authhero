@@ -42,6 +42,7 @@ When `ENCRYPTION_KEY` is unset the wrapper is not installed and behavior is unch
 | `authentication_methods` | `totp_secret`                                                                                                |
 | `migration_sources`      | `credentials.client_secret`                                                                                  |
 | `actions`                | the `value` of each entry in `secrets`                                                                       |
+| `action_versions`        | the `value` of each entry in `secrets`                                                                       |
 | `hook_code`              | every value in `secrets`                                                                                     |
 
 Non-sensitive keys (e.g. `connections.options.client_id`) are left in plaintext so they remain queryable and inspectable.
