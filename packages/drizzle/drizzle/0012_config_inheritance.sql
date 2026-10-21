@@ -29,4 +29,4 @@ UPDATE `actions` SET `scope` = 'shared', `override` = 'none' WHERE `is_system` =
 --> statement-breakpoint
 UPDATE `resource_servers` SET `scope` = 'shared', `override` = 'none' WHERE `is_system` = 1 AND `scope` IS NULL;
 --> statement-breakpoint
-UPDATE `hooks` SET `scope` = 'shared', `override` = 'none' WHERE `scope` IS NULL AND `metadata` LIKE '%"inheritable":true%';
+UPDATE `hooks` SET `scope` = 'shared', `override` = 'none' WHERE `scope` IS NULL AND CASE WHEN json_valid(`metadata`) THEN json_extract(`metadata`, '$.inheritable') END = 1;

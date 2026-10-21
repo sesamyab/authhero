@@ -183,6 +183,18 @@ describe("config inheritance columns (drizzle)", () => {
       url: "https://example.com/b",
     });
 
+    const spaced = await data.hooks.create(tenantId, {
+      trigger_id: "post-user-login",
+      url: "https://example.com/c",
+      metadata: { inheritable: true },
+    });
+    sqlite
+      .prepare("UPDATE hooks SET metadata = ? WHERE hook_id = ?")
+      .run('{ "inheritable": true }', spaced.hook_id);
+    sqlite
+      .prepare("UPDATE hooks SET metadata = ? WHERE hook_id = ?")
+      .run("not json", plain.hook_id);
+
     // Run the backfill statements from the migration itself.
     const migration = readFileSync(
       join(__dirname, "../../drizzle/0012_config_inheritance.sql"),
@@ -202,6 +214,9 @@ describe("config inheritance columns (drizzle)", () => {
       (await data.connections.get(tenantId, "loc"))?.scope,
     ).toBeUndefined();
     expect((await data.hooks.get(tenantId, flagged.hook_id))?.scope).toBe(
+      "shared",
+    );
+    expect((await data.hooks.get(tenantId, spaced.hook_id))?.scope).toBe(
       "shared",
     );
     expect(

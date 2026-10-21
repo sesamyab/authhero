@@ -76,9 +76,11 @@ export async function up(db: Kysely<Database>): Promise<void> {
       db,
     );
   }
-  // Hook metadata is a JSON-encoded text column written with JSON.stringify,
-  // so a flagged hook always contains the compact `"inheritable":true`.
-  await sql`UPDATE hooks SET scope = 'shared', override = 'none' WHERE scope IS NULL AND metadata LIKE '%"inheritable":true%'`.execute(
+  // Hook metadata is a JSON-encoded text column. Strip whitespace before
+  // matching so pretty-printed or re-serialised JSON (e.g. `"inheritable": true`)
+  // is found too; a plain REPLACE avoids dialect-specific JSON functions, which
+  // also error on rows holding invalid JSON.
+  await sql`UPDATE hooks SET scope = 'shared', override = 'none' WHERE scope IS NULL AND REPLACE(REPLACE(REPLACE(REPLACE(metadata, ' ', ''), CHAR(10), ''), CHAR(13), ''), CHAR(9), '') LIKE '%"inheritable":true%'`.execute(
     db,
   );
 }

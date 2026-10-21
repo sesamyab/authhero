@@ -608,6 +608,15 @@ export function createTenantsOpenAPIRouter(
           tenantId: ctx.var.tenant_id,
           parentTenantId: sanitizedUpdates.parent_tenant_id,
           getTenant: (id) => getRequestData(ctx).tenants.get(id),
+          getChildren: async (id) =>
+            (
+              await fetchAll<{ id: string; parent_tenant_id?: string | null }>(
+                (p) => getRequestData(ctx).tenants.list(p),
+                "tenants",
+              )
+            )
+              .filter((t) => t.parent_tenant_id === id)
+              .map((t) => t.id),
         });
       }
 

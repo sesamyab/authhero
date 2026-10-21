@@ -23,9 +23,15 @@ export async function validateTenantParent(params: {
   getTenant: (
     id: string,
   ) => Promise<{ id: string; parent_tenant_id?: string | null } | null>;
+  /**
+   * Returns the ids of a tenant's direct children. When given, the subtree
+   * below `tenantId` is validated too: re-parenting pushes every descendant
+   * down, so each resulting chain must still fit within `maxDepth`.
+   */
+  getChildren?: (id: string) => Promise<string[]>;
   maxDepth?: number;
 }): Promise<void> {
-  const { tenantId, parentTenantId, getTenant } = params;
+  const { tenantId, parentTenantId, getTenant, getChildren } = params;
   const maxDepth = params.maxDepth ?? DEFAULT_MAX_TENANT_DEPTH;
 
   if (!parentTenantId) return;
@@ -62,5 +68,32 @@ export async function validateTenantParent(params: {
       });
     }
     currentId = current.parent_tenant_id;
+  }
+
+  if (tenantId && getChildren) {
+    // `depth` is now the number of ancestors the tenant will have. A descendant
+    // `level` steps below it has `depth + level` ancestors.
+    const visited = new Set<string>([tenantId]);
+    let level = 0;
+    let frontier = [tenantId];
+    while (frontier.length > 0) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const childId of await getChildren(id)) {
+          if (visited.has(childId)) continue;
+          visited.add(childId);
+          next.push(childId);
+        }
+      }
+      if (next.length > 0) {
+        level += 1;
+        if (depth + level > maxDepth) {
+          throw new HTTPException(400, {
+            message: `Moving tenant under '${parentTenantId}' would make its descendant '${next[0]}' exceed the tenant tree limit of ${maxDepth} levels`,
+          });
+        }
+      }
+      frontier = next;
+    }
   }
 }

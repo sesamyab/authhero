@@ -75,4 +75,35 @@ describe("validateTenantParent", () => {
       }),
     ).rejects.toMatchObject({ status: 400 });
   });
+
+  it("rejects re-parenting that pushes a descendant past the max depth", async () => {
+    const parents: Record<string, string | null> = {
+      R: null,
+      C: "R",
+      A: null,
+      B: "A",
+    };
+    const getChildren = async (id: string) =>
+      Object.keys(parents).filter((k) => parents[k] === id);
+
+    // A moves under C -> R (2 ancestors); B below A would get 3.
+    await expect(
+      validateTenantParent({
+        tenantId: "A",
+        parentTenantId: "C",
+        getTenant: tree(parents),
+        getChildren,
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    // Allowed when the new parent is a root: B ends up with 2 ancestors.
+    await expect(
+      validateTenantParent({
+        tenantId: "A",
+        parentTenantId: "R",
+        getTenant: tree(parents),
+        getChildren,
+      }),
+    ).resolves.toBeUndefined();
+  });
 });

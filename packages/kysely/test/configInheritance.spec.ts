@@ -196,6 +196,16 @@ describe("config inheritance columns (kysely)", () => {
       metadata: { inheritable: false },
     });
 
+    // A hook whose metadata was re-serialised with whitespace is still found.
+    await data.hooks.create(tenantId, {
+      trigger_id: "post-user-login",
+      url: "https://example.com/c",
+      metadata: { inheritable: true },
+    });
+    await sql`UPDATE hooks SET metadata = '{ "inheritable": true }' WHERE url LIKE '%/c'`.execute(
+      server.db,
+    );
+
     // Re-running up() is safe (columns exist) and performs the backfill.
     await configInheritance.up(server.db as any);
 
@@ -212,6 +222,7 @@ describe("config inheritance columns (kysely)", () => {
     const b = hooks.find((h) => (h as any).url?.endsWith("/b"));
     expect(a?.scope).toBe("shared");
     expect(b?.scope).toBeUndefined();
-    void sql;
+    const c = hooks.find((h) => (h as any).url?.endsWith("/c"));
+    expect(c?.scope).toBe("shared");
   });
 });
