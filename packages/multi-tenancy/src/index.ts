@@ -74,6 +74,7 @@ export {
   mergeClientWithFallback,
 } from "./middleware";
 export type { RuntimeFallbackConfig, ControlPlaneResolver } from "./middleware";
+export * from "./inheritance";
 
 export { createMultiTenancyPlugin } from "./plugin";
 export type { AuthHeroPlugin } from "./plugin";

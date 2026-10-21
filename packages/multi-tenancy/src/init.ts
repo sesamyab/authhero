@@ -16,6 +16,7 @@ import {
   withSystemResourceServerInheritance,
 } from "./middleware";
 import type { ControlPlaneResolver } from "./middleware";
+import type { InheritanceShadowOptions } from "./inheritance";
 import { TenantEntityHooks, TenantHookContext } from "./types";
 
 /**
@@ -77,6 +78,16 @@ export interface MultiTenantConfig extends Omit<
    * ```
    */
   resolveControlPlane?: ControlPlaneResolver;
+
+  /**
+   * Shadow mode for config inheritance: compares the parent chain resolver
+   * with read-time inheritance in the background and logs differences as log
+   * type `cfgdiff`, queryable per tenant. Never affects a response.
+   * `true` uses the defaults.
+   *
+   * @default false
+   */
+  inheritanceShadow?: boolean | InheritanceShadowOptions;
 
   /**
    * Control which entities to sync from control plane to child tenants.
@@ -206,6 +217,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       clientId: controlPlaneClientId,
     } = {},
     resolveControlPlane,
+    inheritanceShadow,
     sync = { resourceServers: true, roles: true },
     defaultPermissions = ["tenant:admin"],
     requireOrganizationMatch = false,
@@ -236,6 +248,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       controlPlaneTenantId,
       controlPlaneClientId,
       resolveControlPlane,
+      inheritanceShadow,
     });
 
     // Management adapter gets is_system resource_server scope inheritance
