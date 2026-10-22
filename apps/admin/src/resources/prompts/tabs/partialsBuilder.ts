@@ -42,12 +42,20 @@ export const PARTIAL_INSERTION_POINTS = [
 export type PartialInsertionPoint = (typeof PARTIAL_INSERTION_POINTS)[number];
 
 /**
- * Prompts the widget renders partials for. The API accepts more, but only the
- * signup screen reads stored partials today (v1 scope of #1474), so offering
- * others would save HTML that is never shown. Add prompts here as screens
- * start consuming them.
+ * Prompts whose screens read stored partials. The management API accepts a few
+ * more (the passwordless prompts), which no u2 screen consumes yet, so offering
+ * them would save HTML that is never shown. The u2 signup is a single screen
+ * that renders signup-id, signup and signup-password together. Add prompts here
+ * as screens start consuming them.
  */
-export const PARTIAL_PROMPTS = ["signup"] as const;
+export const PARTIAL_PROMPTS = [
+  "signup",
+  "signup-id",
+  "signup-password",
+  "login",
+  "login-id",
+  "login-password",
+] as const;
 
 export const FIXED_MAP_TARGETS = [
   "given_name",

@@ -134,6 +134,7 @@ async function buildEnhancedEventObject(
       ip: ip || "",
       user_agent: userAgent,
       method: ctx.req.method,
+      body: ctx.var?.login_body,
       // Authentication may finish on a callback or /authorize/resume request.
       // Keep the original /authorize parameters available to post-login hooks.
       url: loginSession.authorization_url || ctx.req.url,

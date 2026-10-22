@@ -964,7 +964,9 @@ export function PartialsTab() {
   const previewScreen = useMemo(() => {
     const base = prompt.startsWith("signup")
       ? screenConfigs.signup
-      : screenConfigs.login;
+      : prompt === "login-password"
+        ? screenConfigs.password
+        : screenConfigs.login;
     const partials = Object.fromEntries(
       Object.entries(html).filter(([, v]) => v && v.trim()),
     );
