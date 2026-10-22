@@ -988,9 +988,12 @@ export function PartialsTab() {
       }}
     >
       <p className="max-w-2xl text-sm text-muted-foreground">
-        Add your own fields and content to the sign-up screen. A common use is
-        collecting extra details such as first and last name, a company name or
-        a terms checkbox.
+        Add your own fields and content to the sign-up and login screens. A
+        common use is collecting extra details such as first and last name, a
+        company name or a terms checkbox. The sign-up prompts all appear on the
+        sign-up screen. <code>login-id</code> and <code>login-password</code>{" "}
+        are the two login steps, and <code>login</code> is the combined page
+        used when identifier-first login is turned off.
       </p>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0 space-y-4">
@@ -1073,9 +1076,9 @@ export function PartialsTab() {
               <div>
                 <p className="text-sm font-medium">No fields yet</p>
                 <p className="text-sm text-muted-foreground">
-                  Start with a field below the built-in sign-up fields, such as
-                  a first name. You can move it to another position later by
-                  dragging it.
+                  Start with a field below the built-in fields on this screen,
+                  such as a first name. You can move it to another position
+                  later by dragging it.
                 </p>
               </div>
               <Button type="button" size="sm" onClick={addFirstField}>
