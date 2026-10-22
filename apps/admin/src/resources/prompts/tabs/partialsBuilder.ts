@@ -57,6 +57,39 @@ export const PARTIAL_PROMPTS = [
   "login-password",
 ] as const;
 
+/** The prompts grouped for the selector, with when each screen is shown. */
+export const PARTIAL_PROMPT_GROUPS = [
+  {
+    label: "Login",
+    prompts: [
+      {
+        id: "login-id",
+        description: "First step: email or username (default login flow)",
+      },
+      {
+        id: "login-password",
+        description: "Second step: password, after the identifier",
+      },
+      {
+        id: "login",
+        description:
+          "Combined page with username and password (identifier-first off)",
+      },
+    ],
+  },
+  {
+    label: "Sign up",
+    prompts: [
+      { id: "signup", description: "The sign-up screen" },
+      { id: "signup-id", description: "Shown on the sign-up screen, first" },
+      {
+        id: "signup-password",
+        description: "Shown on the sign-up screen, last",
+      },
+    ],
+  },
+] as const;
+
 export const FIXED_MAP_TARGETS = [
   "given_name",
   "family_name",
