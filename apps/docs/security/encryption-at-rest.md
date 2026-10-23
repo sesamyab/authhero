@@ -34,13 +34,16 @@ When `ENCRYPTION_KEY` is unset the wrapper is not installed and behavior is unch
 
 ## What gets encrypted
 
-| Table | Field |
-| --- | --- |
-| `clients` | `client_secret` |
-| `connections` | `options.client_secret`, `options.app_secret`, `options.twilio_token`, `options.configuration.client_secret` |
-| `email_providers` | `credentials` (all string values) |
-| `authentication_methods` | `totp_secret` |
-| `migration_sources` | `credentials.client_secret` |
+| Table                    | Field                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `clients`                | `client_secret`                                                                                              |
+| `connections`            | `options.client_secret`, `options.app_secret`, `options.twilio_token`, `options.configuration.client_secret` |
+| `email_providers`        | `credentials` (all string values)                                                                            |
+| `authentication_methods` | `totp_secret`                                                                                                |
+| `migration_sources`      | `credentials.client_secret`                                                                                  |
+| `actions`                | the `value` of each entry in `secrets`                                                                       |
+| `action_versions`        | the `value` of each entry in `secrets`                                                                       |
+| `hook_code`              | every value in `secrets`                                                                                     |
 
 Non-sensitive keys (e.g. `connections.options.client_id`) are left in plaintext so they remain queryable and inspectable.
 
