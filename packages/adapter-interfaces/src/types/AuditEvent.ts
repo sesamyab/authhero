@@ -44,6 +44,8 @@ export const requestContextSchema = z.object({
   ip: z.string(),
   user_agent: z.string().optional(),
   correlation_id: z.string().optional(),
+  /** `Origin` of a browser caller (e.g. the admin UI); absent for plain API calls. */
+  origin: z.string().optional(),
   /** The RP `redirect_uri` this authorization is completing for, when known. */
   redirect_uri: z.string().optional(),
   /**

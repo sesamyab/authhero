@@ -31,3 +31,11 @@ export function buildRequestAuth(actor: Actor): RequestAuth | undefined {
     },
   };
 }
+
+/**
+ * Auth0-style `details.request.channel`: the calling UI's URL for browser
+ * (cross-origin) calls such as the admin UI, otherwise "api".
+ */
+export function requestChannel(origin?: string): string {
+  return origin ? `${origin.replace(/\/$/, "")}/` : "api";
+}

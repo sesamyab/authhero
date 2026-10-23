@@ -5,7 +5,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { EventDestination } from "../outbox-relay";
 import { USER_TARGET_TYPES } from "../audit-target-types";
-import { buildRequestAuth } from "../request-auth";
+import { buildRequestAuth, requestChannel } from "../request-auth";
 
 const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
 
@@ -91,7 +91,9 @@ function toPayload(event: AuditEvent): LogStreamPayload {
           path: event.request.path,
           qs: event.request.query,
           body: event.request.body,
-          ...(auth ? { auth } : {}),
+          ...(auth
+            ? { auth, channel: requestChannel(event.request.origin) }
+            : {}),
           ...(event.request.redirect_uri
             ? { redirect_uri: event.request.redirect_uri }
             : {}),

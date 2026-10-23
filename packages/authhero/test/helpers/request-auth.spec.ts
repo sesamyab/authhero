@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { AuditEvent } from "@authhero/adapter-interfaces";
-import { buildRequestAuth } from "../../src/helpers/request-auth";
+import {
+  buildRequestAuth,
+  requestChannel,
+} from "../../src/helpers/request-auth";
 import { LogsDestination } from "../../src/helpers/outbox-destinations/logs";
 
 const baseEvent = (actor: AuditEvent["actor"]): AuditEvent =>
@@ -68,5 +71,15 @@ describe("LogsDestination", () => {
     expect(log.user_id).toBe("auth2|target");
     expect(log.scope).toBeUndefined();
     expect((log.details as any).request.auth.user.user_id).toBe("auth2|admin");
+    expect((log.details as any).request.channel).toBe("api");
+  });
+});
+
+describe("requestChannel", () => {
+  it("uses the caller origin or falls back to api", () => {
+    expect(requestChannel("https://admin.example.com")).toBe(
+      "https://admin.example.com/",
+    );
+    expect(requestChannel(undefined)).toBe("api");
   });
 });

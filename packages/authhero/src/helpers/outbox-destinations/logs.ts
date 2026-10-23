@@ -6,7 +6,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { EventDestination } from "../outbox-relay";
 import { USER_TARGET_TYPES } from "../audit-target-types";
-import { buildRequestAuth } from "../request-auth";
+import { buildRequestAuth, requestChannel } from "../request-auth";
 
 /**
  * Transforms AuditEvent into LogInsert for the existing logs table.
@@ -47,7 +47,9 @@ function toLogInsert(event: AuditEvent): LogInsert {
         path: event.request.path,
         qs: event.request.query,
         body: event.request.body,
-        ...(auth ? { auth } : {}),
+        ...(auth
+          ? { auth, channel: requestChannel(event.request.origin) }
+          : {}),
         ...(event.request.redirect_uri
           ? { redirect_uri: event.request.redirect_uri }
           : {}),

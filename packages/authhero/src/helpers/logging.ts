@@ -12,7 +12,7 @@ import { waitUntil } from "./wait-until";
 import { instanceToJson } from "../utils/instance-to-json";
 import { getConnectionInfo } from "./connection";
 import { USER_TARGET_TYPES } from "./audit-target-types";
-import { buildRequestAuth } from "./request-auth";
+import { buildRequestAuth, requestChannel } from "./request-auth";
 
 /**
  * Fields fully replaced with [REDACTED] in entity state and request bodies.
@@ -437,6 +437,7 @@ function buildAuditEvent(
       body: redactBody(params.body || ctx.var.body || undefined),
       ip: ctx.var.ip || "",
       user_agent: ctx.var.useragent || undefined,
+      origin: ctx.req.header?.("origin") || undefined,
       ...(params.redirect_uri ? { redirect_uri: params.redirect_uri } : {}),
       ...(params.authorization_url
         ? { authorization_url: params.authorization_url }
@@ -568,7 +569,9 @@ export async function logMessage(
             path: ctx.req.path,
             qs: ctx.req.queries(),
             body: redactBody(params.body || ctx.var.body || ""),
-            ...(auth ? { auth } : {}),
+            ...(auth
+              ? { auth, channel: requestChannel(headers["origin"]) }
+              : {}),
             ...(params.redirect_uri
               ? { redirect_uri: params.redirect_uri }
               : {}),
