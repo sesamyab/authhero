@@ -370,7 +370,7 @@ async function resolveLogEnrichment(
   // their own account), so share one lookup per tenant/user pair.
   const userLookups = new Map<string, ReturnType<UserLookup>>();
   const getUser: UserLookup = (lookupTenantId, userId) => {
-    const key = `${lookupTenantId}:${userId}`;
+    const key = JSON.stringify([lookupTenantId, userId]);
     let lookup = userLookups.get(key);
     if (!lookup) {
       lookup = ctx.env.data.users.get(lookupTenantId, userId);
