@@ -26,9 +26,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -44,7 +42,7 @@ import {
   FIELD_TYPES,
   FIXED_MAP_TARGETS,
   PARTIAL_INSERTION_POINTS,
-  PARTIAL_PROMPT_GROUPS,
+  PARTIAL_PROMPTS,
   ensureUlpName,
   errorLocation,
   isValidMapTarget,
@@ -992,35 +990,22 @@ export function PartialsTab() {
       <p className="max-w-2xl text-sm text-muted-foreground">
         Add your own fields and content to the sign-up and login screens. A
         common use is collecting extra details such as first and last name, a
-        company name or a terms checkbox. The sign-up prompts all appear on the
-        sign-up screen. <code>login-id</code> and <code>login-password</code>{" "}
-        are the two login steps, and <code>login</code> is the combined page
-        used when identifier-first login is turned off.
+        company name or a terms checkbox.
       </p>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0 space-y-4">
           <div className="z-10 -mx-1 flex flex-wrap items-end justify-between gap-x-4 gap-y-2 sm:sticky sm:top-0 border-b bg-background px-1 py-3">
-            <div className="w-64 space-y-1">
+            <div className="w-44 space-y-1">
               <Label>Prompt</Label>
               <Select value={prompt} onValueChange={setPrompt}>
                 <SelectTrigger>
-                  <SelectValue>{prompt}</SelectValue>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PARTIAL_PROMPT_GROUPS.map((group) => (
-                    <SelectGroup key={group.label}>
-                      <SelectLabel>{group.label}</SelectLabel>
-                      {group.prompts.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <span className="flex flex-col items-start">
-                            <span>{p.id}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {p.description}
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
+                  {PARTIAL_PROMPTS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

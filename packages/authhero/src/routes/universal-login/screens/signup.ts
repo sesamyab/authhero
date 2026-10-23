@@ -18,15 +18,6 @@ import {
 } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import { getLoginPath } from "./types";
-import {
-  applyPartialMappings,
-  getPartialFields,
-  getUlpPrefill,
-  loadScreenPartials,
-  validatePartialFields,
-  type PartialSource,
-  type PrefillValue,
-} from "./partials";
 import { createTranslation } from "../../../i18n";
 import {
   getUsernamePasswordUser,
@@ -50,28 +41,379 @@ import { loginWithPassword } from "../../../authentication-flows/password";
 import { logMessage } from "../../../helpers/logging";
 import { SignupValidationError } from "../../../errors/signup-validation-error";
 
-export {
-  applyPartialErrors,
-  applyPartialMappings,
-  isValidAuthheroMapTarget,
-  parsePartialFields,
-  prefillPromptPartial,
-  validatePartialFields,
-  type PartialField,
-} from "./partials";
-
-// Stored under all three prompts; the u2 signup is a single screen.
-const SIGNUP_PARTIAL_SOURCES: PartialSource[] = [
-  { prompt: "signup-id", screen: "signup-id" },
-  { prompt: "signup", screen: "signup" },
-  { prompt: "signup-password", screen: "signup-password" },
-];
+type PrefillValue = string | string[];
 
 export function getSignupPrefill(
   email: string | undefined,
   signupBody?: Record<string, unknown>,
 ): Record<string, PrefillValue> {
-  return { ...(email ? { email } : {}), ...getUlpPrefill(signupBody) };
+  const customFields: Record<string, PrefillValue> = {};
+  for (const [key, value] of Object.entries(signupBody ?? {})) {
+    if (!key.startsWith("ulp-")) continue;
+    if (typeof value === "string") {
+      customFields[key] = value;
+    } else if (
+      Array.isArray(value) &&
+      value.every((v) => typeof v === "string")
+    ) {
+      customFields[key] = value as string[];
+    }
+  }
+
+  return { ...(email ? { email } : {}), ...customFields };
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+const ATTR_VALUE = `(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\`]+))`;
+
+function getAttr(tag: string, attr: string): string | undefined {
+  const match = tag.match(new RegExp(`\\s${attr}\\s*=\\s*${ATTR_VALUE}`, "i"));
+  return match?.[1] ?? match?.[2] ?? match?.[3];
+}
+
+function removeAttr(tag: string, attr: string): string {
+  return tag.replace(
+    new RegExp(
+      `\\s${attr}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?(?=[\\s/>])`,
+      "gi",
+    ),
+    "",
+  );
+}
+
+function addAttrs(tag: string, attrs: string): string {
+  const closing = tag.match(/\s*\/?>$/)?.[0] ?? ">";
+  const prefix = tag.slice(0, -closing.length);
+  return `${prefix}${attrs}${closing.includes("/") ? " />" : ">"}`;
+}
+
+export interface PartialField {
+  name: string;
+  type: string;
+  required: boolean;
+  maxlength?: number;
+  pattern?: string;
+  map?: string;
+  label: string;
+}
+
+const MAP_TARGETS = [
+  "given_name",
+  "family_name",
+  "name",
+  "nickname",
+  "picture",
+] as const;
+
+/** Only allowlisted targets may be written by `data-authhero-map`. */
+export function isValidAuthheroMapTarget(target: string): boolean {
+  if ((MAP_TARGETS as readonly string[]).includes(target)) return true;
+  const match = target.match(/^user_metadata\.([A-Za-z0-9_-]+)$/);
+  return !!match && match[1] !== "__proto__";
+}
+
+function hasBooleanAttr(tag: string, attr: string): boolean {
+  return new RegExp(`\\s${attr}(?=[\\s/>=])`, "i").test(tag);
+}
+
+/** Parse the ulp-* controls out of stored (trusted) prompt-partial HTML. */
+export function parsePartialFields(htmls: string[]): PartialField[] {
+  const fields: PartialField[] = [];
+  for (const html of htmls) {
+    const tags = html.match(
+      /<(?:input|textarea|select)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+    );
+    for (const tag of tags ?? []) {
+      const name = getAttr(tag, "name");
+      if (!name?.startsWith("ulp-")) continue;
+      const kind = (tag.match(/^<(\w+)/)?.[1] ?? "").toLowerCase();
+      const type =
+        kind === "input"
+          ? (getAttr(tag, "type") ?? "text").toLowerCase()
+          : kind;
+      if (
+        ["submit", "button", "image", "reset", "file", "hidden"].includes(type)
+      )
+        continue;
+      const maxlength = Number.parseInt(getAttr(tag, "maxlength") ?? "", 10);
+      const map = getAttr(tag, "data-authhero-map");
+      fields.push({
+        name,
+        type,
+        required: hasBooleanAttr(tag, "required"),
+        maxlength: Number.isFinite(maxlength) ? maxlength : undefined,
+        pattern: getAttr(tag, "pattern"),
+        map: map && isValidAuthheroMapTarget(map) ? map : undefined,
+        label:
+          getAttr(tag, "aria-label") ?? getAttr(tag, "placeholder") ?? name,
+      });
+    }
+  }
+  return fields;
+}
+
+function submittedValues(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.filter((v) => typeof v === "string");
+  return [];
+}
+
+/**
+ * Enforce required / maxlength / pattern from the stored partial. Returns the
+ * first failing field's message, or undefined when everything passes.
+ */
+export function validatePartialFields(
+  fields: PartialField[],
+  data: Record<string, unknown>,
+): { name: string; message: string } | undefined {
+  const seen = new Set<string>();
+  for (const field of fields) {
+    const values = submittedValues(data[field.name]);
+    const nonEmpty = values.filter((v) => v.trim() !== "");
+    // Checkbox/radio groups share a name: required means any member checked.
+    const groupRequired = fields.some(
+      (f) => f.name === field.name && f.required,
+    );
+    if (seen.has(field.name)) continue;
+    seen.add(field.name);
+    if (groupRequired && nonEmpty.length === 0) {
+      return { name: field.name, message: `${field.label} is required` };
+    }
+    for (const value of values) {
+      if (value === "") continue;
+      if (field.maxlength !== undefined && value.length > field.maxlength) {
+        return {
+          name: field.name,
+          message: `${field.label} must be at most ${field.maxlength} characters`,
+        };
+      }
+      if (field.pattern) {
+        try {
+          if (!new RegExp(`^(?:${field.pattern})$`, "u").test(value)) {
+            return {
+              name: field.name,
+              message: `${field.label} is not in the expected format`,
+            };
+          }
+        } catch {
+          // Invalid pattern: browsers ignore it, so do we.
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Build the user fields set by `data-authhero-map` from submitted data. */
+export function applyPartialMappings(
+  fields: PartialField[],
+  data: Record<string, unknown>,
+): Partial<
+  Pick<
+    User,
+    | "given_name"
+    | "family_name"
+    | "name"
+    | "nickname"
+    | "picture"
+    | "user_metadata"
+  >
+> {
+  const result: Record<string, unknown> = {};
+  const metadata: Record<string, string> = {};
+  for (const field of fields) {
+    if (!field.map) continue;
+    const value = submittedValues(data[field.name])[0]?.trim();
+    if (!value) continue;
+    if (field.map.startsWith("user_metadata.")) {
+      metadata[field.map.slice("user_metadata.".length)] = value;
+    } else {
+      result[field.map] = value;
+    }
+  }
+  if (Object.keys(metadata).length > 0) result.user_metadata = metadata;
+  return result;
+}
+
+async function getSignupPartialFields(
+  context: ScreenContext,
+): Promise<PartialField[]> {
+  const stored = await context.ctx.env.data.promptPartials?.get(
+    context.tenant.id,
+    "signup",
+  );
+  return parsePartialFields(Object.values(stored?.signup ?? {}));
+}
+
+const ERROR_INFO_CLASS = /\bulp-error-info\b/;
+
+function addClass(tag: string, cls: string): string {
+  const existing = getAttr(tag, "class");
+  if (existing === undefined) return addAttrs(tag, ` class="${cls}"`);
+  return addAttrs(
+    removeAttr(tag, "class"),
+    ` class="${escapeHtmlAttribute(`${existing} ${cls}`)}"`,
+  );
+}
+
+/**
+ * Auth0-style field errors for prompt partials: the `ulp-field` wrapper around
+ * a failing input gets `ulp-error`, and its `ulp-error-info` element (added if
+ * missing) carries the message. Returns the rewritten HTML and the names of the
+ * fields whose error was placed.
+ */
+export function applyPartialErrors(
+  html: string,
+  errors: Record<string, string>,
+): { html: string; placed: Set<string> } {
+  const placed = new Set<string>();
+  let out = "";
+  let cursor = 0;
+  const open = /<div\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = open.exec(html))) {
+    if (match.index < cursor) continue;
+    const tag = match[0];
+    if (!/\bulp-field\b/.test(getAttr(tag, "class") ?? "")) continue;
+
+    // Find the matching </div> by tracking nesting depth.
+    const divs = /<(\/?)div\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+    divs.lastIndex = match.index + tag.length;
+    let depth = 1;
+    let closeAt = -1;
+    let d: RegExpExecArray | null;
+    while ((d = divs.exec(html))) {
+      depth += d[1] ? -1 : 1;
+      if (depth === 0) {
+        closeAt = d.index;
+        break;
+      }
+    }
+    if (closeAt < 0) continue;
+
+    const inner = html.slice(match.index + tag.length, closeAt);
+    const name = (
+      inner.match(
+        /<(?:input|textarea|select)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+      ) ?? []
+    )
+      .map((t) => getAttr(t, "name"))
+      .find((n) => n !== undefined && errors[n] !== undefined);
+    if (name === undefined) continue;
+
+    const message = escapeHtmlText(errors[name] ?? "");
+    const infoRe =
+      /(<(\w+)\b[^>]*\bulp-error-info\b[^>]*>)[\s\S]*?(<\/\2\s*>)/i;
+    const newInner =
+      ERROR_INFO_CLASS.test(inner) && infoRe.test(inner)
+        ? inner.replace(infoRe, `$1${message}$3`)
+        : `${inner}<div class="ulp-error-info">${message}</div>`;
+
+    out +=
+      html.slice(cursor, match.index) + addClass(tag, "ulp-error") + newInner;
+    cursor = closeAt;
+    placed.add(name);
+    open.lastIndex = closeAt;
+  }
+  return { html: out + html.slice(cursor), placed };
+}
+
+function prefillValues(value: PrefillValue): string[] {
+  return Array.isArray(value) ? value : [value];
+}
+
+/**
+ * Restore submitted ulp-* control state in stored prompt-partial HTML: `value`
+ * for text-like inputs, `checked` for checkboxes/radios, and the content or
+ * selected options for textarea/select. Passwords and unrelated fields never
+ * enter the prefill object.
+ */
+export function prefillPromptPartial(
+  html: string,
+  prefill?: Record<string, PrefillValue | undefined>,
+): string {
+  if (!prefill) return html;
+
+  const lookup = (tag: string) => {
+    const name = getAttr(tag, "name");
+    return name?.startsWith("ulp-") ? prefill[name] : undefined;
+  };
+
+  const withInputs = html.replace(
+    /<input\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+    (input) => {
+      const submitted = lookup(input);
+      if (submitted === undefined) return input;
+
+      const type = (getAttr(input, "type") ?? "text").toLowerCase();
+      if (type === "checkbox" || type === "radio") {
+        // Compare against the control's own value ("on" is the HTML default).
+        const own = getAttr(input, "value") ?? "on";
+        const base = removeAttr(input, "checked");
+        return prefillValues(submitted).includes(own)
+          ? addAttrs(base, " checked")
+          : base;
+      }
+      if (
+        ["file", "submit", "button", "image", "reset", "password"].includes(
+          type,
+        )
+      ) {
+        return input;
+      }
+      if (Array.isArray(submitted)) return input;
+
+      return addAttrs(
+        removeAttr(input, "value"),
+        ` value="${escapeHtmlAttribute(submitted)}"`,
+      );
+    },
+  );
+
+  const withTextareas = withInputs.replace(
+    /(<textarea\b(?:[^>"']|"[^"]*"|'[^']*')*>)[\s\S]*?(<\/textarea\s*>)/gi,
+    (match, open: string, close: string) => {
+      const submitted = lookup(open);
+      if (submitted === undefined || Array.isArray(submitted)) return match;
+      return `${open}${escapeHtmlText(submitted)}${close}`;
+    },
+  );
+
+  return withTextareas.replace(
+    /(<select\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/select\s*>)/gi,
+    (match, open: string, body: string, close: string) => {
+      const submitted = lookup(open);
+      if (submitted === undefined) return match;
+      const selected = prefillValues(submitted);
+      const options = body.replace(
+        /<option\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+        (option) => {
+          const base = removeAttr(option, "selected");
+          // An option without a value attribute submits its text, which we
+          // can't see from the opening tag alone; leave it unselected.
+          const own = getAttr(option, "value");
+          return own !== undefined && selected.includes(own)
+            ? addAttrs(base, " selected")
+            : base;
+        },
+      );
+      return `${open}${options}${close}`;
+    },
+  );
 }
 
 /**
@@ -214,10 +556,31 @@ export async function signupScreen(
     }
   }
 
-  const { partials, messages: unplacedErrors } = await loadScreenPartials(
-    context,
-    SIGNUP_PARTIAL_SOURCES,
+  const storedPartials = await context.ctx.env.data.promptPartials?.get(
+    context.tenant.id,
+    "signup",
   );
+  const signupPartials = storedPartials?.signup;
+  const partialErrors = Object.fromEntries(
+    Object.entries(errors ?? {}).filter(([key]) => key.startsWith("ulp-")),
+  );
+  const placedErrors = new Set<string>();
+  const partials = signupPartials
+    ? Object.fromEntries(
+        Object.entries(signupPartials).map(([insertionPoint, html]) => {
+          const { html: withErrors, placed } = applyPartialErrors(
+            prefillPromptPartial(html, prefill),
+            partialErrors,
+          );
+          placed.forEach((name) => placedErrors.add(name));
+          return [insertionPoint, withErrors];
+        }),
+      )
+    : undefined;
+  // Errors for fields without a ulp-field wrapper fall back to the screen.
+  const unplacedErrors = Object.entries(partialErrors)
+    .filter(([name]) => !placedErrors.has(name))
+    .map(([, text]) => ({ text, type: "error" as const }));
 
   // Determine login link based on identifier_first setting
   const loginPath = await getLoginPath(context);
@@ -324,10 +687,7 @@ export const signupScreenDefinition: ScreenDefinition = {
       }
 
       // Enforce the stored partial's constraints; the browser is only a hint.
-      const partialFields = await getPartialFields(
-        context,
-        SIGNUP_PARTIAL_SOURCES,
-      );
+      const partialFields = await getSignupPartialFields(context);
       const partialError = validatePartialFields(partialFields, data);
       if (partialError) {
         return {

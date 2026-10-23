@@ -19,9 +19,6 @@ export interface LoginSessionData {
   // Hooks and continuation
   hookId?: string;
   form_values?: Record<string, unknown>;
-  // ulp-* fields submitted from prompt partials on the login screens, kept
-  // across steps so the hooks and mappings see them when login completes.
-  partial_fields?: Record<string, string | string[]>;
   continuationScope?: string[];
   continuationReturnUrl?: string;
   // Passkeys
