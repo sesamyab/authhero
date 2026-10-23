@@ -262,6 +262,11 @@ type LogEnrichment = {
   caller_client_id?: string;
 };
 
+type UserLookup = (
+  tenantId: string,
+  userId: string,
+) => ReturnType<DataAdapters["users"]["get"]>;
+
 type CallerInfo = {
   request_auth?: RequestAuth;
   caller_client_id?: string;
@@ -281,6 +286,7 @@ type CallerInfo = {
 async function resolveCaller(
   ctx: RequestContext,
   tenantId: string,
+  getUser: UserLookup,
 ): Promise<CallerInfo> {
   const token = ctx.var.user;
   if (!token?.sub) return {};
@@ -305,7 +311,7 @@ async function resolveCaller(
   }
 
   try {
-    const user = await ctx.env.data.users.get(callerTenantId, token.sub);
+    const user = await getUser(callerTenantId, token.sub);
     if (user) {
       return {
         request_auth: {
@@ -360,6 +366,19 @@ async function resolveLogEnrichment(
     USER_TARGET_TYPES.has(params.targetType) &&
     !!params.targetId;
 
+  // The caller and the subject are often the same user (e.g. a user acting on
+  // their own account), so share one lookup per tenant/user pair.
+  const userLookups = new Map<string, ReturnType<UserLookup>>();
+  const getUser: UserLookup = (lookupTenantId, userId) => {
+    const key = `${lookupTenantId}:${userId}`;
+    let lookup = userLookups.get(key);
+    if (!lookup) {
+      lookup = ctx.env.data.users.get(lookupTenantId, userId);
+      userLookups.set(key, lookup);
+    }
+    return lookup;
+  };
+
   const [connectionInfo, client_name, user_name, caller] = await Promise.all([
     (async () => {
       if (!connectionName) return undefined;
@@ -386,13 +405,13 @@ async function resolveLogEnrichment(
       }
       if (!subjectId) return "";
       try {
-        const user = await ctx.env.data.users.get(tenantId, subjectId);
+        const user = await getUser(tenantId, subjectId);
         return user?.email || user?.phone_number || user?.name || "";
       } catch {
         return "";
       }
     })(),
-    resolveCaller(ctx, tenantId),
+    resolveCaller(ctx, tenantId, getUser),
   ]);
 
   // Only correct the connection *name* when the request carried the generic

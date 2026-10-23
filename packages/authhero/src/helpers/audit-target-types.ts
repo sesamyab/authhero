@@ -17,3 +17,16 @@ export function logSubjectUserId(event: {
   }
   return event.actor.id || "";
 }
+
+/** The flat log's `user_name` for an audit event. `actor.email` only names the
+ *  actor, so it is used only when the log subject is the actor — a user-scoped
+ *  operation by an admin must not pair the target's `user_id` with the admin's
+ *  email. */
+export function logSubjectUserName(event: {
+  actor: { id?: string; email?: string };
+  target?: { type: string; id: string };
+}): string | undefined {
+  return logSubjectUserId(event) === (event.actor.id || "")
+    ? event.actor.email
+    : undefined;
+}
