@@ -4,3 +4,29 @@
  *  Shared by `helpers/logging.ts` (write path) and
  *  `outbox-destinations/logs.ts` (outbox transform) so the two never drift. */
 export const USER_TARGET_TYPES = new Set(["user", "identity"]);
+
+/** The flat log's `user_id` for an audit event: the target for user-scoped
+ *  operations, otherwise the actor. The caller of a management operation is
+ *  carried separately in `request.auth`. */
+export function logSubjectUserId(event: {
+  actor: { id?: string };
+  target?: { type: string; id: string };
+}): string {
+  if (event.target && USER_TARGET_TYPES.has(event.target.type)) {
+    return event.target.id || event.actor.id || "";
+  }
+  return event.actor.id || "";
+}
+
+/** The flat log's `user_name` for an audit event. `actor.email` only names the
+ *  actor, so it is used only when the log subject is the actor — a user-scoped
+ *  operation by an admin must not pair the target's `user_id` with the admin's
+ *  email. */
+export function logSubjectUserName(event: {
+  actor: { id?: string; email?: string };
+  target?: { type: string; id: string };
+}): string | undefined {
+  return logSubjectUserId(event) === (event.actor.id || "")
+    ? event.actor.email
+    : undefined;
+}

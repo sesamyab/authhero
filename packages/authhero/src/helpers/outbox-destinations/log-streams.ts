@@ -4,6 +4,7 @@ import {
   LogStreamsAdapter,
 } from "@authhero/adapter-interfaces";
 import { EventDestination } from "../outbox-relay";
+import { logSubjectUserId, logSubjectUserName } from "../audit-target-types";
 
 const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
 
@@ -67,14 +68,14 @@ function toPayload(event: AuditEvent): LogStreamPayload {
       tenant_name: event.tenant_id,
       ip: event.request.ip,
       user_agent: event.request.user_agent,
-      user_id: event.actor.id,
-      user_name: event.actor.email,
+      user_id: logSubjectUserId(event),
+      user_name: logSubjectUserName(event),
       client_id: event.actor.client_id,
       connection: event.connection,
       strategy: event.strategy,
       strategy_type: event.strategy_type,
       audience: event.audience,
-      scope: event.scope || event.actor.scopes?.join(" "),
+      scope: event.scope,
       hostname: event.hostname,
       auth0_client: event.auth0_client,
       location_info: event.location,
@@ -91,6 +92,7 @@ function toPayload(event: AuditEvent): LogStreamPayload {
           ...(event.request.authorization_url
             ? { authorization_url: event.request.authorization_url }
             : {}),
+          ...(event.request.auth ? { auth: event.request.auth } : {}),
         },
         ...(event.response && {
           response: {

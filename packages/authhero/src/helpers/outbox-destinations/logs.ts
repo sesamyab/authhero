@@ -5,7 +5,7 @@ import {
   LogsDataAdapter,
 } from "@authhero/adapter-interfaces";
 import { EventDestination } from "../outbox-relay";
-import { USER_TARGET_TYPES } from "../audit-target-types";
+import { logSubjectUserId, logSubjectUserName } from "../audit-target-types";
 
 /**
  * Transforms AuditEvent into LogInsert for the existing logs table.
@@ -13,10 +13,6 @@ import { USER_TARGET_TYPES } from "../audit-target-types";
  * endpoints continue to work unchanged.
  */
 function toLogInsert(event: AuditEvent): LogInsert {
-  const userId =
-    (USER_TARGET_TYPES.has(event.target?.type) && event.target?.id) ||
-    event.actor.id ||
-    "";
   return {
     log_id: event.id,
     type: event.log_type as LogType,
@@ -24,8 +20,8 @@ function toLogInsert(event: AuditEvent): LogInsert {
     description: event.description || "",
     ip: event.request.ip,
     user_agent: event.request.user_agent || "",
-    user_id: userId,
-    user_name: event.actor.email || "",
+    user_id: logSubjectUserId(event),
+    user_name: logSubjectUserName(event) || "",
     client_id: event.actor.client_id,
     client_name: event.client_name || "",
     connection: event.connection,
@@ -33,7 +29,7 @@ function toLogInsert(event: AuditEvent): LogInsert {
     strategy: event.strategy,
     strategy_type: event.strategy_type,
     audience: event.audience || "",
-    scope: event.scope || event.actor.scopes?.join(" "),
+    scope: event.scope,
     hostname: event.hostname,
     auth0_client: event.auth0_client,
     isMobile: event.is_mobile || false,
@@ -48,6 +44,7 @@ function toLogInsert(event: AuditEvent): LogInsert {
         ...(event.request.redirect_uri
           ? { redirect_uri: event.request.redirect_uri }
           : {}),
+        ...(event.request.auth ? { auth: event.request.auth } : {}),
       },
       ...(event.response && {
         response: {

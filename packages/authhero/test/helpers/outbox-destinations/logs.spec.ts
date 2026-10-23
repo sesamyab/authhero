@@ -59,6 +59,18 @@ describe("LogsDestination.transform - user_id resolution", () => {
     );
     expect(log.user_id).toBe("admin-actor-id");
   });
+
+  it("omits the actor's email as user_name when the subject is a target user", () => {
+    const { log } = makeDestination().transform(makeEvent());
+    expect(log.user_name).toBe("");
+  });
+
+  it("keeps the actor's email as user_name when the subject is the actor", () => {
+    const { log } = makeDestination().transform(
+      makeEvent({ target: { type: "client", id: "clientId123" } }),
+    );
+    expect(log.user_name).toBe("admin@example.com");
+  });
 });
 
 describe("LogsDestination.transform - login details", () => {

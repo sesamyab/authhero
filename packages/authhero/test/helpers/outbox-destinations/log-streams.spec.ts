@@ -69,6 +69,24 @@ describe("LogStreamDestination", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("only names the actor in user_name when the subject is the actor", () => {
+    const dest = new LogStreamDestination(makeStreams([]));
+    const targetUser = dest.transform(
+      makeEvent({
+        actor: { type: "admin", id: "admin-1", email: "admin@example.com" },
+      }),
+    );
+    expect(targetUser.payload.data.user_id).toBe("user-1");
+    expect(targetUser.payload.data.user_name).toBeUndefined();
+
+    const selfEvent = dest.transform(
+      makeEvent({
+        actor: { type: "user", id: "user-1", email: "user@example.com" },
+      }),
+    );
+    expect(selfEvent.payload.data.user_name).toBe("user@example.com");
+  });
+
   it("POSTs to active http sink with auth + content type headers", async () => {
     const dest = new LogStreamDestination(
       makeStreams([

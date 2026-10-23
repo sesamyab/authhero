@@ -44,6 +44,8 @@ export interface CreateTokenParams {
   requested_userinfo_claims?: string[];
   // Organization the token was issued for (org-scoped tokens).
   org_id?: string;
+  // JWT ID — surfaced in sapi logs as details.request.auth.credentials.jti.
+  jti?: string;
 }
 
 export async function createToken(params?: CreateTokenParams) {
@@ -61,6 +63,7 @@ export async function createToken(params?: CreateTokenParams) {
       tenant_id: params?.tenant_id,
       ...(params?.azp ? { azp: params.azp } : {}),
       ...(params?.org_id ? { org_id: params.org_id } : {}),
+      ...(params?.jti ? { jti: params.jti } : {}),
       ...(params?.requested_userinfo_claims
         ? { requested_userinfo_claims: params.requested_userinfo_claims }
         : {}),
