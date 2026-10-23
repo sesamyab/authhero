@@ -43,11 +43,16 @@ export type PartialInsertionPoint = (typeof PARTIAL_INSERTION_POINTS)[number];
 
 /**
  * Prompts the widget renders partials for. The API accepts more, but only the
- * signup screen reads stored partials today (v1 scope of #1474), so offering
- * others would save HTML that is never shown. Add prompts here as screens
- * start consuming them.
+ * signup and login screens read stored partials today, so offering others
+ * would save HTML that is never shown. Add prompts here as screens start
+ * consuming them.
  */
-export const PARTIAL_PROMPTS = ["signup"] as const;
+export const PARTIAL_PROMPTS = [
+  "signup",
+  "login-id",
+  "login-password",
+  "login",
+] as const;
 
 export const FIXED_MAP_TARGETS = [
   "given_name",

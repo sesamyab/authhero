@@ -7,6 +7,7 @@
 import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
 import { Strategy } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
+import { getLoginPartials } from "./login-partials";
 import { getLoginPath, isIdentifierFirstLogin } from "./types";
 import { escapeHtml } from "../sanitization-utils";
 import { createTranslation } from "../../../i18n";
@@ -159,6 +160,8 @@ export async function enterPasswordScreen(
       ? [{ text: m.passwordResetSuccess(), type: "success" as const }]
       : undefined;
 
+  const partials = await getLoginPartials(context, "login-password");
+
   const screen: UiScreen = {
     name: "enter-password",
     // Action points to HTML endpoint for no-JS fallback
@@ -167,6 +170,7 @@ export async function enterPasswordScreen(
     title: m.title(),
     description,
     components,
+    partials,
     messages,
     links: [
       {

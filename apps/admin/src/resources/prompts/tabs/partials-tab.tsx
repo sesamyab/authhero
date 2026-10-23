@@ -729,6 +729,9 @@ export function PartialsTab() {
   const [baseline, setBaseline] = useState("[]");
   const [attempted, setAttempted] = useState(false);
   const savedHtml = useRef<Html>({});
+  // Only the latest load may apply its result; switching prompts quickly must
+  // not let an older response overwrite the newer selection.
+  const loadSeq = useRef(0);
 
   const issues = useMemo(() => {
     const lists: Partial<Record<PartialInsertionPoint, DraftField[]>> = {};
@@ -749,6 +752,7 @@ export function PartialsTab() {
   const dirty = serializeDraft(html) !== baseline;
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setLoadError(null);
     setErrors({});
@@ -757,6 +761,7 @@ export function PartialsTab() {
       const { data } = await dataProvider.getOne("partials", {
         id: prompt,
       });
+      if (seq !== loadSeq.current) return;
       const all = (data.partials ?? {}) as PromptPartials;
       setStored(all);
       const loaded = all[prompt] ?? {};
@@ -775,11 +780,12 @@ export function PartialsTab() {
         ),
       );
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       // Stay in the error state until a retry succeeds. The editor holds no
       // loaded data, so saving would overwrite the stored partials.
       setLoadError((err as Error).message || "Unknown error");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [dataProvider, prompt]);
 
@@ -823,6 +829,17 @@ export function PartialsTab() {
       cancelled = true;
     };
   }, [dataProvider]);
+
+  const changePrompt = (next: string) => {
+    if (
+      next !== prompt &&
+      dirty &&
+      !window.confirm("You have unsaved changes. Discard them and switch?")
+    ) {
+      return;
+    }
+    setPrompt(next);
+  };
 
   /** Throws away unsaved edits and goes back to what was last saved. */
   const discard = () => {
@@ -964,7 +981,9 @@ export function PartialsTab() {
   const previewScreen = useMemo(() => {
     const base = prompt.startsWith("signup")
       ? screenConfigs.signup
-      : screenConfigs.login;
+      : prompt === "login-password"
+        ? screenConfigs.password
+        : screenConfigs.login;
     const partials = Object.fromEntries(
       Object.entries(html).filter(([, v]) => v && v.trim()),
     );
@@ -986,16 +1005,16 @@ export function PartialsTab() {
       }}
     >
       <p className="max-w-2xl text-sm text-muted-foreground">
-        Add your own fields and content to the sign-up screen. A common use is
-        collecting extra details such as first and last name, a company name or
-        a terms checkbox.
+        Add your own fields and content to the sign-up and login screens. A
+        common use is collecting extra details such as first and last name, a
+        company name or a terms checkbox.
       </p>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0 space-y-4">
           <div className="z-10 -mx-1 flex flex-wrap items-end justify-between gap-x-4 gap-y-2 sm:sticky sm:top-0 border-b bg-background px-1 py-3">
             <div className="w-44 space-y-1">
               <Label>Prompt</Label>
-              <Select value={prompt} onValueChange={setPrompt}>
+              <Select value={prompt} onValueChange={changePrompt}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1071,9 +1090,9 @@ export function PartialsTab() {
               <div>
                 <p className="text-sm font-medium">No fields yet</p>
                 <p className="text-sm text-muted-foreground">
-                  Start with a field below the built-in sign-up fields, such as
-                  a first name. You can move it to another position later by
-                  dragging it.
+                  Start with a field below the built-in fields on this screen,
+                  such as a first name. You can move it to another position
+                  later by dragging it.
                 </p>
               </div>
               <Button type="button" size="sm" onClick={addFirstField}>
