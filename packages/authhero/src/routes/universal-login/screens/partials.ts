@@ -532,7 +532,10 @@ export function withPartials(
               return { error: failure.message, screen };
             }
 
-            context.ctx.set("login_body", prefill);
+            // Like signup_body: hooks see no body unless fields were submitted.
+            if (Object.keys(prefill).length > 0) {
+              context.ctx.set("login_body", prefill);
+            }
             const result = await post(context, data);
             // Re-renders of this screen keep the submitted values; a successful
             // step returns the next screen, which gets its own partials.
