@@ -1,5 +1,18 @@
 # @authhero/admin
 
+## 0.23.0
+
+### Minor Changes
+
+- 19c1394: Render prompt partials on the login screens (`login-id`, `login-password` and `login`), for example to add a terms link, and offer these prompts in the admin Partials tab.
+
+### Patch Changes
+
+- Updated dependencies [f69bc42]
+- Updated dependencies [649cf6a]
+- Updated dependencies [a9316c6]
+  - @authhero/adapter-interfaces@4.22.0
+
 ## 0.22.4
 
 ### Patch Changes

@@ -1,5 +1,19 @@
 # @authhero/kysely-adapter
 
+## 12.16.0
+
+### Minor Changes
+
+- 649cf6a: Add the schema for tenant config inheritance: `tenants.parent_tenant_id` and the publishing fields `scope` (local/shared/platform), `override` (none/secrets/fields) and `enforce` on connections, actions, hooks, resource servers, branding, prompt settings and email providers. All columns are nullable and unset reads as today's behaviour; existing `is_system` rows and hooks flagged `metadata.inheritable` are backfilled to `scope: shared`. Nothing reads the fields yet. `parent_tenant_id` is validated for existence, cycles and a maximum depth of 2 when a tenant is created or updated through the multi-tenancy tenants routes.
+
+### Patch Changes
+
+- Updated dependencies [f69bc42]
+- Updated dependencies [649cf6a]
+- Updated dependencies [a9316c6]
+  - @authhero/adapter-interfaces@4.22.0
+  - @authhero/proxy@0.11.8
+
 ## 12.15.1
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @authhero/adapter-interfaces
 
+## 4.22.0
+
+### Minor Changes
+
+- f69bc42: Add the parent-chain resolver for tenant config inheritance and a shadow mode. `resolveTenantChain` and `mergeConfig` merge a tenant's ancestors (nearest wins, hooks and actions add up, secrets layered, `override` respected). With `inheritanceShadow` enabled on `initMultiTenant` or `createRuntimeFallbackAdapter`, reads start a background comparison against read-time inheritance and log differences as log type `cfgdiff`, queryable per tenant. The result is never used to serve requests.
+- 649cf6a: Add the schema for tenant config inheritance: `tenants.parent_tenant_id` and the publishing fields `scope` (local/shared/platform), `override` (none/secrets/fields) and `enforce` on connections, actions, hooks, resource servers, branding, prompt settings and email providers. All columns are nullable and unset reads as today's behaviour; existing `is_system` rows and hooks flagged `metadata.inheritable` are backfilled to `scope: shared`. Nothing reads the fields yet. `parent_tenant_id` is validated for existence, cycles and a maximum depth of 2 when a tenant is created or updated through the multi-tenancy tenants routes.
+- a9316c6: Management API (`sapi`) logs now record who made the change in `details.request.auth`, matching Auth0: the calling user (`user_id`, `name`, `email`) for user tokens, and `strategy` plus `credentials` (`jti`, `scopes`) for every bearer-token call. `user_id` still names the affected user. Client-credentials tokens without `azp` now fill the log's `client_id` from the token subject. The caller's token scopes are no longer copied into the top-level `scope`, and log streams now use the same `user_id` as the logs table (the target user for user-scoped operations, not the caller).
+
 ## 4.21.0
 
 ### Minor Changes
