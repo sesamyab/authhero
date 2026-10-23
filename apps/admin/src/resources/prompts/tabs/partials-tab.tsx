@@ -729,6 +729,9 @@ export function PartialsTab() {
   const [baseline, setBaseline] = useState("[]");
   const [attempted, setAttempted] = useState(false);
   const savedHtml = useRef<Html>({});
+  // Only the latest load may apply its result; switching prompts quickly must
+  // not let an older response overwrite the newer selection.
+  const loadSeq = useRef(0);
 
   const issues = useMemo(() => {
     const lists: Partial<Record<PartialInsertionPoint, DraftField[]>> = {};
@@ -749,6 +752,7 @@ export function PartialsTab() {
   const dirty = serializeDraft(html) !== baseline;
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setLoadError(null);
     setErrors({});
@@ -757,6 +761,7 @@ export function PartialsTab() {
       const { data } = await dataProvider.getOne("partials", {
         id: prompt,
       });
+      if (seq !== loadSeq.current) return;
       const all = (data.partials ?? {}) as PromptPartials;
       setStored(all);
       const loaded = all[prompt] ?? {};
@@ -775,11 +780,12 @@ export function PartialsTab() {
         ),
       );
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       // Stay in the error state until a retry succeeds. The editor holds no
       // loaded data, so saving would overwrite the stored partials.
       setLoadError((err as Error).message || "Unknown error");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [dataProvider, prompt]);
 
@@ -823,6 +829,17 @@ export function PartialsTab() {
       cancelled = true;
     };
   }, [dataProvider]);
+
+  const changePrompt = (next: string) => {
+    if (
+      next !== prompt &&
+      dirty &&
+      !window.confirm("You have unsaved changes. Discard them and switch?")
+    ) {
+      return;
+    }
+    setPrompt(next);
+  };
 
   /** Throws away unsaved edits and goes back to what was last saved. */
   const discard = () => {
@@ -997,7 +1014,7 @@ export function PartialsTab() {
           <div className="z-10 -mx-1 flex flex-wrap items-end justify-between gap-x-4 gap-y-2 sm:sticky sm:top-0 border-b bg-background px-1 py-3">
             <div className="w-44 space-y-1">
               <Label>Prompt</Label>
-              <Select value={prompt} onValueChange={setPrompt}>
+              <Select value={prompt} onValueChange={changePrompt}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
