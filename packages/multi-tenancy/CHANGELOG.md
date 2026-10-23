@@ -1,5 +1,22 @@
 # @authhero/multi-tenancy
 
+## 15.2.0
+
+### Minor Changes
+
+- f69bc42: Add the parent-chain resolver for tenant config inheritance and a shadow mode. `resolveTenantChain` and `mergeConfig` merge a tenant's ancestors (nearest wins, hooks and actions add up, secrets layered, `override` respected). With `inheritanceShadow` enabled on `initMultiTenant` or `createRuntimeFallbackAdapter`, reads start a background comparison against read-time inheritance and log differences as log type `cfgdiff`, queryable per tenant. The result is never used to serve requests.
+- 649cf6a: Add the schema for tenant config inheritance: `tenants.parent_tenant_id` and the publishing fields `scope` (local/shared/platform), `override` (none/secrets/fields) and `enforce` on connections, actions, hooks, resource servers, branding, prompt settings and email providers. All columns are nullable and unset reads as today's behaviour; existing `is_system` rows and hooks flagged `metadata.inheritable` are backfilled to `scope: shared`. Nothing reads the fields yet. `parent_tenant_id` is validated for existence, cycles and a maximum depth of 2 when a tenant is created or updated through the multi-tenancy tenants routes.
+
+### Patch Changes
+
+- Updated dependencies [f69bc42]
+- Updated dependencies [649cf6a]
+- Updated dependencies [19c1394]
+- Updated dependencies [a9316c6]
+- Updated dependencies [fe91508]
+  - @authhero/adapter-interfaces@4.22.0
+  - authhero@9.25.0
+
 ## 15.1.2
 
 ### Patch Changes

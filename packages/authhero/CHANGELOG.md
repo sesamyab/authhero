@@ -1,5 +1,23 @@
 # authhero
 
+## 9.25.0
+
+### Minor Changes
+
+- 19c1394: Render prompt partials on the login screens (`login-id`, `login-password` and `login`), for example to add a terms link, and offer these prompts in the admin Partials tab.
+- a9316c6: Management API (`sapi`) logs now record who made the change in `details.request.auth`, matching Auth0: the calling user (`user_id`, `name`, `email`) for user tokens, and `strategy` plus `credentials` (`jti`, `scopes`) for every bearer-token call. `user_id` still names the affected user. Client-credentials tokens without `azp` now fill the log's `client_id` from the token subject. The caller's token scopes are no longer copied into the top-level `scope`, and log streams now use the same `user_id` as the logs table (the target user for user-scoped operations, not the caller).
+
+### Patch Changes
+
+- fe91508: Find social and enterprise users by their upstream subject (`provider|sub`) before falling back to email + provider. A user whose stored email no longer matched the email from the IdP (for example after editing it) failed to log in with "User already exists (409)".
+- Updated dependencies [f69bc42]
+- Updated dependencies [649cf6a]
+- Updated dependencies [a9316c6]
+  - @authhero/adapter-interfaces@4.22.0
+  - @authhero/proxy@0.11.8
+  - @authhero/saml@0.6.1
+  - @authhero/widget@0.41.4
+
 ## 9.24.1
 
 ### Patch Changes
