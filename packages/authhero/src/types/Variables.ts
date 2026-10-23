@@ -43,12 +43,6 @@ export type Variables = {
    * credentials or unrelated request fields.
    */
   signup_body?: Record<string, unknown>;
-  /**
-   * `ulp-*` fields submitted with a login screen (identifier, password, login)
-   * that has prompt partials. Exposed to post-login hooks as
-   * `event.request.body`; only valid within the request that submitted them.
-   */
-  login_body?: Record<string, unknown>;
   log?: string;
   custom_domain?: string;
   host?: string;

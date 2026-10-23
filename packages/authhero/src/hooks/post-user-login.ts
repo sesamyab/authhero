@@ -35,6 +35,8 @@ import {
   resolveConnectionName,
 } from "../helpers/connection";
 import { waitUntil } from "../helpers/wait-until";
+import { readLoginSessionData } from "../state-machines/login-session";
+import { applyLoginPartialMappings } from "../routes/universal-login/screens/partials";
 
 // Type guard for webhook hooks
 function isWebHook(hook: any): hook is { url: string; enabled: boolean } {
@@ -134,7 +136,7 @@ async function buildEnhancedEventObject(
       ip: ip || "",
       user_agent: userAgent,
       method: ctx.req.method,
-      body: ctx.var?.login_body,
+      body: readLoginSessionData(loginSession.state_data).partial_fields,
       // Authentication may finish on a callback or /authorize/resume request.
       // Keep the original /authorize parameters available to post-login hooks.
       url: loginSession.authorization_url || ctx.req.url,
@@ -281,6 +283,19 @@ export async function postUserLoginHook(
   // hook or form/page hook that redirects, and a hook that throws.
   const outcomes: HandleCodeHookOutcome[] = [];
   try {
+    // Apply the data-authhero-map targets of the login partials before the hooks
+    // run, so they see the updated user.
+    try {
+      user = await applyLoginPartialMappings(
+        data,
+        tenant_id,
+        user,
+        readLoginSessionData(loginSession?.state_data).partial_fields,
+      );
+    } catch (err) {
+      console.error("Failed to apply login prompt partial mappings", err);
+    }
+
     // Update the user's last login info. Deferred off the critical path:
     // nothing in this request reads the result (the in-memory `user` keeps
     // the pre-login values either way), and the row write plus its

@@ -164,11 +164,18 @@ describe("signup-id / signup-password partials", () => {
   });
 });
 
-describe("login hook body", () => {
+describe("login partial fields", () => {
   const USERNAME = "victim@example.com";
   const PASSWORD = "CorrectPassword123!";
+  const USER_ID = `${USERNAME_PASSWORD_PROVIDER}|victim`;
 
-  async function loginWithPassword(fields: Record<string, string>) {
+  const field = (name: string, extra = "") =>
+    `<div class="ulp-field"><input name="${name}" ${extra}></div>`;
+
+  async function setup(
+    partials: Record<string, Record<string, Record<string, string>>>,
+    user: Record<string, unknown> = {},
+  ) {
     const { u2App, oauthApp, env } = await getTestServer();
     const events: HookEvent[] = [];
     env.hooks = {
@@ -176,22 +183,20 @@ describe("login hook body", () => {
         events.push(event);
       },
     };
-    await env.data.promptPartials?.set("tenantId", "login-password", {
-      "login-password": {
-        "form-content-end":
-          '<div class="ulp-field"><input name="ulp-company" maxlength="5"></div>',
-      },
-    });
+    for (const [prompt, value] of Object.entries(partials)) {
+      await env.data.promptPartials?.set("tenantId", prompt, value);
+    }
     await env.data.users.create("tenantId", {
       email: USERNAME,
       email_verified: true,
       connection: Strategy.USERNAME_PASSWORD,
       provider: USERNAME_PASSWORD_PROVIDER,
       is_social: false,
-      user_id: `${USERNAME_PASSWORD_PROVIDER}|victim`,
+      user_id: USER_ID,
+      ...user,
     });
     await env.data.passwords.create("tenantId", {
-      user_id: `${USERNAME_PASSWORD_PROVIDER}|victim`,
+      user_id: USER_ID,
       password: await bcryptjs.hash(PASSWORD, 10),
       algorithm: "bcrypt",
     });
@@ -211,15 +216,21 @@ describe("login hook body", () => {
     loginSession!.authParams.username = USERNAME;
     await env.data.loginSessions.update("tenantId", state, loginSession!);
 
-    const response = await u2Screen(u2App, env, "enter-password").$post({
-      query: { state },
-      form: { password: PASSWORD, ...fields },
-    });
-    return { response, events };
+    const post = (screen: string, form: Record<string, string>) =>
+      u2Screen(u2App, env, screen).$post({ query: { state }, form });
+    return { env, events, post, state, u2App };
   }
 
+  const passwordPartial = (html: string) => ({
+    "login-password": { "login-password": { "form-content-end": html } },
+  });
+
   it("passes only ulp-* fields to the post-login hook", async () => {
-    const { response, events } = await loginWithPassword({
+    const { post, events } = await setup(
+      passwordPartial(field("ulp-company", 'maxlength="5"')),
+    );
+    const response = await post("enter-password", {
+      password: PASSWORD,
       "ulp-company": "Acme",
       unrelated: "nope",
     });
@@ -229,17 +240,150 @@ describe("login hook body", () => {
   });
 
   it("leaves the hook body undefined when no ulp-* field is submitted", async () => {
-    const { response, events } = await loginWithPassword({});
+    const { post, events } = await setup(passwordPartial(field("ulp-company")));
+    const response = await post("enter-password", { password: PASSWORD });
     expect(response.status).toBe(302);
-    expect(events).toHaveLength(1);
     expect(events[0]!.request.body).toBeUndefined();
   });
 
-  it("enforces maxlength from the stored partial before logging in", async () => {
-    const { response, events } = await loginWithPassword({
+  it("enforces maxlength and pattern before logging in", async () => {
+    const { post, events } = await setup(
+      passwordPartial(
+        field("ulp-company", 'maxlength="5"') +
+          field("ulp-code", 'pattern="[0-9]+"'),
+      ),
+    );
+    const tooLong = await post("enter-password", {
+      password: PASSWORD,
       "ulp-company": "far too long",
     });
-    expect(response.status).not.toBe(302);
+    expect(tooLong.status).not.toBe(302);
+    const badPattern = await post("enter-password", {
+      password: PASSWORD,
+      "ulp-code": "abc",
+    });
+    expect(badPattern.status).not.toBe(302);
     expect(events).toHaveLength(0);
+  });
+
+  it("rejects a missing required field and keeps the other values", async () => {
+    const { post, events } = await setup(
+      passwordPartial(
+        field("ulp-first-name", "required") + field("ulp-company"),
+      ),
+    );
+    const response = await post("enter-password", {
+      password: PASSWORD,
+      "ulp-company": "Acme",
+    });
+    expect(response.status).toBe(400);
+    const html = await response.text();
+    expect(html).toContain("ulp-first-name is required");
+    expect(html).toContain('value="Acme"');
+    expect(events).toHaveLength(0);
+  });
+
+  it("maps allowlisted targets from the stored partial onto the user", async () => {
+    const { post, env } = await setup(
+      passwordPartial(
+        field("ulp-first-name", 'data-authhero-map="given_name"') +
+          field("ulp-plan", 'data-authhero-map="user_metadata.plan"') +
+          field("ulp-unmapped"),
+      ),
+      { user_metadata: { keep: "me", plan: "old" } },
+    );
+    const response = await post("enter-password", {
+      password: PASSWORD,
+      "ulp-first-name": "Ada",
+      "ulp-plan": "pro",
+      "ulp-unmapped": "ignored",
+    });
+    expect(response.status).toBe(302);
+    const user = await env.data.users.get("tenantId", USER_ID);
+    expect(user?.given_name).toBe("Ada");
+    expect(user?.user_metadata).toEqual({ keep: "me", plan: "pro" });
+  });
+
+  it("ignores mapping attributes that are not in the stored partial", async () => {
+    const { post, env } = await setup(passwordPartial(field("ulp-first-name")));
+    await post("enter-password", {
+      password: PASSWORD,
+      "ulp-first-name": "Ada",
+      "data-authhero-map": "given_name",
+      given_name: "Mallory",
+    });
+    const user = await env.data.users.get("tenantId", USER_ID);
+    expect(user?.given_name).toBeUndefined();
+  });
+
+  it("carries fields from the identifier step to the hook and the mapping", async () => {
+    const { post, events, env } = await setup({
+      "login-id": {
+        "login-id": {
+          "form-content-end": field(
+            "ulp-first-name",
+            'data-authhero-map="given_name"',
+          ),
+        },
+      },
+    });
+    const first = await post("login/identifier", {
+      username: USERNAME,
+      "ulp-first-name": "Ada",
+    });
+    expect(first.status).toBeLessThan(400);
+    const second = await post("enter-password", { password: PASSWORD });
+    expect(second.status).toBe(302);
+    expect(events[0]!.request.body).toEqual({ "ulp-first-name": "Ada" });
+    const user = await env.data.users.get("tenantId", USER_ID);
+    expect(user?.given_name).toBe("Ada");
+  });
+
+  it("never stores password controls on the login session", async () => {
+    const { post, env, state } = await setup(
+      passwordPartial(
+        field("ulp-pin", 'type="password"') + field("ulp-company"),
+      ),
+    );
+    await post("enter-password", {
+      password: "wrong-password-1!",
+      "ulp-pin": "1234",
+      "ulp-company": "Acme",
+    });
+    const session = await env.data.loginSessions.get("tenantId", state);
+    expect(JSON.parse(session?.state_data ?? "{}").partial_fields).toEqual({
+      "ulp-company": "Acme",
+    });
+  });
+
+  it("applies the same rules on the combined login screen", async () => {
+    const { post, events, env } = await setup({
+      login: {
+        login: {
+          "form-content-end": field(
+            "ulp-first-name",
+            'required data-authhero-map="given_name"',
+          ),
+        },
+      },
+    });
+    await env.data.connections.update("tenantId", Strategy.USERNAME_PASSWORD, {
+      strategy: Strategy.USERNAME_PASSWORD,
+    });
+    const missing = await post("login", {
+      username: USERNAME,
+      password: PASSWORD,
+    });
+    expect(missing.status).toBe(400);
+    const ok = await post("login", {
+      username: USERNAME,
+      password: PASSWORD,
+      "ulp-first-name": "Ada",
+    });
+    expect(ok.status).toBe(302);
+    expect(events[0]!.request.body).toEqual({ "ulp-first-name": "Ada" });
+    expect((await env.data.users.get("tenantId", USER_ID))?.given_name).toBe(
+      "Ada",
+    );
   });
 });

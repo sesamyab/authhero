@@ -5,7 +5,16 @@
  * submitted state / errors when a screen is re-rendered.
  */
 
-import type { User, UiScreen } from "@authhero/adapter-interfaces";
+import type {
+  DataAdapters,
+  User,
+  UiScreen,
+} from "@authhero/adapter-interfaces";
+import {
+  LoginSessionEventType,
+  readLoginSessionData,
+} from "../../../state-machines/login-session";
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
 import type { ScreenContext, ScreenDefinition, ScreenResult } from "./types";
 
 export type PrefillValue = string | string[];
@@ -360,15 +369,13 @@ export interface PartialSource {
 }
 
 async function getStoredPartialHtmls(
-  context: ScreenContext,
+  data: DataAdapters,
+  tenantId: string,
   sources: PartialSource[],
 ): Promise<Record<string, string>[]> {
   const stored = await Promise.all(
     sources.map(async ({ prompt, screen }) => {
-      const partials = await context.ctx.env.data.promptPartials?.get(
-        context.tenant.id,
-        prompt,
-      );
+      const partials = await data.promptPartials?.get(tenantId, prompt);
       return partials?.[screen];
     }),
   );
@@ -380,7 +387,11 @@ export async function getPartialFields(
   context: ScreenContext,
   sources: PartialSource[],
 ): Promise<PartialField[]> {
-  const stored = await getStoredPartialHtmls(context, sources);
+  const stored = await getStoredPartialHtmls(
+    context.ctx.env.data,
+    context.tenant.id,
+    sources,
+  );
   return parsePartialFields(stored.flatMap((p) => Object.values(p)));
 }
 
@@ -416,7 +427,11 @@ export async function loadScreenPartials(
   partials: UiScreen["partials"];
   messages: { text: string; type: "error" }[];
 }> {
-  const stored = await getStoredPartialHtmls(context, sources);
+  const stored = await getStoredPartialHtmls(
+    context.ctx.env.data,
+    context.tenant.id,
+    sources,
+  );
   const errors = Object.fromEntries(
     Object.entries(state.errors ?? {}).filter(([key]) =>
       key.startsWith("ulp-"),
@@ -496,7 +511,8 @@ async function withScreenPartials(
  * Add stored prompt partials to a login screen: they are rendered on GET and on
  * every re-render of this screen from POST, and the submitted ulp-* fields are
  * validated against the stored HTML and exposed to hooks as
- * `event.request.body` (`login_body`). Unlike signup there is no user mapping.
+ * `event.request.body` once login completes, where the stored `data-authhero-map`
+ * targets are also applied to the user.
  */
 export function withPartials(
   definition: ScreenDefinition,
@@ -532,10 +548,7 @@ export function withPartials(
               return { error: failure.message, screen };
             }
 
-            // Like signup_body: hooks see no body unless fields were submitted.
-            if (Object.keys(prefill).length > 0) {
-              context.ctx.set("login_body", prefill);
-            }
+            await persistLoginPartialFields(context, fields, prefill);
             const result = await post(context, data);
             // Re-renders of this screen keep the submitted values; a successful
             // step returns the next screen, which gets its own partials.
@@ -559,4 +572,77 @@ export function withPartials(
         : undefined,
     },
   };
+}
+
+const ALL_LOGIN_SOURCES = Object.values(LOGIN_SCREEN_PARTIAL_SOURCES).flat();
+
+/**
+ * Keep the submitted ulp-* fields on the login session: login is several
+ * requests (identifier, then password), and the hooks and mappings run when the
+ * last one completes. Password controls are never stored.
+ */
+async function persistLoginPartialFields(
+  context: ScreenContext,
+  fields: PartialField[],
+  submitted: Record<string, string | string[]>,
+): Promise<void> {
+  const secret = new Set(
+    fields.filter((f) => f.type === "password").map((f) => f.name),
+  );
+  const safe = Object.fromEntries(
+    Object.entries(submitted).filter(([name]) => !secret.has(name)),
+  );
+  if (Object.keys(safe).length === 0) return;
+
+  const sessions = context.ctx.env.data.loginSessions;
+  try {
+    const current = await sessions.get(context.client.tenant.id, context.state);
+    await updateLoginSessionData(
+      sessions,
+      context.client.tenant.id,
+      context.state,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: {
+          partial_fields: {
+            ...readLoginSessionData(current?.state_data).partial_fields,
+            ...safe,
+          },
+        },
+      },
+    );
+  } catch (err) {
+    // Optional data must not break the login itself.
+    console.error("Failed to store prompt partial fields", err);
+  }
+}
+
+/**
+ * Apply the `data-authhero-map` targets of the stored login partials to the
+ * user who just logged in. Mappings come from the stored partials, never from
+ * the request; submitted non-empty values replace the existing ones and
+ * `user_metadata` keys are merged.
+ */
+export async function applyLoginPartialMappings(
+  data: DataAdapters,
+  tenantId: string,
+  user: User,
+  submitted: Record<string, unknown> | undefined,
+): Promise<User> {
+  if (!submitted || Object.keys(submitted).length === 0) return user;
+  const stored = await getStoredPartialHtmls(data, tenantId, ALL_LOGIN_SOURCES);
+  const mapped = applyPartialMappings(
+    parsePartialFields(stored.flatMap((p) => Object.values(p))),
+    submitted,
+  );
+  if (Object.keys(mapped).length === 0) return user;
+
+  const updates = mapped.user_metadata
+    ? {
+        ...mapped,
+        user_metadata: { ...user.user_metadata, ...mapped.user_metadata },
+      }
+    : mapped;
+  await data.users.update(tenantId, user.user_id, updates);
+  return { ...user, ...updates };
 }
