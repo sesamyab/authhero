@@ -4,6 +4,8 @@ import {
   LogStreamsAdapter,
 } from "@authhero/adapter-interfaces";
 import { EventDestination } from "../outbox-relay";
+import { USER_TARGET_TYPES } from "../audit-target-types";
+import { buildRequestAuth } from "../request-auth";
 
 const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
 
@@ -57,6 +59,10 @@ interface StreamDelivery {
 }
 
 function toPayload(event: AuditEvent): LogStreamPayload {
+  const auth = buildRequestAuth(event.actor);
+  const userId =
+    (USER_TARGET_TYPES.has(event.target?.type) && event.target?.id) ||
+    event.actor.id;
   return {
     log_id: event.id,
     description: event.description,
@@ -67,14 +73,14 @@ function toPayload(event: AuditEvent): LogStreamPayload {
       tenant_name: event.tenant_id,
       ip: event.request.ip,
       user_agent: event.request.user_agent,
-      user_id: event.actor.id,
+      user_id: userId,
       user_name: event.actor.email,
       client_id: event.actor.client_id,
       connection: event.connection,
       strategy: event.strategy,
       strategy_type: event.strategy_type,
       audience: event.audience,
-      scope: event.scope || event.actor.scopes?.join(" "),
+      scope: event.scope,
       hostname: event.hostname,
       auth0_client: event.auth0_client,
       location_info: event.location,
@@ -85,6 +91,7 @@ function toPayload(event: AuditEvent): LogStreamPayload {
           path: event.request.path,
           qs: event.request.query,
           body: event.request.body,
+          ...(auth ? { auth } : {}),
           ...(event.request.redirect_uri
             ? { redirect_uri: event.request.redirect_uri }
             : {}),

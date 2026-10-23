@@ -54,6 +54,7 @@ export type Variables = {
     org_id?: string;
     scope?: string;
     aud?: string | string[];
+    jti?: string;
   };
   // Organization claims from token (set by auth middleware)
   organization_id?: string;

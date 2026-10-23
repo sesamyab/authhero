@@ -13,6 +13,9 @@ export const actorSchema = z.object({
   type: z.enum(["user", "admin", "system", "api_key", "client_credentials"]),
   id: z.string().optional(),
   email: z.string().optional(),
+  name: z.string().optional(),
+  /** `jti` of the access token the caller authenticated with, when present. */
+  jti: z.string().optional(),
   org_id: z.string().optional(),
   org_name: z.string().optional(),
   scopes: z.array(z.string()).optional(),

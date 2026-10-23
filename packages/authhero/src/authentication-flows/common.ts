@@ -399,6 +399,10 @@ export async function createAuthTokens(
     aud: audience,
     scope: authParams.scope || "",
     sub: user?.user_id || authParams.client_id,
+    // The calling client; the management API records it as the log's client_id.
+    azp: authParams.client_id,
+    // Lets audit logs identify the exact token a management call used.
+    jti: nanoid(),
     iss,
     // From the client, not the request: the claim must always name the
     // issuing tenant, since shared signing keys mean the signature alone

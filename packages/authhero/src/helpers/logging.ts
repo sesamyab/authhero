@@ -12,6 +12,7 @@ import { waitUntil } from "./wait-until";
 import { instanceToJson } from "../utils/instance-to-json";
 import { getConnectionInfo } from "./connection";
 import { USER_TARGET_TYPES } from "./audit-target-types";
+import { buildRequestAuth } from "./request-auth";
 
 /**
  * Fields fully replaced with [REDACTED] in entity state and request bodies.
@@ -254,6 +255,10 @@ type LogEnrichment = {
   connection: string;
   client_name: string;
   user_name: string;
+  /** Email/name of the management API caller, resolved from the data layer
+   *  when the token doesn't carry them. */
+  actor_email?: string;
+  actor_name?: string;
 };
 
 /**
@@ -278,7 +283,7 @@ async function resolveLogEnrichment(
     USER_TARGET_TYPES.has(params.targetType) &&
     !!params.targetId;
 
-  const [connectionInfo, client_name, user_name] = await Promise.all([
+  const [connectionInfo, client_name, user_name, actor] = await Promise.all([
     (async () => {
       if (!connectionName) return undefined;
       return getConnectionInfo(ctx, tenantId, connectionName);
@@ -310,6 +315,17 @@ async function resolveLogEnrichment(
         return "";
       }
     })(),
+    (async (): Promise<{ email?: string; name?: string }> => {
+      // Only management callers authenticated with a user token need this.
+      const callerId = ctx.var.user_id;
+      if (!ctx.var.user || !callerId || ctx.var.username) return {};
+      try {
+        const user = await ctx.env.data.users.get(tenantId, callerId);
+        return { email: user?.email, name: user?.name };
+      } catch {
+        return {};
+      }
+    })(),
   ]);
 
   // Only correct the connection *name* when the request carried the generic
@@ -327,6 +343,8 @@ async function resolveLogEnrichment(
     connection,
     client_name,
     user_name,
+    actor_email: actor.email,
+    actor_name: actor.name,
   };
 }
 
@@ -384,7 +402,13 @@ function buildAuditEvent(
               : "system",
       id: ctx.var.user_id || params.actorUserId || params.userId || undefined,
       email:
-        ctx.var.username || params.username || actorEmailFallback || undefined,
+        ctx.var.username ||
+        params.username ||
+        enrichment?.actor_email ||
+        actorEmailFallback ||
+        undefined,
+      name: enrichment?.actor_name || undefined,
+      jti: ctx.var.user?.jti || undefined,
       org_id: ctx.var.organization_id || ctx.var.user?.org_id || undefined,
       org_name: ctx.var.org_name || ctx.var.user?.org_name || undefined,
       scopes: ctx.var.user?.scope ? ctx.var.user.scope.split(" ") : undefined,
@@ -524,6 +548,12 @@ export async function logMessage(
       resolveLogEnrichment(ctx, tenantId, params),
     ]);
 
+    // Caller identity for management API calls, like Auth0's
+    // details.request.auth (top-level user_id stays the target).
+    const auth = buildRequestAuth(
+      buildAuditEvent(ctx, tenantId, params, enrichment).actor,
+    );
+
     const log: LogInsert = {
       type: params.type,
       description: params.description || "",
@@ -538,6 +568,7 @@ export async function logMessage(
             path: ctx.req.path,
             qs: ctx.req.queries(),
             body: redactBody(params.body || ctx.var.body || ""),
+            ...(auth ? { auth } : {}),
             ...(params.redirect_uri
               ? { redirect_uri: params.redirect_uri }
               : {}),

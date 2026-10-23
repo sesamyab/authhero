@@ -620,12 +620,10 @@ export interface AuthHeroConfig {
    * calling client's id, so a hook-supplied value lands in the request context
    * where a registered client id is expected.
    *
-   * The flag exists because reserving the name is not a no-op for a deployment
-   * that was already using it: the mint never emits `azp` itself, so a hook
-   * was the only thing writing it, and reserving it deletes the claim from
-   * every token rather than restoring a server-computed value. Turning this on
-   * keeps those tokens intact while the services reading `azp` are moved onto
-   * a claim the hook owns.
+   * The flag exists for deployments whose hooks already wrote a tenant-owned
+   * `azp` before the mint started emitting the calling client's id as `azp`.
+   * Turning it on lets the hook value replace the client id in the token while
+   * the services reading `azp` are moved onto a claim the hook owns.
    *
    * **Transitional.** Enable it only where the hooks writing `azp` are
    * first-party code, and turn it off once the migration is done.

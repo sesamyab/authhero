@@ -273,14 +273,12 @@ describe("reserved claims", () => {
         session_id: "session_id",
       });
 
-      // The mint never emits `azp` itself, so reserving it removes the claim
-      // outright rather than restoring a server-computed value — which is the
-      // whole reason the flag exists.
+      // The hook's value is dropped and the server-computed client id stays.
       const payload = parseJWT(tokens.access_token)!.payload as Record<
         string,
         unknown
       >;
-      expect(payload.azp).toBeUndefined();
+      expect(payload.azp).toBe("clientId");
     });
 
     it("also releases azp through the params.customClaims path", async () => {

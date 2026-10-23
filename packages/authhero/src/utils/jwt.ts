@@ -166,6 +166,7 @@ export interface JwtPayload {
   scope: string;
   permissions?: string[];
   azp?: string;
+  jti?: string;
   tenant_id?: string;
   org_id?: string;
   org_name?: string;

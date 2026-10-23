@@ -6,6 +6,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { EventDestination } from "../outbox-relay";
 import { USER_TARGET_TYPES } from "../audit-target-types";
+import { buildRequestAuth } from "../request-auth";
 
 /**
  * Transforms AuditEvent into LogInsert for the existing logs table.
@@ -13,6 +14,7 @@ import { USER_TARGET_TYPES } from "../audit-target-types";
  * endpoints continue to work unchanged.
  */
 function toLogInsert(event: AuditEvent): LogInsert {
+  const auth = buildRequestAuth(event.actor);
   const userId =
     (USER_TARGET_TYPES.has(event.target?.type) && event.target?.id) ||
     event.actor.id ||
@@ -33,7 +35,7 @@ function toLogInsert(event: AuditEvent): LogInsert {
     strategy: event.strategy,
     strategy_type: event.strategy_type,
     audience: event.audience || "",
-    scope: event.scope || event.actor.scopes?.join(" "),
+    scope: event.scope,
     hostname: event.hostname,
     auth0_client: event.auth0_client,
     isMobile: event.is_mobile || false,
@@ -45,6 +47,7 @@ function toLogInsert(event: AuditEvent): LogInsert {
         path: event.request.path,
         qs: event.request.query,
         body: event.request.body,
+        ...(auth ? { auth } : {}),
         ...(event.request.redirect_uri
           ? { redirect_uri: event.request.redirect_uri }
           : {}),
