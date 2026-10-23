@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { getTestServer } from "../../helpers/test-server";
-import { withLoginPartials } from "../../../src/routes/universal-login/screens/login-partials";
-import type { ScreenContext } from "../../../src/routes/universal-login/screens/types";
 
 const TERMS = '<p><a href="https://example.com/terms">Terms</a></p>';
 
@@ -56,31 +54,27 @@ describe("login prompt partials", () => {
     expect(body.screen.partials).toBeUndefined();
   });
 
-  it("adds the next step's partials when a handler returns it", async () => {
-    const { env } = await getTestServer();
-    await env.data.promptPartials?.set("tenantId", "login-password", {
-      "login-password": { "secondary-actions-end": TERMS },
+  it("renders login without partials when the adapter is not configured", async () => {
+    const { u2App, env } = await getTestServer({
+      wrapDataAdapter: (data) => ({ ...data, promptPartials: undefined }),
     });
-    const screen = (name: string) => ({
-      screen: { name, action: "", method: "POST" as const, components: [] },
-    });
-    const definition = withLoginPartials({
-      id: "identifier",
-      name: "Identifier",
-      handler: {
-        get: async () => screen("identifier"),
-        post: async () => ({ screen: screen("enter-password") }),
+    const session = await env.data.loginSessions.create("tenantId", {
+      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+      csrf_token: "csrf",
+      authParams: {
+        client_id: "clientId",
+        redirect_uri: "https://example.com/callback",
       },
     });
-    const context = {
-      ctx: { env },
-      tenant: { id: "tenantId" },
-    } as unknown as ScreenContext;
-
-    const result = await definition.handler.post!(context, {});
-
-    expect("screen" in result && result.screen.screen.partials).toEqual({
-      "secondary-actions-end": TERMS,
-    });
+    const response = await u2App.request(
+      `/screen/identifier?state=${encodeURIComponent(session.id)}`,
+      { headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      screen: { partials?: Record<string, string> };
+    };
+    expect(body.screen.partials).toBeUndefined();
   });
 });

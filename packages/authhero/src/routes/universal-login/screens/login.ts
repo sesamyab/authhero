@@ -17,6 +17,7 @@ import {
   isDatabaseConnectionStrategy,
 } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
+import { getLoginPartials } from "./login-partials";
 import { getLastUsedConnection } from "./types";
 import {
   getPrimaryUserByProvider,
@@ -374,6 +375,8 @@ export async function loginScreen(
     }
   }
 
+  const partials = await getLoginPartials(context, "login");
+
   const screen: UiScreen = {
     name: "login",
     // Action points to HTML endpoint for no-JS fallback
@@ -384,6 +387,7 @@ export async function loginScreen(
       clientName: client.name || "the application",
     }),
     components,
+    partials,
     messages,
     ...(links.length > 0 ? { links } : {}),
   };
