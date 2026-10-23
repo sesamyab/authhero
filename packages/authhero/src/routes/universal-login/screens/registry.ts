@@ -3,7 +3,7 @@
  */
 
 import type { ScreenDefinition, ScreenContext, ScreenResult } from "./types";
-import { withPartials } from "./partials";
+import { LOGIN_SCREEN_PARTIAL_SOURCES, withPartials } from "./partials";
 import { identifierScreenDefinition } from "./identifier";
 import { loginScreenDefinition } from "./login";
 import { emailOtpChallengeScreenDefinition } from "./email-otp-challenge";
@@ -47,21 +47,23 @@ import {
 export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   [
     "identifier",
-    withPartials(identifierScreenDefinition, [
-      { prompt: "login-id", screen: "login-id" },
-    ]),
+    withPartials(
+      identifierScreenDefinition,
+      LOGIN_SCREEN_PARTIAL_SOURCES.identifier!,
+    ),
   ],
   [
     "login",
-    withPartials(loginScreenDefinition, [{ prompt: "login", screen: "login" }]),
+    withPartials(loginScreenDefinition, LOGIN_SCREEN_PARTIAL_SOURCES.login!),
   ],
   ["email-otp-challenge", emailOtpChallengeScreenDefinition],
   ["sms-otp-challenge", smsOtpChallengeScreenDefinition],
   [
     "enter-password",
-    withPartials(enterPasswordScreenDefinition, [
-      { prompt: "login-password", screen: "login-password" },
-    ]),
+    withPartials(
+      enterPasswordScreenDefinition,
+      LOGIN_SCREEN_PARTIAL_SOURCES["enter-password"]!,
+    ),
   ],
   ["signup", signupScreenDefinition],
   ["forgot-password", forgotPasswordScreenDefinition],

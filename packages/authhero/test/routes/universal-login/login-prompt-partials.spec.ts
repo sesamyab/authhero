@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getTestServer } from "../../helpers/test-server";
+import {
+  LOGIN_SCREEN_PARTIAL_SOURCES,
+  withPartials,
+} from "../../../src/routes/universal-login/screens/partials";
+import type { ScreenContext } from "../../../src/routes/universal-login/screens/types";
 
 type ScreenBody = {
   screen: {
@@ -90,6 +95,40 @@ describe("login prompt partials", () => {
     expect(body.screen.partials?.["form-content-start"]).toContain(
       '<div class="ulp-error-info">ulp-first-name is required</div>',
     );
+  });
+});
+
+describe("login step transitions", () => {
+  it("attaches the next screen's partials when a step advances", async () => {
+    const { env } = await getTestServer();
+    await env.data.promptPartials?.set("tenantId", "login-password", {
+      "login-password": { "form-footer-end": "<p>terms</p>" },
+    });
+    const screen = (name: string) => ({
+      screen: { name, action: "", method: "POST" as const, components: [] },
+    });
+    const definition = withPartials(
+      {
+        id: "identifier",
+        name: "Identifier",
+        handler: {
+          get: async () => screen("identifier"),
+          // Handlers build the next step by calling its factory directly.
+          post: async () => ({ screen: screen("enter-password") }),
+        },
+      },
+      LOGIN_SCREEN_PARTIAL_SOURCES.identifier!,
+    );
+    const context = {
+      ctx: { env, set: () => {} },
+      tenant: { id: "tenantId" },
+    } as unknown as ScreenContext;
+
+    const result = await definition.handler.post!(context, {});
+
+    expect("screen" in result && result.screen.screen.partials).toEqual({
+      "form-footer-end": "<p>terms</p>",
+    });
   });
 });
 

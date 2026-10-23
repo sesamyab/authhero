@@ -457,6 +457,17 @@ export async function loadScreenPartials(
   return { partials: partials as UiScreen["partials"], messages };
 }
 
+/**
+ * Which stored partials each login screen shows, keyed by UiScreen name.
+ * Handlers build the next step by calling the next screen's factory directly,
+ * so a wrapper also has to attach partials to screens it did not wrap.
+ */
+export const LOGIN_SCREEN_PARTIAL_SOURCES: Record<string, PartialSource[]> = {
+  identifier: [{ prompt: "login-id", screen: "login-id" }],
+  "enter-password": [{ prompt: "login-password", screen: "login-password" }],
+  login: [{ prompt: "login", screen: "login" }],
+};
+
 async function withScreenPartials(
   result: ScreenResult,
   context: ScreenContext,
@@ -523,21 +534,22 @@ export function withPartials(
 
             context.ctx.set("login_body", prefill);
             const result = await post(context, data);
-            // Only the screen this wrapper owns gets its partials back; a
-            // successful step returns the next screen, which has its own.
-            if (
-              "screen" in result &&
-              result.screen.screen.name === definition.id
-            ) {
-              return {
-                ...result,
-                screen: await withScreenPartials(
-                  result.screen,
-                  context,
-                  sources,
-                  { prefill },
-                ),
-              };
+            // Re-renders of this screen keep the submitted values; a successful
+            // step returns the next screen, which gets its own partials.
+            if ("screen" in result) {
+              const name = result.screen.screen.name ?? "";
+              const nextSources = LOGIN_SCREEN_PARTIAL_SOURCES[name];
+              if (nextSources) {
+                return {
+                  ...result,
+                  screen: await withScreenPartials(
+                    result.screen,
+                    context,
+                    nextSources,
+                    name === definition.id ? { prefill } : {},
+                  ),
+                };
+              }
             }
             return result;
           }
