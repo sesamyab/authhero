@@ -5,6 +5,7 @@ import {
   LogType,
   AuditEventInsert,
   AuditCategory,
+  RequestAuth,
   Strategy,
 } from "@authhero/adapter-interfaces";
 import { Variables, Bindings, RequestContext } from "../types";
@@ -254,7 +255,88 @@ type LogEnrichment = {
   connection: string;
   client_name: string;
   user_name: string;
+  /** The bearer-token caller, as Auth0's `details.request.auth`. */
+  request_auth?: RequestAuth;
+  /** The caller's client id when the token is a client-credentials token that
+   *  carries no `azp` (authhero mints those with `sub` = the client id). */
+  caller_client_id?: string;
 };
+
+type CallerInfo = {
+  request_auth?: RequestAuth;
+  caller_client_id?: string;
+};
+
+/**
+ * Describe the bearer-token caller the way Auth0 does in
+ * `details.request.auth`, so a management operation records who made it even
+ * when the log's `user_id` names the target user.
+ *
+ * A token is treated as a client-credentials token when its subject looks
+ * like a client (`…@clients`, `sub === azp`, a `gty` claim) or, failing that,
+ * when the subject resolves to a client rather than a user. The caller may
+ * belong to another tenant (e.g. a control-plane admin), so lookups use the
+ * token's own `tenant_id`. Lookups that fail leave the name/email out.
+ */
+async function resolveCaller(
+  ctx: RequestContext,
+  tenantId: string,
+): Promise<CallerInfo> {
+  const token = ctx.var.user;
+  if (!token?.sub) return {};
+
+  const scopes = token.scope ? token.scope.split(" ").filter(Boolean) : [];
+  const credentials = {
+    ...(typeof token.jti === "string" ? { jti: token.jti } : {}),
+    ...(scopes.length ? { scopes } : {}),
+  };
+  const clientAuth: RequestAuth = { strategy: "jwt", credentials };
+  const callerTenantId = token.tenant_id || tenantId;
+
+  if (
+    token.sub.endsWith("@clients") ||
+    (token.azp && token.sub === token.azp) ||
+    token.gty
+  ) {
+    return {
+      request_auth: clientAuth,
+      caller_client_id: token.azp || token.sub.replace(/@clients$/, ""),
+    };
+  }
+
+  try {
+    const user = await ctx.env.data.users.get(callerTenantId, token.sub);
+    if (user) {
+      return {
+        request_auth: {
+          user: {
+            user_id: token.sub,
+            ...(user.name ? { name: user.name } : {}),
+            ...(user.email ? { email: user.email } : {}),
+          },
+          strategy: "jwt",
+          credentials,
+        },
+      };
+    }
+    if (!token.azp) {
+      const client = await ctx.env.data.clients.get(callerTenantId, token.sub);
+      if (client) {
+        return { request_auth: clientAuth, caller_client_id: token.sub };
+      }
+    }
+  } catch {
+    // Enrichment must never break log delivery.
+  }
+
+  return {
+    request_auth: {
+      user: { user_id: token.sub },
+      strategy: "jwt",
+      credentials,
+    },
+  };
+}
 
 /**
  * Resolve `connection_id`, `client_name` and `user_name` from the data layer
@@ -278,7 +360,7 @@ async function resolveLogEnrichment(
     USER_TARGET_TYPES.has(params.targetType) &&
     !!params.targetId;
 
-  const [connectionInfo, client_name, user_name] = await Promise.all([
+  const [connectionInfo, client_name, user_name, caller] = await Promise.all([
     (async () => {
       if (!connectionName) return undefined;
       return getConnectionInfo(ctx, tenantId, connectionName);
@@ -310,6 +392,7 @@ async function resolveLogEnrichment(
         return "";
       }
     })(),
+    resolveCaller(ctx, tenantId),
   ]);
 
   // Only correct the connection *name* when the request carried the generic
@@ -327,6 +410,7 @@ async function resolveLogEnrichment(
     connection,
     client_name,
     user_name,
+    ...caller,
   };
 }
 
@@ -388,7 +472,7 @@ function buildAuditEvent(
       org_id: ctx.var.organization_id || ctx.var.user?.org_id || undefined,
       org_name: ctx.var.org_name || ctx.var.user?.org_name || undefined,
       scopes: ctx.var.user?.scope ? ctx.var.user.scope.split(" ") : undefined,
-      client_id: ctx.var.client_id || undefined,
+      client_id: ctx.var.client_id || enrichment?.caller_client_id || undefined,
     },
 
     target: {
@@ -417,6 +501,7 @@ function buildAuditEvent(
       ...(params.authorization_url
         ? { authorization_url: params.authorization_url }
         : {}),
+      ...(enrichment?.request_auth ? { auth: enrichment.request_auth } : {}),
     },
 
     response: params.response
@@ -541,6 +626,9 @@ export async function logMessage(
             ...(params.redirect_uri
               ? { redirect_uri: params.redirect_uri }
               : {}),
+            ...(enrichment.request_auth
+              ? { auth: enrichment.request_auth }
+              : {}),
           },
           ...(params.response && {
             response: params.response,
@@ -550,7 +638,7 @@ export async function logMessage(
         ...(loginSessionId ? { login_session_id: loginSessionId } : {}),
       },
       isMobile: false,
-      client_id: ctx.var.client_id,
+      client_id: ctx.var.client_id || enrichment.caller_client_id,
       client_name: enrichment.client_name,
       // For user-targeted management operations (e.g. "Delete a User"), record
       // the affected user as user_id — matching Auth0 — rather than the actor.

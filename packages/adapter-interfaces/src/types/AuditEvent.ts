@@ -33,6 +33,31 @@ export const targetSchema = z.object({
 
 export type Target = z.infer<typeof targetSchema>;
 
+/**
+ * The authenticated caller of a bearer-token request, mirroring Auth0's
+ * `details.request.auth` on `sapi` logs. `user` is set when the token was
+ * issued to a user and omitted for client-credentials tokens. Absent on
+ * requests that carry no bearer token, such as login flows.
+ */
+export const requestAuthSchema = z.object({
+  user: z
+    .object({
+      user_id: z.string(),
+      name: z.string().optional(),
+      email: z.string().optional(),
+    })
+    .optional(),
+  strategy: z.string(),
+  credentials: z
+    .object({
+      jti: z.string().optional(),
+      scopes: z.array(z.string()).optional(),
+    })
+    .optional(),
+});
+
+export type RequestAuth = z.infer<typeof requestAuthSchema>;
+
 export const requestContextSchema = z.object({
   method: z.string(),
   path: z.string(),
@@ -50,6 +75,8 @@ export const requestContextSchema = z.object({
    * into the logs table, since it can be large and carries `login_hint`.
    */
   authorization_url: z.string().optional(),
+  /** Who made the request, for bearer-token (management API) calls. */
+  auth: requestAuthSchema.optional(),
 });
 
 export type RequestContext = z.infer<typeof requestContextSchema>;
