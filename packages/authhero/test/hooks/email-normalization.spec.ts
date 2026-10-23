@@ -474,3 +474,68 @@ describe("account linking with padded emails", () => {
     expect(candidates.map((c) => c.user_id)).toEqual([primary.user_id]);
   });
 });
+
+// Social/enterprise callbacks pass the upstream `sub`, which is the stable
+// identity. The stored email can drift from what the IdP sends (#1575).
+describe("getOrCreateUserByProvider subject lookup", () => {
+  it("finds a social user whose stored email no longer matches the IdP's", async () => {
+    const { env } = await getTestServer();
+    const ctx = createMockCtx(env);
+    const client = await getEnrichedClient(env, "clientId", "tenantId");
+
+    await env.data.users.create("tenantId", {
+      user_id: "google-oauth2|1157516949",
+      email: "edited+10@example.com",
+      email_verified: true,
+      provider: "google-oauth2",
+      connection: "google-oauth2",
+      is_social: true,
+    });
+
+    const resolved = await getOrCreateUserByProvider(ctx, {
+      client,
+      username: "edited@example.com",
+      provider: "google-oauth2",
+      connection: "google-oauth2",
+      userId: "1157516949",
+      isSocial: true,
+    });
+
+    expect(resolved.user_id).toBe("google-oauth2|1157516949");
+    expect(resolved.email).toBe("edited+10@example.com");
+  });
+
+  it("resolves a subject-matched secondary to its primary user", async () => {
+    const { env } = await getTestServer();
+    const ctx = createMockCtx(env);
+    const client = await getEnrichedClient(env, "clientId", "tenantId");
+
+    await env.data.users.create("tenantId", {
+      user_id: "email|subject-primary",
+      email: "primary@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: "email",
+    });
+    await env.data.users.create("tenantId", {
+      user_id: "google-oauth2|2222",
+      email: "secondary-old@example.com",
+      email_verified: true,
+      provider: "google-oauth2",
+      connection: "google-oauth2",
+      is_social: true,
+      linked_to: "email|subject-primary",
+    });
+
+    const resolved = await getOrCreateUserByProvider(ctx, {
+      client,
+      username: "secondary-new@example.com",
+      provider: "google-oauth2",
+      connection: "google-oauth2",
+      userId: "2222",
+      isSocial: true,
+    });
+
+    expect(resolved.user_id).toBe("email|subject-primary");
+  });
+});

@@ -886,18 +886,37 @@ export async function getOrCreateUserByProvider(
       ? extractRootAttributesFromProfile(profileData)
       : {};
 
-  let user = await getPrimaryUserByProvider({
-    userAdapter: ctx.env.data.users,
-    tenant_id: params.client.tenant.id,
-    username,
-    provider,
-  });
+  // When the caller passes the upstream subject (social/enterprise callback,
+  // refresh-token migration) the user id is deterministic, and it is the
+  // stable identity: the stored email can drift from the IdP's (a user or
+  // admin edit, an import, an IdP-side rename). Look up by id first and only
+  // fall back to email + provider for older rows whose id isn't `provider|sub`.
+  const expectedUserId = userId ? `${provider}|${userId}` : undefined;
+  const findExistingUser = async (): Promise<User | null> => {
+    if (expectedUserId) {
+      const byId = await ctx.env.data.users.get(
+        client.tenant.id,
+        expectedUserId,
+      );
+      if (byId) {
+        return resolvePrimaryUser(ctx.env.data.users, client.tenant.id, byId);
+      }
+    }
+    return getPrimaryUserByProvider({
+      userAdapter: ctx.env.data.users,
+      tenant_id: client.tenant.id,
+      username,
+      provider,
+    });
+  };
+
+  let user = await findExistingUser();
 
   let wasCreated = false;
 
   if (!user) {
     const userData = {
-      user_id: `${provider}|${userId || userIdGenerate()}`,
+      user_id: expectedUserId ?? `${provider}|${userIdGenerate()}`,
       email:
         connection !== "sms" && username.includes("@") ? username : undefined,
       phone_number: connection === "sms" ? username : rootAttrs.phone_number,
@@ -939,12 +958,7 @@ export async function getOrCreateUserByProvider(
       if ((err as { status?: unknown })?.status !== 409) {
         throw err;
       }
-      const existing = await getPrimaryUserByProvider({
-        userAdapter: ctx.env.data.users,
-        tenant_id: client.tenant.id,
-        username,
-        provider,
-      });
+      const existing = await findExistingUser();
       if (!existing) {
         throw err;
       }
