@@ -26,6 +26,7 @@ const listQuerySchema = z.object({
   per_page: z.coerce.number().int().min(1).max(100).default(50),
   kind: tenantOperationKindSchema.optional(),
   status: tenantOperationStatusSchema.optional(),
+  rollout_id: z.string().optional(),
 });
 
 // GET /operations/{id} — one operation plus its full event timeline.
@@ -137,7 +138,7 @@ const listTenantOperations = defineRoute({
           "Operations for other tenants can only be read from the control plane",
       });
     }
-    const { page, per_page, kind, status } = ctx.req.valid("query");
+    const { page, per_page, kind, status, rollout_id } = ctx.req.valid("query");
 
     const result = await tenantOperations.list({
       tenant_id: tenantId,
@@ -145,6 +146,7 @@ const listTenantOperations = defineRoute({
       per_page,
       kind,
       status,
+      rollout_id,
     });
 
     return ctx.json(result);

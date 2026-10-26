@@ -1,97 +1,149 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Github, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import LogoMark from "@/components/Logo";
+import EarlyAccessDialog from "@/components/EarlyAccessDialog";
 import { DOCS_URL, GITHUB_URL } from "@/lib/links";
 
-const navItems = [
+interface NavItem {
+  label: string;
+  href: string;
+  external?: boolean;
+}
+
+const navItems: NavItem[] = [
+  { label: "Product", href: "/#product" },
+  { label: "Open source", href: "/#open-source" },
   { label: "Pricing", href: "/pricing" },
-  { label: "Migration", href: "/migration" },
-  { label: "Deploy", href: "/deploy" },
   { label: "Blog", href: "/blog" },
+  { label: "Docs", href: DOCS_URL, external: true },
 ];
 
+const NavItemLink = ({
+  item,
+  className,
+  onClick,
+}: {
+  item: NavItem;
+  className: string;
+  onClick?: () => void;
+}) =>
+  // Hash links stay plain anchors so the browser scrolls to the section;
+  // react-router's <Link> doesn't.
+  item.external || item.href.includes("#") ? (
+    <a
+      href={item.href}
+      {...(item.external && { target: "_blank", rel: "noopener noreferrer" })}
+      className={className}
+      onClick={onClick}
+    >
+      {item.label}
+    </a>
+  ) : (
+    <Link to={item.href} className={className} onClick={onClick}>
+      {item.label}
+    </Link>
+  );
+
 const Navbar = () => {
-  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileToggleRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-sm">
-      <div className="container flex h-14 items-center justify-between">
-        <Link to="/" className="text-lg font-semibold tracking-tight">
-          AuthHero
+    <header className="sticky top-0 z-50 w-full bg-background/90 backdrop-blur-sm">
+      <div className="page flex items-center justify-between gap-4 py-4 md:py-[22px]">
+        <Link to="/" className="flex items-center gap-2.5">
+          <LogoMark />
+          <span className="text-[21px] font-bold tracking-[-0.03em]">
+            AuthHero
+          </span>
         </Link>
 
         {/* Desktop */}
-        <nav className="hidden md:flex items-center gap-8">
+        <nav
+          aria-label="Main"
+          className="hidden items-center gap-[30px] md:flex"
+        >
           {navItems.map((item) => (
-            <Link
+            <NavItemLink
               key={item.href}
-              to={item.href}
-              className={`text-sm transition-colors hover:text-foreground ${
-                location.pathname === item.href
-                  ? "text-foreground"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {item.label}
-            </Link>
+              item={item}
+              className="text-base hover:text-muted-foreground"
+            />
           ))}
-          <a
-            href={DOCS_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Docs
-          </a>
+        </nav>
+
+        <div className="hidden items-center gap-2 md:flex">
           <a
             href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-2 px-3.5 py-2.5 text-base hover:text-muted-foreground"
           >
-            <Github className="h-5 w-5" strokeWidth={1.5} />
+            <Github className="h-[18px] w-[18px]" strokeWidth={1.75} />
+            GitHub
           </a>
-        </nav>
+          <EarlyAccessDialog
+            size="default"
+            className="h-auto rounded-[10px] px-[18px] py-[11px] text-base font-semibold"
+          >
+            Get early access
+          </EarlyAccessDialog>
+        </div>
 
         {/* Mobile toggle */}
         <button
-          className="md:hidden text-foreground"
+          ref={mobileToggleRef}
+          className="flex h-11 w-11 items-center justify-center md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle menu"
+          aria-expanded={mobileOpen}
         >
           {mobileOpen ? (
-            <X className="h-5 w-5" strokeWidth={1.5} />
+            <X className="h-5 w-5" strokeWidth={1.75} />
           ) : (
-            <Menu className="h-5 w-5" strokeWidth={1.5} />
+            <Menu className="h-5 w-5" strokeWidth={1.75} />
           )}
         </button>
       </div>
 
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <div className="md:hidden border-t border-border bg-background px-6 pb-4 pt-2 space-y-3">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              to={item.href}
-              onClick={() => setMobileOpen(false)}
-              className="block text-sm text-muted-foreground hover:text-foreground"
-            >
-              {item.label}
-            </Link>
-          ))}
-          <a
-            href={DOCS_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+      {/* Mobile menu. Hidden rather than unmounted, so closing it doesn't
+          unmount the early-access dialog its button just opened. */}
+      <div
+        className={`page space-y-1 border-t border-border bg-background pb-5 pt-3 md:hidden ${mobileOpen ? "" : "hidden"}`}
+      >
+        {navItems.map((item) => (
+          <NavItemLink
+            key={item.href}
+            item={item}
             onClick={() => setMobileOpen(false)}
-            className="block text-sm text-muted-foreground hover:text-foreground"
+            className="block py-2 text-base"
+          />
+        ))}
+        <a
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => setMobileOpen(false)}
+          className="block py-2 text-base"
+        >
+          GitHub
+        </a>
+        <div className="pt-2" onClick={() => setMobileOpen(false)}>
+          <EarlyAccessDialog
+            size="default"
+            className="h-auto w-full rounded-[10px] py-3 text-base font-semibold"
+            // The menu (and with it this trigger) is hidden by now, so hand
+            // focus back to the visible menu toggle instead.
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              mobileToggleRef.current?.focus();
+            }}
           >
-            Docs
-          </a>
+            Get early access
+          </EarlyAccessDialog>
         </div>
-      )}
+      </div>
     </header>
   );
 };

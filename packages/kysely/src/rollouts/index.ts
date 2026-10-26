@@ -1,7 +1,7 @@
 import { Kysely } from "kysely";
 import { nanoid } from "nanoid";
 import {
-  ListParams,
+  ListRolloutsParams,
   ListRolloutsResult,
   Rollout,
   RolloutInsert,
@@ -34,6 +34,8 @@ function rowToRollout(row: RolloutRow): Rollout {
     canary_tenant_ids: parseJsonColumn(row.canary_tenant_ids),
     filter: parseJsonColumn(row.filter),
     initiated_by: row.initiated_by,
+    config: parseJsonColumn(row.config),
+    paused_reason: row.paused_reason,
     created_at: row.created_at,
     updated_at: row.updated_at,
     finished_at: row.finished_at,
@@ -57,6 +59,8 @@ export function createRolloutsAdapter(db: Kysely<Database>): RolloutsAdapter {
           : null,
         filter: input.filter ? JSON.stringify(input.filter) : null,
         initiated_by: input.initiated_by ?? null,
+        config: input.config ? JSON.stringify(input.config) : null,
+        paused_reason: null,
         created_at: now,
         updated_at: now,
         finished_at: null,
@@ -76,12 +80,22 @@ export function createRolloutsAdapter(db: Kysely<Database>): RolloutsAdapter {
       return row ? rowToRollout(row) : null;
     },
 
-    async list(params: ListParams = {}): Promise<ListRolloutsResult> {
+    async list(params: ListRolloutsParams = {}): Promise<ListRolloutsResult> {
       const page = params.page ?? 0;
       const per_page = params.per_page ?? 50;
 
-      const rows = await db
-        .selectFrom("rollouts")
+      let query = db.selectFrom("rollouts");
+      if (params.kind !== undefined) {
+        query = query.where("kind", "=", params.kind);
+      }
+      if (params.status !== undefined) {
+        const statuses = Array.isArray(params.status)
+          ? params.status
+          : [params.status];
+        query = query.where("status", "in", statuses);
+      }
+
+      const rows = await query
         .selectAll()
         .orderBy("created_at", "desc")
         .orderBy("id", "desc")
@@ -109,6 +123,10 @@ export function createRolloutsAdapter(db: Kysely<Database>): RolloutsAdapter {
           : null;
       if (rollout.filter !== undefined)
         set.filter = rollout.filter ? JSON.stringify(rollout.filter) : null;
+      if (rollout.config !== undefined)
+        set.config = rollout.config ? JSON.stringify(rollout.config) : null;
+      if (rollout.paused_reason !== undefined)
+        set.paused_reason = rollout.paused_reason;
       if (rollout.finished_at !== undefined)
         set.finished_at = rollout.finished_at;
 

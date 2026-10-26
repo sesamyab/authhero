@@ -73,6 +73,7 @@ import { ticketsRoutes } from "./tickets";
 import { proxyRoutesRoutes } from "./proxy-routes";
 import { tokenExchangeProfilesRoutes } from "./token-exchange-profiles";
 import { operationRoutes, tenantOperationsRoutes } from "./tenant-operations";
+import { rolloutRoutes } from "./rollouts";
 import { tenantExportImportRoutes } from "./tenant-export-import";
 import { jobsRoutes } from "./jobs";
 import { createTenantMembersRoutes } from "./tenant-members";
@@ -702,6 +703,16 @@ export default function create(config: AuthHeroConfig) {
   ) {
     managementApp.route("/operations", operationRoutes);
     managementApp.route("/tenants/:id/operations", tenantOperationsRoutes);
+  }
+
+  // Fleet rollouts of synced config (issue #1499), alongside the operations
+  // they are made of.
+  if (
+    managementAdapter.rollouts &&
+    managementAdapter.tenantOperations &&
+    managementAdapter.tenantOperationEvents
+  ) {
+    managementApp.route("/rollouts", rolloutRoutes);
   }
 
   // Mount any additional route extensions from config

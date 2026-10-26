@@ -1,4 +1,5 @@
-import { Outlet } from "react-router-dom";
+import { useEffect } from "react";
+import { Outlet, useLocation, useNavigationType } from "react-router-dom";
 import { Head } from "vite-react-ssg";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,9 +10,21 @@ import Footer from "@/components/Footer";
 
 const queryClient = new QueryClient();
 
-const SITE_TITLE = "AuthHero — Open Source Auth for the Self-Hosted Era";
+// Client-side navigation keeps the old scroll position, so start each new page
+// at the top. Hash links and Back/Forward (POP) are left to the browser, which
+// restores the previous position itself.
+const ScrollToTop = () => {
+  const { pathname, hash } = useLocation();
+  const navigationType = useNavigationType();
+  useEffect(() => {
+    if (navigationType !== "POP" && !hash) window.scrollTo(0, 0);
+  }, [pathname, hash, navigationType]);
+  return null;
+};
+
+const SITE_TITLE = "AuthHero — Open-source auth that runs at the edge";
 const SITE_DESCRIPTION =
-  "Identity infrastructure you own. Auth0-compatible, Node-native, runs in-process. Open source under MIT.";
+  "AuthHero is an open-source OAuth and OpenID Connect server. Self-host it on Cloudflare in minutes, or let us run it for you. Auth0 SDKs work as they are.";
 
 const Layout = () => (
   <QueryClientProvider client={queryClient}>
@@ -33,6 +46,7 @@ const Layout = () => (
       </Head>
       <Toaster />
       <Sonner />
+      <ScrollToTop />
       <Navbar />
       <Outlet />
       <Footer />

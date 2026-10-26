@@ -15,7 +15,12 @@ import { Error } from "@/components/admin/error";
 import { Loading } from "@/components/admin/loading";
 import { TenantSwitcher } from "@/components/admin/tenant-switcher";
 import { GlobalSearch } from "@/components/admin/global-search";
-import { getAppName, getConfigValue } from "@/utils/runtimeConfig";
+import {
+  DEFAULT_APP_NAME,
+  getAppName,
+  getConfigValue,
+} from "@/utils/runtimeConfig";
+import { BrandMark } from "@/components/BrandMark";
 
 /**
  * AuthHero admin layout.
@@ -33,6 +38,9 @@ export const Layout = (props: CoreLayoutProps) => {
   };
   const appName = getAppName();
   const logoUrl = getConfigValue("logoUrl");
+  // The AuthHero mark is only for the unbranded admin; a deployment that sets
+  // its own appName gets a neutral initials badge instead.
+  const showBrandMark = appName === DEFAULT_APP_NAME;
   const initials = appName
     .split(/\s+/)
     .filter(Boolean)
@@ -65,10 +73,14 @@ export const Layout = (props: CoreLayoutProps) => {
               />
             ) : (
               <>
-                <span className="flex size-7 items-center justify-center rounded-md bg-brand text-brand-foreground text-[11px] font-bold tracking-tight sm:hidden">
-                  {initials || "AH"}
-                </span>
-                <span className="hidden sm:inline text-base font-bold tracking-tight">
+                {showBrandMark ? (
+                  <BrandMark className="size-7" />
+                ) : (
+                  <span className="flex size-7 items-center justify-center rounded-md bg-brand text-brand-foreground text-[11px] font-bold tracking-tight sm:hidden">
+                    {initials || "AH"}
+                  </span>
+                )}
+                <span className="hidden sm:inline text-lg font-bold tracking-[-0.03em]">
                   {appName}
                 </span>
               </>
@@ -111,7 +123,7 @@ export const Layout = (props: CoreLayoutProps) => {
               "peer-data-[state=expanded]:w-[calc(100%-var(--sidebar-width))]",
               "sm:transition-[width] sm:duration-200 sm:ease-linear",
               "flex flex-col",
-              "overflow-auto",
+              "overflow-auto bg-canvas",
             )}
           >
             <ErrorBoundary
@@ -125,7 +137,7 @@ export const Layout = (props: CoreLayoutProps) => {
               )}
             >
               <Suspense fallback={<Loading />}>
-                <div className="flex flex-1 flex-col px-4 py-3 sm:px-6 lg:px-8">
+                <div className="flex flex-1 flex-col px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
                   {props.children}
                 </div>
               </Suspense>

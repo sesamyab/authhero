@@ -213,7 +213,7 @@ The `inexistent_<resource>` codes are: `inexistent_invitation`,
 `inexistent_action_execution`, `inexistent_hook_code`,
 `inexistent_failed_event`, `inexistent_migration_source`,
 `inexistent_proxy_route`, `inexistent_scim_configuration`,
-`inexistent_scim_token`, `inexistent_tenant_operation` and
+`inexistent_scim_token`, `inexistent_tenant_operation`, `inexistent_rollout` and
 `inexistent_token_exchange_profile`.
 
 **Behaviour that differs from Auth0:**
@@ -226,9 +226,9 @@ The `inexistent_<resource>` codes are: `inexistent_invitation`,
 - A bearer value that isn't a JWT returns `401 invalid_token`. Auth0 returns
   `400 Bad HTTP authentication header format` with `errorCode: "Bearer"`.
 - `POST /users` permits a connection that is not stored, to support user
-  migrations. It uses the supplied `provider`, or the connection value when no
-  provider is supplied. Auth0 rejects an unknown connection with
-  `400 inexistent_connection` and `The connection does not exist.`.
+  migrations. For non-database users it uses the supplied `provider`, or the
+  connection value when no provider is supplied. Auth0 rejects an unknown
+  connection with `400 inexistent_connection` and `The connection does not exist.`.
 
 ## Login flow error codes
 

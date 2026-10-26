@@ -1,0 +1,172 @@
+/**
+ * AuthHero docs — overrides for the VitePress default theme.
+ *
+ * Same look as the admin UI and the marketing site (authhero.net):
+ *   - Ink      : near-black  (#18181B) for text, links and primary buttons
+ *   - Brand    : saffron     (#FFC93C) with ink text on top
+ *   - Neutrals : zinc greys, warm off-white for alternate surfaces
+ *   - Type     : Familjen Grotesk + JetBrains Mono
+ *
+ * Saffron is reserved for "you are here" moments (active sidebar item, active
+ * nav link) and the primary call to action. Links stay ink with a saffron
+ * underline, since saffron text is unreadable on white.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  --ah-ink: #18181b;
+  --ah-saffron: #ffc93c;
+  --ah-saffron-hover: #f5bb1f;
+
+  --vp-font-family-base:
+    "Familjen Grotesk", system-ui, -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  --vp-font-family-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --vp-c-text-1: #18181b;
+  --vp-c-text-2: #52525b;
+  --vp-c-text-3: #71717a;
+
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #fafaf9;
+  --vp-c-bg-soft: #f5f5f4;
+  --vp-c-bg-elv: #ffffff;
+
+  --vp-c-border: #d4d4d8;
+  --vp-c-divider: #e4e4e7;
+  --vp-c-gutter: #e4e4e7;
+
+  /* brand-1 colours link and active text, so it stays ink. */
+  --vp-c-brand-1: var(--ah-ink);
+  --vp-c-brand-2: #3f3f46;
+  --vp-c-brand-3: var(--ah-ink);
+  --vp-c-brand-soft: rgba(255, 201, 60, 0.18);
+
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: var(--ah-ink);
+  --vp-button-brand-bg: var(--ah-saffron);
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: var(--ah-ink);
+  --vp-button-brand-hover-bg: var(--ah-saffron-hover);
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: var(--ah-ink);
+  --vp-button-brand-active-bg: var(--ah-saffron-hover);
+
+  --vp-home-hero-name-color: var(--ah-ink);
+  --vp-home-hero-name-background: none;
+  --vp-home-hero-image-background-image: radial-gradient(
+    circle,
+    rgba(255, 201, 60, 0.55) 0%,
+    rgba(255, 201, 60, 0) 70%
+  );
+  --vp-home-hero-image-filter: blur(48px);
+
+  --vp-custom-block-tip-border: transparent;
+  --vp-custom-block-tip-bg: rgba(255, 201, 60, 0.14);
+  --vp-c-tip-1: var(--ah-ink);
+  --vp-c-tip-2: #3f3f46;
+  --vp-c-tip-3: var(--ah-ink);
+  --vp-c-tip-soft: rgba(255, 201, 60, 0.14);
+}
+
+.dark {
+  --vp-c-text-1: #fafafa;
+  --vp-c-text-2: #d4d4d8;
+  --vp-c-text-3: #a1a1aa;
+
+  --vp-c-bg: #1c1c1f;
+  --vp-c-bg-alt: #161618;
+  --vp-c-bg-soft: #27272a;
+  --vp-c-bg-elv: #27272a;
+
+  --vp-c-border: #3f3f46;
+  --vp-c-divider: #303034;
+  --vp-c-gutter: #0f0f11;
+
+  /* Saffron reads well on dark, so links and active text use it here. */
+  --vp-c-brand-1: var(--ah-saffron);
+  --vp-c-brand-2: #ffd666;
+  --vp-c-brand-3: var(--ah-saffron);
+  --vp-c-brand-soft: rgba(255, 201, 60, 0.16);
+
+  --vp-home-hero-name-color: #fafafa;
+  --vp-home-hero-image-background-image: radial-gradient(
+    circle,
+    rgba(255, 201, 60, 0.3) 0%,
+    rgba(255, 201, 60, 0) 70%
+  );
+
+  --vp-custom-block-tip-bg: rgba(255, 201, 60, 0.1);
+  --vp-c-tip-1: var(--ah-saffron);
+  --vp-c-tip-2: #ffd666;
+  --vp-c-tip-3: var(--ah-saffron);
+  --vp-c-tip-soft: rgba(255, 201, 60, 0.1);
+}
+
+h1,
+h2,
+h3,
+h4,
+.VPHero .name,
+.VPHero .text {
+  letter-spacing: -0.025em;
+}
+
+/* Body links: ink text, saffron underline. */
+.vp-doc a {
+  text-decoration-color: var(--ah-saffron);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.vp-doc a:hover {
+  color: var(--vp-c-text-1);
+  text-decoration-color: currentColor;
+}
+
+/* Active sidebar item: saffron pill with ink text, as in the admin. */
+.VPSidebarItem.is-link.is-active > .item {
+  margin: 0 -10px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--ah-saffron);
+}
+
+.VPSidebarItem.is-link.is-active > .item .link > .text {
+  color: var(--ah-ink);
+  font-weight: 600;
+}
+
+.VPSidebarItem.is-active > .item > .indicator {
+  display: none;
+}
+
+.VPSidebar .group .VPSidebarItem.level-0 > .item > .text {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+/* Active top-nav link: saffron underline. */
+.VPNavBarMenuLink.active {
+  color: var(--vp-c-text-1);
+  box-shadow: inset 0 -3px 0 var(--ah-saffron);
+}
+
+/* Outline (on this page): saffron marker for the current heading. */
+.VPDocAsideOutline .outline-marker {
+  background-color: var(--ah-saffron);
+}
+
+.VPDocAsideOutline .outline-link.active {
+  color: var(--vp-c-text-1);
+  font-weight: 600;
+}
+
+.VPFeature {
+  border-radius: 12px;
+}

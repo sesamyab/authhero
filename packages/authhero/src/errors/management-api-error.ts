@@ -190,6 +190,7 @@ export const notFound = {
     "The tenant operation does not exist.",
     "inexistent_tenant_operation",
   ),
+  rollout: notFoundError("The rollout does not exist.", "inexistent_rollout"),
   tokenExchangeProfile: notFoundError(
     "The token exchange profile does not exist.",
     "inexistent_token_exchange_profile",

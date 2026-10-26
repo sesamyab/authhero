@@ -65,6 +65,10 @@ export type {
 // executor engine is swappable.
 export * from "./operations";
 
+// Fleet rollouts of synced config (issue #1499): waves, pause/resume, drift
+// reconcile and the write trigger.
+export * from "./rollouts";
+
 // Public API - functions and types consumers actually need
 export { createSyncHooks } from "./hooks/sync";
 export type { EntitySyncConfig, SyncHooksResult } from "./hooks/sync";

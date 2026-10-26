@@ -171,6 +171,12 @@ A new `sync-defaults` operation kind on the tenant-operations machinery
 - Depth: a change at the platform level reaches grandchildren by each level re-syncing its
   own children after it applies an update, so every hop uses the same code path.
 
+Implemented (#1499): a rollout is a `rollouts` row (`kind: config-sync`, its plan in `config`)
+whose membership is its `sync-defaults` operations, created `pending` with the wave in
+`input.wave`. A stateless tick starts the current wave, checks the previous one (canary: any
+failure; later waves: `failure_threshold`), pauses with a `paused_reason`, and finishes when
+every operation is. Tenants are ordered by depth so each level is synced before the next.
+
 ### 4.3 Triggers
 
 1. **On write**: management-API writes on a publishing row enqueue a sync through the
