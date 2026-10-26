@@ -225,4 +225,18 @@ describe("config inheritance columns (kysely)", () => {
     const c = hooks.find((h) => (h as any).url?.endsWith("/c"));
     expect(c?.scope).toBe("shared");
   });
+
+  it("round-trips the config sync hash on the tenant", async () => {
+    expect(
+      (await data.tenants.get(tenantId))?.config_sync_hash,
+    ).toBeUndefined();
+    await data.tenants.update(tenantId, {
+      config_sync_hash: "abc",
+      config_synced_at: "2026-10-26T00:00:00.000Z",
+    });
+    expect(await data.tenants.get(tenantId)).toMatchObject({
+      config_sync_hash: "abc",
+      config_synced_at: "2026-10-26T00:00:00.000Z",
+    });
+  });
 });

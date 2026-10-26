@@ -315,7 +315,14 @@ export function createTenantsOpenAPIRouter(
         });
       }
 
-      let body: CreateTenantParams = ctx.req.valid("json");
+      // `config_sync_*` is written by the sync operation only: a forged hash
+      // would make a push look up to date.
+      const {
+        config_sync_hash: _hash,
+        config_synced_at: _syncedAt,
+        ...validBody
+      } = ctx.req.valid("json");
+      let body: CreateTenantParams = validBody;
 
       // Create hook context
       const hookCtx: TenantHookContext = {
@@ -568,7 +575,13 @@ export function createTenantsOpenAPIRouter(
       const updates = ctx.req.valid("json");
 
       // Strip protected system fields that should not be modified
-      const { id, ...sanitizedUpdates } = updates;
+      // `config_sync_*` is written by the sync operation only.
+      const {
+        id,
+        config_sync_hash: _hash,
+        config_synced_at: _syncedAt,
+        ...sanitizedUpdates
+      } = updates;
 
       // Get existing tenant
       const existingTenant = await getRequestData(ctx).tenants.get(

@@ -1,6 +1,10 @@
 import { eq, and } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
-import type { HookCode, HookCodeInsert } from "@authhero/adapter-interfaces";
+import type {
+  CreateOptions,
+  HookCode,
+  HookCodeInsert,
+} from "@authhero/adapter-interfaces";
 import { hookCode } from "../schema/sqlite";
 import { convertDatesToAdapter } from "../helpers/dates";
 import type { DrizzleDb } from "./types";
@@ -28,9 +32,13 @@ function sqlToHookCode(row: any): HookCode {
 
 export function createHookCodeAdapter(db: DrizzleDb) {
   return {
-    async create(tenant_id: string, input: HookCodeInsert): Promise<HookCode> {
+    async create(
+      tenant_id: string,
+      input: HookCodeInsert,
+      options?: CreateOptions,
+    ): Promise<HookCode> {
       const now = Date.now();
-      const id = generateHookCodeId();
+      const id = options?.importMetadata?.id ?? generateHookCodeId();
 
       const values = {
         id,

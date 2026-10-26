@@ -7,6 +7,7 @@ import type {
   ActionsAdapter,
   ListParams,
   ListActionsResponse,
+  CreateOptions,
 } from "@authhero/adapter-interfaces";
 import { actions } from "../schema/sqlite";
 import { parseJsonIfString } from "../helpers/transform";
@@ -77,9 +78,13 @@ function rowToAction(row: any): Action {
 
 export function createActionsAdapter(db: DrizzleDb): ActionsAdapter {
   return {
-    async create(tenant_id: string, action: ActionInsert): Promise<Action> {
+    async create(
+      tenant_id: string,
+      action: ActionInsert,
+      options?: CreateOptions,
+    ): Promise<Action> {
       const now = Date.now();
-      const id = `act_${nanoid()}`;
+      const id = options?.importMetadata?.id ?? `act_${nanoid()}`;
 
       await db.insert(actions).values({
         id,

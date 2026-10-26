@@ -223,4 +223,32 @@ describe("config inheritance columns (drizzle)", () => {
       (await data.hooks.get(tenantId, plain.hook_id))?.scope,
     ).toBeUndefined();
   });
+
+  it("keeps a given id on actions and hook_code, and round-trips the sync hash", async () => {
+    const action = await data.actions.create(
+      tenantId,
+      { name: "fixed", code: "// code" },
+      { importMetadata: { id: "act_syfixed" } },
+    );
+    expect(action.id).toBe("act_syfixed");
+    expect((await data.actions.get(tenantId, "act_syfixed"))?.name).toBe(
+      "fixed",
+    );
+
+    const code = await data.hookCode.create(
+      tenantId,
+      { code: "// hook" },
+      { importMetadata: { id: "hc_syfixed" } },
+    );
+    expect(code.id).toBe("hc_syfixed");
+
+    await data.tenants.update(tenantId, {
+      config_sync_hash: "abc",
+      config_synced_at: "2026-10-26T00:00:00.000Z",
+    });
+    expect(await data.tenants.get(tenantId)).toMatchObject({
+      config_sync_hash: "abc",
+      config_synced_at: "2026-10-26T00:00:00.000Z",
+    });
+  });
 });

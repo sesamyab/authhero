@@ -23,6 +23,20 @@ export {
   buildControlPlaneDefaultsPayload,
   applyControlPlaneDefaultsPayload,
 } from "./payload";
+export type {
+  ApplyResolvedBlockOptions,
+  ApplyResolvedBlockResult,
+  BuildResolvedBlockOptions,
+  ResolvedConfigBlock,
+  SyncEntity,
+  SyncEntityOutcome,
+} from "./resolved-sync";
+export {
+  applyResolvedConfigBlock,
+  buildResolvedConfigBlock,
+  findUndecryptableKeyIds,
+  syncedRowId,
+} from "./resolved-sync";
 
 /**
  * A control plane rollout applies the control plane's state to one or more

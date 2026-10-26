@@ -4,6 +4,7 @@ import type {
   Connection,
   EmailProvider,
   Hook,
+  HookCode,
   PromptSetting,
   ResourceServer,
 } from "authhero";
@@ -13,6 +14,8 @@ export interface ConfigRows {
   connections: Connection[];
   resourceServers: ResourceServer[];
   hooks: Hook[];
+  /** Code referenced by `code_id` of the code hooks in `hooks`. */
+  hookCode: HookCode[];
   actions: Action[];
   emailProvider: EmailProvider | null;
   branding: Branding | null;
@@ -23,6 +26,7 @@ export const emptyConfigRows = (): ConfigRows => ({
   connections: [],
   resourceServers: [],
   hooks: [],
+  hookCode: [],
   actions: [],
   emailProvider: null,
   branding: null,

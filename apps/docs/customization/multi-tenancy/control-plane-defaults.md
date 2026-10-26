@@ -388,6 +388,65 @@ During projection the secret crosses **decrypted in the rollout process's
 memory** (trusted — it runs on the control plane, which holds every key) and
 lands **re-encrypted under `cp`** in the tenant's D1.
 
+## Syncing a resolved parent chain
+
+The defaults above are written under the control plane's id. For tenants with a
+parent chain (`parent_tenant_id`, see tenant config inheritance) the payload can
+also carry a **resolved block**: the tenant's ancestors merged (nearest layer
+wins, hooks and actions add up, secrets are layered, `override` is respected)
+and materialised under the **tenant's own id**. It never contains the tenant's
+own rows.
+
+```typescript
+import {
+  buildResolvedConfigBlock,
+  applyResolvedConfigBlock,
+} from "@authhero/multi-tenancy";
+
+// On the control plane. Read through the layer that returns secrets as stored
+// (ciphertext), so they are copied without being decrypted.
+const block = await buildResolvedConfigBlock(
+  rawControlPlaneAdapters,
+  tenantId,
+  {
+    legacyControlPlane: "main", // implicit parent for tenants without parent_tenant_id
+  },
+);
+
+// On the tenant. Dry run first, then apply.
+const diff = await applyResolvedConfigBlock(block, tenantAdapters, tenantId, {
+  dryRun: true,
+});
+const result = await applyResolvedConfigBlock(block, tenantAdapters, tenantId, {
+  keyRing, // refuse before writing if a key id in the block cannot be decrypted
+});
+```
+
+- **Covers** connections, resource servers, code hooks with their `hook_code`,
+  actions, and the email provider and branding when the tenant has none.
+- **Ids:** synced rows get deterministic ids derived from the tenant, entity and
+  stable key, so a re-sync updates its own rows and never touches rows the
+  tenant owns. Hooks are pointed at the copied code.
+- **Hash:** `block.hash` is stored on the tenant (`config_sync_hash`) after a
+  fully successful apply. Applying a block with the same hash is a no-op
+  (`status: "up-to-date"`); pass `force: true` to apply anyway.
+- **Dry run:** `dryRun: true` returns added/changed/unchanged counts and the
+  changed `entity:key` list, and writes nothing.
+- **Deletes** are explicit entries (`deletes` on the build options) and are only
+  executed with `deletes: true`.
+- **Secrets** are copied as stored. Pass the tenant's `keyRing`: if it cannot
+  decrypt a key id the block carries, the apply fails before writing and names
+  the key ids (never the values). Action and hook code secrets are encrypted at
+  rest like connection secrets (see [encryption at rest](/security/encryption-at-rest)).
+- **Platform rows** (`scope: "platform"`) are included, because they have to run,
+  and listed in `block.hidden` so the management API can redact them.
+- **Limits:** prompt settings are not applied yet, and the email provider and
+  branding are only created when the tenant has none, so later changes to the
+  inherited row do not reach a tenant that already has one.
+
+`applyControlPlaneDefaultsPayload` applies a payload's `resolved` block when you
+pass `options.resolved = { tenantId, ... }`; without it the block is ignored.
+
 ## Complete setup example
 
 Three pieces wire together: the **control plane Worker** (the rollout source and

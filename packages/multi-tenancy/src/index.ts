@@ -35,6 +35,10 @@ export {
   projectControlPlaneDefaults,
   buildControlPlaneDefaultsPayload,
   applyControlPlaneDefaultsPayload,
+  applyResolvedConfigBlock,
+  buildResolvedConfigBlock,
+  findUndecryptableKeyIds,
+  syncedRowId,
 } from "./rollout";
 export type {
   ControlPlaneRolloutAdapter,
@@ -47,6 +51,12 @@ export type {
   ControlPlaneDefaultsApplyResult,
   ControlPlaneTenantSeed,
   DefaultsPayloadEntities,
+  ApplyResolvedBlockOptions,
+  ApplyResolvedBlockResult,
+  BuildResolvedBlockOptions,
+  ResolvedConfigBlock,
+  SyncEntity,
+  SyncEntityOutcome,
 } from "./rollout";
 
 // Durable tenant lifecycle operations (issue #1026) — record provisions as

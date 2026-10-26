@@ -92,6 +92,13 @@
       "when": 1792582732883,
       "tag": "0012_config_inheritance",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792995618082,
+      "tag": "0013_config_sync_hash",
+      "breakpoints": true
     }
   ]
 }
