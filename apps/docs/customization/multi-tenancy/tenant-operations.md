@@ -118,6 +118,50 @@ With the workflow hook, tenant-create returns while the tenant is still `provisi
 
 Rollout order for an existing deployment: apply the control-plane migrations, deploy the worker with both paths available, then flip tenant-create to the workflow hook.
 
+## Fleet rollouts of synced config
+
+A **rollout** syncs the config of every `config_sync: "synced"` tenant below a root tenant as one `sync-defaults` operation per tenant (their `rollout_id` is the rollout's id), in waves:
+
+- **Plan:** tenants are ordered by depth and then id, so a parent syncs before its children (that is how a change reaches grandchildren: each level has its rows in place before the next level's chain is read). Tenants whose applied hash already matches what their chain publishes are left out, unless `force` is set. Each tenant gets a `pending` operation with its wave in `input.wave`.
+- **Waves:** a canary (default 1 tenant) goes first, then cumulative percentages of the rest (default `10`, `50`, `100`). A wave is only started once the one before it has finished.
+- **Health gate:** when a wave finishes, the canary pauses the rollout on any failure and later waves when the failed fraction exceeds `failure_threshold` (default `0.1`). A paused rollout has `status: "paused"` and a `paused_reason`; nothing further starts. **Resume** accepts the failures and continues with the next wave; the tenants that failed are found again by the next drift reconcile.
+- **Ticks:** a rollout is advanced by a stateless tick that reads its state from the database, so it survives restarts and can run from several places. Creating a rollout starts the canary immediately; the rest is driven by `advanceRollouts`, which a host calls from its scheduled handler every few minutes. `max_concurrent` (default 25) bounds the operations started per tick.
+
+```http
+POST /api/v2/rollouts
+{ "root_tenant_id": "main", "canary": 1, "waves": [10, 50, 100], "failure_threshold": 0.1 }
+
+GET  /api/v2/rollouts/{id}          # status plus per-status and per-wave operation counts
+POST /api/v2/rollouts/{id}/pause    # { "reason": "..." }
+POST /api/v2/rollouts/{id}/resume
+GET  /api/v2/tenants/{id}/operations?rollout_id={id}
+```
+
+Scopes `read:rollouts`, `create:rollouts` and `update:rollouts`; control-plane only. `dry_run` previews the whole rollout without writing, `tenant_ids` limits it to some tenants, and `root_tenant_id` rolls out to one subtree. A tenant syncs when its operation runs, so a rollout reaches tenants that share the control plane's database through the inline executor and tenants with their own worker through the transport given as `syncDefaults`; pass a Workflows executor as `rolloutExecutor` to run the waves durably.
+
+### What starts a rollout
+
+1. **A write.** After an action, hook, hook code, connection or resource server is created, updated or deleted through the management API, and the row is published (`scope` `shared` or `platform`, or, for rows nobody has annotated, what read-time inheritance already shares), the tenant's change is recorded by creating or touching one pending rollout request. A burst of writes is one request, and the tick plans it once writes have been quiet for `debounce_ms` (default 60 s). A request that finds nothing out of date is removed.
+2. **The drift reconcile.** `reconcileConfigDrift` compares every synced tenant's applied hash with the hash its chain would produce now. Drifted tenants get a `cfgdrift` log (queryable per tenant with `GET /logs?q=type:cfgdrift`, with the reason `hash-mismatch` or `never-synced` and both hashes, never row content) and one rollout for the tenants no open rollout already covers. It is the safety net for writes that bypassed the hooks (direct database writes, imports) and for lost requests, and it is idempotent. Email provider and branding changes have no write hook yet and are found this way.
+3. **An operator.** `POST /rollouts` (above), or a single tenant with a `sync-defaults` operation.
+
+Wire the two library calls into the scheduled handler, with the `rollouts` value `initMultiTenant` returns:
+
+```typescript
+const { app, rollouts } = initMultiTenant({ dataAdapter, controlPlane });
+
+export default {
+  fetch: app.fetch,
+  async scheduled(_event, env) {
+    if (!rollouts) return;
+    await reconcileConfigDrift(rollouts); // lost triggers
+    await advanceRollouts(rollouts); // next wave of every open rollout
+  },
+};
+```
+
+Per-entity subscriptions are not supported: a tenant is either `synced` or not.
+
 ## Roadmap
 
-Later phases add per-tenant durable upgrades, fleet rollouts (waves + canary + health gate over the `rollouts` table), and D1 Time Travel backups — see [issue #1026](https://github.com/markusahlstrand/authhero/issues/1026).
+Later phases add per-tenant durable upgrades and D1 Time Travel backups — see [issue #1026](https://github.com/markusahlstrand/authhero/issues/1026).
