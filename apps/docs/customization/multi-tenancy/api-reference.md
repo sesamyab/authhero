@@ -527,6 +527,17 @@ const { app } = init({
 });
 ```
 
+It also enforces the publishing properties of rows a config sync copied into a tenant (rows whose id carries the `sy` marker):
+
+| Parent setting                              | A child may                                                                                                      |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `override: none`                            | not edit the row (it may delete it unless `enforce` is set)                                                      |
+| `override: secrets`                         | change only its secrets (connection secret options, a resource server's `signing_secret`, an action's `secrets`) |
+| `override: fields` (the default when unset) | edit the row                                                                                                     |
+| `enforce: true`                             | not delete the row, and not disable a hook                                                                       |
+
+Nobody can change `scope`, `override` or `enforce` of a synced copy from the child, and code copied for a hook (`hook_code`) cannot be edited or deleted there. Sending a whole record that changes nothing locked is fine. Rows the tenant owns are never locked. The guard answers `403`.
+
 Pass it through `managementApiMiddleware` so it runs inside the management API after authentication. Adding it with `app.use()` on the app returned by `init()` has no effect, because the management routes are already mounted. `initMultiTenant` installs it automatically when sync is enabled.
 
 ## Adapter Functions
