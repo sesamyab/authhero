@@ -1,6 +1,6 @@
 // Shared external link targets for the marketing site.
 export const DOCS_URL = "https://docs.authhero.net";
-export const GITHUB_URL = "https://github.com/markusahlstrand/authhero";
+export const GITHUB_URL = "https://github.com/sesamyab/authhero";
 // The AuthHero GitHub organization (all open-source repos).
 export const GITHUB_ORG_URL = "https://github.com/authhero";
 

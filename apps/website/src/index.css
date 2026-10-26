@@ -4,38 +4,43 @@
 
 @layer base {
   :root {
+    /* Ink #18181B, zinc greys and the saffron brand colour from the landing
+       page design. */
     --background: 0 0% 100%;
-    --foreground: 0 0% 0%;
+    --foreground: 240 6% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 0%;
+    --card-foreground: 240 6% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 0%;
+    --popover-foreground: 240 6% 10%;
 
-    --primary: 0 0% 0%;
+    --primary: 240 6% 10%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 0 0% 0%;
+    --secondary: 60 9% 95%;
+    --secondary-foreground: 240 6% 10%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 60 9% 95%;
+    --muted-foreground: 240 4% 34%;
 
-    --accent: 217 91% 60%;
+    --accent: 240 6% 10%;
     --accent-foreground: 0 0% 100%;
 
-    --success: 160 84% 39%;
+    --brand: 43 100% 62%;
+    --brand-foreground: 240 6% 10%;
+
+    --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 217 91% 60%;
+    --border: 240 6% 90%;
+    --input: 240 5% 84%;
+    --ring: 240 6% 10%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -44,7 +49,7 @@
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-ring: 240 6% 10%;
   }
 }
 
@@ -54,19 +59,28 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    @apply bg-background text-foreground font-sans antialiased;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    letter-spacing: -0.02em;
-    @apply font-semibold text-foreground;
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    letter-spacing: -0.025em;
+    @apply font-bold text-foreground;
   }
 }
 
 @layer utilities {
   .hairline {
     @apply border border-border;
+  }
+
+  /* The landing page's 1240px content column. */
+  .page {
+    @apply mx-auto w-full max-w-[1240px] px-4 sm:px-7;
   }
 
   .text-balance {
@@ -76,7 +90,11 @@
 
 @layer components {
   .grid-dot-bg {
-    background-image: radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px);
+    background-image: radial-gradient(
+      circle,
+      hsl(var(--border)) 1px,
+      transparent 1px
+    );
     background-size: 24px 24px;
   }
 }

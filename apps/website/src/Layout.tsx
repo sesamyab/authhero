@@ -9,9 +9,9 @@ import Footer from "@/components/Footer";
 
 const queryClient = new QueryClient();
 
-const SITE_TITLE = "AuthHero — Open Source Auth for the Self-Hosted Era";
+const SITE_TITLE = "AuthHero — Open-source auth that runs at the edge";
 const SITE_DESCRIPTION =
-  "Identity infrastructure you own. Auth0-compatible, Node-native, runs in-process. Open source under MIT.";
+  "AuthHero is an open-source OAuth and OpenID Connect server. Self-host it on Cloudflare in minutes, or let us run it for you. Auth0 SDKs work as they are.";
 
 const Layout = () => (
   <QueryClientProvider client={queryClient}>

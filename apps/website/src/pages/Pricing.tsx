@@ -11,15 +11,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  CLOUD,
-  COMMERCIAL_LICENSE_PER_YEAR,
-  formatMau,
-  formatPrice,
-  formatRate,
-  proMonthlyCost,
-  CURRENCY,
-} from "@/lib/pricing";
+import { CLOUD, formatMau } from "@/lib/pricing";
 
 // --- Tier definitions (driven by the pricing config) ------------------------
 
@@ -48,7 +40,7 @@ const selfHostedTiers: Tier[] = [
     cta: (
       <Button variant="outline" size="lg" className="w-full" asChild>
         <a
-          href="https://github.com/markusahlstrand/authhero"
+          href="https://github.com/sesamyab/authhero"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -59,9 +51,8 @@ const selfHostedTiers: Tier[] = [
   },
   {
     name: "Commercial / Sovereign",
-    price: formatPrice(COMMERCIAL_LICENSE_PER_YEAR),
-    cadence: "/year",
-    desc: "A flat annual license that removes the AGPL copyleft obligation and includes support.",
+    price: "Custom",
+    desc: "An annual license that removes the AGPL copyleft obligation and includes support.",
     featured: true,
     features: [
       "Removes AGPLv3 copyleft requirements",
@@ -101,15 +92,12 @@ const cloudTiers: Tier[] = [
   },
   {
     name: "Pro",
-    price: formatPrice(CLOUD.pro.basePerMonth),
-    cadence: "/month",
+    price: "Coming soon",
     featured: true,
-    desc: `Flat base fee including ${formatMau(CLOUD.pro.includedMau)} MAU, then linear ${formatRate(
-      CLOUD.pro.mauOverage,
-    )}/MAU — no tiered cliffs.`,
+    desc: "Usage-based pricing that grows linearly with your MAU — no tiered cliffs.",
     features: [
       `${formatMau(CLOUD.pro.includedMau)} MAU included`,
-      `Then ${formatRate(CLOUD.pro.mauOverage)} per MAU, billed linearly`,
+      "Linear per-MAU pricing above that",
       `${CLOUD.pro.ssoConnections} SSO connections`,
       "Customer-managed encryption / crypto-shredding PII vault",
       "Email support",
@@ -251,10 +239,6 @@ const MatrixCell = ({ value }: { value: CellValue }) => {
     );
   return <span className="text-sm text-muted-foreground">{value}</span>;
 };
-
-// --- Auth0 cost comparison (linear, no growth penalty) ----------------------
-
-const sampleMau = [CLOUD.pro.includedMau, 100_000, 250_000, 500_000];
 
 // --- FAQ --------------------------------------------------------------------
 
@@ -404,48 +388,6 @@ const Pricing = () => (
           * Sovereignty applies to self-hosted deployments on EU-owned
           infrastructure. Cloud tiers run on Cloudflare — see the FAQ.
         </p>
-      </FadeIn>
-    </section>
-
-    {/* Auth0 cost comparison — predictable linear pricing */}
-    <section className="container pb-24">
-      <FadeIn>
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="mb-4 text-2xl font-semibold">
-            Pricing that doesn't punish growth
-          </h2>
-          <p className="mb-8 text-muted-foreground">
-            Above the included {formatMau(CLOUD.pro.includedMau)} MAU, Cloud Pro
-            bills a flat {formatRate(CLOUD.pro.mauOverage)} for every additional
-            MAU — a straight line. There are no tier boundaries to cross and no
-            step jumps in your bill as you scale, unlike the bracketed per-MAU
-            curve typical of legacy providers like Auth0.
-          </p>
-        </div>
-        <div className="hairline mx-auto max-w-2xl rounded-lg p-8">
-          <p className="mb-6 text-center text-xs uppercase tracking-widest text-muted-foreground">
-            AuthHero Cloud Pro — estimated monthly cost
-          </p>
-          <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-            {sampleMau.map((mau) => (
-              <div key={mau} className="text-center">
-                <div className="mb-1 text-2xl font-semibold text-accent">
-                  {CURRENCY}
-                  {Math.round(proMonthlyCost(mau)).toLocaleString("en-US")}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {formatMau(mau)} MAU
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {formatPrice(CLOUD.pro.basePerMonth)}/mo base +{" "}
-            {formatRate(CLOUD.pro.mauOverage)} × (MAU above{" "}
-            {formatMau(CLOUD.pro.includedMau)}). Same rate at 60k or 600k — no
-            growth penalty.
-          </p>
-        </div>
       </FadeIn>
     </section>
 
