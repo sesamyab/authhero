@@ -397,6 +397,8 @@ export function createTenantsOpenAPIRouter(
         await hooks.tenants.afterCreate(hookCtx, tenant);
       }
 
+      config.onConfigSyncChange?.(tenant.id);
+
       return ctx.json(tenant, 201);
     },
   );
@@ -767,6 +769,10 @@ export function createTenantsOpenAPIRouter(
       await getRequestData(ctx).tenants.update(ctx.var.tenant_id, mergedTenant);
 
       // Return the updated tenant
+      if ("config_sync" in sanitizedUpdates) {
+        config.onConfigSyncChange?.(ctx.var.tenant_id);
+      }
+
       const updatedTenant = await getRequestData(ctx).tenants.get(
         ctx.var.tenant_id,
       );

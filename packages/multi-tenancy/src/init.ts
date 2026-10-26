@@ -287,6 +287,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
   // - managementDataAdapter: Raw adapter with multiTenancyConfig for access control (no fallback merging)
   let dataAdapter = rawDataAdapter;
   let managementDataAdapter = rawDataAdapter;
+  let forgetConfigSyncMode: ((tenantId: string) => void) | undefined;
 
   if (controlPlane) {
     // One per-tenant `config_sync` resolver for the auth adapter, the
@@ -301,6 +302,8 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       getTenant: async (id) => (await rawDataAdapter.tenants.get(id)) ?? null,
       controlPlaneTenantId,
     });
+
+    forgetConfigSyncMode = (tenantId) => configSync.invalidate(tenantId);
 
     dataAdapter = withRuntimeFallback(rawDataAdapter, {
       controlPlaneTenantId,
@@ -519,6 +522,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         requireOrganizationMatch,
         defaultPermissions,
       },
+      onConfigSyncChange: (tenantId) => forgetConfigSyncMode?.(tenantId),
       configSyncStatus: (tenantId) =>
         getConfigSyncStatus(
           {

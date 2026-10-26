@@ -15,7 +15,8 @@ export const DEFAULT_MAX_TENANT_DEPTH = 2;
  * longer than `maxDepth`.
  *
  * Pure with respect to storage: ancestors are read through `getTenant`.
- * Nothing reads the parent yet; this only keeps the stored tree valid.
+ * The parent decides which config a tenant inherits (see `resolveTenantChain`);
+ * this keeps the stored tree valid.
  */
 export async function validateTenantParent(params: {
   tenantId: string | undefined;

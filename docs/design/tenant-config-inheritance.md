@@ -268,6 +268,12 @@ introduce a second access system.
 
 1. Re-parenting or detaching a tenant: leave projected rows as a snapshot (proposed
    default) or remove them. An explicit "clean" option is needed either way.
+   **Decision (#1501):** snapshot is the target, but neither re-parenting nor
+   detaching is supported yet. Rows only the old parent published stay behind after a
+   re-parent, and a detached tenant keeps locked copies, because there is no `detach`
+   or `clean` operation and deletes are not sent over the dispatch transport. The
+   runbook (`apps/docs/customization/multi-tenancy/config-sync-migration.md`) says so and
+   gives the manual way out; the operation is a follow-up.
 2. Per-entity-type subscription for a child (e.g. take connections but not actions), or a
    single on/off switch to start with.
 3. Whether a pull/subscribe mode is needed for customers who do not want pushes.

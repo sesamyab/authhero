@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -440,6 +440,28 @@ describe("tenant settings: default_client_id validation", () => {
     expect(
       (await adapters.tenants.get(controlPlaneTenantId))!.config_sync,
     ).toBe("inherit-on-read");
+  });
+
+  it("tells the runtime to forget the remembered mode when it changes", async () => {
+    const forget = vi.fn();
+    const watched = { ...config, onConfigSyncChange: forget };
+    const { hooks } = setupMultiTenancy(watched);
+    const app = createHostApp({
+      config: watched,
+      hooks,
+      user: {
+        sub: "auth0|admin",
+        tenant_id: controlPlaneTenantId,
+        scope: "update:tenants",
+      },
+    });
+
+    // Not a mode change: nothing to forget.
+    await patchSettings(app, { friendly_name: "Renamed" });
+    expect(forget).not.toHaveBeenCalled();
+
+    await patchSettings(app, { config_sync: "synced" });
+    expect(forget).toHaveBeenCalledWith(controlPlaneTenantId);
   });
 
   it("rejects a mode change from a token that is not the control plane's", async () => {
