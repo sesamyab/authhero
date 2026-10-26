@@ -105,7 +105,7 @@ export function TenantDataPage() {
   return (
     <div className="space-y-6 p-4">
       <div>
-        <h1 className="text-2xl font-semibold">Import / Export</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Import / Export</h1>
         <p className="text-muted-foreground text-sm">
           Move a tenant&apos;s configuration and users between deployments.
           Sessions, refresh tokens and logs are not included; signing keys are

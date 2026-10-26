@@ -193,16 +193,17 @@
    restyling them without editing those files. */
 
 /* Page titles. The vendored List/Edit/Create/Show views render their title as
-   this exact h2; the dashboard reuses the same classes so every page title
-   is styled here and only here. */
-main h2.text-2xl.font-bold.tracking-tight {
+   an h2 with exactly these classes; custom pages (dashboard, analytics,
+   triggers, import/export) reuse them so every page title is styled here and
+   only here. */
+main :is(h1, h2).text-2xl.font-bold.tracking-tight {
   font-size: 1.875rem;
   line-height: 1.1;
   letter-spacing: -0.04em;
 }
 
 @media (min-width: 40rem) {
-  main h2.text-2xl.font-bold.tracking-tight {
+  main :is(h1, h2).text-2xl.font-bold.tracking-tight {
     font-size: 2.25rem;
   }
 }
@@ -223,45 +224,12 @@ main h2.text-2xl.font-bold.tracking-tight {
   color: var(--muted-foreground);
 }
 
-/* Tabs: underlined, with a saffron bar under the active tab. */
-The baseline is an inset shadow rather than a border,
-so
-  the
-  active
-  bar
-  can
-  sit
-  on
-  top
-  of
-  it
-  without
-  a
-  negative
-  margin
-  that
-  overflow
-  would
-  clip.
-  Triggers
-  keep
-  their
-  own
-  flex
-  sizing,
-so
-  a
-  full-width
-  list
-  still
-  shares
-  its
-  width
-  between
-  the
-  tabs.
-  */
-  [data-slot="tabs-list"] {
+/* Tabs: underlined, with a saffron bar under the active tab.
+   The baseline is an inset shadow rather than a border, so the active bar
+   can sit on top of it without a negative margin that overflow would clip.
+   Triggers keep their own flex sizing, so a full-width list still shares
+   its width between the tabs. */
+[data-slot="tabs-list"] {
   height: auto;
   max-width: 100%;
   justify-content: flex-start;

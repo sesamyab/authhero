@@ -322,7 +322,7 @@ export function ActionTriggersList() {
   return (
     <div className="p-4 flex flex-col gap-4">
       <div>
-        <h2 className="text-2xl font-semibold">Triggers</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Triggers</h2>
         <p className="text-sm text-muted-foreground">
           Attach deployed actions to triggers. Higher-priority actions run
           first.

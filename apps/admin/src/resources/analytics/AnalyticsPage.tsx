@@ -151,14 +151,13 @@ function toFilterList(value: string): string[] {
     .filter(Boolean);
 }
 
+// The theme's chart palette (globals.css), so series follow light/dark mode.
 const CHART_COLORS = [
-  "#2563eb",
-  "#dc2626",
-  "#16a34a",
-  "#9333ea",
-  "#ea580c",
-  "#0284c7",
-  "#a16207",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
 ];
 
 function pivotForTimeSeries(
@@ -254,7 +253,7 @@ export function AnalyticsPage() {
   return (
     <div className="p-4 flex flex-col gap-4">
       <div>
-        <h2 className="text-2xl font-semibold">Analytics</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Analytics</h2>
         <p className="text-sm text-muted-foreground">
           Time-series metrics for users, logins, signups, sessions, tokens, and
           more — filter by client, connection, user, or user type.

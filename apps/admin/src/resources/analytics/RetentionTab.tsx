@@ -39,23 +39,23 @@ const SOURCE_META: Record<
   },
 };
 
-// Sequential single-hue ramp (blue 100→700), more = darker. Cell fills are
-// explicit hexes so they read the same in light and dark mode; the ink is
-// flipped per step for contrast.
+// Sequential saffron ramp (the brand colour sits mid-way), more = darker.
+// Cell fills are explicit hexes so they read the same in light and dark mode;
+// the ink is flipped per step for contrast.
 const RAMP = [
-  "#cde2fb",
-  "#b7d3f6",
-  "#9ec5f4",
-  "#86b6ef",
-  "#6da7ec",
-  "#5598e7",
-  "#3987e5",
-  "#2a78d6",
-  "#256abf",
-  "#1c5cab",
-  "#184f95",
-  "#104281",
-  "#0d366b",
+  "#fff6dc",
+  "#ffefc2",
+  "#ffe7a6",
+  "#ffdd85",
+  "#ffd35f",
+  "#ffc93c",
+  "#f2b52a",
+  "#e09f1f",
+  "#c98818",
+  "#b87a17",
+  "#8e5a10",
+  "#6f450c",
+  "#523308",
 ];
 
 // Square-root scale: weekly retention drops steeply, and a linear mapping
@@ -67,9 +67,9 @@ function cellStyle(pct: number): { backgroundColor: string; color: string } {
   );
   return {
     backgroundColor: RAMP[idx],
-    // Dark ink keeps better contrast than white up through index 7 (#2a78d6);
-    // white only wins from #256abf onward.
-    color: idx >= 8 ? "#ffffff" : "#0b0b0b",
+    // Ink keeps at least 4.5:1 up through index 9 (#b87a17); white only
+    // clears it from #8e5a10 onward.
+    color: idx >= 10 ? "#ffffff" : "#18181b",
   };
 }
 
