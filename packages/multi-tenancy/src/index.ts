@@ -84,6 +84,11 @@ export {
   mergeClientWithFallback,
 } from "./middleware";
 export type { RuntimeFallbackConfig, ControlPlaneResolver } from "./middleware";
+export { createConfigSyncResolver } from "./middleware";
+export type {
+  ConfigSyncResolver,
+  ConfigSyncResolverOptions,
+} from "./middleware";
 export * from "./inheritance";
 
 export { createMultiTenancyPlugin } from "./plugin";

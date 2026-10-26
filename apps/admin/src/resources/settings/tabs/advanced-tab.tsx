@@ -4,6 +4,7 @@ import { useDelete, useNotify, useRecordContext } from "ra-core";
 import {
   ArrayInput,
   BooleanInput,
+  SelectInput,
   SimpleFormIterator,
   TextInput,
 } from "@/components/admin";
@@ -15,6 +16,31 @@ import { getBasePath } from "@/utils/runtimeConfig";
 interface TenantSettingsRecord {
   id?: string;
   is_control_plane?: boolean;
+}
+
+const CONFIG_SYNC_CHOICES = [
+  { id: "inherit-on-read", name: "Inherit on read" },
+  { id: "synced", name: "Synced" },
+];
+
+/**
+ * How the tenant gets config inherited from the control plane. The control
+ * plane itself has nothing to inherit, so it does not show the field. The
+ * server only lets a control-plane credential change it.
+ */
+function ConfigSyncInput() {
+  const record = useRecordContext<TenantSettingsRecord>();
+  if (record?.is_control_plane) return null;
+
+  return (
+    <SelectInput
+      source="config_sync"
+      label="Config sync"
+      choices={CONFIG_SYNC_CHOICES}
+      defaultValue="inherit-on-read"
+      helperText="Inherit on read: connections, hooks, email provider and system API scopes are merged in from the control plane at request time. Synced: only this tenant's own database is read; sync the control plane's config into it first. Only the control plane can change this."
+    />
+  );
 }
 
 function DeleteTenantSection() {
@@ -96,6 +122,7 @@ export function AdvancedTab() {
           <TextInput source="" label="" />
         </SimpleFormIterator>
       </ArrayInput>
+      <ConfigSyncInput />
       <DeleteTenantSection />
     </div>
   );

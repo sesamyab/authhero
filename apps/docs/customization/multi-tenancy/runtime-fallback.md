@@ -351,6 +351,52 @@ secrets, inheritable hooks, `is_system` resource server scopes, email
 providers) consult the resolver.
 :::
 
+### Per-Tenant Sync Mode (`config_sync`)
+
+Each tenant has a `config_sync` setting:
+
+| Value                                        | Behaviour                                                                                                                              |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `inherit-on-read` (default, also when unset) | The control plane's connections, hooks, email provider and system API scopes are merged in at request time, as described on this page. |
+| `synced`                                     | Only the tenant's **own database** is read. Nothing is merged from the control plane at request time.                                  |
+
+`synced` is for tenants whose config has been copied into their own database
+(see [syncing a resolved parent chain](./control-plane-defaults.md#syncing-a-resolved-parent-chain)),
+for example a tenant that moves to Workers for Platforms and can no longer read
+the control plane's database per request. The mode applies everywhere read-time
+inheritance does: the auth and management adapters, client URL merging,
+inherited actions and control-plane service tokens.
+
+```bash
+# With a control-plane token: switch a tenant to synced, and back.
+curl -X PATCH https://auth.example.com/api/v2/tenants/settings \
+  -H "authorization: Bearer $CONTROL_PLANE_TOKEN" \
+  -H "tenant-id: tenant-1" -H "content-type: application/json" \
+  -d '{"config_sync": "synced"}'
+```
+
+The admin UI exposes the same switch under **Settings → Advanced**.
+
+- **Who can change it:** only a control-plane credential. A tenant's own admin
+  sees the value, can send it back unchanged, but gets `403` when trying to
+  change it, because flipping back to `inherit-on-read` turns read-time
+  inheritance on again. In a deployment without a control plane the check is
+  skipped. A tenant created with `config_sync` set keeps it only when the
+  creator is a control-plane credential.
+- **Rollback:** set it back to `inherit-on-read`. Nothing is written to the
+  control plane by either mode, so its copy is untouched and inheritance resumes
+  immediately.
+- **Eventual consistency:** each isolate remembers a tenant's mode for 30
+  seconds, so a change reaches every instance within that time. If the lookup
+  fails the tenant keeps inheriting; a failed lookup never breaks a request.
+- **Before you flip:** make sure the tenant's database already holds what it
+  used to inherit, and use [shadow mode](#shadow-mode-for-config-inheritance) to
+  compare. `inherit: true` action stubs only resolve against the control plane
+  while the tenant is `inherit-on-read`, and client URLs from the control
+  plane's client are no longer merged in `synced` mode.
+- Shadow mode skips `synced` tenants, since comparing them with read-time
+  inheritance would only report differences.
+
 ### Shadow Mode for Config Inheritance
 
 Tenant config inheritance (parent tenants and per-row `scope`, `override` and

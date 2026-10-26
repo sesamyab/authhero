@@ -447,6 +447,17 @@ const result = await applyResolvedConfigBlock(block, tenantAdapters, tenantId, {
 `applyControlPlaneDefaultsPayload` applies a payload's `resolved` block when you
 pass `options.resolved = { tenantId, ... }`; without it the block is ignored.
 
+### Cutting a tenant over to synced config
+
+1. Build and apply the resolved block with `dryRun: true` and review the diff.
+2. Apply it for real, then run [shadow mode](./runtime-fallback.md#shadow-mode-for-config-inheritance)
+   and check the `cfgdiff` logs for unexpected differences.
+3. Set the tenant's `config_sync` to `synced` with a control-plane token (see
+   [per-tenant sync mode](./runtime-fallback.md#per-tenant-sync-mode-config-sync)).
+   The tenant now reads only its own database.
+4. To roll back, set `config_sync` back to `inherit-on-read`. The control plane
+   still holds the data, so inheritance resumes straight away.
+
 ## Complete setup example
 
 Three pieces wire together: the **control plane Worker** (the rollout source and

@@ -102,6 +102,93 @@ describe("management-api tenants", () => {
       });
     });
 
+    describe("config_sync", () => {
+      it("lets a control-plane token switch a tenant to synced and back", async () => {
+        const { env, managementClient } = await setup();
+        env.data.multiTenancyConfig = { controlPlaneTenantId: "control_plane" };
+        const token = await getAdminToken({ tenant_id: "control_plane" });
+
+        const flip = await managementClient.tenants.settings.$patch(
+          {
+            json: { config_sync: "synced" },
+            header: { "tenant-id": "tenantId" },
+          },
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+        expect(flip.status).toBe(200);
+        expect((await env.data.tenants.get("tenantId"))?.config_sync).toBe(
+          "synced",
+        );
+
+        const back = await managementClient.tenants.settings.$patch(
+          {
+            json: { config_sync: "inherit-on-read" },
+            header: { "tenant-id": "tenantId" },
+          },
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+        expect(back.status).toBe(200);
+        expect((await env.data.tenants.get("tenantId"))?.config_sync).toBe(
+          "inherit-on-read",
+        );
+      });
+
+      it("rejects a change from the tenant's own admin", async () => {
+        const { env, managementClient } = await setup();
+        env.data.multiTenancyConfig = { controlPlaneTenantId: "control_plane" };
+        const token = await getAdminToken({ tenant_id: "tenantId" });
+
+        const response = await managementClient.tenants.settings.$patch(
+          {
+            json: { config_sync: "synced" },
+            header: { "tenant-id": "tenantId" },
+          },
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+
+        expect(response.status).toBe(403);
+        expect(
+          (await env.data.tenants.get("tenantId"))?.config_sync,
+        ).toBeUndefined();
+      });
+
+      it("accepts an unchanged value from the tenant's own admin", async () => {
+        const { env, managementClient } = await setup();
+        env.data.multiTenancyConfig = { controlPlaneTenantId: "control_plane" };
+        const token = await getAdminToken({ tenant_id: "tenantId" });
+
+        const response = await managementClient.tenants.settings.$patch(
+          {
+            json: {
+              config_sync: "inherit-on-read",
+              friendly_name: "Renamed",
+            },
+            header: { "tenant-id": "tenantId" },
+          },
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+
+        expect(response.status).toBe(200);
+      });
+
+      it("allows the change in a deployment without a control plane", async () => {
+        const { env, managementClient, token } = await setup();
+
+        const response = await managementClient.tenants.settings.$patch(
+          {
+            json: { config_sync: "synced" },
+            header: { "tenant-id": "tenantId" },
+          },
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+
+        expect(response.status).toBe(200);
+        expect((await env.data.tenants.get("tenantId"))?.config_sync).toBe(
+          "synced",
+        );
+      });
+    });
+
     it("ignores an id in the body instead of renaming the tenant", async () => {
       const { env, managementClient, token } = await setup();
 

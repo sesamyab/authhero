@@ -607,8 +607,11 @@ describe("Runtime Fallback Adapter (Settings Inheritance)", () => {
       });
     });
 
-    it("exposes the resolver on multiTenancyConfig for runtime consumers", () => {
-      const resolver = () => undefined;
+    it("exposes the resolver on multiTenancyConfig for runtime consumers", async () => {
+      const resolver = ({ tenant_id }: { tenant_id: string }) =>
+        tenant_id === "isolated"
+          ? undefined
+          : { tenantId: "other-control-plane" };
       const adapter = createRuntimeFallbackAdapter(mockAdapters, {
         controlPlaneTenantId: "control-plane",
         controlPlaneClientId: "control-plane-client",
@@ -620,7 +623,13 @@ describe("Runtime Fallback Adapter (Settings Inheritance)", () => {
       expect(adapter.multiTenancyConfig?.controlPlaneTenantId).toBe(
         "control-plane",
       );
-      expect(adapter.multiTenancyConfig?.resolveControlPlane).toBe(resolver);
+      // The exposed resolver is the host's, wrapped with the per-tenant
+      // config_sync mode, so it still answers as the host's does.
+      const exposed = adapter.multiTenancyConfig?.resolveControlPlane;
+      expect(await exposed?.({ tenant_id: "isolated" })).toBeUndefined();
+      expect(await exposed?.({ tenant_id: "child" })).toEqual({
+        tenantId: "other-control-plane",
+      });
     });
 
     it("uses the resolver-returned tenant for system resource-server inheritance", async () => {

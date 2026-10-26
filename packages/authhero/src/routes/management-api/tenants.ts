@@ -116,6 +116,21 @@ const patchSettings = defineRoute({
       });
     }
 
+    // Switching how a tenant inherits config is an operator decision: a child
+    // tenant's admin must not be able to turn read-time inheritance back on.
+    // The admin UI sends the whole record, so an unchanged value is fine.
+    if (
+      "config_sync" in sanitizedUpdates &&
+      (sanitizedUpdates.config_sync ?? "inherit-on-read") !==
+        (existingTenant.config_sync ?? "inherit-on-read") &&
+      !callerIsControlPlane(ctx)
+    ) {
+      throw new HTTPException(403, {
+        message:
+          "Only the control plane can change a tenant's config_sync mode",
+      });
+    }
+
     // Only validate default_audience when the field is in the incoming
     // payload — leaves grandfathered tenants able to PATCH unrelated fields.
     if ("default_audience" in sanitizedUpdates) {
@@ -286,6 +301,27 @@ export const tenantRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
 }>().openapiRoutes([getSettings, patchSettings, redeployTenant] as const);
+
+// True when the caller's token comes from the control plane (or the deployment
+// is single-tenant, which is effectively a control plane). Organization-scoped
+// tokens are tenant-level credentials and do not count.
+export function callerIsControlPlane(ctx: {
+  env: { data: { multiTenancyConfig?: { controlPlaneTenantId?: string } } };
+  var: {
+    user?: { tenant_id?: string; org_id?: string; org_name?: string };
+    organization_id?: string;
+    org_name?: string;
+  };
+}): boolean {
+  const cpId = ctx.env.data.multiTenancyConfig?.controlPlaneTenantId;
+  if (!cpId) return true;
+  const user = ctx.var.user;
+  if (!user) return false;
+  const orgScoped = Boolean(
+    user.org_id ?? ctx.var.organization_id ?? ctx.var.org_name ?? user.org_name,
+  );
+  return !orgScoped && (!user.tenant_id || user.tenant_id === cpId);
+}
 
 // True when the current tenant is the deployment's control plane. In
 // multi-tenant deployments `multiTenancyConfig.controlPlaneTenantId` names the

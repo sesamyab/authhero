@@ -1,0 +1,1 @@
+ALTER TABLE `tenants` ADD `config_sync` text(16);

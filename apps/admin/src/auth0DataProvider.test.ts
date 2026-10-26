@@ -8,6 +8,7 @@ const { managementClient } = vi.hoisted(() => ({
     users: { list: vi.fn(), get: vi.fn() },
     resourceServers: { get: vi.fn(), update: vi.fn() },
     prompts: { partials: { get: vi.fn(), set: vi.fn() } },
+    tenants: { settings: { update: vi.fn() } },
   },
 }));
 
@@ -419,6 +420,31 @@ describe("update", () => {
     });
 
     expect(result.data).toEqual({ id: "hook-1", name: "New" });
+  });
+});
+
+describe("update for the settings resource", () => {
+  it("sends config_sync to the tenant settings endpoint", async () => {
+    managementClient.tenants.settings.update.mockResolvedValue({
+      friendly_name: "Tenant",
+      config_sync: "synced",
+    });
+    const { client } = createHttpClient(() => ({}));
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    const result = await provider.update("settings", {
+      id: "settings",
+      previousData: { id: "settings", config_sync: "inherit-on-read" },
+      data: { id: "settings", friendly_name: "Tenant", config_sync: "synced" },
+    });
+
+    expect(managementClient.tenants.settings.update).toHaveBeenCalledWith(
+      expect.objectContaining({ config_sync: "synced" }),
+    );
+    expect(result.data).toMatchObject({
+      id: "settings",
+      config_sync: "synced",
+    });
   });
 });
 

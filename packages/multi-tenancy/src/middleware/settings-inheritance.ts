@@ -11,6 +11,10 @@ import {
   InheritanceShadowOptions,
   createShadowReporter,
 } from "../inheritance/report";
+import {
+  ConfigSyncResolver,
+  createConfigSyncResolver,
+} from "./config-sync-mode";
 
 /**
  * Merges a connection with control plane fallback options.
@@ -146,7 +150,9 @@ export function mergeClientWithFallback(
  * Resolved inheritance target for a single tenant. `undefined` means the
  * tenant opts out of inheritance entirely.
  */
-type ResolvedControlPlane = { tenantId: string; clientId?: string } | undefined;
+export type ResolvedControlPlane =
+  | { tenantId: string; clientId?: string }
+  | undefined;
 
 /**
  * Per-tenant resolver for the inheritance control plane. Receives the
@@ -166,7 +172,7 @@ export type ControlPlaneResolver = (params: {
  * fully replaces the static fallback — that's the lever a caller uses to
  * disable inheritance for individual tenants by returning `undefined`.
  */
-function buildResolver(config: {
+export function buildResolver(config: {
   controlPlaneTenantId?: string;
   controlPlaneClientId?: string;
   resolveControlPlane?: ControlPlaneResolver;
@@ -351,6 +357,14 @@ export interface RuntimeFallbackConfig {
    * @default false
    */
   inheritanceShadow?: boolean | InheritanceShadowOptions;
+
+  /**
+   * Per-tenant `config_sync` mode support. Tenants in `synced` mode read only
+   * their own database. Pass a resolver to share its cache with other adapters
+   * (the management adapter); omit it and one is created. Failed lookups fall
+   * back to inheriting.
+   */
+  configSync?: ConfigSyncResolver;
 }
 
 /**
@@ -398,11 +412,19 @@ export function createRuntimeFallbackAdapter(
     resolveControlPlane,
     inheritanceShadow,
   } = config;
-  const resolveLegacy = buildResolver({
-    controlPlaneTenantId,
-    controlPlaneClientId,
-    resolveControlPlane,
-  });
+  const modes =
+    config.configSync ??
+    createConfigSyncResolver({
+      base: buildResolver({
+        controlPlaneTenantId,
+        controlPlaneClientId,
+        resolveControlPlane,
+      }),
+      getTenant: async (id) => (await baseAdapters.tenants.get(id)) ?? null,
+      controlPlaneTenantId,
+    });
+  const resolveLegacy = (tenantId: string) =>
+    modes.resolve({ tenant_id: tenantId });
   const shadow = inheritanceShadow
     ? createShadowReporter(
         baseAdapters,
@@ -412,7 +434,11 @@ export function createRuntimeFallbackAdapter(
   const resolve: typeof resolveLegacy = shadow
     ? async (tenantId) => {
         const resolved = await resolveLegacy(tenantId);
-        shadow.schedule(tenantId, resolved?.tenantId);
+        // A synced tenant reads only its own database, so comparing it with
+        // read-time inheritance would only report noise.
+        if (!(await modes.isSynced(tenantId))) {
+          shadow.schedule(tenantId, resolved?.tenantId);
+        }
         return resolved;
       }
     : resolveLegacy;
@@ -428,7 +454,10 @@ export function createRuntimeFallbackAdapter(
     multiTenancyConfig: {
       controlPlaneTenantId,
       controlPlaneClientId,
-      resolveControlPlane,
+      // Always exposed, even when the host passed none: the authhero helpers
+      // that read it (client URLs, inherited actions, service tokens) must
+      // respect a tenant's `synced` mode too.
+      resolveControlPlane: modes.resolve,
     },
 
     connections: {

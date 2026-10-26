@@ -421,6 +421,100 @@ describe("tenant settings: default_client_id validation", () => {
     ).toBeFalsy();
   });
 
+  function settingsAppAs(user: TestUser) {
+    const { hooks } = setupMultiTenancy(config);
+    return createHostApp({ config, hooks, user });
+  }
+
+  it("lets a control-plane token switch the mode, and back", async () => {
+    const app = settingsApp();
+
+    const flip = await patchSettings(app, { config_sync: "synced" });
+    expect(flip.status).toBe(200);
+    expect(
+      (await adapters.tenants.get(controlPlaneTenantId))!.config_sync,
+    ).toBe("synced");
+
+    const back = await patchSettings(app, { config_sync: "inherit-on-read" });
+    expect(back.status).toBe(200);
+    expect(
+      (await adapters.tenants.get(controlPlaneTenantId))!.config_sync,
+    ).toBe("inherit-on-read");
+  });
+
+  it("rejects a mode change from a token that is not the control plane's", async () => {
+    const app = settingsAppAs({
+      sub: "auth0|child-admin",
+      tenant_id: "child",
+      scope: "update:tenants",
+    });
+
+    const response = await patchSettings(app, { config_sync: "synced" });
+
+    expect(response.status).toBe(403);
+    expect(
+      (await adapters.tenants.get(controlPlaneTenantId))!.config_sync,
+    ).toBeUndefined();
+  });
+
+  async function createTenantAs(user: TestUser, id: string) {
+    const app = settingsAppAs(user);
+    return app.request(
+      "/management/tenants",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          friendly_name: id,
+          audience: `https://${id}.example.com`,
+          sender_email: `admin@${id}.example.com`,
+          sender_name: id,
+          config_sync: "synced",
+        }),
+      },
+      env,
+    );
+  }
+
+  it("creates a synced tenant only for a control-plane caller", async () => {
+    const byControlPlane = await createTenantAs(
+      { sub: "auth0|operator", tenant_id: controlPlaneTenantId },
+      "synced-from-cp",
+    );
+    expect(byControlPlane.status).toBe(201);
+    expect((await adapters.tenants.get("synced-from-cp"))!.config_sync).toBe(
+      "synced",
+    );
+
+    const byTenantAdmin = await createTenantAs(
+      { sub: "auth0|tenant-admin", tenant_id: "some-other-tenant" },
+      "synced-from-tenant",
+    );
+    expect(byTenantAdmin.status).toBe(201);
+    expect(
+      (await adapters.tenants.get("synced-from-tenant"))!.config_sync,
+    ).toBeUndefined();
+  });
+
+  it("accepts an unchanged mode alongside other settings from any caller", async () => {
+    await adapters.tenants.update(controlPlaneTenantId, {
+      config_sync: "inherit-on-read",
+    });
+    const app = settingsAppAs({
+      sub: "auth0|org-admin",
+      tenant_id: "child",
+      scope: "update:tenants",
+    });
+
+    const response = await patchSettings(app, {
+      config_sync: "inherit-on-read",
+      friendly_name: "Round-tripped",
+    });
+
+    expect(response.status).toBe(200);
+  });
+
   it("ignores config_sync_* fields, which only the sync operation writes", async () => {
     await adapters.tenants.update(controlPlaneTenantId, {
       config_sync_hash: "real-hash",

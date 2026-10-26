@@ -8,6 +8,7 @@ import {
   fetchAll,
   deepMergePatch,
   isInteractiveClient,
+  DataAdapters,
 } from "authhero";
 import {
   MultiTenancyBindings,
@@ -50,6 +51,21 @@ function parseCaller(user: unknown): CallerClaims | undefined {
  * security; `admin:organizations` is the broader claim the list route already
  * treats as full access, kept here so create/list/delete stay symmetric.
  */
+/**
+ * Whether the caller's token comes from the control plane (not an
+ * organization-scoped tenant credential). Deployments without a control plane
+ * are single-tenant, which is effectively one.
+ */
+function callerIsControlPlane(
+  caller: CallerClaims | undefined,
+  controlPlaneTenantId: string | undefined,
+  orgScoped: boolean,
+): boolean {
+  if (!controlPlaneTenantId) return true;
+  if (!caller || orgScoped) return false;
+  return !caller.tenant_id || caller.tenant_id === controlPlaneTenantId;
+}
+
 function callerHasGlobalTenantAdmin(caller: CallerClaims): boolean {
   const permissions = caller.permissions ?? [];
   const scopes = caller.scope ? caller.scope.split(" ").filter(Boolean) : [];
@@ -76,6 +92,24 @@ export function createTenantsOpenAPIRouter(
     Bindings: MultiTenancyBindings;
     Variables: MultiTenancyVariables;
   }>();
+
+  const isControlPlaneCaller = (ctx: {
+    var: {
+      user?: unknown;
+      data?: DataAdapters;
+      organization_id?: string;
+      org_name?: string;
+    };
+    env: { data: DataAdapters };
+  }): boolean => {
+    const caller = parseCaller(ctx.var.user);
+    return callerIsControlPlane(
+      caller,
+      config.accessControl?.controlPlaneTenantId ??
+        getRequestData(ctx).multiTenancyConfig?.controlPlaneTenantId,
+      Boolean(caller?.org_id ?? ctx.var.organization_id ?? ctx.var.org_name),
+    );
+  };
 
   // --------------------------------
   // GET / - List tenants the user has access to
@@ -320,9 +354,15 @@ export function createTenantsOpenAPIRouter(
       const {
         config_sync_hash: _hash,
         config_synced_at: _syncedAt,
+        config_sync: requestedSync,
         ...validBody
       } = ctx.req.valid("json");
       let body: CreateTenantParams = validBody;
+      // `config_sync` is an operator decision: only a control-plane caller may
+      // create a tenant that is already in `synced` mode.
+      if (requestedSync !== undefined && isControlPlaneCaller(ctx)) {
+        body = { ...body, config_sync: requestedSync };
+      }
 
       // Create hook context
       const hookCtx: TenantHookContext = {
@@ -591,6 +631,22 @@ export function createTenantsOpenAPIRouter(
       if (!existingTenant) {
         throw new HTTPException(404, {
           message: "Tenant not found",
+        });
+      }
+
+      // Switching how a tenant inherits config is an operator decision: a
+      // child tenant's admin must not be able to turn read-time inheritance
+      // back on. The admin UI sends the whole record, so an unchanged value
+      // is fine.
+      if (
+        "config_sync" in sanitizedUpdates &&
+        (sanitizedUpdates.config_sync ?? "inherit-on-read") !==
+          (existingTenant.config_sync ?? "inherit-on-read") &&
+        !isControlPlaneCaller(ctx)
+      ) {
+        throw new HTTPException(403, {
+          message:
+            "Only the control plane can change a tenant's config_sync mode",
         });
       }
 

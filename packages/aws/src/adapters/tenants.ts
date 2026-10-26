@@ -50,6 +50,7 @@ export function createTenantsAdapter(ctx: DynamoDBContext): TenantsDataAdapter {
         session_lifetime: params.session_lifetime,
         idle_session_lifetime: params.idle_session_lifetime,
         parent_tenant_id: params.parent_tenant_id,
+        config_sync: params.config_sync,
         created_at: now,
         updated_at: now,
       };
