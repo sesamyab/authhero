@@ -457,6 +457,73 @@ describe("tenant settings: default_client_id validation", () => {
     ).toBeUndefined();
   });
 
+  describe("choosing a parent", () => {
+    const childAdmin: TestUser = {
+      sub: "auth0|child-admin",
+      tenant_id: "child",
+      scope: "update:tenants create:tenants",
+    };
+
+    beforeEach(async () => {
+      await adapters.tenants.create({
+        id: "partner",
+        friendly_name: "partner",
+        audience: "https://partner.example.com",
+        sender_email: "admin@partner.example.com",
+        sender_name: "partner",
+      });
+    });
+
+    it("lets a control-plane token attach a parent", async () => {
+      const response = await patchSettings(settingsApp(), {
+        parent_tenant_id: "partner",
+      });
+      expect(response.status).toBe(200);
+      expect(
+        (await adapters.tenants.get(controlPlaneTenantId))!.parent_tenant_id,
+      ).toBe("partner");
+    });
+
+    it("rejects another token attaching or changing a parent", async () => {
+      const response = await patchSettings(settingsAppAs(childAdmin), {
+        parent_tenant_id: "partner",
+      });
+      expect(response.status).toBe(403);
+      expect(
+        (await adapters.tenants.get(controlPlaneTenantId))!.parent_tenant_id,
+      ).toBeFalsy();
+    });
+
+    it("accepts an unchanged parent from the whole record the admin UI sends", async () => {
+      await adapters.tenants.update(controlPlaneTenantId, {
+        parent_tenant_id: "partner",
+      });
+      const response = await patchSettings(settingsAppAs(childAdmin), {
+        parent_tenant_id: "partner",
+      });
+      expect(response.status).toBe(200);
+    });
+
+    it("rejects creating a tenant under a parent from another token", async () => {
+      const response = await settingsAppAs(childAdmin).request(
+        "/management/tenants",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: "grandchild",
+            friendly_name: "grandchild",
+            audience: "https://grandchild.example.com",
+            sender_email: "admin@grandchild.example.com",
+            sender_name: "grandchild",
+            parent_tenant_id: "partner",
+          }),
+        },
+      );
+      expect(response.status).toBe(403);
+    });
+  });
+
   async function createTenantAs(user: TestUser, id: string) {
     const app = settingsAppAs(user);
     return app.request(

@@ -80,6 +80,11 @@ export function TenantsCreate() {
           choices={deploymentTypeChoices}
           defaultValue="shared"
         />
+        <TextInput
+          source="parent_tenant_id"
+          label="Parent tenant"
+          helperText="Optional. The tenant this one inherits config from; empty means the control plane."
+        />
         <DeploymentFields />
       </SimpleForm>
     </Create>

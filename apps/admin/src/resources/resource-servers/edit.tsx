@@ -1,6 +1,8 @@
 import { Edit, SimpleForm } from "@/components/admin";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
+import { InheritedFieldset } from "@/components/inheritance/InheritedFieldset";
+import { PublishingFields } from "@/components/inheritance/PublishingFields";
 import { DetailsTab } from "./tabs/details-tab";
 import { RbacTab } from "./tabs/rbac-tab";
 import { ScopesTab } from "./tabs/scopes-tab";
@@ -18,7 +20,10 @@ export function ResourceServerEdit() {
             <TabsTrigger value="raw">Raw JSON</TabsTrigger>
           </TabsList>
           <TabsContent value="details" className="mt-4">
-            <DetailsTab />
+            <InheritedFieldset>
+              <DetailsTab />
+              <PublishingFields />
+            </InheritedFieldset>
           </TabsContent>
           <TabsContent value="rbac" className="mt-4">
             <RbacTab />

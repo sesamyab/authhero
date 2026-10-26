@@ -9,6 +9,7 @@ import {
 } from "ra-core";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isLockedInheritedRow } from "@/lib/syncedRows";
 import {
   Dialog,
   DialogContent,
@@ -94,9 +95,14 @@ function RemoveScopeCell() {
 }
 
 export function ScopesTab() {
-  const record = useRecordContext<{ id?: string; is_system?: boolean }>();
+  const record = useRecordContext<{
+    id?: string;
+    is_system?: boolean;
+    override?: string | null;
+  }>();
   const rsId = record?.id ? String(record.id) : undefined;
-  const isSystem = !!record?.is_system;
+  // System servers and copies whose parent allows no changes are read-only.
+  const isSystem = !!record?.is_system || isLockedInheritedRow(record);
 
   if (!rsId) return null;
 

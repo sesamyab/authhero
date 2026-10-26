@@ -459,6 +459,28 @@ export interface AuthHeroDataProvider extends DataProvider {
   ) => Promise<TenantOperationRecord>;
 
   /**
+   * Sync status of a tenant and where its inherited rows come from. A tenant
+   * can read its own; the control plane any tenant.
+   */
+  getConfigSyncStatus: (tenantId: string) => Promise<ConfigSyncStatus>;
+
+  /**
+   * Fleet rollouts of synced config (issue #1499). Control-plane routes,
+   * mounted only when the server carries the rollouts adapter.
+   */
+  listRollouts: (params?: {
+    page?: number;
+    perPage?: number;
+    status?: RolloutRecord["status"];
+  }) => Promise<{ rollouts: RolloutRecord[]; length: number }>;
+  getRollout: (
+    rolloutId: string,
+  ) => Promise<RolloutRecord & { summary: RolloutSummary }>;
+  createRollout: (input: CreateRolloutInput) => Promise<RolloutRecord>;
+  pauseRollout: (rolloutId: string, reason?: string) => Promise<RolloutRecord>;
+  resumeRollout: (rolloutId: string) => Promise<RolloutRecord>;
+
+  /**
    * Tenant-team self-management (#1137). These hit `/api/v2/tenant-members`,
    * which manages who administers THIS tenant — control-plane organization
    * membership + org-scoped roles + invitations — not the tenant's end users.
@@ -512,6 +534,54 @@ export interface TeamInvitationRecord {
   inviter?: { name?: string };
   created_at?: string;
   expires_at?: string;
+}
+
+// Wire shapes of config inheritance (issues #1495, #1499, #1500).
+export interface ConfigSyncStatus {
+  tenant_id: string;
+  parent_tenant_id: string | null;
+  config_sync: "inherit-on-read" | "synced";
+  config_sync_hash: string | null;
+  config_synced_at: string | null;
+  expected_hash: string | null;
+  drifted: boolean;
+  /** Ancestors the config resolves from, nearest first. */
+  chain: string[];
+  /** Inherited row id (or singleton name) -> the tenant that published it. */
+  inherited: Record<string, string>;
+}
+
+export interface RolloutRecord {
+  id: string;
+  kind: string;
+  status: "pending" | "canary" | "rolling" | "paused" | "done" | "failed";
+  config?: Record<string, unknown> | null;
+  paused_reason?: string | null;
+  initiated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string | null;
+}
+
+export interface RolloutSummary {
+  total: number;
+  by_status: Record<string, number>;
+  by_wave: Array<{
+    wave: number;
+    total: number;
+    by_status?: Record<string, number>;
+  }>;
+}
+
+export interface CreateRolloutInput {
+  root_tenant_id?: string;
+  tenant_ids?: string[];
+  canary?: number;
+  waves?: number[];
+  failure_threshold?: number;
+  max_concurrent?: number;
+  dry_run?: boolean;
+  force?: boolean;
 }
 
 // Wire shapes of the tenant-operations management API (issue #1026).
@@ -2957,6 +3027,64 @@ export default (
           headers: createHeaders(tenantId),
           body: JSON.stringify(input ? { kind, input } : { kind }),
         },
+      );
+      return res.json;
+    },
+
+    getConfigSyncStatus: async (targetTenantId) => {
+      const res = await httpClient(
+        `${apiUrl}/api/v2/tenants/${encodeURIComponent(targetTenantId)}/config-sync`,
+        { headers: createHeaders(tenantId) },
+      );
+      return res.json;
+    },
+
+    listRollouts: async (params) => {
+      const query = new URLSearchParams({
+        page: String((params?.page ?? 1) - 1),
+        per_page: String(params?.perPage ?? 25),
+        kind: "config-sync",
+      });
+      if (params?.status) query.set("status", params.status);
+      const res = await httpClient(`${apiUrl}/api/v2/rollouts?${query}`, {
+        headers: createHeaders(tenantId),
+      });
+      return res.json;
+    },
+
+    getRollout: async (rolloutId) => {
+      const res = await httpClient(
+        `${apiUrl}/api/v2/rollouts/${encodeURIComponent(rolloutId)}`,
+        { headers: createHeaders(tenantId) },
+      );
+      return res.json;
+    },
+
+    createRollout: async (input) => {
+      const res = await httpClient(`${apiUrl}/api/v2/rollouts`, {
+        method: "POST",
+        headers: createHeaders(tenantId),
+        body: JSON.stringify(input),
+      });
+      return res.json;
+    },
+
+    pauseRollout: async (rolloutId, reason) => {
+      const res = await httpClient(
+        `${apiUrl}/api/v2/rollouts/${encodeURIComponent(rolloutId)}/pause`,
+        {
+          method: "POST",
+          headers: createHeaders(tenantId),
+          body: JSON.stringify(reason ? { reason } : {}),
+        },
+      );
+      return res.json;
+    },
+
+    resumeRollout: async (rolloutId) => {
+      const res = await httpClient(
+        `${apiUrl}/api/v2/rollouts/${encodeURIComponent(rolloutId)}/resume`,
+        { method: "POST", headers: createHeaders(tenantId), body: "{}" },
       );
       return res.json;
     },

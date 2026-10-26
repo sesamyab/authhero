@@ -2,6 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import { useGetOne, useNotify, useRedirect } from "ra-core";
 import { Create, SimpleForm, TextInput } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { isLockedInheritedRow } from "@/lib/syncedRows";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft } from "lucide-react";
 
@@ -17,7 +18,8 @@ export function ScopeCreate() {
 
   if (!rsId) return null;
   const listPath = `/resource-servers/${rsId}`;
-  const isSystem = !!(rs as { is_system?: boolean })?.is_system;
+  const isSystem =
+    !!(rs as { is_system?: boolean })?.is_system || isLockedInheritedRow(rs);
 
   return (
     <div className="mt-4">
@@ -35,7 +37,8 @@ export function ScopeCreate() {
       {isSystem && (
         <Alert className="mb-4">
           <AlertDescription>
-            Scopes cannot be created on system Resource Servers.
+            Scopes cannot be created on this Resource Server: it is a system
+            entity or inherited from a parent tenant that allows no changes.
           </AlertDescription>
         </Alert>
       )}

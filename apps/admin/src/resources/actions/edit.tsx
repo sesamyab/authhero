@@ -3,6 +3,8 @@ import type { RaRecord } from "ra-core";
 import { Edit, SimpleForm } from "@/components/admin";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
+import { InheritedFieldset } from "@/components/inheritance/InheritedFieldset";
+import { PublishingFields } from "@/components/inheritance/PublishingFields";
 import { DetailsTab } from "./tabs/details-tab";
 import { TestTab } from "./tabs/test-tab";
 import { VersionsTab } from "./tabs/versions-tab";
@@ -46,7 +48,10 @@ export function ActionEdit() {
             <TabsTrigger value="raw">Raw JSON</TabsTrigger>
           </TabsList>
           <TabsContent value="details" className="mt-4">
-            <DetailsTab />
+            <InheritedFieldset>
+              <DetailsTab />
+              <PublishingFields />
+            </InheritedFieldset>
           </TabsContent>
           <TabsContent value="test" className="mt-4">
             <TestTab />

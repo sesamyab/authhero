@@ -96,6 +96,7 @@ describe("initMultiTenant fleet rollouts", () => {
       sub: "admin",
       tenant_id: CONTROL_PLANE,
       permissions: [
+        "read:tenants",
         "read:rollouts",
         "create:rollouts",
         "update:rollouts",
@@ -168,6 +169,34 @@ describe("initMultiTenant fleet rollouts", () => {
       kind: "sync-defaults",
       rollout_id: rollout.id,
     });
+  });
+
+  it("reports a tenant's sync status and where its rows come from", async () => {
+    const before = await json(
+      await request("GET", "/api/v2/tenants/a/config-sync"),
+    );
+    expect(before).toMatchObject({
+      tenant_id: "a",
+      config_sync: "synced",
+      config_sync_hash: null,
+      drifted: true,
+      chain: [CONTROL_PLANE],
+    });
+    expect(Object.values(before.inherited)).toEqual([CONTROL_PLANE]);
+
+    await request("POST", "/api/v2/rollouts", { canary: 0, waves: [100] });
+    const after = await json(
+      await request("GET", "/api/v2/tenants/a/config-sync"),
+    );
+    expect(after.drifted).toBe(false);
+    expect(after.config_sync_hash).toBe(after.expected_hash);
+    // The id the row has in the child is the key of the origin map.
+    const copy = (await adapters.actions.list("a", {})).actions[0]!;
+    expect(after.inherited[copy.id]).toBe(CONTROL_PLANE);
+
+    expect(
+      (await request("GET", "/api/v2/tenants/nope/config-sync")).status,
+    ).toBe(404);
   });
 
   it("pauses and resumes through the API", async () => {

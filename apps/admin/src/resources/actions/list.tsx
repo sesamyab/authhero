@@ -1,5 +1,6 @@
 import { List, DataTable } from "@/components/admin";
 import { useRecordContext } from "ra-core";
+import { InheritedBadge } from "@/components/inheritance/InheritedBadge";
 
 function TriggersCell() {
   const record = useRecordContext<{
@@ -14,7 +15,7 @@ function SourceCell() {
   if (!record) return null;
   if (record.is_system) return <>system</>;
   if (record.inherit) return <>inherited</>;
-  return <>local</>;
+  return <InheritedBadge />;
 }
 
 export function ActionList() {

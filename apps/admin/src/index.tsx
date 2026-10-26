@@ -32,6 +32,7 @@ function Root() {
   const isTenantsPath =
     relativePath === "/tenants" ||
     relativePath.startsWith("/tenants/create") ||
+    relativePath === "/tenants/rollouts" ||
     relativePath === "/tenants/" ||
     // Control-plane subpages registered as CustomRoutes inside TenantsApp —
     // without these, a full page load of their URLs would fall through to
