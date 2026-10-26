@@ -1,5 +1,48 @@
 # authhero
 
+## 9.26.0
+
+### Minor Changes
+
+- a6b9648: Management API errors now match Auth0's bodies, as a documented superset (#1585).
+  - Not-found and conflict responses use Auth0's `message` and `errorCode`
+    (e.g. `404 {"message":"The user does not exist.","errorCode":"inexistent_user"}`),
+    captured from a live Auth0 tenant. Where Auth0 sends no `errorCode`, one is
+    added (`inexistent_role`, `inexistent_organization`, …). Every addition is
+    listed under "AuthHero extensions" in the error-codes docs.
+  - Validation failures say which part of the request failed:
+    `invalid_body`, `invalid_query_string` or `invalid_uri`, in Auth0's message
+    format. A malformed JSON body returns `invalid_json`.
+  - Deleting a user, client, connection, resource server or client grant that
+    doesn't exist returns `204`, as in Auth0.
+  - A control-plane token whose `tenant-id` names a tenant that doesn't exist
+    gets `404 inexistent_tenant` instead of a misleading resource 404.
+  - The auth middleware returns Auth0's bodies: `401 Missing authentication`,
+    `403 insufficient_scope`, and `401 invalid_token` for an invalid token
+    (previously `403`).
+
+  **Breaking for string matchers:** error `message` texts changed (for example
+  `"User not found"` is now `"The user does not exist."`). Match on `errorCode`
+  instead.
+
+- 4ead040: Add a per-tenant `config_sync` mode (`inherit-on-read`, the default, or `synced`). In `synced` mode the runtime fallback adapters, system resource server scopes, client URL merging, inherited actions and control-plane service tokens read only the tenant's own database. The mode is looked up through one shared resolver with a 30 second per-isolate cache, exposed as `multiTenancyConfig.resolveControlPlane` even when the host passes none. Only a control-plane credential can change it (`403` for a tenant's own admin, unchanged values are accepted so the admin UI can round-trip the record); it can be set in the admin UI under Settings → Advanced. Shadow mode skips synced tenants. New nullable `tenants.config_sync` column (kysely migration, drizzle `0014`).
+- df0cb5b: Add the resolved config block for tenant config sync. `buildResolvedConfigBlock` merges a tenant's parent chain (actions, code hooks with their hook code, connections, resource servers and more) and `applyResolvedConfigBlock` materialises it under the tenant's own id with deterministic row ids, a content hash stored in the new `tenants.config_sync_hash` / `config_synced_at` columns (an up-to-date push is a no-op), a dry run, explicit opt-in deletes and a key-ring check that refuses to write when the tenant cannot decrypt a key id in the payload. The drizzle adapter now honours `importMetadata.id` for actions and hook code. `config_sync_*` is ignored on tenant PATCH.
+- 500811d: Encrypt action secrets and hook code secrets at rest in the encrypted data adapter (`actions.secrets[].value`, `action_versions.secrets[].value` and `hook_code.secrets`). Reads return plaintext; existing plaintext rows keep working and are encrypted the next time they are written. Adds `canDecrypt(value, ring)` to check that a key ring can decrypt a given ciphertext.
+- bc2fc83: Add staged fleet rollouts of synced config. A `config-sync` rollout syncs every synced tenant below a root as one `sync-defaults` operation per tenant, in waves (a canary, then cumulative percentages), ordered by depth so parents go before children, with a failure-rate health gate that pauses the rollout, resume, and per-wave progress. New management routes `POST/GET /rollouts`, `GET /rollouts/{id}`, `POST /rollouts/{id}/pause|resume` (scopes `read:rollouts`, `create:rollouts`, `update:rollouts`) and a `rollout_id` filter on a tenant's operations. Triggers: management-API writes to actions, hooks, hook code, connections and resource servers record a coalesced rollout request (new `actions`, `hooks` and `hookCode` entity hooks; the entity hook wrapper now passes extra create arguments through), `reconcileConfigDrift` compares each synced tenant's applied hash with its chain's current hash, writes `cfgdrift` logs and starts a rollout for what drifted, and `advanceRollouts` moves open rollouts along from a scheduled handler. `initMultiTenant` returns the `rollouts` deps and accepts a `rolloutExecutor`. The `rollouts` table gains `config` and `paused_reason` (kysely migration, drizzle control-plane `0002`).
+- d01fb3d: Hide platform-scoped rows that a config sync delivered into a tenant from that tenant's management API. Actions (with versions and executions), hooks, hook code, connections, resource servers and, for tenants that receive config, the email provider with `scope: "platform"` and a synced id are missing from lists, answer 404 on get/update/delete, cannot be referenced by hooks or bindings, and are left out of tenant exports. The MCP endpoint, which calls these routes, follows. Control-plane credentials still see them, and code hooks that run inline in a management request read an unfiltered stack (`getExecutorData`), so platform hooks keep running. `protect-synced` now also enforces `override` and `enforce` on synced copies of connections, resource servers, actions and hooks, and refuses edits to code copied for a hook. New exports: `isSyncedRowId`, `withPlatformRowsHidden`, `getExecutorData`.
+- 938f6eb: Add the `sync-defaults` tenant operation. `POST /tenants/{id}/operations` with `{ "kind": "sync-defaults", "input": { "dry_run": true } }` syncs a tenant's resolved parent-chain config into its database as a tracked operation with step events and history, returns the diff of a dry run in the operation's `result`, and leaves a queryable `failed` row (returned with `201`) when a row or the transport fails. `initMultiTenant` wires an inline executor that syncs tenants sharing the control plane's database in-process; `syncDefaults` takes a transport for tenants with their own database. On Cloudflare, `runSyncDefaultsOperation` runs it as a Workflows instance (the executor now accepts `sync-defaults`), `createDispatchSyncConfig` pushes the resolved block to the new tenant route `/internal/sync-config` (true dry run, key-ring check, no seeds or signing keys), and the reconciler resolves a completed sync correctly. Operation `input` can now be set at creation, the recorder can store a `result`, and an executor binding can list the `kinds` it runs (others answer `501`). The admin UI gets "Preview sync" and "Sync config" actions with the diff shown per operation.
+
+### Patch Changes
+
+- Updated dependencies [4ead040]
+- Updated dependencies [df0cb5b]
+- Updated dependencies [bc2fc83]
+- Updated dependencies [938f6eb]
+  - @authhero/adapter-interfaces@4.23.0
+  - @authhero/proxy@0.11.9
+  - @authhero/saml@0.6.2
+  - @authhero/widget@0.41.5
+
 ## 9.25.0
 
 ### Minor Changes

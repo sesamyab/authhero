@@ -1,5 +1,11 @@
 # @authhero/docs
 
+## 1.59.3
+
+### Patch Changes
+
+- 6b0147f: Retheme the docs site to match the website and admin: ink and saffron colours, Familjen Grotesk + JetBrains Mono, the saffron plus logo and favicon, and saffron highlights for the active sidebar item and nav link.
+
 ## 1.59.2
 
 ### Patch Changes
