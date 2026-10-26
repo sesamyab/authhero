@@ -186,6 +186,26 @@ describe("resolved config sync", () => {
     expect(on.entities.action.deleted).toBe(1);
   });
 
+  it("runs pending deletes even when the hash is unchanged", async () => {
+    await seedControlPlane();
+    const block = await buildResolvedConfigBlock(raw, CHILD, {
+      legacyControlPlane: CP,
+      deletes: [{ entity: "action", key: "enrich" }],
+    });
+    // First apply with deletes disabled: rows are written, the hash is stored.
+    await applyResolvedConfigBlock(block, raw, CHILD);
+    expect((await raw.actions.list(CHILD)).actions).toHaveLength(1);
+
+    const skipped = await applyResolvedConfigBlock(block, raw, CHILD);
+    expect(skipped.status).toBe("up-to-date");
+
+    const run = await applyResolvedConfigBlock(block, raw, CHILD, {
+      deletes: true,
+    });
+    expect(run.status).toBe("applied");
+    expect(run.entities.action.deleted).toBe(1);
+  });
+
   it("refuses to write when the key ring cannot decrypt a key id, naming only the id", async () => {
     await seedControlPlane();
     const block = await buildResolvedConfigBlock(raw, CHILD, {

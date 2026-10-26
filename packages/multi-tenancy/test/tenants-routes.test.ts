@@ -296,6 +296,41 @@ describe("tenants routes authorization", () => {
     expect(deleteResponse.status).toBe(204);
     expect(await adapters.tenants.get("created-tenant")).toBeNull();
   });
+
+  it("ignores config_sync_* fields on create", async () => {
+    const config: MultiTenancyConfig = {
+      accessControl: { controlPlaneTenantId, requireOrganizationMatch: true },
+    };
+    const { hooks } = setupMultiTenancy(config);
+    const app = createHostApp({
+      config,
+      hooks,
+      user: { sub: "auth0|creator", tenant_id: controlPlaneTenantId },
+    });
+
+    const response = await app.request(
+      "/management/tenants",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "forged-tenant",
+          friendly_name: "Forged",
+          audience: "https://forged.example.com",
+          sender_email: "admin@forged.example.com",
+          sender_name: "Forged",
+          config_sync_hash: "forged",
+          config_synced_at: "2000-01-01T00:00:00.000Z",
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(201);
+    const tenant = (await adapters.tenants.get("forged-tenant"))!;
+    expect(tenant.config_sync_hash).toBeUndefined();
+    expect(tenant.config_synced_at).toBeUndefined();
+  });
 });
 
 describe("tenant settings: default_client_id validation", () => {

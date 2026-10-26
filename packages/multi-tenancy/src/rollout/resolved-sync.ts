@@ -125,18 +125,19 @@ export async function syncedRowId(
 }
 
 /** The stable key a row is synced by (matches `mergeConfig`). */
-function keyOf(entity: SyncEntity, row: any): string {
+function keyOf(entity: SyncEntity, row: unknown): string {
+  const fields = row as Record<string, string>;
   switch (entity) {
     case "connection":
-      return `${row.strategy}:${row.name}`;
+      return `${fields.strategy}:${fields.name}`;
     case "resourceServer":
-      return row.identifier;
+      return fields.identifier!;
     case "action":
-      return row.name;
+      return fields.name!;
     case "hookCode":
-      return row.id;
+      return fields.id!;
     case "hook":
-      return row.hook_id;
+      return fields.hook_id!;
   }
 }
 
@@ -296,7 +297,15 @@ export async function applyResolvedConfigBlock(
   };
 
   const tenant = await target.tenants.get(tenantId);
-  if (!dryRun && !options.force && tenant?.config_sync_hash === block.hash) {
+  // Pending deletes still need to run when the hash matches: the hash covers
+  // them, but an earlier apply may have skipped them (deletes are opt-in).
+  const deletesPending = !!options.deletes && block.deletes.length > 0;
+  if (
+    !dryRun &&
+    !options.force &&
+    !deletesPending &&
+    tenant?.config_sync_hash === block.hash
+  ) {
     return { ...result, status: "up-to-date" };
   }
 
@@ -369,7 +378,7 @@ export async function applyResolvedConfigBlock(
     const key = keyOf("connection", row);
     const rowId = await id("connection", key);
     await attempt("connection", key, async () => {
-      const { enabled_clients: _e, ...rest } = row as any;
+      const { enabled_clients: _e, ...rest } = row;
       const desired = connectionInsertSchema.parse({ ...rest, id: rowId });
       const existing = await target.connections.get(tenantId, rowId);
       return upsert({
