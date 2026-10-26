@@ -66,7 +66,7 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-10-26T12:00:00_config_sync_hash";
+    const last = "2026-10-27T12:00:00_config_sync_mode";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
 
@@ -75,14 +75,12 @@ describe("planMigrations", () => {
     expect(plan.pending.map((it) => it.name)).toEqual([last]);
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
-    expect(output).toMatch(
-      /alter table "tenants" add column "config_sync_hash"/i,
-    );
-    expect(await columnNames(db, "tenants")).not.toContain("config_sync_hash");
+    expect(output).toMatch(/alter table "tenants" add column "config_sync"/i);
+    expect(await columnNames(db, "tenants")).not.toContain("config_sync");
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    expect(await columnNames(db, "tenants")).toContain("config_sync_hash");
+    expect(await columnNames(db, "tenants")).toContain("config_sync");
     await db.destroy();
   });
 });

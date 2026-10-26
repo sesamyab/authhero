@@ -11,6 +11,8 @@ import { createProvisioningHooks } from "./hooks";
 import { createInlineExecutor, enqueueTenantOperation } from "./operations";
 import { createTenantsOpenAPIRouter } from "./routes";
 import {
+  buildResolver,
+  createConfigSyncResolver,
   createProtectSyncedMiddleware,
   withRuntimeFallback,
   withSystemResourceServerInheritance,
@@ -244,11 +246,25 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
   let managementDataAdapter = rawDataAdapter;
 
   if (controlPlane) {
+    // One per-tenant `config_sync` resolver for the auth adapter, the
+    // management adapter and the helpers that read `multiTenancyConfig`, so a
+    // tenant in `synced` mode stops inheriting everywhere at once.
+    const configSync = createConfigSyncResolver({
+      base: buildResolver({
+        controlPlaneTenantId,
+        controlPlaneClientId,
+        resolveControlPlane,
+      }),
+      getTenant: async (id) => (await rawDataAdapter.tenants.get(id)) ?? null,
+      controlPlaneTenantId,
+    });
+
     dataAdapter = withRuntimeFallback(rawDataAdapter, {
       controlPlaneTenantId,
       controlPlaneClientId,
       resolveControlPlane,
       inheritanceShadow,
+      configSync,
     });
 
     // Management adapter gets is_system resource_server scope inheritance
@@ -256,12 +272,12 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     managementDataAdapter = {
       ...withSystemResourceServerInheritance(rawDataAdapter, {
         controlPlaneTenantId,
-        resolveControlPlane,
+        resolveControlPlane: configSync.resolve,
       }),
       multiTenancyConfig: {
         controlPlaneTenantId,
         controlPlaneClientId,
-        resolveControlPlane,
+        resolveControlPlane: configSync.resolve,
       },
     };
   }

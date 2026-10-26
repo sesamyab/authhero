@@ -99,6 +99,13 @@
       "when": 1792995618082,
       "tag": "0013_config_sync_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1792998118057,
+      "tag": "0014_config_sync_mode",
+      "breakpoints": true
     }
   ]
 }

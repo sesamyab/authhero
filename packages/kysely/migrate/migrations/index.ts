@@ -12,6 +12,7 @@ import * as tokenExchangeProfiles from "./2026-09-25T12:00:00_token_exchange_pro
 import * as promptPartials from "./2026-10-13T12:00:00_prompt_partials";
 import * as configInheritance from "./2026-10-21T12:00:00_config_inheritance";
 import * as configSyncHash from "./2026-10-26T12:00:00_config_sync_hash";
+import * as configSyncMode from "./2026-10-27T12:00:00_config_sync_mode";
 
 /**
  * Kysely runs these in key order and refuses to start if an already-executed
@@ -45,4 +46,5 @@ export default {
   "2026-10-13T12:00:00_prompt_partials": promptPartials,
   "2026-10-21T12:00:00_config_inheritance": configInheritance,
   "2026-10-26T12:00:00_config_sync_hash": configSyncHash,
+  "2026-10-27T12:00:00_config_sync_mode": configSyncMode,
 };

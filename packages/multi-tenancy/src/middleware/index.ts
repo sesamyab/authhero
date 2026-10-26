@@ -325,7 +325,13 @@ export {
   withRuntimeFallback,
   withSystemResourceServerInheritance,
   mergeClientWithFallback,
+  buildResolver,
 } from "./settings-inheritance";
+export { createConfigSyncResolver } from "./config-sync-mode";
+export type {
+  ConfigSyncResolver,
+  ConfigSyncResolverOptions,
+} from "./config-sync-mode";
 export type {
   RuntimeFallbackConfig,
   ControlPlaneResolver,

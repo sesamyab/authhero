@@ -239,4 +239,14 @@ describe("config inheritance columns (kysely)", () => {
       config_synced_at: "2026-10-26T00:00:00.000Z",
     });
   });
+
+  it("round-trips the config sync mode on the tenant", async () => {
+    expect((await data.tenants.get(tenantId))?.config_sync).toBeUndefined();
+    await data.tenants.update(tenantId, { config_sync: "synced" });
+    expect((await data.tenants.get(tenantId))?.config_sync).toBe("synced");
+    await data.tenants.update(tenantId, { config_sync: "inherit-on-read" });
+    expect((await data.tenants.get(tenantId))?.config_sync).toBe(
+      "inherit-on-read",
+    );
+  });
 });
