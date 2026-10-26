@@ -9,6 +9,7 @@ import { TenantsList } from "./resources/tenants/list";
 import { TenantsCreate } from "./resources/tenants/create";
 import { TenantMembers } from "./resources/tenants/members";
 import { TenantOperations } from "./resources/tenants/operations";
+import { Rollouts } from "./resources/tenants/rollouts";
 import { Loader2 } from "lucide-react";
 
 interface TenantsAppProps {
@@ -109,6 +110,7 @@ export function TenantsApp({ initialDomain, onAuthComplete }: TenantsAppProps) {
       <Resource name="organization-invitations" />
       <Resource name="users" />
       <CustomRoutes>
+        <Route path="/tenants/rollouts" element={<Rollouts />} />
         <Route path="/tenants/:tenantId/members" element={<TenantMembers />} />
         <Route
           path="/tenants/:tenantId/operations"

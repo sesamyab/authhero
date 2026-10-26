@@ -4,6 +4,8 @@ import { useRecordContext } from "ra-core";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
 import { isDatabaseConnectionStrategy } from "@/utils/Strategy";
+import { InheritedFieldset } from "@/components/inheritance/InheritedFieldset";
+import { PublishingFields } from "@/components/inheritance/PublishingFields";
 import { DetailsTab } from "./tabs/details-tab";
 import { AttributesTab } from "./tabs/attributes-tab";
 import { AuthenticationMethodsTab } from "./tabs/authentication-methods-tab";
@@ -47,7 +49,10 @@ function ConnectionTabs() {
         <TabsTrigger value="raw">Raw JSON</TabsTrigger>
       </TabsList>
       <TabsContent value="details" className="mt-4">
-        <DetailsTab />
+        <InheritedFieldset>
+          <DetailsTab />
+          <PublishingFields />
+        </InheritedFieldset>
       </TabsContent>
       {isDb && (
         <TabsContent value="attributes" className="mt-4">

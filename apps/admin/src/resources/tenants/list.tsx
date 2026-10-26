@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Link } from "react-router-dom";
 import { useRecordContext } from "ra-core";
-import { History, Users } from "lucide-react";
+import { History, Rocket, Users } from "lucide-react";
 import { BadgeField, DataTable, List, TextInput } from "@/components/admin";
 import { Button } from "@/components/ui/button";
 import { getBasePath } from "@/utils/runtimeConfig";
@@ -81,6 +81,17 @@ function OperationsLinkCell() {
   );
 }
 
+function RolloutsLink() {
+  return (
+    <Button asChild variant="outline" size="sm">
+      <Link to="/tenants/rollouts">
+        <Rocket className="h-4 w-4 mr-1" />
+        Rollouts
+      </Link>
+    </Button>
+  );
+}
+
 export function TenantsList() {
   const filters = [
     <TextInput key="q" source="q" placeholder="Search" label={false} />,
@@ -89,6 +100,7 @@ export function TenantsList() {
   return (
     <List
       resource="tenants"
+      actions={<RolloutsLink />}
       filters={filters}
       sort={{ field: "friendly_name", order: "ASC" }}
     >
@@ -104,6 +116,8 @@ export function TenantsList() {
         <DataTable.Col label="Status">
           <ProvisioningStateField />
         </DataTable.Col>
+        <DataTable.Col source="parent_tenant_id" label="Parent" />
+        <DataTable.Col source="config_sync" label="Config sync" />
         <DataTable.Col source="audience" />
         <DataTable.Col source="support_url" label="Support URL" />
         <DataTable.Col label="">

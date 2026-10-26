@@ -467,6 +467,39 @@ describe("createTenantOperation", () => {
   });
 });
 
+describe("config inheritance endpoints", () => {
+  it("reads the sync status of a tenant", async () => {
+    const status = { tenant_id: "acme", drifted: false, inherited: {} };
+    const { client, calls } = createHttpClient(() => status);
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    expect(await provider.getConfigSyncStatus("acme")).toEqual(status);
+    expect(calls[0]!.url).toBe(`${API_URL}/api/v2/tenants/acme/config-sync`);
+  });
+
+  it("lists, creates, pauses and resumes config-sync rollouts", async () => {
+    const { client, calls } = createHttpClient(() => ({ id: "r1" }));
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    await provider.listRollouts({ status: "paused" });
+    await provider.createRollout({ canary: 1, waves: [100], dry_run: true });
+    await provider.pauseRollout("r1", "looking");
+    await provider.resumeRollout("r1");
+
+    expect(calls[0]!.url).toContain("/api/v2/rollouts?");
+    expect(calls[0]!.url).toContain("kind=config-sync");
+    expect(calls[0]!.url).toContain("status=paused");
+    expect(bodyOf(calls[1])).toEqual({
+      canary: 1,
+      waves: [100],
+      dry_run: true,
+    });
+    expect(calls[2]!.url).toBe(`${API_URL}/api/v2/rollouts/r1/pause`);
+    expect(bodyOf(calls[2])).toEqual({ reason: "looking" });
+    expect(calls[3]!.url).toBe(`${API_URL}/api/v2/rollouts/r1/resume`);
+  });
+});
+
 describe("create", () => {
   it("drops null and undefined form values but keeps falsy ones", async () => {
     const { client, calls } = createHttpClient(() => ({ hook_id: "hook-1" }));

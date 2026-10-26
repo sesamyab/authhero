@@ -535,6 +535,60 @@ export function createTenantsOpenAPIRouter(
   );
 
   // --------------------------------
+  // GET /{id}/config-sync - Sync status and where inherited rows come from
+  // --------------------------------
+  if (config.configSyncStatus) {
+    const readStatus = config.configSyncStatus;
+    app.openapi(
+      createRoute({
+        tags: ["tenants"],
+        method: "get",
+        path: "/{id}/config-sync",
+        request: {
+          params: z.object({ id: z.string() }),
+        },
+        security: [{ Bearer: ["read:tenants"] }],
+        responses: {
+          200: {
+            content: {
+              "application/json": {
+                schema: z.object({
+                  tenant_id: z.string(),
+                  parent_tenant_id: z.string().nullable(),
+                  config_sync: z.enum(["inherit-on-read", "synced"]),
+                  config_sync_hash: z.string().nullable(),
+                  config_synced_at: z.string().nullable(),
+                  expected_hash: z.string().nullable(),
+                  drifted: z.boolean(),
+                  chain: z.array(z.string()),
+                  inherited: z.record(z.string(), z.string()),
+                }),
+              },
+            },
+            description: "Config sync status of the tenant",
+          },
+          403: { description: "Not allowed to read this tenant" },
+          404: { description: "Tenant not found" },
+        },
+      }),
+      async (ctx) => {
+        const { id } = ctx.req.valid("param");
+        // The control plane may read any tenant, a tenant only its own.
+        if (id !== ctx.var.tenant_id && !isControlPlaneCaller(ctx)) {
+          throw new HTTPException(403, {
+            message: "Config sync status is only readable for your own tenant",
+          });
+        }
+        const status = await readStatus(id);
+        if (!status) {
+          throw new HTTPException(404, { message: "Tenant not found" });
+        }
+        return ctx.json(status);
+      },
+    );
+  }
+
+  // --------------------------------
   // GET /settings - Get current tenant settings
   // --------------------------------
   app.openapi(

@@ -10,6 +10,7 @@ import {
 } from "@/components/admin";
 import { Button } from "@/components/ui/button";
 import { Confirm } from "@/components/admin/confirm";
+import { SyncStatusCard } from "@/components/inheritance/SyncStatusCard";
 import { useTenantId } from "@/TenantContext";
 import { getBasePath } from "@/utils/runtimeConfig";
 
@@ -39,6 +40,23 @@ function ConfigSyncInput() {
       choices={CONFIG_SYNC_CHOICES}
       defaultValue="inherit-on-read"
       helperText="Inherit on read: connections, hooks, email provider and system API scopes are merged in from the control plane at request time. Synced: only this tenant's own database is read; sync the control plane's config into it first. Only the control plane can change this."
+    />
+  );
+}
+
+/**
+ * The tenant config is inherited from. Empty means the control plane. The
+ * server validates it (no cycles, depth limit) and answers 400 otherwise.
+ */
+function ParentTenantInput() {
+  const record = useRecordContext<TenantSettingsRecord>();
+  if (record?.is_control_plane) return null;
+
+  return (
+    <TextInput
+      source="parent_tenant_id"
+      label="Parent tenant"
+      helperText="The tenant this one inherits config from. Leave empty to inherit from the control plane."
     />
   );
 }
@@ -123,6 +141,8 @@ export function AdvancedTab() {
         </SimpleFormIterator>
       </ArrayInput>
       <ConfigSyncInput />
+      <ParentTenantInput />
+      <SyncStatusCard />
       <DeleteTenantSection />
     </div>
   );

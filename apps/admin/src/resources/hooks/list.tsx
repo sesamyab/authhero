@@ -1,4 +1,5 @@
 import { List, DataTable } from "@/components/admin";
+import { InheritedBadge } from "@/components/inheritance/InheritedBadge";
 import { useRecordContext } from "ra-core";
 
 function HookType() {
@@ -30,6 +31,9 @@ export function HookList() {
         <DataTable.Col source="enabled" />
         <DataTable.Col source="synchronous" />
         <DataTable.Col source="priority" />
+        <DataTable.Col label="Source">
+          <InheritedBadge />
+        </DataTable.Col>
       </DataTable>
     </List>
   );

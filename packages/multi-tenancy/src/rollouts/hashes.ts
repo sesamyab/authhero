@@ -17,7 +17,10 @@ export async function resolveLegacyParent(
  * one computation (memoised for the life of the returned function).
  */
 export function createExpectedHash(
-  deps: RolloutDeps,
+  deps: Pick<
+    RolloutDeps,
+    "adapters" | "controlPlaneTenantId" | "resolveControlPlane" | "maxDepth"
+  >,
 ): (tenantId: string) => Promise<string> {
   const memo = new Map<string, Promise<string>>();
 

@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SyncStatusCard } from "@/components/inheritance/SyncStatusCard";
 import type {
   AuthHeroDataProvider,
   TenantOperationRecord,
@@ -220,7 +221,7 @@ export function TenantOperations() {
 
   const enqueue = async (
     kind: "upgrade" | "sync-defaults",
-    input: { dry_run?: boolean } | undefined,
+    input: { dry_run?: boolean; force?: boolean } | undefined,
     label: string,
   ) => {
     if (!tenantId) return;
@@ -262,6 +263,11 @@ export function TenantOperations() {
         </Button>
       </div>
 
+      <SyncStatusCard
+        tenantId={tenantId}
+        refreshToken={operations.map((o) => `${o.id}:${o.status}`).join(",")}
+      />
+
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="flex flex-col gap-1.5">
@@ -293,6 +299,18 @@ export function TenantOperations() {
             >
               <Eye className="h-4 w-4 mr-1" />
               Preview sync
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                enqueue("sync-defaults", { force: true }, "Forced sync")
+              }
+              disabled={enqueuing || hasActive}
+              title="Apply the config even when the tenant is already up to date"
+            >
+              <RefreshCcw className="h-4 w-4 mr-1" />
+              Force sync
             </Button>
             <Button
               variant="outline"
