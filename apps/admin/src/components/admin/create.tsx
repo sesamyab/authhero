@@ -112,7 +112,7 @@ export const CreateView = ({
           className,
         )}
       >
-        <h2 className="text-2xl font-bold tracking-tight">
+        <h2 className="text-3xl font-bold tracking-[-0.04em] sm:text-4xl">
           {title !== undefined ? title : context.defaultTitle}
         </h2>
         {actions}
