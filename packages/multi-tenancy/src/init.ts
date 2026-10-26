@@ -19,6 +19,7 @@ import type { SyncConfigFn, TenantOperationExecutor } from "./operations";
 import {
   createRolloutController,
   createRolloutWriteHooks,
+  getConfigSyncStatus,
   type RolloutDeps,
 } from "./rollouts";
 import { createTenantsOpenAPIRouter } from "./routes";
@@ -518,6 +519,15 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         requireOrganizationMatch,
         defaultPermissions,
       },
+      configSyncStatus: (tenantId) =>
+        getConfigSyncStatus(
+          {
+            adapters: rawDataAdapter,
+            controlPlaneTenantId,
+            resolveControlPlane,
+          },
+          tenantId,
+        ),
     },
     { tenants: combinedTenantHooks },
   );

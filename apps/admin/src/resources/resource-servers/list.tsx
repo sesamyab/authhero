@@ -1,4 +1,5 @@
 import { List, DataTable } from "@/components/admin";
+import { InheritedBadge } from "@/components/inheritance/InheritedBadge";
 import { useRecordContext } from "ra-core";
 
 function ScopesCount() {
@@ -24,6 +25,9 @@ export function ResourceServerList() {
       <DataTable rowClick="edit">
         <DataTable.Col source="name" />
         <DataTable.Col source="identifier" />
+        <DataTable.Col label="Source">
+          <InheritedBadge />
+        </DataTable.Col>
         <DataTable.Col label="Scopes">
           <ScopesCount />
         </DataTable.Col>

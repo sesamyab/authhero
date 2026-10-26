@@ -21,6 +21,8 @@ export type {
   RolloutTickOutcome,
   RolloutTickResult,
 } from "./advance";
+export { getConfigSyncStatus } from "./status";
+export type { ConfigSyncStatus, ConfigSyncStatusDeps } from "./status";
 export { reconcileConfigDrift } from "./reconcile";
 export type {
   ReconcileConfigDriftOptions,

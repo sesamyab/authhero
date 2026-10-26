@@ -2,6 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import { useGetOne, useNotify, useRedirect } from "ra-core";
 import { Edit, SimpleForm, TextInput } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { isLockedInheritedRow } from "@/lib/syncedRows";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
@@ -23,7 +24,8 @@ export function ScopeEdit() {
   const decodedValue = decodeURIComponent(scopeId);
   const recordId = `${rsId}:${decodedValue}`;
   const listPath = `/resource-servers/${rsId}`;
-  const isSystem = !!(rs as { is_system?: boolean })?.is_system;
+  const isSystem =
+    !!(rs as { is_system?: boolean })?.is_system || isLockedInheritedRow(rs);
 
   return (
     <div className="mt-4">
@@ -42,7 +44,8 @@ export function ScopeEdit() {
       {isSystem && (
         <Alert className="mb-4">
           <AlertDescription>
-            Scopes are read-only on system Resource Servers.
+            Scopes are read-only on this Resource Server: it is a system entity
+            or inherited from a parent tenant that allows no changes.
           </AlertDescription>
         </Alert>
       )}

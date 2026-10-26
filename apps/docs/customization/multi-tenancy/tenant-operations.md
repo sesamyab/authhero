@@ -160,6 +160,12 @@ export default {
 };
 ```
 
+### Sync status and the admin UI
+
+`GET /api/v2/tenants/{id}/config-sync` (scope `read:tenants`; the control plane can read any tenant, a tenant only its own) reports a tenant's parent and `config_sync` mode, the applied and expected hash, `drifted` (a synced tenant whose stored hash differs from what its chain publishes now), the parent `chain`, and `inherited`, a map from the id each inherited row has in the tenant to the ancestor that published it. It never contains row content or secrets, and `platform` rows are left out.
+
+The admin app uses it to show where a row comes from ("Inherited from ..."), to lock a row when its parent allows no changes (`override: none`), and to show a sync status card with a drift badge on a tenant's settings and operations pages. Scope, override and enforce are edited in a _Publishing_ card on actions, hooks, connections and resource servers (email provider and branding have no editor yet). The control plane gets a _Rollouts_ page under the tenants list to start, follow, pause and resume rollouts.
+
 Per-entity subscriptions are not supported: a tenant is either `synced` or not.
 
 ## Roadmap

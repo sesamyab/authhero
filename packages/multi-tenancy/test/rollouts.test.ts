@@ -9,6 +9,7 @@ import {
   createInlineExecutor,
   createOperationRecorder,
   createRolloutController,
+  getConfigSyncStatus,
   isPublishedRow,
   listSyncedDescendants,
   planRollout,
@@ -499,6 +500,68 @@ describe("fleet rollouts", () => {
       expect(isPublishedRow("connection", { scope: "local" })).toBe(false);
       expect(isPublishedRow("hookCode", {})).toBe(true);
       expect(isPublishedRow("action", null)).toBe(false);
+    });
+  });
+
+  describe("sync status", () => {
+    it("credits each inherited row to the ancestor that published it", async () => {
+      await addTenant("mid");
+      await addTenant("leaf", {
+        config_sync: "synced",
+        parent_tenant_id: "mid",
+      });
+      await adapters.tenants.update("mid", { parent_tenant_id: CP });
+      await adapters.actions.create("mid", {
+        name: "mid-only",
+        code: "// m",
+        scope: "shared",
+      });
+      await adapters.actions.create("mid", {
+        name: "private",
+        code: "// p",
+        scope: "local",
+      });
+      await adapters.actions.create(CP, {
+        name: "platform-only",
+        code: "// x",
+        scope: "platform",
+      });
+
+      const status = await getConfigSyncStatus(deps, "leaf");
+
+      expect(status).toMatchObject({
+        parent_tenant_id: "mid",
+        chain: ["mid", CP],
+        config_sync: "synced",
+        drifted: true,
+      });
+      const origins = Object.values(status!.inherited).sort();
+      // enrich from the control plane, mid-only from mid; private and
+      // platform rows are not listed.
+      expect(origins).toEqual([CP, "mid"].sort());
+    });
+
+    it("reports a tenant that is not synced without a drift verdict", async () => {
+      await addTenant("reads", { config_sync: "inherit-on-read" });
+      const status = await getConfigSyncStatus(deps, "reads");
+      expect(status).toMatchObject({
+        config_sync: "inherit-on-read",
+        expected_hash: null,
+        drifted: false,
+      });
+      expect(await getConfigSyncStatus(deps, "missing")).toBeNull();
+    });
+
+    it("is in sync once the tenant has been synced", async () => {
+      await addFleet(1);
+      const rollout = await createRolloutController(deps).create({
+        canary: 0,
+        waves: [100],
+      });
+      expect(rollout).toBeTruthy();
+      const status = await getConfigSyncStatus(deps, "t1");
+      expect(status).toMatchObject({ drifted: false });
+      expect(status!.config_sync_hash).toBe(status!.expected_hash);
     });
   });
 

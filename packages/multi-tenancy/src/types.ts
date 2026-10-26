@@ -1,6 +1,7 @@
 import { CreateTenantParams, DataAdapters, Tenant } from "authhero";
 import { Context } from "hono";
 import type { StepReporter } from "./operations/types";
+import type { ConfigSyncStatus } from "./rollouts/status";
 
 /**
  * Bindings type from authhero core - simplified version for this package
@@ -226,6 +227,12 @@ export interface MultiTenancyConfig {
    * Subdomain-based tenant routing configuration.
    */
   subdomainRouting?: SubdomainRoutingConfig;
+
+  /**
+   * Reads a tenant's config sync status for `GET /tenants/{id}/config-sync`.
+   * Supplied by `initMultiTenant`; the route is not mounted without it.
+   */
+  configSyncStatus?: (tenantId: string) => Promise<ConfigSyncStatus | null>;
 }
 
 // ============================================================================

@@ -125,7 +125,7 @@ export async function syncedRowId(
 }
 
 /** The stable key a row is synced by (matches `mergeConfig`). */
-function keyOf(entity: SyncEntity, row: unknown): string {
+export function keyOf(entity: SyncEntity, row: unknown): string {
   const fields = row as Record<string, string>;
   switch (entity) {
     case "connection":
