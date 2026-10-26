@@ -15,7 +15,12 @@ import {
   enqueueTenantOperation,
   runSyncDefaultsStep,
 } from "./operations";
-import type { SyncConfigFn } from "./operations";
+import type { SyncConfigFn, TenantOperationExecutor } from "./operations";
+import {
+  createRolloutController,
+  createRolloutWriteHooks,
+  type RolloutDeps,
+} from "./rollouts";
 import { createTenantsOpenAPIRouter } from "./routes";
 import {
   buildResolver,
@@ -107,6 +112,13 @@ export interface MultiTenantConfig extends Omit<
   syncDefaults?: SyncConfigFn;
 
   /**
+   * Starts the per-tenant operations of a fleet rollout. Defaults to the same
+   * inline executor as `sync-defaults` requests; Workflows deployments pass
+   * `createCloudflareWorkflowsExecutor(...)` so waves run durably.
+   */
+  rolloutExecutor?: TenantOperationExecutor;
+
+  /**
    * Control which entities to sync from control plane to child tenants.
    * Set to `false` to disable all syncing.
    * @default { resourceServers: true, roles: true }
@@ -164,6 +176,19 @@ export interface MultiTenantResult {
   app: ReturnType<typeof init>["app"];
   /** The control plane tenant ID */
   controlPlaneTenantId: string;
+  /**
+   * What a scheduled handler needs to keep fleet rollouts moving, present when
+   * the control plane carries the rollouts and tenant operations adapters:
+   *
+   * ```typescript
+   * async scheduled(_event, env) {
+   *   if (!rollouts) return;
+   *   await reconcileConfigDrift(rollouts); // catches lost triggers
+   *   await advanceRollouts(rollouts);      // starts the next wave
+   * }
+   * ```
+   */
+  rollouts?: RolloutDeps;
 }
 
 /**
@@ -236,6 +261,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     resolveControlPlane,
     inheritanceShadow,
     syncDefaults,
+    rolloutExecutor,
     sync = { resourceServers: true, roles: true },
     defaultPermissions = ["tenant:admin"],
     requireOrganizationMatch = false,
@@ -303,11 +329,8 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
   // handler is configured. Downstream deployments can pass their own
   // `tenantOperationExecutor` (e.g. Cloudflare Workflows) to override.
   let tenantOperationExecutor = restConfig.tenantOperationExecutor;
-  if (
-    !tenantOperationExecutor &&
-    rawDataAdapter.tenantOperations &&
-    rawDataAdapter.tenantOperationEvents
-  ) {
+  let inlineSyncExecutor: TenantOperationExecutor | undefined;
+  if (rawDataAdapter.tenantOperations && rawDataAdapter.tenantOperationEvents) {
     const stores = {
       tenantOperations: rawDataAdapter.tenantOperations,
       tenantOperationEvents: rawDataAdapter.tenantOperationEvents,
@@ -348,7 +371,8 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         ],
       },
     });
-    tenantOperationExecutor = {
+    inlineSyncExecutor = inlineExecutor;
+    tenantOperationExecutor ??= {
       engine: inlineExecutor.engine,
       kinds: tenantUpgrade ? ["upgrade", "sync-defaults"] : ["sync-defaults"],
       enqueue: (params) =>
@@ -362,6 +386,28 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         ),
     };
   }
+
+  // Fleet rollouts of synced config (issue #1499): the controller behind
+  // POST /rollouts, the deps a scheduled handler ticks, and the write trigger.
+  const rolloutRunner = rolloutExecutor ?? inlineSyncExecutor;
+  const rolloutDeps: RolloutDeps | undefined =
+    rolloutRunner &&
+    rawDataAdapter.rollouts &&
+    rawDataAdapter.tenantOperations &&
+    rawDataAdapter.tenantOperationEvents
+      ? {
+          adapters: rawDataAdapter,
+          executor: rolloutRunner,
+          controlPlaneTenantId,
+          resolveControlPlane,
+        }
+      : undefined;
+  const rolloutController = rolloutDeps
+    ? createRolloutController(rolloutDeps)
+    : undefined;
+  const rolloutWriteHooks = rolloutDeps
+    ? createRolloutWriteHooks(rolloutDeps, { logger: console })
+    : undefined;
 
   // Determine sync settings
   const syncEnabled = sync !== false;
@@ -407,12 +453,25 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
   const entityHooks: AuthHeroConfig["entityHooks"] = {
     resourceServers: [
       syncEntityHooks.resourceServers,
+      rolloutWriteHooks?.resourceServers,
       ...(customEntityHooks?.resourceServers ?? []),
     ],
     roles: [syncEntityHooks.roles, ...(customEntityHooks?.roles ?? [])],
-    connections: customEntityHooks?.connections ?? [],
+    connections: [
+      rolloutWriteHooks?.connections,
+      ...(customEntityHooks?.connections ?? []),
+    ],
     tenants: customEntityHooks?.tenants ?? [],
     rolePermissions: customEntityHooks?.rolePermissions ?? [],
+    actions: [
+      rolloutWriteHooks?.actions,
+      ...(customEntityHooks?.actions ?? []),
+    ],
+    hooks: [rolloutWriteHooks?.hooks, ...(customEntityHooks?.hooks ?? [])],
+    hookCode: [
+      rolloutWriteHooks?.hookCode,
+      ...(customEntityHooks?.hookCode ?? []),
+    ],
   };
 
   // Create provisioning hooks for organization creation on tenant creation
@@ -469,6 +528,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     managementDataAdapter,
     ...restConfig,
     tenantOperationExecutor,
+    ...(rolloutController ? { rolloutController } : {}),
     entityHooks,
     managementApiExtensions: [
       ...managementApiExtensions,
@@ -484,5 +544,5 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     ],
   });
 
-  return { app, controlPlaneTenantId };
+  return { app, controlPlaneTenantId, rollouts: rolloutDeps };
 }

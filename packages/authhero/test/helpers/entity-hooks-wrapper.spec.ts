@@ -524,4 +524,72 @@ describe("addEntityHooks", () => {
       });
     });
   });
+
+  describe("actions, hooks and hook code", () => {
+    const adapter = (entity: Record<string, unknown>) => ({
+      create: vi.fn().mockResolvedValue(entity),
+      update: vi.fn().mockResolvedValue(true),
+      remove: vi.fn().mockResolvedValue(true),
+      get: vi.fn().mockResolvedValue(entity),
+      list: vi.fn(),
+    });
+
+    function adapters() {
+      return {
+        actions: adapter({ id: "act_1", name: "a" }),
+        hooks: adapter({ hook_id: "h_1" }),
+        hookCode: adapter({ id: "hc_1" }),
+      } as unknown as DataAdapters;
+    }
+
+    it("calls the hooks after writes, with the written entity", async () => {
+      const data = adapters();
+      const afterCreate = vi.fn();
+      const afterUpdate = vi.fn();
+      const afterDelete = vi.fn();
+      const wrapped = addEntityHooks(data, {
+        tenantId: "t1",
+        entityHooks: {
+          actions: [{ afterCreate }],
+          hooks: [{ afterUpdate }],
+          hookCode: [{ afterDelete }],
+        },
+      });
+
+      await wrapped.actions.create("t1", { name: "a", code: "" });
+      await wrapped.hooks.update("t1", "h_1", { enabled: false });
+      await wrapped.hookCode.remove("t1", "hc_1");
+
+      expect(afterCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: "t1" }),
+        { id: "act_1", name: "a" },
+      );
+      expect(afterUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: "t1" }),
+        "h_1",
+        { hook_id: "h_1" },
+      );
+      expect(afterDelete).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: "t1" }),
+        "hc_1",
+      );
+    });
+
+    it("passes create options through to the wrapped adapter", async () => {
+      const data = adapters();
+      const wrapped = addEntityHooks(data, {
+        tenantId: "t1",
+        entityHooks: { actions: [{ afterCreate: vi.fn() }] },
+      });
+      const options = { importMetadata: { id: "act_fixed" } };
+
+      await wrapped.actions.create("t1", { name: "a", code: "" }, options);
+
+      expect(data.actions.create).toHaveBeenCalledWith(
+        "t1",
+        { name: "a", code: "" },
+        options,
+      );
+    });
+  });
 });

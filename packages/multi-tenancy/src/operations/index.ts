@@ -20,7 +20,7 @@ export type {
   TenantOperationStep,
   TenantOperationStepContext,
 } from "./inline-executor";
-export { enqueueTenantOperation } from "./enqueue";
+export { createOperationRow, enqueueTenantOperation } from "./enqueue";
 export {
   createInProcessSyncConfig,
   runSyncDefaultsStep,

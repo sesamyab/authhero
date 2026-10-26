@@ -75,6 +75,10 @@ export function applyConfigMiddleware(
       ctx.env.tenantOperationExecutor = config.tenantOperationExecutor;
     }
 
+    if (config.rolloutController) {
+      ctx.env.rolloutController = config.rolloutController;
+    }
+
     if (config.outbox) {
       ctx.env.outbox = config.outbox;
     }

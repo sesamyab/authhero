@@ -66,7 +66,7 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-10-27T12:00:00_config_sync_mode";
+    const last = "2026-10-28T12:00:00_rollout_config";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
 
@@ -75,12 +75,12 @@ describe("planMigrations", () => {
     expect(plan.pending.map((it) => it.name)).toEqual([last]);
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
-    expect(output).toMatch(/alter table "tenants" add column "config_sync"/i);
-    expect(await columnNames(db, "tenants")).not.toContain("config_sync");
+    expect(output).toMatch(/alter table "rollouts" add column "config"/i);
+    expect(await columnNames(db, "rollouts")).not.toContain("paused_reason");
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    expect(await columnNames(db, "tenants")).toContain("config_sync");
+    expect(await columnNames(db, "rollouts")).toContain("paused_reason");
     await db.destroy();
   });
 });

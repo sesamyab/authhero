@@ -580,6 +580,10 @@ export const MANAGEMENT_API_SCOPES = [
     description: "Create Tenant Operations",
     value: "create:tenant_operations",
   },
+  // Fleet rollouts of synced config (issue #1499)
+  { description: "Read Rollouts", value: "read:rollouts" },
+  { description: "Create Rollouts", value: "create:rollouts" },
+  { description: "Update Rollouts", value: "update:rollouts" },
 ];
 
 export interface SeedOptions {

@@ -1,14 +1,21 @@
 import {
+  Action,
+  ActionInsert,
+  ActionUpdate,
   CodeExecutor,
   Connection,
   ConnectionInsert,
   CreateTenantParams,
   DataAdapters,
   Hook,
+  HookCode,
+  HookCodeInsert,
+  HookInsert,
   ResourceServer,
   ResourceServerInsert,
   Role,
   RoleInsert,
+  Rollout,
   Tenant,
   TenantOperation,
   TenantOperationKind,
@@ -128,6 +135,9 @@ export interface EntityHooksConfig {
   rolePermissions?: (RolePermissionHooks | undefined)[];
   connections?: (EntityHooks<Connection, ConnectionInsert> | undefined)[];
   tenants?: (EntityHooks<Tenant, CreateTenantParams> | undefined)[];
+  actions?: (EntityHooks<Action, ActionInsert, ActionUpdate> | undefined)[];
+  hooks?: (EntityHooks<Hook, HookInsert> | undefined)[];
+  hookCode?: (EntityHooks<HookCode, HookCodeInsert> | undefined)[];
 }
 
 /**
@@ -155,6 +165,27 @@ export interface ManagementApiExtension {
  * resolve as soon as the run is enqueued — clients poll
  * `GET /api/v2/operations/{id}`.
  */
+/**
+ * Creates and controls fleet rollouts of synced config (issue #1499). Kept
+ * structural, like {@link TenantOperationExecutorBinding}: the multi-tenancy
+ * package's `createRolloutController` satisfies it.
+ */
+export interface RolloutControllerBinding {
+  create(params: {
+    rootTenantId?: string;
+    tenantIds?: string[];
+    canary?: number;
+    waves?: number[];
+    failureThreshold?: number;
+    maxConcurrent?: number;
+    dryRun?: boolean;
+    force?: boolean;
+    initiatedBy?: string;
+  }): Promise<Rollout>;
+  pause(id: string, reason?: string): Promise<Rollout | null>;
+  resume(id: string): Promise<Rollout | null>;
+}
+
 export interface TenantOperationExecutorBinding {
   engine: string;
   /**
@@ -603,6 +634,13 @@ export interface AuthHeroConfig {
    * satisfy this shape.
    */
   tenantOperationExecutor?: TenantOperationExecutorBinding;
+
+  /**
+   * Creates and controls fleet rollouts of synced config. Drives
+   * `POST /api/v2/rollouts` and the pause and resume routes; reading rollouts
+   * only needs the `rollouts` adapter.
+   */
+  rolloutController?: RolloutControllerBinding;
 
   /**
    * Maximum accepted size of a bulk user-import file, in bytes

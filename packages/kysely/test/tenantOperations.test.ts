@@ -252,6 +252,45 @@ describe("RolloutsAdapter", () => {
     expect(await adapter.get(created.id)).toBeNull();
   });
 
+  it("stores a config-sync rollout's config and pause reason, and filters the list", async () => {
+    const { data } = await getTestServer();
+    const adapter = data.rollouts!;
+
+    const sync = await adapter.create({
+      kind: "config-sync",
+      config: { canary: 1, waves: [10, 100], root_tenant_id: "cp" },
+    });
+    const upgrade = await adapter.create({ kind: "upgrade" });
+    expect(sync.config).toEqual({
+      canary: 1,
+      waves: [10, 100],
+      root_tenant_id: "cp",
+    });
+    expect(sync.paused_reason).toBeNull();
+
+    await adapter.update(sync.id, {
+      status: "paused",
+      paused_reason: "canary failed",
+      config: { canary: 2 },
+    });
+    const paused = await adapter.get(sync.id);
+    expect(paused).toMatchObject({
+      status: "paused",
+      paused_reason: "canary failed",
+      config: { canary: 2 },
+    });
+
+    expect(
+      (await adapter.list({ kind: "config-sync" })).rollouts.map((r) => r.id),
+    ).toEqual([sync.id]);
+    expect(
+      (await adapter.list({ status: ["paused"] })).rollouts.map((r) => r.id),
+    ).toEqual([sync.id]);
+    expect(
+      (await adapter.list({ status: "pending" })).rollouts.map((r) => r.id),
+    ).toEqual([upgrade.id]);
+  });
+
   it("applies the default wave_size", async () => {
     const { data } = await getTestServer();
     const adapter = data.rollouts!;
