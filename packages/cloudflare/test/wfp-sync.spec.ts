@@ -1163,6 +1163,30 @@ describe("sync-defaults operation transport (createDispatchSyncConfig → /inter
     ).rejects.toThrow(/401/);
   });
 
+  it("refuses a push addressed to another tenant when the worker knows its own id", async () => {
+    await tenant.tenants.create(tenantRow("other"));
+    const sync = syncFor(dispatcherToTenant({ ...env, TENANT_ID: "other" }));
+
+    await expect(sync("acme", { dryRun: false, force: false })).rejects.toThrow(
+      /403 \(sync_config_tenant_mismatch\)/,
+    );
+    // Nothing was read or written for either tenant.
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(0);
+    expect((await tenant.actions.list("other")).actions).toHaveLength(0);
+    expect(
+      (await tenant.tenants.get("acme"))?.config_sync_hash,
+    ).toBeUndefined();
+  });
+
+  it("accepts a push for the worker's own tenant", async () => {
+    const result = await syncFor(
+      dispatcherToTenant({ ...env, TENANT_ID: "acme" }),
+    )("acme", { dryRun: false, force: false });
+
+    expect(result.status).toBe("applied");
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(1);
+  });
+
   it("rejects a malformed body", async () => {
     const res = await app.fetch(
       new Request("https://tenant.internal/internal/sync-config", {

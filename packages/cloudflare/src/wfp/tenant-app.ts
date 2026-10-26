@@ -77,6 +77,15 @@ export interface WfpTenantEnv {
   CONTROL_PLANE_ENCRYPTION_KEY?: string;
   /** Shared secret authenticating control-plane pushes to `/internal/sync-defaults`. */
   WFP_INTERNAL_SYNC_SECRET?: string;
+  /**
+   * The tenant this worker serves, set when the script is provisioned (plain
+   * text binding or secret, next to `ISSUER`). When present,
+   * `/internal/sync-config` refuses a push addressed to any other tenant, so a
+   * misrouted push can never write another tenant's config into this database.
+   * Optional so workers provisioned before it existed keep working; set it from
+   * the provisioner's `secrets` resolver.
+   */
+  TENANT_ID?: string;
   [key: string]: unknown;
 }
 
@@ -324,6 +333,14 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
     }
     if (!body.tenantId || !body.resolved) {
       return c.json({ error: "tenantId and resolved are required" }, 400);
+    }
+    // Refuse before any read or write when the push is for another tenant.
+    if (env.TENANT_ID && body.tenantId !== env.TENANT_ID) {
+      console.error(
+        `[wfp-tenant] sync_config_tenant_mismatch: push for "${body.tenantId}" reached the worker of "${env.TENANT_ID}"`,
+      );
+      c.header("X-Authhero-Error", "sync_config_tenant_mismatch");
+      return c.json({ error: "sync_config_tenant_mismatch" }, 403);
     }
 
     try {
