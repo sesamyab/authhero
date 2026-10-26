@@ -295,6 +295,35 @@ describe("platform-scoped rows in the tenant management API", () => {
     });
   });
 
+  describe("tenant settings", () => {
+    it("accepts a whole-record PATCH whose default_audience names a hidden resource server, but refuses to newly point at one", async () => {
+      const { env, call, tenantAdmin } = ctx;
+      await env.data.tenants.update("tenantId", {
+        default_audience: "https://platform.example.com",
+      });
+
+      // Unchanged value, as the admin UI round-trips it: allowed.
+      const unchanged = await call("/tenants/settings", tenantAdmin, {
+        method: "PATCH",
+        body: JSON.stringify({
+          friendly_name: "Renamed",
+          default_audience: "https://platform.example.com",
+        }),
+      });
+      expect(unchanged.status).toBe(200);
+
+      // Pointing at it from somewhere else is still refused.
+      await env.data.tenants.update("tenantId", { default_audience: "" });
+      const changed = await call("/tenants/settings", tenantAdmin, {
+        method: "PATCH",
+        body: JSON.stringify({
+          default_audience: "https://platform.example.com",
+        }),
+      });
+      expect(changed.status).toBe(400);
+    });
+  });
+
   describe("executor stack", () => {
     it("still reads platform hooks inside a management request, while routes do not", async () => {
       // The inline hook runners (pre-registration, ...) read `getExecutorData`.

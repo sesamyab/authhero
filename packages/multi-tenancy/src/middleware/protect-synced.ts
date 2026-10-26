@@ -1,7 +1,6 @@
 import { MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { isSyncedRowId, type DataAdapters } from "authhero";
-import { SECRET_KEY } from "../inheritance/merge";
 import { getRequestData } from "./request-data";
 
 /**
@@ -178,6 +177,25 @@ const SECRET_FIELDS: Record<SyncedEntityType, string[]> = {
   hook_code: [],
 };
 
+/**
+ * Connection options a child may change under `override: "secrets"`: exactly
+ * the values the encrypted data adapter treats as secrets. A pattern match is
+ * too loose (it would let `token_endpoint` through), so this is an allowlist.
+ */
+const SECRET_OPTIONS = new Set(["client_secret", "app_secret", "twilio_token"]);
+
+/** `configuration` may differ only in its `client_secret`. */
+function onlySecretConfigurationChanged(next: unknown, current: unknown) {
+  const strip = (value: unknown) => {
+    const { client_secret: _secret, ...rest } = (value ?? {}) as Record<
+      string,
+      unknown
+    >;
+    return rest;
+  };
+  return same(strip(next), strip(current));
+}
+
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
 
@@ -250,11 +268,19 @@ async function enforceSyncedLocks(
           `only allows its secrets to be changed (not ${key})`,
         );
       }
-      // Within `options`, only secret-looking keys may differ.
+      // Within `options`, only the secret values may differ.
       if (key === "options" && value && typeof value === "object") {
         const current = (row.options ?? {}) as Record<string, unknown>;
         for (const [option, optionValue] of Object.entries(value)) {
-          if (!SECRET_KEY.test(option) && !same(optionValue, current[option])) {
+          if (same(optionValue, current[option])) continue;
+          // `*_hint` options are response-only masked previews of a secret
+          // that a whole-record PATCH echoes back; they are never stored.
+          if (option.endsWith("_hint")) continue;
+          const allowedChange =
+            SECRET_OPTIONS.has(option) ||
+            (option === "configuration" &&
+              onlySecretConfigurationChanged(optionValue, current[option]));
+          if (!allowedChange) {
             throw forbidden(
               info,
               `only allows its secrets to be changed (not options.${option})`,

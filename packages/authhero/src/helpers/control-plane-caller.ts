@@ -21,5 +21,6 @@ export function callerIsControlPlane(ctx: {
   const orgScoped = Boolean(
     user.org_id ?? vars.organization_id ?? vars.org_name ?? user.org_name,
   );
-  return !orgScoped && (!user.tenant_id || user.tenant_id === cpId);
+  // A token without a tenant is not proof of anything: require the claim.
+  return !orgScoped && user.tenant_id === cpId;
 }

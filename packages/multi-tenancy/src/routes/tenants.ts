@@ -63,7 +63,8 @@ function callerIsControlPlane(
 ): boolean {
   if (!controlPlaneTenantId) return true;
   if (!caller || orgScoped) return false;
-  return !caller.tenant_id || caller.tenant_id === controlPlaneTenantId;
+  // A token without a tenant is not proof of anything: require the claim.
+  return caller.tenant_id === controlPlaneTenantId;
 }
 
 function callerHasGlobalTenantAdmin(caller: CallerClaims): boolean {

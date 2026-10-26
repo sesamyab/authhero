@@ -209,6 +209,32 @@ describe("protect-synced locks synced copies by override and enforce", () => {
     expect((await patchConnection(id, { display_name: "x" })).status).toBe(403);
   });
 
+  it("allows only the known secret options, not anything that merely contains 'token'", async () => {
+    const id = sy("con_", "2");
+
+    const endpoint = await patchConnection(id, {
+      options: {
+        client_id: "cp",
+        client_secret: "cp-secret",
+        token_endpoint: "https://evil.example.com/token",
+      },
+    });
+    expect(endpoint.status).toBe(403);
+    expect(await endpoint.text()).toMatch(/options\.token_endpoint/);
+
+    expect(
+      (
+        await patchConnection(id, {
+          options: {
+            client_id: "cp",
+            client_secret: "cp-secret",
+            twilio_token: "child-twilio",
+          },
+        })
+      ).status,
+    ).toBe(200);
+  });
+
   it("accepts a whole-record PATCH that changes nothing locked", async () => {
     const id = sy("con_", "2");
     const read = await request("GET", `/api/v2/connections/${id}`);

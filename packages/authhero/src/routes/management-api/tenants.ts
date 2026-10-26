@@ -132,9 +132,14 @@ const patchSettings = defineRoute({
       });
     }
 
-    // Only validate default_audience when the field is in the incoming
-    // payload — leaves grandfathered tenants able to PATCH unrelated fields.
-    if ("default_audience" in sanitizedUpdates) {
+    // Only validate default_audience when it changes — leaves grandfathered
+    // tenants able to PATCH unrelated fields, and a whole-record PATCH that
+    // echoes a default_audience naming a resource server hidden from this
+    // admin (a platform copy) is not refused for it.
+    if (
+      "default_audience" in sanitizedUpdates &&
+      sanitizedUpdates.default_audience !== existingTenant.default_audience
+    ) {
       const next = sanitizedUpdates.default_audience;
       if (typeof next === "string" && next.length > 0) {
         const { resource_servers } =
