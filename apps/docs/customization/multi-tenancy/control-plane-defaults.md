@@ -461,8 +461,10 @@ A row published with `scope: "platform"` is copied into the child so it can run,
 
 ### Cutting a tenant over to synced config
 
-1. Build and apply the resolved block with `dryRun: true` and review the diff.
-2. Apply it for real, then run [shadow mode](./runtime-fallback.md#shadow-mode-for-config-inheritance)
+1. Run a [`sync-defaults` operation](./tenant-operations.md#syncing-a-tenant-s-config-sync-defaults)
+   with `input.dry_run: true` and review the diff in its `result` (or call
+   `applyResolvedConfigBlock` with `dryRun: true` yourself).
+2. Run it for real, then run [shadow mode](./runtime-fallback.md#shadow-mode-for-config-inheritance)
    and check the `cfgdiff` logs for unexpected differences.
 3. Set the tenant's `config_sync` to `synced` with a control-plane token (see
    [per-tenant sync mode](./runtime-fallback.md#per-tenant-sync-mode-config-sync)).

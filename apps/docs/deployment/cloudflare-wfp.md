@@ -598,6 +598,12 @@ The hook exposes three entry points:
 
 Clients observe provisioning asynchronously: `POST /api/v2/tenants` returns with `provisioning_state: "pending"` and callers poll `GET /api/v2/tenants/:id` (or the operations history) until the state transitions to `ready` or `failed`.
 
+### Syncing config into a tenant worker
+
+Tenants with their own worker and database receive their resolved parent-chain config on `POST /internal/sync-config`, authenticated with the same `WFP_INTERNAL_SYNC_SECRET` bearer as `/internal/sync-defaults`. Unlike the provisioning seed, this route applies only the resolved block: no foreign-key seeds, defaults or signing keys, and a dry run writes nothing. It copies secrets as the control plane stored them (ciphertext) and refuses the push with `422` (`X-Authhero-Error: sync_config_key_ring`) when the tenant's key ring cannot decrypt a key id the block carries, so set `CONTROL_PLANE_ENCRYPTION_KEY` on the tenant before syncing rows encrypted under the `cp` key.
+
+The control plane side is `createDispatchSyncConfig({ dispatcher, internalSecret, controlPlaneTenantId, controlPlaneAdapters })` from `@authhero/cloudflare-adapter/wfp`, used as the transport of the [`sync-defaults` operation](../customization/multi-tenancy/tenant-operations.md#syncing-a-tenant-s-config-sync-defaults).
+
 ### Durable provisioning with Cloudflare Workflows
 
 For provisioning that survives engine crashes and records every step, wire the tenant-operations executor: each operation is journaled in the `tenant_operations` / `tenant_operation_events` tables, executed as a [Cloudflare Workflow](https://developers.cloudflare.com/workflows/) with durable steps (create-database → apply-migrations → upload-script → upload-secrets → seed-defaults → verify), and exposed via `GET /api/v2/tenants/{id}/operations`. See [Tenant Operations](/customization/multi-tenancy/tenant-operations) for the data model, executor wiring, and reconciliation pattern, and [Tenant Lifecycle](/customization/multi-tenancy/tenant-lifecycle) for the surrounding create/update/delete hooks.
