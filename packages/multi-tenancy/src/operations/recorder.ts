@@ -68,6 +68,11 @@ export function createOperationRecorder(stores: TenantOperationStores) {
       });
     },
 
+    /** Stores the operation's outcome (e.g. a dry-run diff). Idempotent. */
+    async setResult(operationId: string, result: Record<string, unknown>) {
+      await tenantOperations.update(operationId, { result });
+    },
+
     async markSucceeded(operationId: string) {
       await tenantOperations.update(operationId, {
         status: "succeeded",

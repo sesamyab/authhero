@@ -15,6 +15,7 @@ export const tenantOperationKindSchema = z.enum([
   "backup",
   "deprovision",
   "users_import",
+  "sync-defaults",
 ]);
 export type TenantOperationKind = z.infer<typeof tenantOperationKindSchema>;
 

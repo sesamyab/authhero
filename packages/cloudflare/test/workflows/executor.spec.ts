@@ -72,6 +72,27 @@ describe("createCloudflareWorkflowsExecutor", () => {
     );
   });
 
+  it("starts sync-defaults operations with the same params shape", async () => {
+    const binding = fakeBinding();
+    const executor = createCloudflareWorkflowsExecutor({ binding });
+
+    await executor.start(
+      operation({
+        kind: "sync-defaults",
+        engine_instance_id: "op-sync-defaults-kvartal-op_abc123",
+        input: { dry_run: true },
+      }),
+    );
+
+    expect(binding.created).toHaveLength(1);
+    // The input stays in the operation row; only ids cross to the engine.
+    expect(JSON.parse(JSON.stringify(binding.created[0]!.params))).toEqual({
+      operation_id: "op_abc123",
+      tenant_id: "kvartal",
+      kind: "sync-defaults",
+    });
+  });
+
   it("rejects unsupported kinds and fleet operations", async () => {
     const binding = fakeBinding();
     const executor = createCloudflareWorkflowsExecutor({ binding });

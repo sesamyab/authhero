@@ -154,6 +154,19 @@ export async function reconcileTenantOperations(
     if (status.status === "complete") {
       // The run completed but its terminal DB write was lost. The tenant
       // snapshot is the source of truth for what actually happened.
+      // A sync has no tenant snapshot to consult: an instance that completed
+      // without throwing ran every step, including its terminal write.
+      if (current.kind === "sync-defaults") {
+        result.markedSucceeded++;
+        await recorder.appendEvent(current.id, {
+          step: current.current_step ?? "reconcile",
+          outcome: "reconciled",
+          detail: { resolution: "succeeded" },
+        });
+        await recorder.markSucceeded(current.id);
+        return;
+      }
+
       const tenant = current.tenant_id
         ? await tenants.get(current.tenant_id)
         : null;

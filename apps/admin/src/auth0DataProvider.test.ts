@@ -448,6 +448,25 @@ describe("update for the settings resource", () => {
   });
 });
 
+describe("createTenantOperation", () => {
+  it("posts the kind with its input, and omits input when there is none", async () => {
+    const { client, calls } = createHttpClient(() => ({ id: "op_1" }));
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    await provider.createTenantOperation("acme", "sync-defaults", {
+      dry_run: true,
+    });
+    await provider.createTenantOperation("acme", "upgrade");
+
+    expect(calls[0]!.url).toBe(`${API_URL}/api/v2/tenants/acme/operations`);
+    expect(bodyOf(calls[0])).toEqual({
+      kind: "sync-defaults",
+      input: { dry_run: true },
+    });
+    expect(bodyOf(calls[1])).toEqual({ kind: "upgrade" });
+  });
+});
+
 describe("create", () => {
   it("drops null and undefined form values but keeps falsy ones", async () => {
     const { client, calls } = createHttpClient(() => ({ hook_id: "hook-1" }));

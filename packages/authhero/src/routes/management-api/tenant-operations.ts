@@ -160,7 +160,16 @@ const createTenantOperation = defineRoute({
       body: {
         content: {
           "application/json": {
-            schema: z.object({ kind: tenantOperationKindSchema }),
+            schema: z.object({
+              kind: tenantOperationKindSchema,
+              // Kind-specific parameters. Only `sync-defaults` takes any.
+              input: z
+                .object({
+                  dry_run: z.boolean().optional(),
+                  force: z.boolean().optional(),
+                })
+                .optional(),
+            }),
           },
         },
       },
@@ -184,7 +193,7 @@ const createTenantOperation = defineRoute({
       });
     }
 
-    const { kind } = ctx.req.valid("json");
+    const { kind, input } = ctx.req.valid("json");
     const tenantId = ctx.req.param("id");
     if (!tenantId) {
       throw new HTTPException(400, { message: "Missing tenant id" });
@@ -207,6 +216,12 @@ const createTenantOperation = defineRoute({
       });
     }
 
+    if (input && kind !== "sync-defaults") {
+      throw new HTTPException(400, {
+        message: `Operations of kind "${kind}" take no input`,
+      });
+    }
+
     const executor = ctx.env.tenantOperationExecutor;
     if (!executor) {
       throw new HTTPException(501, {
@@ -214,11 +229,17 @@ const createTenantOperation = defineRoute({
           "Tenant operations are not configured for this deployment (no executor)",
       });
     }
+    if (executor.kinds && !executor.kinds.includes(kind)) {
+      throw new HTTPException(501, {
+        message: `Operations of kind "${kind}" are not configured for this deployment`,
+      });
+    }
 
     const operation = await executor.enqueue({
       kind,
       tenant_id: tenantId,
       initiated_by: ctx.var.user?.sub,
+      ...(input ? { input } : {}),
     });
 
     await logMessage(ctx, tenantId, {

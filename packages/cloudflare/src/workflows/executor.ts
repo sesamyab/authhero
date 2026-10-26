@@ -32,13 +32,16 @@ export function createCloudflareWorkflowsExecutor(
     engine: "cloudflare-workflows",
 
     async start(operation: TenantOperation): Promise<void> {
-      if (operation.kind !== "provision") {
+      if (
+        operation.kind !== "provision" &&
+        operation.kind !== "sync-defaults"
+      ) {
         throw new Error(
-          `The Cloudflare Workflows executor does not support "${operation.kind}" operations yet (phase 2 covers provision only)`,
+          `The Cloudflare Workflows executor does not support "${operation.kind}" operations yet (it runs provision and sync-defaults)`,
         );
       }
       if (!operation.tenant_id) {
-        throw new Error("provision operations require a tenant_id");
+        throw new Error(`${operation.kind} operations require a tenant_id`);
       }
 
       const id =

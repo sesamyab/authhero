@@ -10,6 +10,11 @@ export {
 } from "./dispatch-sync-defaults";
 
 export {
+  createDispatchSyncConfig,
+  type DispatchSyncConfigOptions,
+} from "./dispatch-sync-config";
+
+export {
   createDispatchRenewSigningCertificates,
   type DispatchRenewSigningCertificatesOptions,
   type DispatchRenewSigningCertificatesResult,

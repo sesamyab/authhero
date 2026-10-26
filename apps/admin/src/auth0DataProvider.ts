@@ -454,7 +454,8 @@ export interface AuthHeroDataProvider extends DataProvider {
   >;
   createTenantOperation: (
     tenantId: string,
-    kind: "upgrade" | "seed" | "backup",
+    kind: "upgrade" | "seed" | "backup" | "sync-defaults",
+    input?: { dry_run?: boolean; force?: boolean },
   ) => Promise<TenantOperationRecord>;
 
   /**
@@ -517,12 +518,23 @@ export interface TeamInvitationRecord {
 export interface TenantOperationRecord {
   id: string;
   tenant_id: string | null;
-  kind: "provision" | "seed" | "upgrade" | "backup" | "deprovision";
+  kind:
+    | "provision"
+    | "seed"
+    | "upgrade"
+    | "backup"
+    | "deprovision"
+    | "users_import"
+    | "sync-defaults";
   status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   current_step?: string | null;
   engine: string;
   error?: string | null;
   initiated_by?: string | null;
+  /** Kind-specific parameters, e.g. `{ dry_run: true }` for a sync. */
+  input?: Record<string, unknown> | null;
+  /** The outcome, e.g. the changes a `sync-defaults` run made or would make. */
+  result?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   finished_at?: string | null;
@@ -2937,13 +2949,13 @@ export default (
       return res.json;
     },
 
-    createTenantOperation: async (targetTenantId, kind) => {
+    createTenantOperation: async (targetTenantId, kind, input) => {
       const res = await httpClient(
         `${apiUrl}/api/v2/tenants/${encodeURIComponent(targetTenantId)}/operations`,
         {
           method: "POST",
           headers: createHeaders(tenantId),
-          body: JSON.stringify({ kind }),
+          body: JSON.stringify(input ? { kind, input } : { kind }),
         },
       );
       return res.json;

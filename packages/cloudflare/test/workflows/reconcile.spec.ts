@@ -110,6 +110,53 @@ describe("reconcileTenantOperations", () => {
     expect(stores.operations.get("op_stuck")?.status).toBe("failed");
   });
 
+  it("marks a completed but unfinalized sync-defaults operation succeeded", async () => {
+    const stores = fakeStores();
+    // No provisioning_state anywhere: a sync has no tenant snapshot to read.
+    const tenants = fakeTenants([{ id: "kvartal", deployment_type: "wfp" }]);
+    const binding = fakeBinding();
+    const id = await seedStuckOperation(stores, { id: "op_sync" });
+    stores.operations.set(id, {
+      ...stores.operations.get(id)!,
+      kind: "sync-defaults",
+      current_step: "sync-defaults",
+    });
+    binding.statuses.set(`wf-${id}`, { status: "complete" });
+
+    const result = await reconcileTenantOperations({
+      stores,
+      tenants,
+      binding,
+    });
+
+    expect(result.markedSucceeded).toBe(1);
+    expect(result.markedFailed).toBe(0);
+    expect(stores.operations.get(id)?.status).toBe("succeeded");
+    expect(stores.events.some((e) => e.outcome === "reconciled")).toBe(true);
+  });
+
+  it("marks an errored sync-defaults instance failed with the engine error", async () => {
+    const stores = fakeStores();
+    const tenants = fakeTenants([{ id: "kvartal", deployment_type: "wfp" }]);
+    const binding = fakeBinding();
+    const id = await seedStuckOperation(stores, { id: "op_sync" });
+    stores.operations.set(id, {
+      ...stores.operations.get(id)!,
+      kind: "sync-defaults",
+    });
+    binding.statuses.set(`wf-${id}`, {
+      status: "errored",
+      error: { message: "sync-config push failed: 422" },
+    });
+
+    await reconcileTenantOperations({ stores, tenants, binding });
+
+    expect(stores.operations.get(id)?.status).toBe("failed");
+    expect(stores.operations.get(id)?.error).toMatch(/422/);
+    // A sync never touches the tenant's provisioning state.
+    expect(tenants.store.get("kvartal")?.provisioning_state).toBeUndefined();
+  });
+
   it("leaves running instances and fresh operations untouched", async () => {
     const stores = fakeStores();
     const tenants = fakeTenants([{ id: "kvartal", deployment_type: "wfp" }]);

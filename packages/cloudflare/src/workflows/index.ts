@@ -18,6 +18,11 @@ export {
   type ProvisionStepName,
 } from "./provision-operation";
 export {
+  runSyncDefaultsOperation,
+  type SyncDefaultsOperationDeps,
+  type SyncDefaultsStepName,
+} from "./sync-defaults-operation";
+export {
   createProvisionVerifier,
   TenantProvisionVerificationError,
   type ProvisionVerifierOptions,
