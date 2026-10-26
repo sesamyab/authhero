@@ -193,7 +193,13 @@ function wrapEntityAdapter<
   return {
     ...adapter,
 
-    create: async (tenantId: string, data: TInsert): Promise<TEntity> => {
+    // Extra arguments (for example `CreateOptions` on adapters that take
+    // them) are passed through to the wrapped adapter untouched.
+    create: async (
+      tenantId: string,
+      data: TInsert,
+      ...rest: unknown[]
+    ): Promise<TEntity> => {
       let processedData = data;
 
       // Call beforeCreate hook
@@ -202,7 +208,9 @@ function wrapEntityAdapter<
       }
 
       // Perform the actual create
-      const entity = await adapter.create(tenantId, processedData);
+      const entity = await (
+        adapter.create as (...args: unknown[]) => Promise<TEntity>
+      )(tenantId, processedData, ...rest);
 
       // Call afterCreate hook
       if (hooks.afterCreate) {
@@ -468,6 +476,9 @@ export function addEntityHooks(
     resourceServers: chainEntityHooks(entityHooks.resourceServers),
     rolePermissions: chainRolePermissionHooks(entityHooks.rolePermissions),
     tenants: chainEntityHooks(entityHooks.tenants),
+    actions: chainEntityHooks(entityHooks.actions),
+    hooks: chainEntityHooks(entityHooks.hooks),
+    hookCode: chainEntityHooks(entityHooks.hookCode),
   };
 
   // Create the hook context
@@ -495,5 +506,8 @@ export function addEntityHooks(
       context,
     ),
     tenants: wrapTenantsAdapter(data.tenants, hooks.tenants, context),
+    actions: wrapEntityAdapter(data.actions, hooks.actions, context),
+    hooks: wrapEntityAdapter(data.hooks, hooks.hooks, context),
+    hookCode: wrapEntityAdapter(data.hookCode, hooks.hookCode, context),
   };
 }

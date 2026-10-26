@@ -24,6 +24,8 @@ export const LogTypes = {
 
   // AuthHero: config inheritance shadow-mode difference (not an Auth0 code)
   CONFIG_INHERITANCE_DIFF: "cfgdiff",
+  // AuthHero: a synced tenant's config no longer matches what its parents publish
+  CONFIG_DRIFT: "cfgdrift",
 
   // Failed operations
   FAILED_LOGIN: "f",
@@ -235,6 +237,7 @@ export const logTypeDescriptions: Record<string, string> = {
   [LogTypes.CODE_SENT]: "Code Sent",
   [LogTypes.DEPRECATION_NOTICE]: "Deprecation Notice",
   [LogTypes.CONFIG_INHERITANCE_DIFF]: "Config Inheritance Shadow Difference",
+  [LogTypes.CONFIG_DRIFT]: "Config Drift",
   [LogTypes.FAILED_LOGIN]: "Failed Login",
   [LogTypes.FAILED_BY_CONNECTOR]: "Failed by Connector",
   [LogTypes.FAILED_CHANGE_EMAIL]: "Failed Change Email",
@@ -488,6 +491,7 @@ export const logTypeCategories: Record<string, LogCategory> = (() => {
       name === "MANAGEMENT_API_READ_OPERATION" ||
       name === "APPI" ||
       name === "CONFIG_INHERITANCE_DIFF" ||
+      name === "CONFIG_DRIFT" ||
       name === "ACLS_SUMMARY" ||
       name === "ORGANIZATION_MEMBER_ADDED"
     ) {

@@ -15,6 +15,8 @@ export const rollouts = sqliteTable("rollouts", {
   canary_tenant_ids: text("canary_tenant_ids"), // JSON array of tenant ids
   filter: text("filter"), // JSON tenant filter
   initiated_by: text("initiated_by", { length: 255 }),
+  config: text("config"), // JSON kind-specific settings
+  paused_reason: text("paused_reason"),
   created_at: text("created_at", { length: 35 }).notNull(),
   updated_at: text("updated_at", { length: 35 }).notNull(),
   finished_at: text("finished_at", { length: 35 }),

@@ -8,6 +8,7 @@ import {
   McpConfig,
   OutboxConfig,
   SigningKeyModeOption,
+  RolloutControllerBinding,
   TenantOperationExecutorBinding,
   UserLinkingModeOption,
   UsernamePasswordProviderResolver,
@@ -87,6 +88,10 @@ export type Bindings = {
   // Set via init({ tenantOperationExecutor }). Drives
   // POST /api/v2/tenants/{id}/operations.
   tenantOperationExecutor?: TenantOperationExecutorBinding;
+
+  // Optional controller for fleet rollouts of synced config (issue #1499).
+  // Set via init({ rolloutController }). Drives POST /api/v2/rollouts.
+  rolloutController?: RolloutControllerBinding;
 
   // Maximum accepted size of a bulk user-import file, in bytes. Defaults to
   // Auth0's documented 500 KB. Set via init({ usersImportMaxBytes }).

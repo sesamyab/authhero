@@ -744,6 +744,8 @@ export interface Database {
     canary_tenant_ids: string | null; // JSON array of tenant ids
     filter: string | null; // JSON tenant filter
     initiated_by: string | null;
+    config: string | null; // JSON kind-specific settings
+    paused_reason: string | null;
     created_at: string;
     updated_at: string;
     finished_at: string | null;

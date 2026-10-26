@@ -6,7 +6,12 @@ import { z } from "@hono/zod-openapi";
  * `tenant_operations` rows with this rollout's id — there are no
  * denormalized counters.
  */
-export const rolloutKindSchema = z.enum(["upgrade", "reseed", "backup"]);
+export const rolloutKindSchema = z.enum([
+  "upgrade",
+  "reseed",
+  "backup",
+  "config-sync",
+]);
 export type RolloutKind = z.infer<typeof rolloutKindSchema>;
 
 export const rolloutStatusSchema = z.enum([
@@ -28,6 +33,11 @@ export const rolloutInsertSchema = z.object({
   /** Which tenants the rollout targets (e.g. `{ deployment_type: "wfp" }`). */
   filter: z.record(z.string(), z.unknown()).nullable().optional(),
   initiated_by: z.string().max(255).nullable().optional(),
+  /**
+   * Kind-specific settings. For `config-sync`: the wave plan (canary, waves,
+   * failure threshold), what started it and the root tenant. Never secrets.
+   */
+  config: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 export type RolloutInsert = z.input<typeof rolloutInsertSchema>;
 
@@ -37,6 +47,8 @@ export const rolloutSchema = rolloutInsertSchema.extend({
   created_at: z.string(),
   updated_at: z.string(),
   finished_at: z.string().nullable().optional(),
+  /** Why a `paused` rollout stopped (for example a failed canary). */
+  paused_reason: z.string().nullable().optional(),
 });
 export type Rollout = z.infer<typeof rolloutSchema>;
 
@@ -46,6 +58,8 @@ export const rolloutUpdateSchema = rolloutSchema
     wave_size: true,
     canary_tenant_ids: true,
     filter: true,
+    config: true,
+    paused_reason: true,
     finished_at: true,
   })
   .partial();

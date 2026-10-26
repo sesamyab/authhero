@@ -116,6 +116,14 @@
  *       binding: env.TENANT_OPERATIONS_WORKFLOW,
  *     });
  *     console.log("reconcileTenantOperations", result);
+ *
+ *     // Fleet rollouts of synced config (initMultiTenant's `rollouts`):
+ *     // find tenants whose applied config no longer matches what their
+ *     // parents publish (the safety net for lost write triggers), then start
+ *     // the next wave of every open rollout. Pass a Workflows executor as
+ *     // initMultiTenant's `rolloutExecutor` to run the waves durably.
+ *     //   await reconcileConfigDrift(rollouts);
+ *     //   await advanceRollouts(rollouts);
  *   },
  * };
  *
