@@ -282,6 +282,11 @@ function describeIssue(issue: ValidationIssue, data: unknown) {
 
   switch (issue.code) {
     case "invalid_type":
+      // Without the source data (the index.ts fallback), a missing field and
+      // a wrong-typed one look the same, so defer to zod's own message.
+      if (data === undefined) {
+        return { detail: issue.message ?? "Invalid value", path };
+      }
       if (input === undefined) {
         return {
           detail: `Missing required property: ${path[path.length - 1] ?? "root"}`,

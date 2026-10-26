@@ -243,7 +243,17 @@ export function createAuthMiddleware(
             // A same-tenant token implies its tenant exists; a control-plane
             // token can name any tenant, so check it here rather than letting
             // a typo'd tenant-id surface as a missing user/client/etc.
-            if (!(await ctx.var.data.tenants.get(requestTenantId))) {
+            // A failing lookup is a server error: the catch below would
+            // otherwise turn it into 401 invalid_token.
+            const tenant = await ctx.var.data.tenants
+              .get(requestTenantId)
+              .catch((cause: unknown) => {
+                throw new HTTPException(500, {
+                  message: "Failed to look up tenant",
+                  cause,
+                });
+              });
+            if (!tenant) {
               throw notFound.tenant();
             }
           }

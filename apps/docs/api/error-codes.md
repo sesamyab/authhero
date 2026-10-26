@@ -26,11 +26,12 @@ unmarshal them and branch on `errorCode`:
 }
 ```
 
-The bodies are a **superset** of Auth0's. Wherever Auth0 returns a `message`
-or `errorCode`, AuthHero returns the same text. Wherever Auth0 omits
-`errorCode`, AuthHero adds one. See
-[Management API error codes](#management-api-error-codes) for the full list
-and the [AuthHero extensions](#authhero-extensions).
+The bodies are a **superset** of Auth0's. For the responses listed in
+[Management API error codes](#management-api-error-codes), AuthHero returns
+Auth0's exact `message` and `errorCode`. Validation messages follow Auth0's
+wording but leave out the property descriptions Auth0 appends. Wherever Auth0
+omits `errorCode`, AuthHero adds one. Every difference is listed under
+[AuthHero extensions](#authhero-extensions).
 
 ### OAuth and OIDC endpoints
 

@@ -185,3 +185,17 @@ describe("Auth0 contract", () => {
     }
   });
 });
+
+describe("formatValidationMessage without source data", () => {
+  it("doesn't report a wrong-typed field as missing", () => {
+    const result = z.object({ name: z.string() }).safeParse({ name: 5 });
+    if (result.success) throw new Error("expected a validation failure");
+    const { message } = formatValidationMessage(
+      "json",
+      result.error.issues,
+      undefined,
+    );
+    expect(message).not.toContain("Missing required property");
+    expect(message).toContain("on property name");
+  });
+});

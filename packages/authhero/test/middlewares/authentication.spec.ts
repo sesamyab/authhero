@@ -819,6 +819,40 @@ describe("createAuthMiddleware", () => {
       expect(result).toBe("next-response");
     });
 
+    it("surfaces a failing tenant lookup as a 500, not invalid_token", async () => {
+      const strictMiddleware = createAuthMiddleware(app, {
+        requireManagementAudience: true,
+      });
+
+      const token = await createToken({
+        user_id: "user123",
+        permissions: ["read:users"],
+        aud: MANAGEMENT_API_AUDIENCE,
+        tenant_id: "controlPlane",
+      });
+
+      mockCtx.env = {
+        ...mockEnv,
+        data: {
+          ...mockEnv.data,
+          multiTenancyConfig: { controlPlaneTenantId: "controlPlane" },
+        },
+      };
+      mockCtx.req.header.mockReturnValue(`Bearer ${token}`);
+      mockCtx.var.tenant_id = "tenantB";
+      mockCtx.var.data = {
+        tenants: { get: vi.fn().mockRejectedValue(new Error("db down")) },
+      };
+
+      const error = await strictMiddleware(mockCtx, mockNext).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(HTTPException);
+      if (!(error instanceof HTTPException)) return;
+      expect(error.status).toBe(500);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
     it("returns inexistent_tenant when a control-plane token targets a tenant that doesn't exist", async () => {
       const strictMiddleware = createAuthMiddleware(app, {
         requireManagementAudience: true,

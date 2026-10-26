@@ -170,6 +170,13 @@ describe("platform-scoped rows in the tenant management API", () => {
       expect(
         (await ctx.env.data.actions.get("tenantId", platformAction.id))?.name,
       ).toBe("platform-action");
+      // A 204 DELETE on a hidden row must not have removed it.
+      expect(
+        await ctx.env.data.connections.get("tenantId", sy("con_")),
+      ).toBeTruthy();
+      expect(
+        await ctx.env.data.resourceServers.get("tenantId", sy("api_")),
+      ).toBeTruthy();
     });
 
     it("never returns platform code or secrets from any list", async () => {
