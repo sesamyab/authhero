@@ -24,6 +24,7 @@ import { preUserSignupHook } from "./validate-signup";
 import { builtInUserLinkingEnabled } from "../helpers/user-linking";
 import { withNormalizedEmail } from "../utils/email";
 import { SignupValidationError } from "../errors/signup-validation-error";
+import { getExecutorData } from "../helpers/request-data";
 
 function setMetadata(
   user: User,
@@ -358,7 +359,8 @@ export function createUserHooks(
       // Bundle-friendly: fetch the full tenant hooks list and filter in JS
       // instead of passing a `q:` param.
       {
-        const { hooks: allHooks } = await ctx.env.data.hooks.list(tenant_id);
+        const { hooks: allHooks } =
+          await getExecutorData(ctx).hooks.list(tenant_id);
 
         // Template hooks (e.g. `account-linking`) mutate `result` before the
         // post-registration event is enqueued, so code hooks (delivered async

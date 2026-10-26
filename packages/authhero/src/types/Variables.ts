@@ -30,6 +30,11 @@ export type Variables = {
    * twice. Read it through `getBaseData`.
    */
   baseData?: DataAdapters;
+  /**
+   * Management API only: the request stack before platform-scoped rows are
+   * hidden from it. Code-hook execution reads this; see `getExecutorData`.
+   */
+  executorData?: DataAdapters;
   tenant_id: string;
   ip: string;
   client_id?: string;

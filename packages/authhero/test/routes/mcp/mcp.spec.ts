@@ -60,7 +60,12 @@ async function setup(): Promise<TestServer> {
   await env.data.resourceServers.create(CONTROL_PLANE, {
     name: "Management API",
     identifier: MANAGEMENT_API_AUDIENCE,
-    scopes: [{ value: "read:users" }, { value: "read:clients" }],
+    scopes: [
+      { value: "read:users" },
+      { value: "read:clients" },
+      { value: "read:connections" },
+      { value: "read:resource_servers" },
+    ],
     options: { enforce_policies: true, token_dialect: "access_token_authz" },
   });
   const role = await env.data.roles.create(CONTROL_PLANE, {
@@ -76,6 +81,16 @@ async function setup(): Promise<TestServer> {
       role_id: role.id,
       resource_server_identifier: MANAGEMENT_API_AUDIENCE,
       permission_name: "read:clients",
+    },
+    {
+      role_id: role.id,
+      resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+      permission_name: "read:connections",
+    },
+    {
+      role_id: role.id,
+      resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+      permission_name: "read:resource_servers",
     },
   ]);
   const acmeOrg = await env.data.organizations.create(CONTROL_PLANE, {
@@ -443,6 +458,44 @@ describe("MCP endpoint", () => {
       });
       expect(isError).toBe(true);
       expect(text).toMatch(/^403:/);
+    });
+
+    it("does not expose platform-scoped rows a sync delivered into the tenant", async () => {
+      const server = await setup();
+      const { env } = server;
+      const marker = (prefix: string) => `${prefix}sy${"0".padEnd(15, "0")}`;
+      await env.data.connections.create("acme", {
+        id: marker("con_"),
+        name: "platform-conn",
+        strategy: "google-oauth2",
+        options: { client_id: "x", client_secret: "platform-conn-secret" },
+        scope: "platform",
+      });
+      await env.data.connections.create("acme", {
+        name: "own-conn",
+        strategy: "auth0",
+        options: {},
+      });
+      await env.data.resourceServers.create("acme", {
+        id: marker("api_"),
+        identifier: "https://platform.example.com",
+        name: "platform-api",
+        scope: "platform",
+      });
+
+      const connections = await callTool(server, "list_connections", {
+        tenant_id: "acme",
+      });
+      expect(connections.isError).toBe(false);
+      expect(connections.text).toContain("own-conn");
+      expect(connections.text).not.toContain("platform-conn");
+      expect(connections.text).not.toContain("platform-conn-secret");
+
+      const servers = await callTool(server, "list_resource_servers", {
+        tenant_id: "acme",
+      });
+      expect(servers.isError).toBe(false);
+      expect(servers.text).not.toContain("platform.example.com");
     });
 
     it("redacts secrets from results", async () => {

@@ -15,6 +15,7 @@ import { Bindings, Variables } from "../types";
 import type { ActionExecutionLogCapture } from "../types/AuthHeroConfig";
 import { HookEvent, OnExecuteCredentialsExchangeAPI } from "../types/Hooks";
 import { EnrichedClient } from "../helpers/client";
+import { getExecutorData } from "../helpers/request-data";
 
 /**
  * Auth0 uses `post-login` for what we internally call `post-user-login`.
@@ -520,7 +521,7 @@ export async function handleCredentialsExchangeCodeHooks(
     try {
       const outcome = await handleCodeHook(
         ctx,
-        ctx.env.data,
+        getExecutorData(ctx),
         hook,
         event,
         "credentials-exchange",

@@ -1,6 +1,7 @@
 import { MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import type { DataAdapters } from "authhero";
+import { isSyncedRowId, type DataAdapters } from "authhero";
+import { SECRET_KEY } from "../inheritance/merge";
 import { getRequestData } from "./request-data";
 
 /**
@@ -108,6 +109,163 @@ function getEntityTypeName(type: SystemEntityType): string {
   return names[type];
 }
 
+type SyncedEntityType =
+  | "connection"
+  | "resource_server"
+  | "action"
+  | "hook"
+  | "hook_code";
+
+interface SyncedEntityInfo {
+  type: SyncedEntityType;
+  id: string;
+}
+
+/** Entities a config sync copies into a tenant, addressed by id. */
+function parseSyncedEntityFromPath(path: string): SyncedEntityInfo | null {
+  const patterns: { pattern: RegExp; type: SyncedEntityType }[] = [
+    { pattern: /\/api\/v2\/connections\/([^/]+)$/, type: "connection" },
+    {
+      pattern: /\/api\/v2\/resource-servers\/([^/]+)$/,
+      type: "resource_server",
+    },
+    { pattern: /\/api\/v2\/actions\/actions\/([^/]+)$/, type: "action" },
+    { pattern: /\/api\/v2\/hooks\/([^/]+)$/, type: "hook" },
+    { pattern: /\/api\/v2\/hook-code\/([^/]+)$/, type: "hook_code" },
+  ];
+  for (const { pattern, type } of patterns) {
+    const match = path.match(pattern);
+    if (match?.[1]) return { type, id: match[1] };
+  }
+  return null;
+}
+
+type LockableRow = {
+  scope?: string | null;
+  override?: string | null;
+  enforce?: boolean | null;
+} & Record<string, unknown>;
+
+async function readSyncedRow(
+  adapters: DataAdapters,
+  tenantId: string,
+  info: SyncedEntityInfo,
+): Promise<LockableRow | null> {
+  try {
+    switch (info.type) {
+      case "connection":
+        return (await adapters.connections.get(tenantId, info.id)) as never;
+      case "resource_server":
+        return (await adapters.resourceServers.get(tenantId, info.id)) as never;
+      case "action":
+        return (await adapters.actions.get(tenantId, info.id)) as never;
+      case "hook":
+        return (await adapters.hooks.get(tenantId, info.id)) as never;
+      case "hook_code":
+        return (await adapters.hookCode.get(tenantId, info.id)) as never;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/** Top-level fields a child may change when the parent's `override` is `secrets`. */
+const SECRET_FIELDS: Record<SyncedEntityType, string[]> = {
+  connection: ["options"],
+  resource_server: ["signing_secret"],
+  action: ["secrets"],
+  hook: [],
+  hook_code: [],
+};
+
+const same = (a: unknown, b: unknown) =>
+  JSON.stringify(a) === JSON.stringify(b);
+
+function forbidden(info: SyncedEntityInfo, why: string): HTTPException {
+  return new HTTPException(403, {
+    message: `This ${info.type.replace("_", " ")} is synced from a parent tenant and ${why}. Make changes in the parent tenant instead.`,
+  });
+}
+
+/**
+ * Enforces the publishing properties of a row a config sync copied into the
+ * tenant: `override` limits what the child may edit, `enforce` stops it from
+ * deleting or disabling the row, and nobody may change the properties
+ * themselves from the child. Rows the tenant owns are not touched.
+ */
+async function enforceSyncedLocks(
+  ctx: {
+    req: { method: string; raw: Request };
+  } & Parameters<typeof getRequestData>[0],
+  tenantId: string,
+  info: SyncedEntityInfo,
+): Promise<void> {
+  const row = await readSyncedRow(getRequestData(ctx), tenantId, info);
+  // Hidden (platform) or missing rows are the route's 404 to give.
+  if (!row) return;
+
+  // Code copied for a hook has no publishing properties of its own: it is
+  // never edited or removed from the child.
+  if (info.type === "hook_code") {
+    throw forbidden(info, "cannot be modified");
+  }
+
+  if (ctx.req.method === "DELETE") {
+    if (row.enforce === true) throw forbidden(info, "cannot be deleted");
+    return;
+  }
+
+  const override = row.override ?? "fields";
+  if (override === "none") throw forbidden(info, "cannot be edited");
+
+  let body: Record<string, unknown> = {};
+  try {
+    const parsed = await ctx.req.raw.clone().json();
+    if (parsed && typeof parsed === "object") {
+      body = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // No JSON body: nothing to compare.
+  }
+
+  // The admin UI sends the whole record, so unchanged values are fine.
+  for (const key of ["scope", "override", "enforce"] as const) {
+    if (key in body && !same(body[key] ?? null, row[key] ?? null)) {
+      throw forbidden(info, `has a locked ${key}`);
+    }
+  }
+
+  if (row.enforce === true && body.enabled === false) {
+    throw forbidden(info, "cannot be disabled");
+  }
+
+  if (override === "secrets") {
+    const allowed = SECRET_FIELDS[info.type];
+    for (const [key, value] of Object.entries(body)) {
+      if (["scope", "override", "enforce"].includes(key)) continue;
+      if (same(value, row[key])) continue;
+      if (!allowed.includes(key)) {
+        throw forbidden(
+          info,
+          `only allows its secrets to be changed (not ${key})`,
+        );
+      }
+      // Within `options`, only secret-looking keys may differ.
+      if (key === "options" && value && typeof value === "object") {
+        const current = (row.options ?? {}) as Record<string, unknown>;
+        for (const [option, optionValue] of Object.entries(value)) {
+          if (!SECRET_KEY.test(option) && !same(optionValue, current[option])) {
+            throw forbidden(
+              info,
+              `only allows its secrets to be changed (not options.${option})`,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
 /**
  * Creates middleware to protect system resources from modification.
  *
@@ -139,7 +297,8 @@ export function createProtectSyncedMiddleware(): MiddlewareHandler<{
     }
 
     const entityInfo = parseEntityFromPath(ctx.req.path);
-    if (!entityInfo) {
+    const syncedInfo = parseSyncedEntityFromPath(ctx.req.path);
+    if (!entityInfo && !syncedInfo) {
       return next();
     }
 
@@ -153,15 +312,21 @@ export function createProtectSyncedMiddleware(): MiddlewareHandler<{
       return next();
     }
 
-    const isSystem = await isSystemEntity(
-      getRequestData(ctx),
-      tenantId,
-      entityInfo,
-    );
-    if (isSystem) {
-      throw new HTTPException(403, {
-        message: `This ${getEntityTypeName(entityInfo.type)} is a system resource and cannot be modified. Make changes in the control plane instead.`,
-      });
+    if (entityInfo) {
+      const isSystem = await isSystemEntity(
+        getRequestData(ctx),
+        tenantId,
+        entityInfo,
+      );
+      if (isSystem) {
+        throw new HTTPException(403, {
+          message: `This ${getEntityTypeName(entityInfo.type)} is a system resource and cannot be modified. Make changes in the control plane instead.`,
+        });
+      }
+    }
+
+    if (syncedInfo && isSyncedRowId(syncedInfo.id)) {
+      await enforceSyncedLocks(ctx, tenantId, syncedInfo);
     }
 
     return next();

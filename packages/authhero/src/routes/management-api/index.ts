@@ -78,6 +78,8 @@ import { PipelineDestination } from "../../helpers/outbox-destinations/pipeline"
 import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
 import { CodeHookDestination } from "../../helpers/outbox-destinations/code-hooks";
 import { RegistrationFinalizerDestination } from "../../helpers/outbox-destinations/registration-finalizer";
+import { withPlatformRowsHidden } from "../../helpers/platform-rows";
+import { callerIsControlPlane } from "../../helpers/control-plane-caller";
 import { ControlPlaneSyncDestination } from "../../helpers/outbox-destinations/control-plane-sync";
 import { createServiceToken } from "../../helpers/service-token";
 
@@ -549,6 +551,24 @@ export default function create(config: AuthHeroConfig) {
           addEntityHooks(ctx.var.data, {
             tenantId: ctx.var.tenant_id,
             entityHooks: config.entityHooks,
+          }),
+        );
+      }
+      return next();
+    })
+    // Platform-scoped rows a config sync delivered into this tenant are for
+    // the executor only: hide them from every management route (and the MCP
+    // endpoint, which calls these routes) unless the caller is an operator.
+    // Code hooks that run inline in a management request keep reading the
+    // unfiltered stack through `getExecutorData`.
+    .use(async (ctx, next) => {
+      if (ctx.var.tenant_id && ctx.var.data) {
+        ctx.set("executorData", ctx.var.data);
+        setRequestData(
+          ctx,
+          withPlatformRowsHidden(ctx.var.data, {
+            tenantId: ctx.var.tenant_id,
+            isOperator: callerIsControlPlane(ctx),
           }),
         );
       }

@@ -1,3 +1,4 @@
+import { callerIsControlPlane } from "../../helpers/control-plane-caller";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables } from "../../types";
@@ -301,27 +302,6 @@ export const tenantRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
 }>().openapiRoutes([getSettings, patchSettings, redeployTenant] as const);
-
-// True when the caller's token comes from the control plane (or the deployment
-// is single-tenant, which is effectively a control plane). Organization-scoped
-// tokens are tenant-level credentials and do not count.
-export function callerIsControlPlane(ctx: {
-  env: { data: { multiTenancyConfig?: { controlPlaneTenantId?: string } } };
-  var: {
-    user?: { tenant_id?: string; org_id?: string; org_name?: string };
-    organization_id?: string;
-    org_name?: string;
-  };
-}): boolean {
-  const cpId = ctx.env.data.multiTenancyConfig?.controlPlaneTenantId;
-  if (!cpId) return true;
-  const user = ctx.var.user;
-  if (!user) return false;
-  const orgScoped = Boolean(
-    user.org_id ?? ctx.var.organization_id ?? ctx.var.org_name ?? user.org_name,
-  );
-  return !orgScoped && (!user.tenant_id || user.tenant_id === cpId);
-}
 
 // True when the current tenant is the deployment's control plane. In
 // multi-tenant deployments `multiTenancyConfig.controlPlaneTenantId` names the

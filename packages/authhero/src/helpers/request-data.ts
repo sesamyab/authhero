@@ -19,6 +19,20 @@ export function setRequestData(
 }
 
 /**
+ * The adapter stack code-hook and webhook execution reads.
+ *
+ * The management API hides platform-scoped rows that a config sync delivered
+ * from `ctx.var.data`, but hooks that run inline inside a management request
+ * (pre-registration, pre-deletion, ...) must still see and run them. Where no
+ * separate stack was installed this is the request's own stack.
+ */
+export function getExecutorData(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+): DataAdapters {
+  return ctx.var.executorData ?? ctx.var.data ?? ctx.env.data;
+}
+
+/**
  * The raw adapter a route group composes its per-request stack on: the base
  * an earlier middleware installed on `ctx.var.baseData` (per-tenant database
  * isolation), or `fallback`, the startup adapter from the config.

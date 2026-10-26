@@ -10,6 +10,7 @@ import { Bindings, Variables } from "../types";
 import { waitUntil } from "./wait-until";
 import { invokeHooks } from "../hooks/webhooks";
 import { stripInternalUserFields } from "./hook-user-payload";
+import { getExecutorData } from "./request-data";
 
 type HookCtx = Context<{ Bindings: Bindings; Variables: Variables }>;
 
@@ -116,7 +117,7 @@ async function dispatchInline(
   triggerId: string,
   user: User,
 ): Promise<void> {
-  const { hooks } = await ctx.env.data.hooks.list(tenantId);
+  const { hooks } = await getExecutorData(ctx).hooks.list(tenantId);
   const filtered = hooks.filter(
     (h: any) => h.enabled && h.trigger_id === triggerId && "url" in h,
   );

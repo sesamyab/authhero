@@ -80,11 +80,11 @@ platform (AuthHero operator)        global defaults
 Applies to connections, actions, hooks, resource servers and the singleton settings
 (branding, prompt settings, email provider).
 
-| Property   | Values                          | Meaning                                                                                                                   |
-| ---------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Property   | Values                          | Meaning                                                                                                                      |
+| ---------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `scope`    | `local` / `shared` / `platform` | `local`: not published. `shared`: visible to children, who may copy or override it. `platform`: hidden and locked, run only. |
-| `override` | `none` / `secrets` / `fields`   | What a child may change on a `shared` row. `secrets` lets a child supply its own client secret.                            |
-| `enforce`  | boolean                         | A child cannot disable or delete the row.                                                                                  |
+| `override` | `none` / `secrets` / `fields`   | What a child may change on a `shared` row. `secrets` lets a child supply its own client secret.                              |
+| `enforce`  | boolean                         | A child cannot disable or delete the row.                                                                                    |
 
 `scope: shared` plus `override: none` is today's `is_system` / `inheritable`. Existing
 flags map onto the new fields during migration, so current behaviour does not change.
@@ -112,6 +112,14 @@ management API reads that same database.
 - The executor still loads them directly from the database.
 - `enforce` and `override` are checked by the existing `protect-synced` middleware, which
   today only knows `is_system`.
+
+Implementation notes (#1497): a copy is recognised by its **id** (the `sy` marker that a
+sync derives), so the control plane's own `platform` rows, which it publishes, stay visible
+to it. Hidden rows answer 404 like rows that do not exist, and operators (control-plane
+credentials) still see them. Inline hook runners in the management API read an unfiltered
+stack so platform hooks keep running. Per-row key ids were left out: decryption is
+ring-wide and action code is not encrypted, so they would not change what a worker or
+database reader can see.
 
 Limit: the code and the (encrypted) secrets are stored in the tenant's database. This
 protects against the tenant's admin API. It does not protect against someone with access
