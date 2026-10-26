@@ -1,5 +1,22 @@
 # @authhero/drizzle
 
+## 1.16.0
+
+### Minor Changes
+
+- 4ead040: Add a per-tenant `config_sync` mode (`inherit-on-read`, the default, or `synced`). In `synced` mode the runtime fallback adapters, system resource server scopes, client URL merging, inherited actions and control-plane service tokens read only the tenant's own database. The mode is looked up through one shared resolver with a 30 second per-isolate cache, exposed as `multiTenancyConfig.resolveControlPlane` even when the host passes none. Only a control-plane credential can change it (`403` for a tenant's own admin, unchanged values are accepted so the admin UI can round-trip the record); it can be set in the admin UI under Settings → Advanced. Shadow mode skips synced tenants. New nullable `tenants.config_sync` column (kysely migration, drizzle `0014`).
+- df0cb5b: Add the resolved config block for tenant config sync. `buildResolvedConfigBlock` merges a tenant's parent chain (actions, code hooks with their hook code, connections, resource servers and more) and `applyResolvedConfigBlock` materialises it under the tenant's own id with deterministic row ids, a content hash stored in the new `tenants.config_sync_hash` / `config_synced_at` columns (an up-to-date push is a no-op), a dry run, explicit opt-in deletes and a key-ring check that refuses to write when the tenant cannot decrypt a key id in the payload. The drizzle adapter now honours `importMetadata.id` for actions and hook code. `config_sync_*` is ignored on tenant PATCH.
+- bc2fc83: Add staged fleet rollouts of synced config. A `config-sync` rollout syncs every synced tenant below a root as one `sync-defaults` operation per tenant, in waves (a canary, then cumulative percentages), ordered by depth so parents go before children, with a failure-rate health gate that pauses the rollout, resume, and per-wave progress. New management routes `POST/GET /rollouts`, `GET /rollouts/{id}`, `POST /rollouts/{id}/pause|resume` (scopes `read:rollouts`, `create:rollouts`, `update:rollouts`) and a `rollout_id` filter on a tenant's operations. Triggers: management-API writes to actions, hooks, hook code, connections and resource servers record a coalesced rollout request (new `actions`, `hooks` and `hookCode` entity hooks; the entity hook wrapper now passes extra create arguments through), `reconcileConfigDrift` compares each synced tenant's applied hash with its chain's current hash, writes `cfgdrift` logs and starts a rollout for what drifted, and `advanceRollouts` moves open rollouts along from a scheduled handler. `initMultiTenant` returns the `rollouts` deps and accepts a `rolloutExecutor`. The `rollouts` table gains `config` and `paused_reason` (kysely migration, drizzle control-plane `0002`).
+
+### Patch Changes
+
+- Updated dependencies [4ead040]
+- Updated dependencies [df0cb5b]
+- Updated dependencies [bc2fc83]
+- Updated dependencies [938f6eb]
+  - @authhero/adapter-interfaces@4.23.0
+  - @authhero/proxy@0.11.9
+
 ## 1.15.0
 
 ### Minor Changes
