@@ -460,7 +460,14 @@ export function AnalyticsPage() {
                           formatBucket(v, effectiveInterval)
                         }
                       />
-                      <Bar dataKey={seriesKeys[0]} fill={CHART_COLORS[0]} />
+                      {/* Saffron for the single-series bars; the line palette
+                          starts with ink because thin saffron lines are too
+                          faint on white. */}
+                      <Bar
+                        dataKey={seriesKeys[0]}
+                        fill="var(--chart-2)"
+                        radius={[3, 3, 0, 0]}
+                      />
                     </BarChart>
                   ) : (
                     <LineChart data={rows}>
