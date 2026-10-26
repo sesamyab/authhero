@@ -447,6 +447,18 @@ const result = await applyResolvedConfigBlock(block, tenantAdapters, tenantId, {
 `applyControlPlaneDefaultsPayload` applies a payload's `resolved` block when you
 pass `options.resolved = { tenantId, ... }`; without it the block is ignored.
 
+### Platform-scoped rows
+
+A row published with `scope: "platform"` is copied into the child so it can run, but it is **run only**:
+
+- It is hidden from the child's management API: missing from lists, `404` on get, update and delete, and nothing can be bound to or reference it. Its code and secrets are never returned, to tenant admins or through the MCP endpoint. This covers actions (with their versions and executions), hooks, hook code, connections, resource servers and, for a tenant that receives config, the email provider. It is also left out of tenant exports.
+- It still runs: login, pre-registration and other hooks load it directly, and hooks that run inside a management request read an unfiltered view.
+- Control-plane credentials (operators) still see it, and the tenant that publishes it still sees its own copy.
+- A copy is recognised by its id (the `sy` marker), so the filter needs no extra column.
+- Hiding is applied after the query, so page totals and cursors in list responses can include hidden rows.
+
+**Limit:** the code and the (encrypted) secrets are still stored in the tenant's database and are available to the tenant's worker. Hiding them protects against the tenant's management API only, not against someone with access to the worker environment or the database. Action code is not encrypted at rest. If a piece of logic must never reach a tenant, run it on the control plane instead.
+
 ### Cutting a tenant over to synced config
 
 1. Build and apply the resolved block with `dryRun: true` and review the diff.

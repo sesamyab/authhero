@@ -1,3 +1,4 @@
+import { callerIsControlPlane } from "../../helpers/control-plane-caller";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables } from "../../types";
@@ -131,9 +132,14 @@ const patchSettings = defineRoute({
       });
     }
 
-    // Only validate default_audience when the field is in the incoming
-    // payload — leaves grandfathered tenants able to PATCH unrelated fields.
-    if ("default_audience" in sanitizedUpdates) {
+    // Only validate default_audience when it changes — leaves grandfathered
+    // tenants able to PATCH unrelated fields, and a whole-record PATCH that
+    // echoes a default_audience naming a resource server hidden from this
+    // admin (a platform copy) is not refused for it.
+    if (
+      "default_audience" in sanitizedUpdates &&
+      sanitizedUpdates.default_audience !== existingTenant.default_audience
+    ) {
       const next = sanitizedUpdates.default_audience;
       if (typeof next === "string" && next.length > 0) {
         const { resource_servers } =
@@ -301,27 +307,6 @@ export const tenantRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
 }>().openapiRoutes([getSettings, patchSettings, redeployTenant] as const);
-
-// True when the caller's token comes from the control plane (or the deployment
-// is single-tenant, which is effectively a control plane). Organization-scoped
-// tokens are tenant-level credentials and do not count.
-export function callerIsControlPlane(ctx: {
-  env: { data: { multiTenancyConfig?: { controlPlaneTenantId?: string } } };
-  var: {
-    user?: { tenant_id?: string; org_id?: string; org_name?: string };
-    organization_id?: string;
-    org_name?: string;
-  };
-}): boolean {
-  const cpId = ctx.env.data.multiTenancyConfig?.controlPlaneTenantId;
-  if (!cpId) return true;
-  const user = ctx.var.user;
-  if (!user) return false;
-  const orgScoped = Boolean(
-    user.org_id ?? ctx.var.organization_id ?? ctx.var.org_name ?? user.org_name,
-  );
-  return !orgScoped && (!user.tenant_id || user.tenant_id === cpId);
-}
 
 // True when the current tenant is the deployment's control plane. In
 // multi-tenant deployments `multiTenancyConfig.controlPlaneTenantId` names the

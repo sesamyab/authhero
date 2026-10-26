@@ -59,6 +59,10 @@ export type { OutboxCleanupParams } from "./helpers/outbox-cleanup";
 export type { CodesCleanupParams } from "./helpers/codes-cleanup";
 export type { ActionExecutionsCleanupParams } from "./helpers/action-executions-cleanup";
 export { createDefaultDestinations } from "./helpers/default-destinations";
+export { isSyncedRowId } from "./helpers/synced-rows";
+export { withPlatformRowsHidden } from "./helpers/platform-rows";
+export type { PlatformRowsOptions } from "./helpers/platform-rows";
+export { getExecutorData } from "./helpers/request-data";
 export type { CreateDefaultDestinationsConfig } from "./helpers/default-destinations";
 export {
   provisionDefaultClients,

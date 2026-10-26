@@ -47,6 +47,10 @@ When `ENCRYPTION_KEY` is unset the wrapper is not installed and behavior is unch
 
 Non-sensitive keys (e.g. `connections.options.client_id`) are left in plaintext so they remain queryable and inspectable.
 
+### Platform-scoped rows
+
+Secrets of `scope: "platform"` rows are encrypted like any other, with the same key ring. The tenant's management API hides those rows, but decryption picks the key from the ring by the key id inside the ciphertext, and action code is not encrypted, so a process that holds the ring and the database can read both. See [platform-scoped rows](../customization/multi-tenancy/control-plane-defaults.md#platform-scoped-rows).
+
 ### Not covered
 
 Private keys are intentionally **not** encrypted by this mechanism: `keys.pkcs7` (JWT signing keys) and `dkim_private_key`. These are better protected with envelope encryption and are left for a future iteration.

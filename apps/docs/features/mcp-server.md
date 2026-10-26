@@ -76,6 +76,10 @@ claude mcp add --transport http authhero https://control.auth.example.com/mcp
 
 The first tool call opens the control-plane login in the browser. For a single tenant, use that tenant's host instead, for example `https://acme.auth.example.com/mcp`.
 
+## Platform-scoped config
+
+The tools call the tenant's management API, so they see what a tenant admin sees. Rows with `scope: "platform"` that a config sync delivered into the tenant (run-only actions, hooks and connections from a parent tenant) are hidden: they are missing from lists and answer as not found. See [platform-scoped rows](../customization/multi-tenancy/control-plane-defaults.md#platform-scoped-rows).
+
 ## Limitations
 
 - A token is bound to the host it was issued for, so a client that connects to both the control-plane host and a tenant host signs in once for each.

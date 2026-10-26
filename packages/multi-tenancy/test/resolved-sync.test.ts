@@ -5,6 +5,7 @@ import {
   createEncryptedDataAdapterWithKeyRing,
   loadEncryptionKey,
 } from "authhero";
+import { isSyncedRowId } from "authhero";
 import { applyControlPlaneDefaultsPayload } from "../src/rollout";
 import {
   applyResolvedConfigBlock,
@@ -317,5 +318,19 @@ describe("resolved config sync", () => {
     });
     expect(applied.resolved?.status).toBe("applied");
     expect((await raw.actions.list(CHILD)).actions).toHaveLength(1);
+  });
+
+  it("derives ids the management API recognises as synced copies", async () => {
+    for (const entity of [
+      "connection",
+      "resourceServer",
+      "hook",
+      "hookCode",
+      "action",
+    ] as const) {
+      expect(isSyncedRowId(await syncedRowId(entity, CHILD, "any-key"))).toBe(
+        true,
+      );
+    }
   });
 });

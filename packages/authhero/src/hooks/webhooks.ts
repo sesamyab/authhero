@@ -10,6 +10,7 @@ import { Variables, Bindings } from "../types";
 import { createServiceToken } from "../helpers/service-token";
 import { stripInternalUserFields } from "../helpers/hook-user-payload";
 import { recordServerTiming } from "../helpers/server-timing";
+import { getExecutorData } from "../helpers/request-data";
 
 export interface WebHookResult {
   ok: boolean;
@@ -163,7 +164,7 @@ export function postUserRegistrationWebhook(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
 ) {
   return async (tenant_id: string, user: User): Promise<User> => {
-    const { hooks } = await ctx.env.data.hooks.list(tenant_id);
+    const { hooks } = await getExecutorData(ctx).hooks.list(tenant_id);
     const filtered = hooks.filter(
       (h) => h.trigger_id === "post-user-registration",
     );
@@ -182,7 +183,7 @@ export function preUserRegistrationWebhook(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
 ) {
   return async (tenant_id: string, email: string): Promise<void> => {
-    const { hooks } = await ctx.env.data.hooks.list(tenant_id);
+    const { hooks } = await getExecutorData(ctx).hooks.list(tenant_id);
     const filtered = hooks.filter(
       (h) => h.trigger_id === "pre-user-registration",
     );
@@ -220,7 +221,7 @@ export async function getValidateRegistrationUsernameWebhook(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   tenant_id: string,
 ): Promise<Hook | null> {
-  const { hooks } = await ctx.env.data.hooks.list(tenant_id);
+  const { hooks } = await getExecutorData(ctx).hooks.list(tenant_id);
 
   return (
     hooks.find(
@@ -240,7 +241,7 @@ export function preUserDeletionWebhook(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
 ) {
   return async (tenant_id: string, user: User): Promise<User> => {
-    const { hooks } = await ctx.env.data.hooks.list(tenant_id);
+    const { hooks } = await getExecutorData(ctx).hooks.list(tenant_id);
     const filtered = hooks.filter((h) => h.trigger_id === "pre-user-deletion");
 
     await invokeHooks(ctx, filtered, {
@@ -257,7 +258,7 @@ export function postUserDeletionWebhook(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
 ) {
   return async (tenant_id: string, user: User): Promise<User> => {
-    const { hooks } = await ctx.env.data.hooks.list(tenant_id);
+    const { hooks } = await getExecutorData(ctx).hooks.list(tenant_id);
     const filtered = hooks.filter((h) => h.trigger_id === "post-user-deletion");
 
     await invokeHooks(ctx, filtered, {

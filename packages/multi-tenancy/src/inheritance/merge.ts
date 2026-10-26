@@ -57,7 +57,7 @@ export function effectiveOverride(row: Publishable): ConfigOverride {
   return row.override ?? "fields";
 }
 
-const SECRET_KEY = /secret|password|private_key|api_key|token/i;
+export const SECRET_KEY = /secret|password|private_key|api_key|token/i;
 
 function secretsOnly(
   parent: Record<string, unknown> | undefined,
