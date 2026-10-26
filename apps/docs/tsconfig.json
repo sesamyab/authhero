@@ -21,6 +21,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": [".vitepress/**/*"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": [".vitepress/**/*"]
 }
