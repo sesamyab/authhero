@@ -21,5 +21,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": [".vitepress/**/*"]
+  "include": [".vitepress/**/*"],
+  "exclude": [".vitepress/cache", ".vitepress/dist"]
 }

@@ -225,6 +225,10 @@ The `inexistent_<resource>` codes are: `inexistent_invitation`,
   `400 invalid_uri`.
 - A bearer value that isn't a JWT returns `401 invalid_token`. Auth0 returns
   `400 Bad HTTP authentication header format` with `errorCode: "Bearer"`.
+- `POST /users` permits a connection that is not stored, to support user
+  migrations. It uses the supplied `provider`, or the connection value when no
+  provider is supplied. Auth0 rejects an unknown connection with
+  `400 inexistent_connection` and `The connection does not exist.`.
 
 ## Login flow error codes
 

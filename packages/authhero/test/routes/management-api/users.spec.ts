@@ -7,6 +7,43 @@ import { USERNAME_PASSWORD_PROVIDER } from "../../../src/constants";
 
 describe("users management API endpoint", () => {
   describe("POST", () => {
+    it.each([undefined, "migration-provider"])(
+      "supports an unstored migration connection with provider %s",
+      async (provider) => {
+        const { managementApp, env } = await getTestServer();
+        const token = await getAdminToken();
+        const response = await managementApp.request(
+          "/users",
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "tenant-id": "tenantId",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              email: "migration@example.com",
+              connection: "migration-connection",
+              ...(provider && { provider }),
+            }),
+          },
+          env,
+        );
+
+        expect(response.status).toBe(201);
+        const user = await response.json();
+        expect(user.user_id).toMatch(
+          new RegExp(`^${provider ?? "migration-connection"}\\|`),
+        );
+        expect(
+          await env.data.users.get("tenantId", user.user_id),
+        ).toMatchObject({
+          connection: "migration-connection",
+          provider: provider ?? "migration-connection",
+        });
+      },
+    );
+
     it("should create a new sms user", async () => {
       const { managementApp, env } = await getTestServer();
       const managementClient = testClient(managementApp, env);

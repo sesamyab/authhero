@@ -310,7 +310,7 @@ function describeIssue(issue: ValidationIssue, data: unknown) {
         detail:
           issue.origin === "string"
             ? `String is too long (${String(input).length} chars), maximum ${issue.maximum}`
-            : `Value ${String(input)} is greater than maximum ${issue.maximum}`,
+            : `Value ${Array.isArray(input) ? JSON.stringify(input) : String(input)} is greater than maximum ${issue.maximum}`,
         path,
       };
     case "too_small":
@@ -318,7 +318,7 @@ function describeIssue(issue: ValidationIssue, data: unknown) {
         detail:
           issue.origin === "string"
             ? `String is too short (${String(input).length} chars), minimum ${issue.minimum}`
-            : `Value ${String(input)} is less than minimum ${issue.minimum}`,
+            : `Value ${Array.isArray(input) ? JSON.stringify(input) : String(input)} is less than minimum ${issue.minimum}`,
         path,
       };
     case "invalid_format":

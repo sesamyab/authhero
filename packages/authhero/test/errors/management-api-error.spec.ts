@@ -28,6 +28,7 @@ describe("management API errors", () => {
       blocked: z.boolean().optional(),
       per_page: z.number().max(100).optional(),
       engine: z.enum(["v2", "v3"]).optional(),
+      ids: z.array(z.string()).min(1).max(2).optional(),
     });
 
     const format = (target: string, data: unknown) => {
@@ -70,6 +71,24 @@ describe("management API errors", () => {
     it("quotes the rejected enum value", () => {
       expect(format("query", { name: "x", engine: "v9" }).message).toBe(
         `Query validation error: 'Invalid value "v9"' on property engine.`,
+      );
+    });
+
+    it("preserves an empty array in minimum-length errors", () => {
+      expect(format("json", { name: "x", ids: [] })).toEqual({
+        statusCode: 400,
+        error: "Bad Request",
+        message:
+          "Payload validation error: 'Value [] is less than minimum 1' on property ids.",
+        errorCode: "invalid_body",
+      });
+    });
+
+    it("preserves array elements in maximum-length errors", () => {
+      expect(
+        format("json", { name: "x", ids: ["a,b", 'c"d', ""] }).message,
+      ).toBe(
+        `Payload validation error: 'Value ["a,b","c\\"d",""] is greater than maximum 2' on property ids.`,
       );
     });
 
