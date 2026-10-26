@@ -56,7 +56,7 @@ function ParentTenantInput() {
     <TextInput
       source="parent_tenant_id"
       label="Parent tenant"
-      helperText="The tenant this one inherits config from. Leave empty to inherit from the control plane."
+      helperText="The tenant this one inherits config from. Leave empty to inherit from the control plane. Only the control plane can change this."
     />
   );
 }

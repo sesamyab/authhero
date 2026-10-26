@@ -3,7 +3,7 @@ import { useRecordContext } from "ra-core";
 import { Lock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useConfigSyncStatus } from "@/hooks/useConfigSyncStatus";
-import { isSyncedRowId, rowIdOf } from "@/lib/syncedRows";
+import { isLockedInheritedRow, isSyncedRowId, rowIdOf } from "@/lib/syncedRows";
 
 interface PublishedRecord {
   id?: string;
@@ -29,7 +29,7 @@ export function useInheritedRow() {
     override,
     enforce: !!record?.enforce,
     /** Nothing may be changed on this row. */
-    locked: inherited && override === "none",
+    locked: isLockedInheritedRow(record),
     secretsOnly: inherited && override === "secrets",
   };
 }

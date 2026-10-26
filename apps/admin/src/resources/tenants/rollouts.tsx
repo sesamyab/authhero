@@ -127,13 +127,18 @@ export function Rollouts() {
     return () => clearInterval(timer);
   }, [anyOpen, refresh, select, selectedId]);
 
-  const act = async (work: () => Promise<unknown>, done: string) => {
+  /** Runs a request, then refreshes and shows the rollout it returned (or the open one). */
+  const act = async (
+    work: () => Promise<{ id?: string } | void>,
+    done: string,
+  ) => {
     setBusy(true);
     try {
-      await work();
+      const result = await work();
       notify(done, { type: "info" });
       await refresh();
-      if (selectedId) await select(selectedId);
+      const target = (result && result.id) || selectedId;
+      if (target) await select(target);
     } catch (error) {
       notify(errorMessage(error, "The request failed"), { type: "error" });
     } finally {
@@ -148,10 +153,7 @@ export function Rollouts() {
       return;
     }
     await act(
-      async () => {
-        const created = await dataProvider.createRollout(parsed.input);
-        await select(created.id);
-      },
+      () => dataProvider.createRollout(parsed.input),
       form.dryRun ? "Dry run recorded" : "Rollout started",
     );
   };

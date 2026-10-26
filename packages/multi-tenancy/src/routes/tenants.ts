@@ -359,6 +359,13 @@ export function createTenantsOpenAPIRouter(
         ...validBody
       } = ctx.req.valid("json");
       let body: CreateTenantParams = validBody;
+      // Choosing the parent decides whose published config a tenant receives,
+      // so a tenant's own admin may not attach it to someone else's tenant.
+      if (body.parent_tenant_id && !isControlPlaneCaller(ctx)) {
+        throw new HTTPException(403, {
+          message: "Only the control plane can set a tenant's parent",
+        });
+      }
       // `config_sync` is an operator decision: only a control-plane caller may
       // create a tenant that is already in `synced` mode.
       if (requestedSync !== undefined && isControlPlaneCaller(ctx)) {
@@ -728,6 +735,16 @@ export function createTenantsOpenAPIRouter(
       }
 
       if ("parent_tenant_id" in sanitizedUpdates) {
+        // An unchanged value is fine: the admin UI sends the whole record.
+        if (
+          (sanitizedUpdates.parent_tenant_id ?? null) !==
+            (existingTenant.parent_tenant_id ?? null) &&
+          !isControlPlaneCaller(ctx)
+        ) {
+          throw new HTTPException(403, {
+            message: "Only the control plane can change a tenant's parent",
+          });
+        }
         await validateTenantParent({
           tenantId: ctx.var.tenant_id,
           parentTenantId: sanitizedUpdates.parent_tenant_id,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSyncedRowId, rowIdOf } from "./syncedRows";
+import { isLockedInheritedRow, isSyncedRowId, rowIdOf } from "./syncedRows";
 
 describe("isSyncedRowId", () => {
   it("recognises the ids a sync writes", () => {
@@ -21,5 +21,18 @@ describe("rowIdOf", () => {
     expect(rowIdOf({ hook_id: "h_1" })).toBe("h_1");
     expect(rowIdOf({ id: "a", hook_id: "b" })).toBe("a");
     expect(rowIdOf(undefined)).toBeUndefined();
+  });
+});
+
+describe("isLockedInheritedRow", () => {
+  const synced = "act_sy0123456789abcde";
+  it("locks only copies whose parent allows no changes", () => {
+    expect(isLockedInheritedRow({ id: synced, override: "none" })).toBe(true);
+    expect(isLockedInheritedRow({ id: synced, override: "secrets" })).toBe(
+      false,
+    );
+    expect(isLockedInheritedRow({ id: synced })).toBe(false);
+    expect(isLockedInheritedRow({ id: "act_1", override: "none" })).toBe(false);
+    expect(isLockedInheritedRow(undefined)).toBe(false);
   });
 });

@@ -16,3 +16,21 @@ export function rowIdOf(
   const id = record?.id ?? record?.hook_id;
   return typeof id === "string" ? id : undefined;
 }
+
+/**
+ * A row copied from a parent whose `override` allows no changes. An unset
+ * override is "fields" (the server treats it the same way), so it stays
+ * editable.
+ */
+export function isLockedInheritedRow(
+  record:
+    | { id?: unknown; hook_id?: unknown; override?: string | null }
+    | undefined
+    | null,
+): boolean {
+  return (
+    !!record &&
+    isSyncedRowId(rowIdOf(record)) &&
+    (record.override ?? "fields") === "none"
+  );
+}
