@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables } from "../../types";
 import {
@@ -88,7 +92,7 @@ const getById = defineRoute({
     const proxyRoutes = requireProxyRoutes(ctx);
     const { id } = ctx.req.valid("param");
     const route = await proxyRoutes.get(tenantId, id);
-    if (!route) throw new HTTPException(404);
+    if (!route) throw notFound.proxyRoute();
     return ctx.json(route);
   },
 });
@@ -162,9 +166,9 @@ const patchById = defineRoute({
     const { id } = ctx.req.valid("param");
     const body = ctx.req.valid("json");
     const ok = await proxyRoutes.update(tenantId, id, body);
-    if (!ok) throw new HTTPException(404);
+    if (!ok) throw notFound.proxyRoute();
     const updated = await proxyRoutes.get(tenantId, id);
-    if (!updated) throw new HTTPException(404);
+    if (!updated) throw notFound.proxyRoute();
     enqueueControlPlaneSyncEvent(ctx, {
       tenantId,
       entity: "proxy_route",
@@ -197,7 +201,7 @@ const deleteById = defineRoute({
     // Snapshot before delete so the sync event carries the pre-delete payload.
     const beforeDelete = await proxyRoutes.get(tenantId, id);
     const ok = await proxyRoutes.remove(tenantId, id);
-    if (!ok) throw new HTTPException(404);
+    if (!ok) throw notFound.proxyRoute();
     if (beforeDelete) {
       enqueueControlPlaneSyncEvent(ctx, {
         tenantId,
@@ -214,7 +218,7 @@ const deleteById = defineRoute({
 export const proxyRoutesRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   listRoutes,
   getById,
   postRoot,

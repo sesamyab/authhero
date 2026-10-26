@@ -1,5 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { HTTPException } from "hono/http-exception";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import {
   breachedPasswordDetectionSchema,
   bruteForceProtectionSchema,
@@ -39,7 +42,7 @@ async function getSection<S extends Section>(
   const tenantId = requireTenantId(ctx);
   const tenant = await ctx.env.data.tenants.get(tenantId);
   if (!tenant) {
-    throw new HTTPException(404, { message: "Tenant not found" });
+    throw notFound.tenant();
   }
   return (tenant.attack_protection?.[section] ?? {}) as NonNullable<
     AttackProtection[S]
@@ -54,7 +57,7 @@ async function patchSection<S extends Section>(
   const tenantId = requireTenantId(ctx);
   const tenant = await ctx.env.data.tenants.get(tenantId);
   if (!tenant) {
-    throw new HTTPException(404, { message: "Tenant not found" });
+    throw notFound.tenant();
   }
   const existing = tenant.attack_protection ?? {};
   const mergedSection = deepMerge(existing[section] ?? {}, patch ?? {});
@@ -227,7 +230,7 @@ const patchSuspiciousIpThrottling = defineRoute({
 export const attackProtectionRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getBreachedPasswordDetection,
   patchBreachedPasswordDetection,
   getBruteForceProtection,

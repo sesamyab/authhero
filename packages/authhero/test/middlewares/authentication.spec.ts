@@ -109,7 +109,7 @@ describe("createAuthMiddleware", () => {
         HTTPException,
       );
       await expect(authMiddleware(mockCtx, mockNext)).rejects.toThrow(
-        "Missing bearer token",
+        "Missing authentication",
       );
       expect(mockNext).not.toHaveBeenCalled();
     });
@@ -121,7 +121,7 @@ describe("createAuthMiddleware", () => {
         HTTPException,
       );
       await expect(authMiddleware(mockCtx, mockNext)).rejects.toThrow(
-        "Missing bearer token",
+        "Missing authentication",
       );
       expect(mockNext).not.toHaveBeenCalled();
     });
@@ -133,7 +133,7 @@ describe("createAuthMiddleware", () => {
         HTTPException,
       );
       await expect(authMiddleware(mockCtx, mockNext)).rejects.toThrow(
-        "Missing bearer token",
+        "Missing authentication",
       );
       expect(mockNext).not.toHaveBeenCalled();
     });
@@ -151,7 +151,7 @@ describe("createAuthMiddleware", () => {
         HTTPException,
       );
       await expect(authMiddleware(mockCtx, mockNext)).rejects.toThrow(
-        "Unauthorized",
+        "Insufficient scope, expected any of: read:users",
       );
       expect(mockNext).not.toHaveBeenCalled();
     });
@@ -169,7 +169,7 @@ describe("createAuthMiddleware", () => {
         HTTPException,
       );
       await expect(authMiddleware(mockCtx, mockNext)).rejects.toThrow(
-        "Unauthorized",
+        "Insufficient scope, expected any of: read:users",
       );
       expect(mockNext).not.toHaveBeenCalled();
     });
@@ -809,11 +809,54 @@ describe("createAuthMiddleware", () => {
       };
       mockCtx.req.header.mockReturnValue(`Bearer ${token}`);
       mockCtx.var.tenant_id = "tenantB";
+      mockCtx.var.data = {
+        tenants: { get: vi.fn().mockResolvedValue({ id: "tenantB" }) },
+      };
 
       const result = await strictMiddleware(mockCtx, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
       expect(result).toBe("next-response");
+    });
+
+    it("returns inexistent_tenant when a control-plane token targets a tenant that doesn't exist", async () => {
+      const strictMiddleware = createAuthMiddleware(app, {
+        requireManagementAudience: true,
+      });
+
+      const token = await createToken({
+        user_id: "user123",
+        permissions: ["read:users"],
+        aud: MANAGEMENT_API_AUDIENCE,
+        tenant_id: "controlPlane",
+      });
+
+      mockCtx.env = {
+        ...mockEnv,
+        data: {
+          ...mockEnv.data,
+          multiTenancyConfig: { controlPlaneTenantId: "controlPlane" },
+        },
+      };
+      mockCtx.req.header.mockReturnValue(`Bearer ${token}`);
+      mockCtx.var.tenant_id = "typo-tenant";
+      mockCtx.var.data = {
+        tenants: { get: vi.fn().mockResolvedValue(null) },
+      };
+
+      const error = await strictMiddleware(mockCtx, mockNext).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(HTTPException);
+      if (!(error instanceof HTTPException)) return;
+      expect(error.status).toBe(404);
+      expect(await error.getResponse().json()).toEqual({
+        statusCode: 404,
+        error: "Not Found",
+        message: "The tenant does not exist.",
+        errorCode: "inexistent_tenant",
+      });
+      expect(mockNext).not.toHaveBeenCalled();
     });
 
     it("rejects when token tenant differs from request tenant and is not the control plane", async () => {

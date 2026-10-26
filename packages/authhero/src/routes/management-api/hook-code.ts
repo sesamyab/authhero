@@ -1,4 +1,8 @@
 import { Bindings, Variables } from "../../types";
+import {
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   hookCodeInsertSchema,
@@ -6,7 +10,6 @@ import {
   LogTypes,
 } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
-import { HTTPException } from "hono/http-exception";
 
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
@@ -125,7 +128,7 @@ const getById = defineRoute({
     const hookCode = await ctx.env.data.hookCode.get(tenantId, id);
 
     if (!hookCode) {
-      throw new HTTPException(404, { message: "Hook code not found" });
+      throw notFound.hookCode();
     }
 
     return ctx.json(hookCode);
@@ -178,12 +181,12 @@ const putById = defineRoute({
 
     const updated = await ctx.env.data.hookCode.update(tenantId, id, body);
     if (!updated) {
-      throw new HTTPException(404, { message: "Hook code not found" });
+      throw notFound.hookCode();
     }
 
     const hookCode = await ctx.env.data.hookCode.get(tenantId, id);
     if (!hookCode) {
-      throw new HTTPException(404, { message: "Hook code not found" });
+      throw notFound.hookCode();
     }
 
     // Re-deploy to execution environment if supported
@@ -247,7 +250,7 @@ const deleteById = defineRoute({
     const result = await ctx.env.data.hookCode.remove(tenantId, id);
 
     if (!result) {
-      throw new HTTPException(404, { message: "Hook code not found" });
+      throw notFound.hookCode();
     }
 
     // Remove from execution environment if supported
@@ -276,4 +279,9 @@ const deleteById = defineRoute({
 export const hookCodeRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([postRoot, getById, putById, deleteById] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  postRoot,
+  getById,
+  putById,
+  deleteById,
+] as const);

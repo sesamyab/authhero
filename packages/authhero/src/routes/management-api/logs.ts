@@ -1,5 +1,8 @@
 import { Bindings, Variables } from "../../types";
-import { HTTPException } from "hono/http-exception";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { querySchema } from "../../types/auth0/Query";
 import { parseSort } from "../../utils/sort";
@@ -125,7 +128,7 @@ const getById = defineRoute({
     const log = await ctx.env.data.logs.get(tenantId, id);
 
     if (!log) {
-      throw new HTTPException(404);
+      throw notFound.log();
     }
 
     return ctx.json(log);
@@ -135,4 +138,7 @@ const getById = defineRoute({
 export const logRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getRoot, getById] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getRoot,
+  getById,
+] as const);

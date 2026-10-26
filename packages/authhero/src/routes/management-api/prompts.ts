@@ -1,4 +1,5 @@
 import { Bindings, Variables } from "../../types";
+import { managementValidationHook } from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   promptSettingSchema,
@@ -461,7 +462,7 @@ const putPromptPartials = defineRoute({
 export const promptsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   patchRoot,
   getCustomText,

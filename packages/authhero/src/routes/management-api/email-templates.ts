@@ -1,4 +1,9 @@
 import { Bindings, Variables } from "../../types";
+import {
+  conflict,
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   emailTemplateNameSchema,
@@ -59,9 +64,7 @@ const postRoot = defineRoute({
       body.template,
     );
     if (existing) {
-      throw new HTTPException(409, {
-        message: "Email template already configured",
-      });
+      throw conflict.other("Email template already configured");
     }
 
     const created = await ctx.env.data.emailTemplates.create(tenantId, body);
@@ -140,7 +143,7 @@ const getByTemplateName = defineRoute({
       templateName,
     );
     if (!template) {
-      throw new HTTPException(404, { message: "Email template not found" });
+      throw notFound.emailTemplate();
     }
     return ctx.json(template);
   },
@@ -260,7 +263,7 @@ const patchByTemplateName = defineRoute({
       patch,
     );
     if (!updated) {
-      throw new HTTPException(404, { message: "Email template not found" });
+      throw notFound.emailTemplate();
     }
 
     const stored = await ctx.env.data.emailTemplates.get(
@@ -268,7 +271,7 @@ const patchByTemplateName = defineRoute({
       templateName,
     );
     if (!stored) {
-      throw new HTTPException(404, { message: "Email template not found" });
+      throw notFound.emailTemplate();
     }
 
     await logMessage(ctx, tenantId, {
@@ -319,7 +322,7 @@ const deleteByTemplateName = defineRoute({
       templateName,
     );
     if (!removed) {
-      throw new HTTPException(404, { message: "Email template not found" });
+      throw notFound.emailTemplate();
     }
 
     // A delete has no after state — consumers fall back to `before`.
@@ -399,7 +402,7 @@ const tryByTemplateName = defineRoute({
 export const emailTemplatesRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   postRoot,
   getDefaults,
   getByTemplateName,

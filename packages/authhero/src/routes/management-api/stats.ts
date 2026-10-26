@@ -1,4 +1,5 @@
 import { Bindings, Variables } from "../../types";
+import { managementValidationHook } from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { dailyStatsSchema, DailyStats } from "@authhero/adapter-interfaces";
 import { HTTPException } from "hono/http-exception";
@@ -154,4 +155,7 @@ const getActiveUsers = defineRoute({
 export const statsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getDaily, getActiveUsers] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getDaily,
+  getActiveUsers,
+] as const);

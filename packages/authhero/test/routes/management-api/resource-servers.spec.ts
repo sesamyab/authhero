@@ -915,4 +915,36 @@ describe("resource-servers", () => {
       expect(body.resource_servers).toHaveLength(3);
     });
   });
+
+  it("returns 409 when the identifier is taken", async () => {
+    const create = () =>
+      managementClient["resource-servers"].$post(
+        {
+          json: { identifier: "https://dup.example.com", name: "Dup" },
+          header: { "tenant-id": "tenantId" },
+        },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+    expect((await create()).status).toBe(201);
+
+    const response = await create();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      statusCode: 409,
+      error: "Conflict",
+      message:
+        "A resource server already exists with identifer https://dup.example.com",
+      errorCode: "resource_server_conflict",
+    });
+  });
+
+  it("returns 204 when deleting a missing resource server", async () => {
+    const response = await managementClient["resource-servers"][":id"].$delete(
+      { param: { id: "missing" }, header: { "tenant-id": "tenantId" } },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(204);
+  });
 });

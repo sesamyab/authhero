@@ -1,4 +1,8 @@
 import { Bindings, Variables } from "../../types";
+import {
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { querySchema } from "../../types/auth0/Query";
@@ -156,9 +160,7 @@ const postByIdRetry = defineRoute({
     // for tenant A can never reach into tenant B's dead-letter queue.
     const replayed = await outbox.replay(id, tenantId);
     if (!replayed) {
-      throw new HTTPException(404, {
-        message: "Dead-lettered event not found",
-      });
+      throw notFound.failedEvent();
     }
     return ctx.json({ id, replayed: true });
   },
@@ -262,9 +264,7 @@ const deleteById = defineRoute({
     // rows, so a pending or processed event id also lands in the 404 branch.
     const discarded = await outbox.discard(id, tenantId);
     if (!discarded) {
-      throw new HTTPException(404, {
-        message: "Dead-lettered event not found",
-      });
+      throw notFound.failedEvent();
     }
     return ctx.body(null, 204);
   },
@@ -332,7 +332,7 @@ const postBulkDiscard = defineRoute({
 export const failedEventsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   postBulkRetry,
   postBulkDiscard,

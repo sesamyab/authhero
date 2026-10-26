@@ -350,7 +350,7 @@ describe("management-api action trigger bindings", () => {
         { ref: { type: "action_id", value: "act_does_not_exist" } },
       ]);
       expect(res.status).toBe(404);
-      expect(await res.text()).toContain("Action act_does_not_exist not found");
+      expect(await res.text()).toContain("That action does not exist.");
 
       const listed = await getBindings(client, token, "post-login");
       expect(listed.bindings.map((b) => b.id)).toEqual(

@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import {
   LogTypes,
@@ -88,7 +92,7 @@ const getById = defineRoute({
     const { id } = ctx.req.valid("param");
     const source = await adapter.get(tenantId, id);
     if (!source) {
-      throw new HTTPException(404);
+      throw notFound.migrationSource();
     }
     return ctx.json(redact(source));
   },
@@ -171,11 +175,11 @@ const patchById = defineRoute({
     const existing = await adapter.get(tenantId, id);
     const ok = await adapter.update(tenantId, id, body);
     if (!ok) {
-      throw new HTTPException(404);
+      throw notFound.migrationSource();
     }
     const source = await adapter.get(tenantId, id);
     if (!source) {
-      throw new HTTPException(404);
+      throw notFound.migrationSource();
     }
 
     await logMessage(ctx, tenantId, {
@@ -214,7 +218,7 @@ const deleteById = defineRoute({
     const existing = await adapter.get(tenantId, id);
     const ok = await adapter.remove(tenantId, id);
     if (!ok) {
-      throw new HTTPException(404);
+      throw notFound.migrationSource();
     }
 
     await logMessage(ctx, tenantId, {
@@ -235,7 +239,7 @@ const deleteById = defineRoute({
 export const migrationSourcesRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   postRoot,

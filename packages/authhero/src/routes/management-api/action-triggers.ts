@@ -1,4 +1,8 @@
 import { Bindings, Variables } from "../../types";
+import {
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   actionResponseSchema,
@@ -271,9 +275,7 @@ const patchByTriggerIdBindings = defineRoute({
 
       const action = await ctx.env.data.actions.get(tenantId, actionId);
       if (!action) {
-        throw new HTTPException(404, {
-          message: `Action ${actionId} not found`,
-        });
+        throw notFound.action();
       }
 
       resolved.push({ binding, actionId, action });
@@ -394,4 +396,7 @@ const patchByTriggerIdBindings = defineRoute({
 export const actionTriggersRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getByTriggerIdBindings, patchByTriggerIdBindings] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getByTriggerIdBindings,
+  patchByTriggerIdBindings,
+] as const);

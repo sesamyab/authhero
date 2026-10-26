@@ -3,6 +3,7 @@ import { Context, Next } from "hono";
 import { Bindings, Variables } from "../types";
 import { HTTPException } from "hono/http-exception";
 import { JSONHTTPException } from "../errors/json-http-exception";
+import { authErrors, notFound } from "../errors/management-api-error";
 import { decode } from "hono/jwt";
 import { validateJwtToken } from "../utils/jwt";
 import { extractBearerToken } from "../utils/auth-header";
@@ -128,9 +129,7 @@ export function createAuthMiddleware(
 
       const bearer = extractBearerToken(ctx.req.header("authorization"));
       if (!bearer) {
-        throw new JSONHTTPException(401, {
-          message: "Missing bearer token",
-        });
+        throw authErrors.missingAuthentication();
       }
 
       try {
@@ -241,6 +240,12 @@ export function createAuthMiddleware(
                   "Cross-tenant management requires a control-plane token",
               });
             }
+            // A same-tenant token implies its tenant exists; a control-plane
+            // token can name any tenant, so check it here rather than letting
+            // a typo'd tenant-id surface as a missing user/client/etc.
+            if (!(await ctx.var.data.tenants.get(requestTenantId))) {
+              throw notFound.tenant();
+            }
           }
         }
 
@@ -260,14 +265,14 @@ export function createAuthMiddleware(
             acceptedForms.some((scope) => permissions.includes(scope)) ||
             acceptedForms.some((scope) => scopes.includes(scope));
           if (!hasMatch) {
-            throw new JSONHTTPException(403, { message: "Unauthorized" });
+            throw authErrors.insufficientScope(requiredPermissions);
           }
         }
       } catch (error) {
         if (error instanceof HTTPException) {
           throw error;
         }
-        throw new JSONHTTPException(403, { message: "Invalid token" });
+        throw authErrors.invalidToken();
       }
     }
 

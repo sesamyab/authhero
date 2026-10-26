@@ -556,7 +556,7 @@ describe("clients", () => {
       ).toBeUndefined();
     });
 
-    it("returns 404 when an admin tries to delete the try-connection stub", async () => {
+    it("treats deleting the try-connection stub as deleting a missing client", async () => {
       const { managementApp, env } = await getTestServer();
       const managementClient = testClient(managementApp, env);
       const token = await getAdminToken();
@@ -575,7 +575,8 @@ describe("clients", () => {
         { headers: { authorization: `Bearer ${token}` } },
       );
 
-      expect(response.status).toBe(404);
+      // Hidden system clients read as missing, and Auth0 answers 204 for those.
+      expect(response.status).toBe(204);
       // Row still exists — delete was a no-op.
       expect(
         await env.data.clients.get(
@@ -656,6 +657,41 @@ describe("clients", () => {
 
       expect(response.status).toBe(400);
       expect(await response.text()).toMatch(/metadata document/i);
+    });
+  });
+
+  describe("missing clients", () => {
+    it("returns Auth0's 404 body for GET", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+      const token = await getAdminToken();
+
+      const response = await managementClient.clients[":id"].$get(
+        { param: { id: "missing" }, header: { "tenant-id": "tenantId" } },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        statusCode: 404,
+        error: "Not Found",
+        message: "The client does not exist",
+        errorCode: "inexistent_client",
+      });
+    });
+
+    it("returns 204 for DELETE", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+      const token = await getAdminToken();
+
+      const response = await managementClient.clients[":id"].$delete(
+        { param: { id: "missing" }, header: { "tenant-id": "tenantId" } },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+      expect(response.status).toBe(204);
+      expect(await response.text()).toBe("");
     });
   });
 });

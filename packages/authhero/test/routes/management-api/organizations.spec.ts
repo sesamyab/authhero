@@ -633,4 +633,51 @@ describe("organizations management API endpoint", () => {
       expect(response.status).toBe(404);
     });
   });
+
+  describe("Auth0 error bodies", () => {
+    it("returns Auth0's 404 body for a missing organization", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+      const token = await getAdminToken();
+
+      const response = await managementClient.organizations[":id"].$get(
+        { param: { id: "org_missing" }, header: { "tenant-id": "tenantId" } },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        statusCode: 404,
+        error: "Not Found",
+        message: "No organization found by that id or name",
+        errorCode: "inexistent_organization",
+      });
+    });
+
+    it("returns 409 when the organization name is taken", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+      const token = await getAdminToken();
+
+      const create = () =>
+        managementClient.organizations.$post(
+          {
+            json: { name: "duplicate-org" },
+            header: { "tenant-id": "tenantId" },
+          },
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+
+      expect((await create()).status).toBe(201);
+
+      const response = await create();
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        statusCode: 409,
+        error: "Conflict",
+        message: "An organization with this name already exists.",
+        errorCode: "organization_conflict",
+      });
+    });
+  });
 });

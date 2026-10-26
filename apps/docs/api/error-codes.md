@@ -13,28 +13,24 @@ AuthHero uses two different error shapes, depending on which API you are calling
 
 ### Management API
 
-Management API errors (`/api/v2/*`) mirror Auth0's shape so that Auth0 SDKs —
-including `go-auth0` and the Terraform provider, which parse error bodies
-strictly — can unmarshal them:
+Management API errors (`/api/v2/*`) use Auth0's shape, so Auth0 SDKs, including
+`go-auth0` and the Terraform provider, which parse error bodies strictly, can
+unmarshal them and branch on `errorCode`:
 
 ```json
 {
   "statusCode": 404,
   "error": "Not Found",
-  "message": "User not found"
+  "message": "The user does not exist.",
+  "errorCode": "inexistent_user"
 }
 ```
 
-Request-body validation failures are translated into the same shape, with the
-failing fields listed in `message`:
-
-```json
-{
-  "statusCode": 400,
-  "error": "Bad Request",
-  "message": "Payload validation error: 'email' is required"
-}
-```
+The bodies are a **superset** of Auth0's. Wherever Auth0 returns a `message`
+or `errorCode`, AuthHero returns the same text. Wherever Auth0 omits
+`errorCode`, AuthHero adds one. See
+[Management API error codes](#management-api-error-codes) for the full list
+and the [AuthHero extensions](#authhero-extensions).
 
 ### OAuth and OIDC endpoints
 
@@ -123,6 +119,111 @@ Both should be handled by falling back to an interactive `/authorize` redirect.
 | `unsupported_response_mode` | The `response_mode` requested at `/authorize` is not supported                                  |
 | `connection_not_found`      | The requested `connection` does not exist on the tenant                                         |
 | `strategy_error`            | The upstream identity provider for the connection returned an error                             |
+
+## Management API error codes
+
+These were captured from a live Auth0 tenant; AuthHero returns the same status,
+`message` and `errorCode`. Auth0's messages aren't consistent (some end in a
+period, some don't), and AuthHero keeps them exactly as Auth0 sends them.
+
+### Not found (404)
+
+| Resource                        | `message`                                                   | `errorCode`                  |
+| ------------------------------- | ----------------------------------------------------------- | ---------------------------- |
+| User                            | `The user does not exist.`                                  | `inexistent_user`            |
+| Users (bulk role assignment)    | `One or more of the users do not exist.`                    | `inexistent_user`            |
+| Client                          | `The client does not exist` (PATCH: with a trailing period) | `inexistent_client`          |
+| Connection                      | `The connection does not exist`                             | `inexistent_connection`      |
+| Resource server                 | `The resource server does not exist`                        | `inexistent_resource_server` |
+| Resource server (by `audience`) | `No resource with identifier {audience}`                    | `inexistent_resource_server` |
+| Client grant                    | `The grant does not exist.`                                 | `inexistent_client_grant`    |
+| Log                             | `The log does not exist.`                                   | `inexistent_log`             |
+| Job                             | `The job does not exist`                                    | `inexistent_job`             |
+| Custom domain                   | `The custom domain {id} does not exist`                     | `inexistent_custom_domain`   |
+| Signing key                     | `The key with key ID "{kid}" was not found.`                | `inexistent_tenant_key`      |
+| Hook                            | `Error: Hook does not exist`                                | `HookDoesNotExist`           |
+| Guardian enrollment             | `Enrollment not found`                                      | `enrollment_not_found`       |
+
+Deleting a user, client, connection, resource server or client grant that
+doesn't exist returns `204`, as in Auth0. Deleting a missing role or
+organization returns `404`.
+
+### Validation (400)
+
+| Failure        | `message` prefix            | `errorCode`            |
+| -------------- | --------------------------- | ---------------------- |
+| Request body   | `Payload validation error:` | `invalid_body`         |
+| Query string   | `Query validation error:`   | `invalid_query_string` |
+| Path parameter | `Path validation error:`    | `invalid_uri`          |
+
+The detail follows Auth0's wording, for example
+`Payload validation error: 'Missing required property: name'.` or
+`Query validation error: 'Value 1000 is greater than maximum 100' on property per_page.`
+Several failures are joined with `(also)`. Auth0 also appends each
+property's schema description in parentheses; AuthHero does not.
+
+### Authentication (401 / 403)
+
+| Case                  | Status | `message`                                         | `errorCode`          |
+| --------------------- | ------ | ------------------------------------------------- | -------------------- |
+| Token lacks the scope | 403    | `Insufficient scope, expected any of: read:users` | `insufficient_scope` |
+
+### Conflict (409)
+
+| Case                              | `message`                                              | `errorCode`                |
+| --------------------------------- | ------------------------------------------------------ | -------------------------- |
+| User already exists               | `The user already exists.`                             | `auth0_idp_error`          |
+| Resource server identifier in use | `A resource server already exists with identifer {id}` | `resource_server_conflict` |
+
+(The `identifer` misspelling is Auth0's; it is kept so the message matches.)
+
+### AuthHero extensions
+
+These are the places where AuthHero returns something Auth0 doesn't. Clients
+written against Auth0 are unaffected, since they never receive these codes
+from Auth0.
+
+**`errorCode` added where Auth0 sends none.** The `message` is still Auth0's:
+
+| Case                     | `message`                                           | Added `errorCode`         |
+| ------------------------ | --------------------------------------------------- | ------------------------- |
+| Role not found           | `The role does not exist.` (PATCH: `No such role.`) | `inexistent_role`         |
+| Organization not found   | `No organization found by that id or name`          | `inexistent_organization` |
+| Action not found         | `That action does not exist.`                       | `inexistent_action`       |
+| Organization name in use | `An organization with this name already exists.`    | `organization_conflict`   |
+| Malformed JSON body      | `Invalid request payload JSON format`               | `invalid_json`            |
+| No bearer token          | `Missing authentication` (401)                      | `missing_authentication`  |
+| Invalid or expired token | `Invalid token` (401)                               | `invalid_token`           |
+
+**AuthHero-only conditions:**
+
+| Case                                                                 | Status | `message`                        | `errorCode`             |
+| -------------------------------------------------------------------- | ------ | -------------------------------- | ----------------------- |
+| `tenant-id` names a missing tenant (control-plane tokens only)       | 404    | `The tenant does not exist.`     | `inexistent_tenant`     |
+| Resource without a captured Auth0 equivalent (see below)             | 404    | `The <resource> does not exist.` | `inexistent_<resource>` |
+| Any other conflict, e.g. deleting an action still bound to a trigger | 409    | Describes the conflict           | `conflict`              |
+| Header validation failure                                            | 400    | `Header validation error: …`     | `invalid_headers`       |
+
+The `inexistent_<resource>` codes are: `inexistent_invitation`,
+`inexistent_member`, `inexistent_session`, `inexistent_refresh_token`,
+`inexistent_grant`, `inexistent_log_stream`, `inexistent_form`,
+`inexistent_flow`, `inexistent_identity`, `inexistent_email_template`, `inexistent_email_provider`,
+`inexistent_authentication_method`, `inexistent_action_version`,
+`inexistent_action_execution`, `inexistent_hook_code`,
+`inexistent_failed_event`, `inexistent_migration_source`,
+`inexistent_proxy_route`, `inexistent_scim_configuration`,
+`inexistent_scim_token`, `inexistent_tenant_operation` and
+`inexistent_token_exchange_profile`.
+
+**Behaviour that differs from Auth0:**
+
+- A missing log stream returns `404 inexistent_log_stream`; Auth0 returns
+  `500`.
+- Path parameters are not format-checked up front, since AuthHero ids don't follow
+  Auth0's id formats. A malformed id returns the resource's `404` rather than
+  `400 invalid_uri`.
+- A bearer value that isn't a JWT returns `401 invalid_token`. Auth0 returns
+  `400 Bad HTTP authentication header format` with `errorCode: "Bearer"`.
 
 ## Login flow error codes
 

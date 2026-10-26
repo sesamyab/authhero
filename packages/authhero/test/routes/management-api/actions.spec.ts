@@ -295,6 +295,27 @@ describe("actions management API", () => {
     );
     expect(versionsRes.status).toBe(404);
   });
+
+  it("returns Auth0's error body for a missing action", async () => {
+    const { managementApp, env } = await getTestServer();
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const res = await client.actions.actions[":id"].$get(
+      {
+        param: { id: "act_does_not_exist" },
+        header: { "tenant-id": TENANT },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      statusCode: 404,
+      error: "Not Found",
+      message: "That action does not exist.",
+      errorCode: "inexistent_action",
+    });
+  });
 });
 
 describe("action-trigger bindings invoke the deployed action code", () => {

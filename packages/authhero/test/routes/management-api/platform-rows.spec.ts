@@ -153,10 +153,16 @@ describe("platform-scoped rows in the tenant management API", () => {
               ? { body: JSON.stringify({ name: "x" }) }
               : {}),
           });
+          // Auth0 answers DELETE of a missing connection or resource server
+          // with 204, so that is what "does not exist" looks like there.
+          const deleteIs204 =
+            method === "DELETE" &&
+            (path.startsWith("/connections/") ||
+              path.startsWith("/resource-servers/"));
           expect(
             response.status,
             `${method} ${path} must look like it does not exist`,
-          ).toBe(404);
+          ).toBe(deleteIs204 ? 204 : 404);
         }
       }
 

@@ -1,4 +1,10 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  conflict,
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
+import { isUniqueConstraintError } from "../../errors/is-unique-constraint-error";
 import { Context } from "hono";
 import { Bindings, Variables } from "../../types";
 import { HTTPException } from "hono/http-exception";
@@ -8,6 +14,7 @@ import {
   resourceServerSchema,
   ResourceServer,
   LogTypes,
+  escapeLuceneValue,
 } from "@authhero/adapter-interfaces";
 import { parseSort } from "../../utils/sort";
 import { logMessage } from "../../helpers/logging";
@@ -150,7 +157,7 @@ const getById = defineRoute({
     const resourceServer = await resolveResourceServer(ctx, tenant_id, id);
 
     if (!resourceServer) {
-      throw new HTTPException(404);
+      throw notFound.resourceServer();
     }
 
     return ctx.json(resourceServer);
@@ -179,6 +186,9 @@ const deleteById = defineRoute({
       200: {
         description: "Status",
       },
+      204: {
+        description: "The resource server does not exist",
+      },
     },
   }),
   handler: async (ctx) => {
@@ -187,10 +197,9 @@ const deleteById = defineRoute({
 
     const resourceServer = await resolveResourceServer(ctx, tenant_id, id);
 
+    // Auth0 answers 204 for deleting a resource server that doesn't exist.
     if (!resourceServer) {
-      throw new HTTPException(404, {
-        message: "Resource server not found",
-      });
+      return ctx.body(null, 204);
     }
 
     if (resourceServer.is_system) {
@@ -201,10 +210,9 @@ const deleteById = defineRoute({
 
     const tenant = await ctx.env.data.tenants.get(tenant_id);
     if (tenant?.default_audience === resourceServer.identifier) {
-      throw new HTTPException(409, {
-        message:
-          "Resource server is set as the tenant's default_audience; clear it before deleting",
-      });
+      throw conflict.other(
+        "Resource server is set as the tenant's default_audience; clear it before deleting",
+      );
     }
 
     await ctx.env.data.resourceServers.remove(tenant_id, resourceServer.id!);
@@ -269,9 +277,7 @@ const patchById = defineRoute({
     );
 
     if (!existingResourceServer) {
-      throw new HTTPException(404, {
-        message: "Resource server not found",
-      });
+      throw notFound.resourceServer();
     }
 
     if (existingResourceServer.is_system) {
@@ -289,9 +295,7 @@ const patchById = defineRoute({
     );
 
     if (!resourceServer) {
-      throw new HTTPException(404, {
-        message: "Resource server not found",
-      });
+      throw notFound.resourceServer();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -344,10 +348,26 @@ const postRoot = defineRoute({
     const tenant_id = requireTenantId(ctx);
     const body = ctx.req.valid("json");
 
-    const resourceServer = await ctx.env.data.resourceServers.create(
-      tenant_id,
-      body,
-    );
+    const { resource_servers: existing } =
+      await ctx.env.data.resourceServers.list(tenant_id, {
+        q: `identifier:${escapeLuceneValue(body.identifier)}`,
+      });
+    if (existing.some((rs) => rs.identifier === body.identifier)) {
+      throw conflict.resourceServer(body.identifier);
+    }
+
+    let resourceServer: ResourceServer;
+    try {
+      resourceServer = await ctx.env.data.resourceServers.create(
+        tenant_id,
+        body,
+      );
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        throw conflict.resourceServer(body.identifier);
+      }
+      throw err;
+    }
 
     await logMessage(ctx, tenant_id, {
       type: LogTypes.SUCCESS_API_OPERATION,
@@ -364,7 +384,7 @@ const postRoot = defineRoute({
 export const resourceServerRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   deleteById,

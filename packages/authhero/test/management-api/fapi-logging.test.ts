@@ -84,18 +84,20 @@ describe("management-api fapi logging", () => {
     expect(fapi).toBeUndefined();
   });
 
-  it("still writes a FAILED_API_OPERATION log for a non-GET 404 (DELETE user)", async () => {
+  it("still writes a FAILED_API_OPERATION log for a non-GET 404 (PATCH user)", async () => {
     const { managementApp, env } = await getTestServer();
     const token = await getAdminToken();
 
     const res = await managementApp.request(
       "/users/auth2|doesnotexist",
       {
-        method: "DELETE",
+        method: "PATCH",
         headers: {
           "tenant-id": "tenantId",
           authorization: `Bearer ${token}`,
+          "content-type": "application/json",
         },
+        body: JSON.stringify({ name: "x" }),
       },
       env,
     );

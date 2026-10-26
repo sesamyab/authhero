@@ -1,5 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
+import {
   clientSchema,
   clientInsertSchema,
   connectionSchema,
@@ -262,7 +266,7 @@ const getById = defineRoute({
     const client = await ctx.env.data.clients.get(tenant_id, id);
 
     if (!client) {
-      throw new HTTPException(404);
+      throw notFound.client();
     }
 
     return ctx.json(client);
@@ -291,20 +295,25 @@ const deleteById = defineRoute({
       200: {
         description: "Status",
       },
+      204: {
+        description: "The client does not exist",
+      },
     },
   }),
   handler: async (ctx) => {
     const tenant_id = requireTenantId(ctx);
     const { id } = ctx.req.valid("param");
 
+    // Auth0 answers 204 for deleting a client that doesn't exist. System
+    // clients are hidden from the tenant, so they read as missing too.
     const existing = await ctx.env.data.clients.get(tenant_id, id);
-    if (existing && isSystemClient(existing)) {
-      throw new HTTPException(404, { message: "Client not found" });
+    if (!existing || isSystemClient(existing)) {
+      return ctx.body(null, 204);
     }
 
     const result = await ctx.env.data.clients.remove(tenant_id, id);
     if (!result) {
-      throw new HTTPException(404, { message: "Client not found" });
+      return ctx.body(null, 204);
     }
 
     await logMessage(ctx, tenant_id, {
@@ -368,13 +377,13 @@ const patchById = defineRoute({
       });
     }
     if (clientBefore && isSystemClient(clientBefore)) {
-      throw new HTTPException(404, { message: "Client not found" });
+      throw notFound.clientOnUpdate();
     }
     await ctx.env.data.clients.update(tenant_id, id, clientUpdate);
     const client = await ctx.env.data.clients.get(tenant_id, id);
 
     if (!client) {
-      throw new HTTPException(404, { message: "Client not found" });
+      throw notFound.clientOnUpdate();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -508,7 +517,7 @@ const getByIdConnections = defineRoute({
     const client = await ctx.env.data.clients.get(tenant_id, id);
 
     if (!client) {
-      throw new HTTPException(404, { message: "Client not found" });
+      throw notFound.client();
     }
 
     // If no connections are defined, return all available connections
@@ -594,10 +603,10 @@ const patchByIdConnections = defineRoute({
     const client = await ctx.env.data.clients.get(tenant_id, id);
 
     if (!client) {
-      throw new HTTPException(404, { message: "Client not found" });
+      throw notFound.client();
     }
     if (isSystemClient(client)) {
-      throw new HTTPException(404, { message: "Client not found" });
+      throw notFound.client();
     }
 
     // Validate all connection IDs exist and filter out invalid ones
@@ -651,7 +660,7 @@ const patchByIdConnections = defineRoute({
 export const clientRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   deleteById,

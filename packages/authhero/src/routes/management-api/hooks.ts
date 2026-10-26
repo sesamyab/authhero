@@ -1,4 +1,8 @@
 import { Bindings, Variables } from "../../types";
+import {
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   allowedTriggersForHook,
@@ -203,7 +207,7 @@ const patchByHook_id = defineRoute({
 
     if (hook.trigger_id) {
       if (!existing) {
-        throw new HTTPException(404, { message: "Hook not found" });
+        throw notFound.hook();
       }
       const allowedTriggers = allowedTriggersForHook(existing);
       // Only a *change* is rejected. A row stored before its type's trigger
@@ -226,7 +230,7 @@ const patchByHook_id = defineRoute({
     const result = await ctx.env.data.hooks.get(tenantId, hook_id);
 
     if (!result) {
-      throw new HTTPException(404, { message: "Hook not found" });
+      throw notFound.hook();
     }
 
     await logMessage(ctx, tenantId, {
@@ -282,7 +286,7 @@ const getByHook_id = defineRoute({
     const hook = await ctx.env.data.hooks.get(tenantId, hook_id);
 
     if (!hook) {
-      throw new HTTPException(404, { message: "Hook not found" });
+      throw notFound.hook();
     }
 
     return ctx.json(hook);
@@ -323,7 +327,7 @@ const deleteByHook_id = defineRoute({
     const result = await ctx.env.data.hooks.remove(tenantId, hook_id);
 
     if (!result) {
-      throw new HTTPException(404, { message: "Hook not found" });
+      throw notFound.hook();
     }
 
     // A delete has no after state — consumers fall back to `before`.
@@ -396,7 +400,7 @@ const tryByHook_id = defineRoute({
 
     const hook = await ctx.env.data.hooks.get(tenantId, hook_id);
     if (!hook) {
-      throw new HTTPException(404, { message: "Hook not found" });
+      throw notFound.hook();
     }
     if (!("url" in hook)) {
       throw new HTTPException(400, {
@@ -406,7 +410,7 @@ const tryByHook_id = defineRoute({
 
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) {
-      throw new HTTPException(404, { message: "User not found" });
+      throw notFound.user();
     }
 
     const result = await invokeWebHook(ctx, hook, {
@@ -429,7 +433,7 @@ const tryByHook_id = defineRoute({
 export const hooksRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   postRoot,
   patchByHook_id,

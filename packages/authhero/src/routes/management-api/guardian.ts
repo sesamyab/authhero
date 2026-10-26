@@ -1,4 +1,8 @@
 import { createLoginSessionWithData } from "../../state-machines/login-session-data";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Bindings, Variables } from "../../types";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
@@ -181,7 +185,7 @@ const putFactorsSmsSelectedProvider = defineRoute({
 
     const tenant = await ctx.env.data.tenants.get(tenantId);
     if (!tenant) {
-      throw new HTTPException(404, { message: "Tenant not found" });
+      throw notFound.tenant();
     }
 
     await ctx.env.data.tenants.update(tenantId, {
@@ -285,7 +289,7 @@ const putFactorsSmsProvidersTwilio = defineRoute({
 
     const tenant = await ctx.env.data.tenants.get(tenantId);
     if (!tenant) {
-      throw new HTTPException(404, { message: "Tenant not found" });
+      throw notFound.tenant();
     }
 
     // Merge with existing config (don't overwrite auth_token if not provided)
@@ -436,7 +440,7 @@ const putPolicies = defineRoute({
 
     const tenant = await ctx.env.data.tenants.get(tenantId);
     if (!tenant) {
-      throw new HTTPException(404, { message: "Tenant not found" });
+      throw notFound.tenant();
     }
 
     // Map Auth0 format to internal: ["all-applications"] = "always", [] = "never"
@@ -507,7 +511,7 @@ const postEnrollmentsTicket = defineRoute({
     // Validate the tenant exists and has MFA factors enabled
     const tenant = await ctx.env.data.tenants.get(tenantId);
     if (!tenant) {
-      throw new HTTPException(404, { message: "Tenant not found" });
+      throw notFound.tenant();
     }
 
     const hasSupportedFactor =
@@ -526,7 +530,7 @@ const postEnrollmentsTicket = defineRoute({
     // Validate the user exists
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) {
-      throw new HTTPException(404, { message: "User not found" });
+      throw notFound.user();
     }
 
     // Get a client for the login session (use the first available client)
@@ -686,7 +690,7 @@ const putFactorsByFactor_name = defineRoute({
     // Get current tenant
     const tenant = await ctx.env.data.tenants.get(tenantId);
     if (!tenant) {
-      throw new HTTPException(404, { message: "Tenant not found" });
+      throw notFound.tenant();
     }
 
     // Update the factor state - merge with existing factors
@@ -726,7 +730,7 @@ const putFactorsByFactor_name = defineRoute({
 export const guardianRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getFactors,
   getFactorsSmsSelectedProvider,
   putFactorsSmsSelectedProvider,

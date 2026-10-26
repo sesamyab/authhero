@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import {
   logStreamInsertSchema,
@@ -68,7 +72,7 @@ const getById = defineRoute({
     const { id } = ctx.req.valid("param");
     const stream = await adapter.get(tenantId, id);
     if (!stream) {
-      throw new HTTPException(404);
+      throw notFound.logStream();
     }
     return ctx.json(stream);
   },
@@ -147,11 +151,11 @@ const patchById = defineRoute({
     const existing = await adapter.get(tenantId, id);
     const ok = await adapter.update(tenantId, id, body);
     if (!ok) {
-      throw new HTTPException(404);
+      throw notFound.logStream();
     }
     const stream = await adapter.get(tenantId, id);
     if (!stream) {
-      throw new HTTPException(404);
+      throw notFound.logStream();
     }
 
     await logMessage(ctx, tenantId, {
@@ -188,7 +192,7 @@ const deleteById = defineRoute({
     const existing = await adapter.get(tenantId, id);
     const ok = await adapter.remove(tenantId, id);
     if (!ok) {
-      throw new HTTPException(404);
+      throw notFound.logStream();
     }
 
     // A delete has no after state — consumers fall back to `before`.
@@ -207,7 +211,7 @@ const deleteById = defineRoute({
 export const logStreamsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   postRoot,

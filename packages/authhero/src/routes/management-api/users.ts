@@ -1,5 +1,10 @@
 import { HTTPException } from "hono/http-exception";
 import {
+  conflict,
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
+import {
   stripProviderPrefix,
   userIdGenerate,
   userIdParse,
@@ -406,16 +411,14 @@ const getByUser_id = defineRoute({
     const user = await ctx.env.data.users.get(tenantId, user_id);
 
     if (!user) {
-      throw new HTTPException(404);
+      throw notFound.user();
     }
 
     if (user.linked_to) {
       if (ctx.var.prefer?.has("include-linked")) {
         ctx.var.prefer.applied("include-linked");
       } else {
-        throw new HTTPException(404, {
-          message: "User is linked to another user",
-        });
+        throw notFound.user();
       }
     }
 
@@ -457,10 +460,16 @@ const deleteByUser_id = defineRoute({
 
     const userToDelete = await ctx.env.data.users.get(tenantId, user_id);
 
+    // Auth0 answers 204 for a missing user. Return before remove() so no
+    // deletion hooks or logs fire.
+    if (!userToDelete) {
+      return ctx.body(null, 204);
+    }
+
     const result = await ctx.env.data.users.remove(tenantId, user_id);
 
     if (!result) {
-      throw new HTTPException(404);
+      return ctx.body(null, 204);
     }
 
     // Log the Management API operation
@@ -615,9 +624,7 @@ const postRoot = defineRoute({
       });
 
       if (existingSmsUser) {
-        throw new HTTPException(409, {
-          message: "User already exists",
-        });
+        throw conflict.userExists();
       }
     }
 
@@ -688,9 +695,7 @@ const postRoot = defineRoute({
       );
     } catch (err: any) {
       if (err.message === "User already exists") {
-        throw new HTTPException(409, {
-          message: "User already exists",
-        });
+        throw conflict.userExists();
       }
       throw err;
     }
@@ -755,14 +760,11 @@ const patchByUser_id = defineRoute({
     const userToPatch = await data.users.get(tenantId, user_id);
 
     if (!userToPatch) {
-      throw new HTTPException(404);
+      throw notFound.user();
     }
 
     if (userToPatch.linked_to) {
-      throw new HTTPException(404, {
-        // not the auth0 error message but I'd rather deviate here
-        message: "User is linked to another user",
-      });
+      throw notFound.user();
     }
 
     // If a connection is specified, we need to find the user with that connection
@@ -824,9 +826,7 @@ const patchByUser_id = defineRoute({
         const linkedUserWithConnection = linkedList.users.find(matchesTarget);
 
         if (!linkedUserWithConnection) {
-          throw new HTTPException(404, {
-            message: `No identity found with connection: ${connection}`,
-          });
+          throw notFound.identity();
         }
 
         targetUserId = linkedUserWithConnection.user_id;
@@ -870,9 +870,9 @@ const patchByUser_id = defineRoute({
           clusterRootId: user_id,
         })
       ) {
-        throw new HTTPException(409, {
-          message: "Another user with the same email address already exists.",
-        });
+        throw conflict.other(
+          "Another user with the same email address already exists.",
+        );
       }
     }
 
@@ -894,9 +894,9 @@ const patchByUser_id = defineRoute({
       });
 
       if (existingSmsUser && existingSmsUser.user_id !== targetUserId) {
-        throw new HTTPException(409, {
-          message: "Another user with the same phone number already exists.",
-        });
+        throw conflict.other(
+          "Another user with the same phone number already exists.",
+        );
       }
     }
 
@@ -1133,9 +1133,7 @@ const postByUser_idIdentities = defineRoute({
     // 404 on one — so it cannot be the target of a link either. Accepting it
     // would silently build a second hop (issue #1250).
     if (user.linked_to) {
-      throw new HTTPException(404, {
-        message: "User is linked to another user",
-      });
+      throw notFound.user();
     }
 
     // A plain single-field `linked_to` write. `ctx.env.data` is wrapped with
@@ -1212,7 +1210,7 @@ const deleteByUser_idIdentitiesByProviderByLinked_user_id = defineRoute({
 
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) {
-      throw new HTTPException(404);
+      throw notFound.user();
     }
 
     await logMessage(ctx, tenantId, {
@@ -1556,7 +1554,7 @@ const getByUser_idLogs = defineRoute({
 
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user || user.linked_to) {
-      throw new HTTPException(404);
+      throw notFound.user();
     }
 
     const linked = await ctx.env.data.users.list(tenantId, {
@@ -1660,9 +1658,7 @@ const getByUser_idPermissions = defineRoute({
     // Check if user exists first
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) {
-      throw new HTTPException(404, {
-        message: "User not found",
-      });
+      throw notFound.user();
     }
 
     // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
@@ -1746,9 +1742,7 @@ const postByUser_idPermissions = defineRoute({
     // Check if user exists first
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) {
-      throw new HTTPException(404, {
-        message: "User not found",
-      });
+      throw notFound.user();
     }
 
     // Use the new user permissions adapter to create permissions
@@ -1833,9 +1827,7 @@ const deleteByUser_idPermissions = defineRoute({
     // Check if user exists first
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) {
-      throw new HTTPException(404, {
-        message: "User not found",
-      });
+      throw notFound.user();
     }
 
     // Use the new user permissions adapter to remove permissions
@@ -1896,7 +1888,7 @@ const getByUser_idRoles = defineRoute({
     const tenantId = requireTenantId(ctx);
 
     const user = await ctx.env.data.users.get(tenantId, user_id);
-    if (!user) throw new HTTPException(404, { message: "User not found" });
+    if (!user) throw notFound.user();
 
     // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
     // endpoint by offset only.
@@ -1952,7 +1944,7 @@ const postByUser_idRoles = defineRoute({
     const tenantId = requireTenantId(ctx);
 
     const user = await ctx.env.data.users.get(tenantId, user_id);
-    if (!user) throw new HTTPException(404, { message: "User not found" });
+    if (!user) throw notFound.user();
 
     // Create roles one by one using the new API
     for (const roleId of roles) {
@@ -2008,7 +2000,7 @@ const deleteByUser_idRoles = defineRoute({
     const tenantId = requireTenantId(ctx);
 
     const user = await ctx.env.data.users.get(tenantId, user_id);
-    if (!user) throw new HTTPException(404, { message: "User not found" });
+    if (!user) throw notFound.user();
 
     // Remove roles one by one using the new API
     for (const roleId of roles) {
@@ -2075,7 +2067,7 @@ const getByUser_idOrganizations = defineRoute({
     // First verify user exists
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) {
-      throw new HTTPException(404, { message: "User not found" });
+      throw notFound.user();
     }
 
     // Get organizations for the user using the new method
@@ -2142,7 +2134,7 @@ const deleteByUser_idOrganizationsByOrganization_id = defineRoute({
     // First verify user exists
     const user = await ctx.env.data.users.get(tenantId, user_id);
     if (!user) {
-      throw new HTTPException(404, { message: "User not found" });
+      throw notFound.user();
     }
 
     // Find the membership to remove
@@ -2156,9 +2148,7 @@ const deleteByUser_idOrganizationsByOrganization_id = defineRoute({
     );
 
     if (!membershipToRemove) {
-      throw new HTTPException(404, {
-        message: "User is not a member of this organization",
-      });
+      throw notFound.member();
     }
 
     await ctx.env.data.userOrganizations.remove(
@@ -2182,7 +2172,7 @@ const deleteByUser_idOrganizationsByOrganization_id = defineRoute({
 export const userRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getByUser_id,
   deleteByUser_id,

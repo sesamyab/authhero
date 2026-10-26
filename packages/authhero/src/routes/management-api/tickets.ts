@@ -13,6 +13,10 @@
  */
 
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { nanoid } from "nanoid";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
@@ -89,7 +93,7 @@ const postEmailVerification = defineRoute({
 
     const user = await ctx.env.data.users.get(tenantId, body.user_id);
     if (!user) {
-      throw new HTTPException(404, { message: "User not found" });
+      throw notFound.user();
     }
 
     const ticketId = nanoid();
@@ -175,9 +179,7 @@ const postPasswordChange = defineRoute({
           body.connection_id,
         );
         if (!connection) {
-          throw new HTTPException(404, {
-            message: `Connection not found (connection_id=${body.connection_id})`,
-          });
+          throw notFound.connection();
         }
         connectionName = connection.name;
       }
@@ -191,7 +193,7 @@ const postPasswordChange = defineRoute({
       });
       const user = users[0];
       if (!user) {
-        throw new HTTPException(404, { message: "User not found" });
+        throw notFound.user();
       }
       userId = user.user_id;
     }
@@ -239,4 +241,7 @@ const postPasswordChange = defineRoute({
 export const ticketsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([postEmailVerification, postPasswordChange] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  postEmailVerification,
+  postPasswordChange,
+] as const);

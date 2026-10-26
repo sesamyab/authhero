@@ -1,6 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { Bindings, Variables } from "../../types";
-import { HTTPException } from "hono/http-exception";
 import { querySchema } from "../../types";
 import {
   formInsertSchema,
@@ -101,7 +104,7 @@ const getForm = defineRoute({
     const { id } = ctx.req.valid("param");
     const form = await ctx.env.data.forms.get(tenant_id, id);
     if (!form) {
-      throw new HTTPException(404);
+      throw notFound.form();
     }
     return ctx.json(form);
   },
@@ -128,7 +131,7 @@ const deleteForm = defineRoute({
     const existing = await ctx.env.data.forms.get(tenant_id, id);
     const result = await ctx.env.data.forms.remove(tenant_id, id);
     if (!result) {
-      throw new HTTPException(404, { message: "Form not found" });
+      throw notFound.form();
     }
 
     // A delete has no after state — consumers fall back to `before`.
@@ -176,11 +179,11 @@ const patchForm = defineRoute({
     const existing = await ctx.env.data.forms.get(tenant_id, id);
     const result = await ctx.env.data.forms.update(tenant_id, id, body);
     if (!result) {
-      throw new HTTPException(404, { message: "Form not found" });
+      throw notFound.form();
     }
     const form = await ctx.env.data.forms.get(tenant_id, id);
     if (!form) {
-      throw new HTTPException(404, { message: "Form not found" });
+      throw notFound.form();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -240,7 +243,7 @@ const createForm = defineRoute({
 export const formsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   listForms,
   getForm,
   deleteForm,

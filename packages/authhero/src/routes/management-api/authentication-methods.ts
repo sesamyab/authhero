@@ -1,4 +1,8 @@
 import { Bindings, Variables } from "../../types";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { LogTypes } from "@authhero/adapter-interfaces";
@@ -259,9 +263,7 @@ const getByMethod_id = defineRoute({
     );
 
     if (!enrollment || enrollment.user_id !== userId) {
-      throw new HTTPException(404, {
-        message: "Authentication method not found",
-      });
+      throw notFound.authenticationMethod();
     }
 
     return ctx.json({
@@ -315,9 +317,7 @@ const deleteByMethod_id = defineRoute({
     );
 
     if (!enrollment || enrollment.user_id !== userId) {
-      throw new HTTPException(404, {
-        message: "Authentication method not found",
-      });
+      throw notFound.authenticationMethod();
     }
 
     const deleted = await ctx.env.data.authenticationMethods.remove(
@@ -326,9 +326,7 @@ const deleteByMethod_id = defineRoute({
     );
 
     if (!deleted) {
-      throw new HTTPException(404, {
-        message: "Authentication method not found",
-      });
+      throw notFound.authenticationMethod();
     }
 
     await logMessage(ctx, tenantId, {
@@ -345,7 +343,7 @@ const deleteByMethod_id = defineRoute({
 export const authenticationMethodsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   postRoot,
   getByMethod_id,

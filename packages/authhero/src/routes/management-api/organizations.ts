@@ -1,5 +1,10 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
+  conflict,
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
+import {
   organizationSchema,
   organizationInsertSchema,
   organizationConnectionSchema,
@@ -311,7 +316,7 @@ const getById = defineRoute({
     const organization = await ctx.env.data.organizations.get(tenant_id, id);
 
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     return ctx.json(organization);
@@ -348,7 +353,7 @@ const deleteById = defineRoute({
 
     const result = await ctx.env.data.organizations.remove(tenant_id, id);
     if (!result) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -406,7 +411,7 @@ const patchById = defineRoute({
     const beforeOrg = await ctx.env.data.organizations.get(tenant_id, id);
 
     if (!beforeOrg) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     const updated = await ctx.env.data.organizations.update(
@@ -416,13 +421,13 @@ const patchById = defineRoute({
     );
 
     if (!updated) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     const organization = await ctx.env.data.organizations.get(tenant_id, id);
 
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -474,6 +479,14 @@ const postRoot = defineRoute({
   handler: async (ctx) => {
     const tenant_id = requireTenantId(ctx);
     const body = ctx.req.valid("json");
+
+    const { organizations: sameName } = await ctx.env.data.organizations.list(
+      tenant_id,
+      { q: `name:${escapeLuceneValue(body.name)}` },
+    );
+    if (sameName.some((org) => org.name === body.name)) {
+      throw conflict.organizationName();
+    }
 
     const organizationData = {
       ...body,
@@ -543,7 +556,7 @@ const getByIdMembers = defineRoute({
       organizationId,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Get user-organization relationships. Pass through checkpoint pagination
@@ -657,7 +670,7 @@ const postByIdMembers = defineRoute({
       organizationId,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Validate every id before writing anything so a bad id can't leave the
@@ -756,7 +769,7 @@ const deleteByIdMembers = defineRoute({
       organizationId,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Remove each user from the organization
@@ -831,13 +844,13 @@ const getByIdMembersByUser_idRoles = defineRoute({
       organizationId,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Verify user exists
     const user = await ctx.env.data.users.get(tenant_id, user_id);
     if (!user) {
-      throw new HTTPException(404, { message: "User not found" });
+      throw notFound.user();
     }
 
     // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
@@ -918,13 +931,13 @@ const postByIdMembersByUser_idRoles = defineRoute({
       organizationId,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Verify user exists
     const user = await ctx.env.data.users.get(tenant_id, user_id);
     if (!user) {
-      throw new HTTPException(404, { message: "User not found" });
+      throw notFound.user();
     }
 
     // Idempotent like Auth0: skip roles the member already has so retries and
@@ -1017,13 +1030,13 @@ const deleteByIdMembersByUser_idRoles = defineRoute({
       organizationId,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Verify user exists
     const user = await ctx.env.data.users.get(tenant_id, user_id);
     if (!user) {
-      throw new HTTPException(404, { message: "User not found" });
+      throw notFound.user();
     }
 
     // Remove roles from user in this organization
@@ -1093,7 +1106,7 @@ const getByIdRoles = defineRoute({
       organizationId,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // For now, return all roles in the tenant
@@ -1166,7 +1179,7 @@ const getByIdInvitations = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
@@ -1293,13 +1306,13 @@ const getByIdInvitationsByInvitation_id = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     const invite = await ctx.env.data.invites.get(tenant_id, invitation_id);
 
     if (!invite || invite.organization_id !== organization.id) {
-      throw new HTTPException(404, { message: "Invitation not found" });
+      throw notFound.invitation();
     }
 
     return ctx.json(invite);
@@ -1356,7 +1369,7 @@ const postByIdInvitations = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Generate invitation ID and URL
@@ -1452,18 +1465,18 @@ const deleteByIdInvitationsByInvitation_id = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Verify the invitation exists and belongs to the organization
     const invite = await ctx.env.data.invites.get(tenant_id, invitation_id);
     if (!invite || invite.organization_id !== organization.id) {
-      throw new HTTPException(404, { message: "Invitation not found" });
+      throw notFound.invitation();
     }
 
     const result = await ctx.env.data.invites.remove(tenant_id, invitation_id);
     if (!result) {
-      throw new HTTPException(404, { message: "Invitation not found" });
+      throw notFound.invitation();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -1554,7 +1567,7 @@ const getByIdEnabledConnections = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
@@ -1637,7 +1650,7 @@ const postByIdEnabledConnections = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     const connection = await ctx.env.data.connections.get(
@@ -1656,9 +1669,7 @@ const postByIdEnabledConnections = defineRoute({
       body.connection_id,
     );
     if (existing) {
-      throw new HTTPException(409, {
-        message: "Connection already enabled for this organization",
-      });
+      throw conflict.other("Connection already enabled for this organization");
     }
 
     const created = await ctx.env.data.organizationConnections.create(
@@ -1715,7 +1726,7 @@ const getByIdEnabledConnectionsByConnection_id = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     const orgConn = await ctx.env.data.organizationConnections.get(
@@ -1724,9 +1735,7 @@ const getByIdEnabledConnectionsByConnection_id = defineRoute({
       connection_id,
     );
     if (!orgConn) {
-      throw new HTTPException(404, {
-        message: "Organization connection not found",
-      });
+      throw notFound.connection();
     }
     return ctx.json(orgConn);
   },
@@ -1779,7 +1788,7 @@ const patchByIdEnabledConnectionsByConnection_id = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     const updated = await ctx.env.data.organizationConnections.update(
@@ -1789,9 +1798,7 @@ const patchByIdEnabledConnectionsByConnection_id = defineRoute({
       body,
     );
     if (!updated) {
-      throw new HTTPException(404, {
-        message: "Organization connection not found",
-      });
+      throw notFound.connection();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -1835,7 +1842,7 @@ const deleteByIdEnabledConnectionsByConnection_id = defineRoute({
       organization_id,
     );
     if (!organization) {
-      throw new HTTPException(404, { message: "Organization not found" });
+      throw notFound.organization();
     }
 
     const removed = await ctx.env.data.organizationConnections.remove(
@@ -1844,9 +1851,7 @@ const deleteByIdEnabledConnectionsByConnection_id = defineRoute({
       connection_id,
     );
     if (!removed) {
-      throw new HTTPException(404, {
-        message: "Organization connection not found",
-      });
+      throw notFound.connection();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -1863,7 +1868,7 @@ const deleteByIdEnabledConnectionsByConnection_id = defineRoute({
 export const organizationRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   deleteById,

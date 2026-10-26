@@ -113,6 +113,12 @@ describe("management-api custom-domains", () => {
       );
 
       expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        statusCode: 404,
+        error: "Not Found",
+        message: "The custom domain does-not-exist does not exist",
+        errorCode: "inexistent_custom_domain",
+      });
     });
 
     it("returns 404 when the custom domain belongs to another tenant", async () => {

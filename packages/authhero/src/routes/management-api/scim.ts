@@ -1,4 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  conflict,
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import {
   LogTypes,
@@ -116,7 +121,7 @@ async function requireConnection(
     connection_id,
   );
   if (!connection) {
-    throw new HTTPException(404, { message: "Connection not found" });
+    throw notFound.connection();
   }
   return connection;
 }
@@ -167,7 +172,7 @@ const getConfiguration = defineRoute({
       connection_id,
     );
     if (!configuration) {
-      throw new HTTPException(404, { message: "SCIM configuration not found" });
+      throw notFound.scimConfiguration();
     }
 
     return ctx.json(toConfigurationResponse(configuration, connection), 200);
@@ -207,9 +212,9 @@ const createConfiguration = defineRoute({
 
     const existing = await scimConfigurations.get(tenant_id, connection_id);
     if (existing) {
-      throw new HTTPException(409, {
-        message: "SCIM configuration already exists for this connection",
-      });
+      throw conflict.other(
+        "SCIM configuration already exists for this connection",
+      );
     }
 
     const configuration = await scimConfigurations.create(tenant_id, {
@@ -267,7 +272,7 @@ const updateConfiguration = defineRoute({
       mapping: body.mapping,
     });
     if (!updated) {
-      throw new HTTPException(404, { message: "SCIM configuration not found" });
+      throw notFound.scimConfiguration();
     }
 
     const configuration = await scimConfigurations.get(
@@ -275,7 +280,7 @@ const updateConfiguration = defineRoute({
       connection_id,
     );
     if (!configuration) {
-      throw new HTTPException(404, { message: "SCIM configuration not found" });
+      throw notFound.scimConfiguration();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -307,7 +312,7 @@ const deleteConfiguration = defineRoute({
 
     const removed = await scimConfigurations.remove(tenant_id, connection_id);
     if (!removed) {
-      throw new HTTPException(404, { message: "SCIM configuration not found" });
+      throw notFound.scimConfiguration();
     }
 
     // Tokens are meaningless without the configuration — remove them too.
@@ -436,7 +441,7 @@ const createToken = defineRoute({
       connection_id,
     );
     if (!configuration) {
-      throw new HTTPException(404, { message: "SCIM configuration not found" });
+      throw notFound.scimConfiguration();
     }
 
     const generated = await mintScimToken();
@@ -492,12 +497,12 @@ const deleteToken = defineRoute({
     // connection — otherwise this route would delete any token in the tenant.
     const token = await scimTokens.get(tenant_id, token_id);
     if (!token || token.connection_id !== connection_id) {
-      throw new HTTPException(404, { message: "SCIM token not found" });
+      throw notFound.scimToken();
     }
 
     const removed = await scimTokens.remove(tenant_id, token_id);
     if (!removed) {
-      throw new HTTPException(404, { message: "SCIM token not found" });
+      throw notFound.scimToken();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -514,7 +519,7 @@ const deleteToken = defineRoute({
 export const scimConfigurationRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getConfiguration,
   createConfiguration,
   updateConfiguration,
