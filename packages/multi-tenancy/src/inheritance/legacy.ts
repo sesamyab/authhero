@@ -69,6 +69,7 @@ export function computeLegacyConfig(
         : rs,
     ),
     hooks: [...tenant.hooks, ...inheritedHooks],
+    hookCode: tenant.hookCode,
     actions: tenant.actions.map((a) =>
       resolveLegacyAction(a, controlPlane.actions),
     ),

@@ -568,7 +568,13 @@ export function createTenantsOpenAPIRouter(
       const updates = ctx.req.valid("json");
 
       // Strip protected system fields that should not be modified
-      const { id, ...sanitizedUpdates } = updates;
+      // `config_sync_*` is written by the sync operation only.
+      const {
+        id,
+        config_sync_hash: _hash,
+        config_synced_at: _syncedAt,
+        ...sanitizedUpdates
+      } = updates;
 
       // Get existing tenant
       const existingTenant = await getRequestData(ctx).tenants.get(

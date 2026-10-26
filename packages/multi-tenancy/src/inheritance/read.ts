@@ -1,4 +1,4 @@
-import { DataAdapters, Action, fetchAll } from "authhero";
+import { DataAdapters, Action, HookCode, fetchAll } from "authhero";
 import { readControlPlaneDefaults } from "../rollout/defaults-projection";
 import { ConfigRows } from "./types";
 
@@ -20,5 +20,20 @@ export async function readConfigRows(
     "actions",
     { cursorField: "id", pageSize: 100 },
   );
-  return { ...defaults, actions };
+
+  // hook_code has no list: collect it through the code hooks that point at it.
+  // A `code_id` can also point at an action, which `get` then finds instead.
+  const actionIds = new Set(actions.map((a) => a.id));
+  const codeIds = new Set<string>();
+  for (const hook of defaults.hooks) {
+    const codeId = (hook as { code_id?: string }).code_id;
+    if (codeId && !actionIds.has(codeId)) codeIds.add(codeId);
+  }
+  const hookCode: HookCode[] = [];
+  for (const id of codeIds) {
+    const row = await adapters.hookCode.get(tenantId, id);
+    if (row) hookCode.push(row);
+  }
+
+  return { ...defaults, actions, hookCode };
 }

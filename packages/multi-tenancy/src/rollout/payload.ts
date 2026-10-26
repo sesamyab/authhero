@@ -19,6 +19,12 @@ import {
   resolveDefaultsEntities,
   writeControlPlaneDefaults,
 } from "./defaults-projection";
+import {
+  ApplyResolvedBlockOptions,
+  ApplyResolvedBlockResult,
+  ResolvedConfigBlock,
+  applyResolvedConfigBlock,
+} from "./resolved-sync";
 
 /**
  * Entity flags for the wire payload — the six default entities plus signing
@@ -78,12 +84,19 @@ export interface ControlPlaneDefaultsPayload extends ProjectableDefaults {
    * {@link ControlPlaneTenantSeed}.
    */
   tenants: ControlPlaneTenantSeed[];
+  /**
+   * The tenant's resolved parent-chain config, materialised under the tenant's
+   * own id. Optional and opt-in on apply; see {@link ResolvedConfigBlock}.
+   */
+  resolved?: ResolvedConfigBlock;
 }
 
 /** Result of applying a payload — the projection result plus the key/tenant outcomes. */
 export interface ControlPlaneDefaultsApplyResult extends DefaultsProjectionResult {
   signingKeys: EntityProjectionOutcome;
   tenants: EntityProjectionOutcome;
+  /** Present when a `resolved` block was applied (or dry-run). */
+  resolved?: ApplyResolvedBlockResult;
 }
 
 /**
@@ -262,6 +275,11 @@ export async function applyControlPlaneDefaultsPayload(
   options: {
     continueOnError?: boolean;
     entities?: DefaultsPayloadEntities;
+    /**
+     * Also apply the payload's `resolved` block to `tenantId`. Without this the
+     * block is ignored, so existing callers are unaffected.
+     */
+    resolved?: ApplyResolvedBlockOptions & { tenantId: string };
   } = {},
 ): Promise<ControlPlaneDefaultsApplyResult> {
   const continueOnError = options.continueOnError ?? false;
@@ -314,5 +332,16 @@ export async function applyControlPlaneDefaultsPayload(
       )
     : emptyOutcome();
 
-  return { ...result, signingKeys, tenants };
+  // Applied last: the tenant row is seeded above, which the sync hash needs.
+  const resolved =
+    payload.resolved && options.resolved
+      ? await applyResolvedConfigBlock(
+          payload.resolved,
+          targetAdapters,
+          options.resolved.tenantId,
+          { continueOnError, ...options.resolved },
+        )
+      : undefined;
+
+  return { ...result, signingKeys, tenants, ...(resolved ? { resolved } : {}) };
 }

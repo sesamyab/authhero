@@ -8,6 +8,12 @@ export const tenantInsertSchema = z.object({
   // Null/unset means no parent (no inheritance).
   parent_tenant_id: z.string().nullish(),
 
+  // Config sync state, written by the sync operation only: the content hash of
+  // the resolved config last applied to this tenant, and when. A push whose
+  // hash equals the stored one is a no-op. Ignored on management API writes.
+  config_sync_hash: z.string().nullish(),
+  config_synced_at: z.string().nullish(),
+
   // Basic settings
   audience: z.string().optional(),
   friendly_name: z.string(), // Required - replaces the old 'name' field

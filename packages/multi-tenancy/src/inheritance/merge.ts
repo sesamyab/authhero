@@ -4,6 +4,7 @@ import type {
   ConfigScope,
   Connection,
   Hook,
+  HookCode,
   ResourceServer,
 } from "authhero";
 import {
@@ -252,6 +253,22 @@ export function mergeConfig(chain: Layer[], tenant: Layer): ResolvedConfig {
   ];
   out.resourceServers = [...resourceServers.values()];
   out.hooks = [...hooks.values()];
+  // Code travels with the hooks that reference it: keep hook_code a visible
+  // hook points at, nearest layer first.
+  const referenced = new Set(
+    out.hooks
+      .map((h) => (h as { code_id?: string }).code_id)
+      .filter((id): id is string => !!id),
+  );
+  const hookCode = new Map<string, HookCode>();
+  for (const layer of [...layers].reverse()) {
+    for (const code of layer.hookCode) {
+      if (referenced.has(code.id) && !hookCode.has(code.id)) {
+        hookCode.set(code.id, code);
+      }
+    }
+  }
+  out.hookCode = [...hookCode.values()];
   out.actions = [...actions.values()];
   return { ...out, hidden: [...hidden] };
 }

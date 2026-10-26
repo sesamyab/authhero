@@ -386,6 +386,25 @@ describe("tenant settings: default_client_id validation", () => {
     ).toBeFalsy();
   });
 
+  it("ignores config_sync_* fields, which only the sync operation writes", async () => {
+    await adapters.tenants.update(controlPlaneTenantId, {
+      config_sync_hash: "real-hash",
+    });
+    const app = settingsApp();
+
+    const response = await patchSettings(app, {
+      friendly_name: "Renamed",
+      config_sync_hash: "forged",
+      config_synced_at: "2000-01-01T00:00:00.000Z",
+    });
+
+    expect(response.status).toBe(200);
+    const tenant = (await adapters.tenants.get(controlPlaneTenantId))!;
+    expect(tenant.friendly_name).toBe("Renamed");
+    expect(tenant.config_sync_hash).toBe("real-hash");
+    expect(tenant.config_synced_at).toBeUndefined();
+  });
+
   it("accepts an interactive client as the default", async () => {
     await adapters.clients.create(controlPlaneTenantId, {
       client_id: "web",
