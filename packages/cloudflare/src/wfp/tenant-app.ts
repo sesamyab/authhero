@@ -16,12 +16,15 @@ import {
 import {
   withRuntimeFallback,
   applyControlPlaneDefaultsPayload,
+  applyResolvedConfigBlock,
   type ControlPlaneDefaultsApplyResult,
+  type ResolvedConfigBlock,
   type ControlPlaneDefaultsPayload,
 } from "@authhero/multi-tenancy";
 
 const CONTROL_PLANE_KEY_ID = "cp";
 const SYNC_PATH = "/internal/sync-defaults";
+const SYNC_CONFIG_PATH = "/internal/sync-config";
 const RENEW_CERTIFICATES_PATH = "/internal/renew-signing-certificates";
 
 /**
@@ -74,6 +77,15 @@ export interface WfpTenantEnv {
   CONTROL_PLANE_ENCRYPTION_KEY?: string;
   /** Shared secret authenticating control-plane pushes to `/internal/sync-defaults`. */
   WFP_INTERNAL_SYNC_SECRET?: string;
+  /**
+   * The tenant this worker serves, set when the script is provisioned (plain
+   * text binding or secret, next to `ISSUER`). When present,
+   * `/internal/sync-config` refuses a push addressed to any other tenant, so a
+   * misrouted push can never write another tenant's config into this database.
+   * Optional so workers provisioned before it existed keep working; set it from
+   * the provisioner's `secrets` resolver.
+   */
+  TENANT_ID?: string;
   [key: string]: unknown;
 }
 
@@ -186,14 +198,11 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
       }
     : { default: tenantKey };
 
-  const encrypted = createEncryptedDataAdapterWithKeyRing(
-    options.createDataAdapter(env),
-    ring,
-    {
-      resolveEncryptKeyId: (tenantId) =>
-        tenantId === controlPlaneTenantId ? CONTROL_PLANE_KEY_ID : undefined,
-    },
-  );
+  const rawAdapter = options.createDataAdapter(env);
+  const encrypted = createEncryptedDataAdapterWithKeyRing(rawAdapter, ring, {
+    resolveEncryptKeyId: (tenantId) =>
+      tenantId === controlPlaneTenantId ? CONTROL_PLANE_KEY_ID : undefined,
+  });
 
   // Runtime fallback resolves the projected control-plane rows from this same
   // D1 — identical to a colocated tenant, no WFP-specific read code.
@@ -298,6 +307,73 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
     // confirm provisioning wired a private key (dispatch workers aren't
     // tailable). Additive to the apply result the verify step reads from D1.
     return c.json({ ...result, signingKey });
+  });
+
+  // Receive a `sync-defaults` operation's resolved config block. Separate from
+  // the provisioning seed above: it carries only the block and flags, applies
+  // nothing else (no FK seeds, defaults or signing keys), and a dry run writes
+  // nothing at all.
+  app.post(SYNC_CONFIG_PATH, async (c) => {
+    const secret = env.WFP_INTERNAL_SYNC_SECRET;
+    const authorization = c.req.header("authorization");
+    if (!secret || authorization !== `Bearer ${secret}`) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+
+    let body: {
+      tenantId?: string;
+      resolved?: ResolvedConfigBlock;
+      dryRun?: boolean;
+      force?: boolean;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON" }, 400);
+    }
+    if (!body.tenantId || !body.resolved) {
+      return c.json({ error: "tenantId and resolved are required" }, 400);
+    }
+    // Refuse before any read or write when the push is for another tenant.
+    if (env.TENANT_ID && body.tenantId !== env.TENANT_ID) {
+      console.error(
+        `[wfp-tenant] sync_config_tenant_mismatch: push for "${body.tenantId}" reached the worker of "${env.TENANT_ID}"`,
+      );
+      c.header("X-Authhero-Error", "sync_config_tenant_mismatch");
+      return c.json({ error: "sync_config_tenant_mismatch" }, 403);
+    }
+
+    try {
+      // The raw layer, so ciphertext is copied as stored; the key ring check
+      // refuses the push before any write when this tenant cannot decrypt a
+      // key id the block carries.
+      const result = await applyResolvedConfigBlock(
+        body.resolved,
+        rawAdapter,
+        body.tenantId,
+        {
+          dryRun: body.dryRun === true,
+          force: body.force === true,
+          keyRing: ring,
+          continueOnError: options.continueOnError ?? true,
+        },
+      );
+      return c.json(result);
+    } catch (err) {
+      // A key ring that cannot decrypt is a configuration problem the control
+      // plane must fix; retrying will not help.
+      const unreadable =
+        err instanceof Error && /key ring cannot decrypt/.test(err.message);
+      if (unreadable) {
+        console.error("[wfp-tenant] sync_config_key_ring:", err);
+        c.header("X-Authhero-Error", "sync_config_key_ring");
+        return c.json(
+          { error: "sync_config_key_ring", detail: err.message },
+          422,
+        );
+      }
+      return errorResponse(c, "sync_config_apply_failed", err);
+    }
   });
 
   // Renew this tenant's CA-issued certificates. Pushed by the control plane

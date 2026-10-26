@@ -15,8 +15,8 @@
 export interface TenantOperationWorkflowParams {
   operation_id: string;
   tenant_id: string;
-  /** Widened beyond "provision" in later phases (upgrade, backup, …). */
-  kind: "provision";
+  /** Widened beyond these in later phases (upgrade, backup, …). */
+  kind: "provision" | "sync-defaults";
 }
 
 /**

@@ -8,6 +8,8 @@ import {
   Loader2,
   RefreshCw,
   Rocket,
+  RefreshCcw,
+  Eye,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -216,23 +218,38 @@ export function TenantOperations() {
     return () => clearInterval(interval);
   }, [expandedId, operations, loadEvents]);
 
-  const enqueueUpgrade = async () => {
+  const enqueue = async (
+    kind: "upgrade" | "sync-defaults",
+    input: { dry_run?: boolean } | undefined,
+    label: string,
+  ) => {
     if (!tenantId) return;
     setEnqueuing(true);
     try {
-      await dataProvider.createTenantOperation(tenantId, "upgrade");
-      notify("Upgrade operation enqueued", { type: "info" });
+      const operation = await dataProvider.createTenantOperation(
+        tenantId,
+        kind,
+        input,
+      );
+      // A sync returns its finished row, failed or not: say which.
+      notify(
+        operation.status === "failed"
+          ? `${label} failed: ${operation.error ?? "see the timeline"}`
+          : `${label} operation ${operation.status === "succeeded" ? "finished" : "enqueued"}`,
+        { type: operation.status === "failed" ? "error" : "info" },
+      );
       await refresh();
     } catch (error) {
       const message =
         error && typeof error === "object" && "message" in error
           ? String(error.message)
-          : "Failed to enqueue the upgrade";
+          : `Failed to enqueue: ${label}`;
       notify(message, { type: "error" });
     } finally {
       if (mounted.current) setEnqueuing(false);
     }
   };
+  const enqueueUpgrade = () => enqueue("upgrade", undefined, "Upgrade");
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -264,6 +281,28 @@ export function TenantOperations() {
             >
               <RefreshCw className="h-4 w-4 mr-1" />
               Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                enqueue("sync-defaults", { dry_run: true }, "Sync preview")
+              }
+              disabled={enqueuing || hasActive}
+              title="Show what a sync would change, without writing anything"
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              Preview sync
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => enqueue("sync-defaults", undefined, "Sync")}
+              disabled={enqueuing || hasActive}
+              title="Copy the config this tenant inherits into its own database"
+            >
+              <RefreshCcw className="h-4 w-4 mr-1" />
+              Sync config
             </Button>
             <Button
               size="sm"
@@ -371,6 +410,9 @@ export function TenantOperations() {
                               {operation.error}
                             </p>
                           ) : null}
+                          {operation.kind === "sync-defaults" ? (
+                            <SyncResult operation={operation} />
+                          ) : null}
                           {events[operation.id] ? (
                             <EventsTimeline events={events[operation.id]!} />
                           ) : (
@@ -389,6 +431,37 @@ export function TenantOperations() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** What a `sync-defaults` run did, or (for a preview) would do. */
+function SyncResult({ operation }: { operation: TenantOperationRecord }) {
+  const result = operation.result;
+  if (!result) return null;
+  const changes = Array.isArray(result.changes)
+    ? (result.changes as string[])
+    : [];
+  const dryRun = result.dry_run === true;
+  return (
+    <div className="py-2 text-sm">
+      <div className="flex items-center gap-2">
+        <Badge variant="outline">{String(result.status ?? "unknown")}</Badge>
+        <span className="text-muted-foreground">
+          {dryRun
+            ? "Preview: nothing was written."
+            : changes.length === 0
+              ? "Nothing to change."
+              : `${changes.length} change(s) applied.`}
+        </span>
+      </div>
+      {changes.length > 0 ? (
+        <ul className="mt-2 font-mono text-xs">
+          {changes.map((change) => (
+            <li key={change}>{change}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

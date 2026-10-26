@@ -181,6 +181,96 @@ describe("management-api tenant operations", () => {
     expect(response.status).toBe(501);
   });
 
+  describe("sync-defaults", () => {
+    async function setupSync(kinds?: TenantOperationExecutorBinding["kinds"]) {
+      const dataRef: { current?: DataAdapters } = {};
+      const seen: unknown[] = [];
+      const stub = createStubExecutor(() => dataRef.current);
+      const executor: TenantOperationExecutorBinding = {
+        ...stub,
+        ...(kinds ? { kinds } : {}),
+        async enqueue(params) {
+          seen.push(params);
+          return stub.enqueue(params);
+        },
+      };
+      const { app, env } = await getTestServer({
+        tenantOperationExecutor: executor,
+      });
+      dataRef.current = env.data;
+      const token = await getAdminToken();
+      const post = (body: unknown) =>
+        app.request(
+          "/api/v2/tenants/tenantId/operations",
+          {
+            method: "POST",
+            headers: {
+              "tenant-id": "tenantId",
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(body),
+          },
+          env,
+        );
+      return { post, seen };
+    }
+
+    it("passes dry_run and force on as the operation input", async () => {
+      const { post, seen } = await setupSync();
+
+      const response = await post({
+        kind: "sync-defaults",
+        input: { dry_run: true, force: true },
+      });
+
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ kind: "sync-defaults" });
+      expect(seen).toEqual([
+        expect.objectContaining({
+          kind: "sync-defaults",
+          tenant_id: "tenantId",
+          input: { dry_run: true, force: true },
+        }),
+      ]);
+    });
+
+    it("accepts a sync without input", async () => {
+      const { post, seen } = await setupSync();
+
+      expect((await post({ kind: "sync-defaults" })).status).toBe(201);
+      expect(seen[0]).not.toHaveProperty("input");
+    });
+
+    it("rejects input for other kinds", async () => {
+      const { post } = await setupSync();
+
+      const response = await post({
+        kind: "upgrade",
+        input: { dry_run: true },
+      });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects unknown input fields", async () => {
+      const { post } = await setupSync();
+
+      expect(
+        (await post({ kind: "sync-defaults", input: { dry_run: "yes" } }))
+          .status,
+      ).toBe(400);
+    });
+
+    it("answers 501 for a kind the executor does not run", async () => {
+      const { post, seen } = await setupSync(["sync-defaults"]);
+
+      expect((await post({ kind: "upgrade" })).status).toBe(501);
+      expect(seen).toEqual([]);
+      expect((await post({ kind: "sync-defaults" })).status).toBe(201);
+    });
+  });
+
   it("returns 501 when no executor is configured", async () => {
     const { app, env } = await getTestServer();
 

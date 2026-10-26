@@ -31,6 +31,7 @@
  *   createWfpWorkflowProvisioningHook,
  *   reconcileTenantOperations,
  *   runProvisionOperation,
+ *   runSyncDefaultsOperation,
  *   type ProvisionOperationDeps,
  *   type TenantOperationWorkflowParams,
  * } from "@authhero/cloudflare-adapter/workflows";
@@ -40,7 +41,10 @@
  *   createWfpTenantProvisioningHook,
  *   CloudflareApiClient,
  * } from "@authhero/cloudflare-adapter";
- * import { createDispatchSyncDefaults } from "@authhero/cloudflare-adapter/wfp";
+ * import {
+ *   createDispatchSyncConfig,
+ *   createDispatchSyncDefaults,
+ * } from "@authhero/cloudflare-adapter/wfp";
  *
  * // Host-owned: build every workflow dependency from the worker env. Params
  * // carry only { operation_id, tenant_id, kind } — never secrets.
@@ -69,8 +73,33 @@
  *
  * export class TenantOperationWorkflow extends WorkflowEntrypoint<Env, TenantOperationWorkflowParams> {
  *   async run(event: WorkflowEvent<TenantOperationWorkflowParams>, step: WorkflowStep) {
- *     // CF's WorkflowStep satisfies StepRunner structurally.
- *     await runProvisionOperation(buildProvisionDeps(this.env), event.payload, step);
+ *     // CF's WorkflowStep satisfies StepRunner structurally. One class runs
+ *     // every kind; params carry the kind, never secrets.
+ *     switch (event.payload.kind) {
+ *       case "sync-defaults": {
+ *         const adapters = createControlPlaneAdapters(this.env);
+ *         return runSyncDefaultsOperation(
+ *           {
+ *             stores: {
+ *               tenantOperations: adapters.tenantOperations!,
+ *               tenantOperationEvents: adapters.tenantOperationEvents!,
+ *             },
+ *             // Reads the chain as stored (ciphertext) and pushes the
+ *             // resolved block to the tenant worker's /internal/sync-config.
+ *             syncConfig: createDispatchSyncConfig({
+ *               dispatcher: this.env.DISPATCHER,
+ *               internalSecret: this.env.WFP_INTERNAL_SYNC_SECRET,
+ *               controlPlaneTenantId: this.env.CONTROL_PLANE_TENANT_ID,
+ *               controlPlaneAdapters: adapters,
+ *             }),
+ *           },
+ *           event.payload,
+ *           step,
+ *         );
+ *       }
+ *       default:
+ *         return runProvisionOperation(buildProvisionDeps(this.env), event.payload, step);
+ *     }
  *   }
  * }
  *

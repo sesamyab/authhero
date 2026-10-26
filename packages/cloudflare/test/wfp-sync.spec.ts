@@ -14,12 +14,15 @@ import type {
 import { createWfpForwardMiddleware } from "../src";
 import {
   createDispatchRenewSigningCertificates,
+  createDispatchSyncConfig,
   createDispatchSyncDefaults,
   createWfpTenantApp,
 } from "../src/wfp";
 import {
   init,
+  createEncryptedDataAdapterWithKeyRing,
   createLocalCertificateIssuer,
+  loadEncryptionKey,
   type AuthHeroConfig,
   type CertificateIssuer,
 } from "authhero";
@@ -993,5 +996,210 @@ describe("createDispatchRenewSigningCertificates", () => {
     });
 
     await expect(renew("acme")).rejects.toThrow(/unexpected body/);
+  });
+});
+
+describe("sync-defaults operation transport (createDispatchSyncConfig → /internal/sync-config)", () => {
+  const env = {
+    AUTH_DB: {},
+    ENCRYPTION_KEY: b64Key(1),
+    ISSUER: "https://acme.tokens.example.com/",
+    CONTROL_PLANE_TENANT_ID: CP,
+    CONTROL_PLANE_ISSUER: "https://controlplane.example.com/",
+    WFP_INTERNAL_SYNC_SECRET: "push-secret",
+  };
+  const ctx = { waitUntil() {}, passThroughOnException() {} };
+
+  let cp: DataAdapters;
+  let tenant: DataAdapters;
+  let app: ReturnType<typeof createWfpTenantApp>;
+
+  const tenantRow = (id: string) => ({
+    id,
+    friendly_name: id,
+    audience: "https://example.com",
+    default_audience: "https://example.com",
+    sender_email: "login@example.com",
+    sender_name: "Sender",
+  });
+
+  /** A dispatch namespace whose script is the real tenant app. */
+  function dispatcherToTenant(
+    tenantEnv: Record<string, unknown> = env,
+    calls: string[] = [],
+  ) {
+    return {
+      get() {
+        return {
+          async fetch(url: Request | string, init?: RequestInit) {
+            calls.push(typeof url === "string" ? url : url.url);
+            return app.fetch(new Request(url, init), tenantEnv, ctx);
+          },
+        };
+      },
+    };
+  }
+
+  const syncFor = (
+    dispatcher: ReturnType<typeof dispatcherToTenant>,
+    secret = "push-secret",
+  ) =>
+    createDispatchSyncConfig({
+      dispatcher,
+      internalSecret: secret,
+      controlPlaneTenantId: CP,
+      controlPlaneAdapters: cp,
+    });
+
+  beforeEach(async () => {
+    cp = await makeAdapters();
+    tenant = await makeAdapters();
+    app = createWfpTenantApp({ createDataAdapter: () => tenant });
+
+    await cp.tenants.create(tenantRow(CP));
+    await cp.tenants.create(tenantRow("acme"));
+    await tenant.tenants.create(tenantRow("acme"));
+    await cp.actions.create(CP, {
+      name: "enrich",
+      code: "exports.onExecutePostLogin = async () => {};",
+      scope: "shared",
+    });
+  });
+
+  it("returns the diff of a dry run and writes nothing to the tenant", async () => {
+    const calls: string[] = [];
+    const result = await syncFor(dispatcherToTenant(env, calls))("acme", {
+      dryRun: true,
+      force: false,
+    });
+
+    expect(calls).toEqual(["https://tenant.internal/internal/sync-config"]);
+    expect(result.status).toBe("dry-run");
+    expect(result.entities.action.added).toBe(1);
+    expect(result.changes).toContain("action:enrich");
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(0);
+    expect(
+      (await tenant.tenants.get("acme"))?.config_sync_hash,
+    ).toBeUndefined();
+  });
+
+  it("applies the block, stores the hash, and is a no-op the second time", async () => {
+    const sync = syncFor(dispatcherToTenant());
+
+    const first = await sync("acme", { dryRun: false, force: false });
+    expect(first.status).toBe("applied");
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(1);
+    expect((await tenant.tenants.get("acme"))?.config_sync_hash).toBe(
+      first.hash,
+    );
+
+    const second = await sync("acme", { dryRun: false, force: false });
+    expect(second.status).toBe("up-to-date");
+  });
+
+  it("writes only the block: no signing key is minted and no defaults are projected", async () => {
+    await syncFor(dispatcherToTenant())("acme", {
+      dryRun: false,
+      force: false,
+    });
+
+    const { signingKeys } = await tenant.keys.list({ q: "type:jwt_signing" });
+    expect(signingKeys).toHaveLength(0);
+    expect((await tenant.connections.list(CP)).connections).toHaveLength(0);
+  });
+
+  it("refuses the push before any write when the tenant cannot decrypt a key id", async () => {
+    // A control-plane action whose secret is stored under the "cp" key id.
+    const cpKey = await loadEncryptionKey(b64Key(2));
+    const encryptedCp = createEncryptedDataAdapterWithKeyRing(
+      cp,
+      { default: await loadEncryptionKey(b64Key(9)), keys: { cp: cpKey } },
+      { resolveEncryptKeyId: (id) => (id === CP ? "cp" : undefined) },
+    );
+    await encryptedCp.actions.create(CP, {
+      name: "with-secret",
+      code: "exports.onExecutePostLogin = async () => {};",
+      scope: "shared",
+      secrets: [{ name: "KEY", value: "shh" }],
+    });
+
+    // The tenant env has no CONTROL_PLANE_ENCRYPTION_KEY, so no "cp" key.
+    const sync = syncFor(dispatcherToTenant());
+
+    await expect(sync("acme", { dryRun: false, force: false })).rejects.toThrow(
+      /422 \(sync_config_key_ring\).*key id\(s\).*cp/,
+    );
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(0);
+  });
+
+  it("accepts the same block once the tenant holds the key", async () => {
+    const cpKey = await loadEncryptionKey(b64Key(2));
+    const encryptedCp = createEncryptedDataAdapterWithKeyRing(
+      cp,
+      { default: await loadEncryptionKey(b64Key(9)), keys: { cp: cpKey } },
+      { resolveEncryptKeyId: (id) => (id === CP ? "cp" : undefined) },
+    );
+    await encryptedCp.actions.create(CP, {
+      name: "with-secret",
+      code: "exports.onExecutePostLogin = async () => {};",
+      scope: "shared",
+      secrets: [{ name: "KEY", value: "shh" }],
+    });
+
+    const result = await syncFor(
+      dispatcherToTenant({ ...env, CONTROL_PLANE_ENCRYPTION_KEY: b64Key(2) }),
+    )("acme", { dryRun: false, force: false });
+
+    expect(result.status).toBe("applied");
+    expect(result.entities.action.added).toBe(2);
+  });
+
+  it("rejects a push without the shared secret", async () => {
+    await expect(
+      syncFor(dispatcherToTenant(), "wrong")("acme", {
+        dryRun: true,
+        force: false,
+      }),
+    ).rejects.toThrow(/401/);
+  });
+
+  it("refuses a push addressed to another tenant when the worker knows its own id", async () => {
+    await tenant.tenants.create(tenantRow("other"));
+    const sync = syncFor(dispatcherToTenant({ ...env, TENANT_ID: "other" }));
+
+    await expect(sync("acme", { dryRun: false, force: false })).rejects.toThrow(
+      /403 \(sync_config_tenant_mismatch\)/,
+    );
+    // Nothing was read or written for either tenant.
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(0);
+    expect((await tenant.actions.list("other")).actions).toHaveLength(0);
+    expect(
+      (await tenant.tenants.get("acme"))?.config_sync_hash,
+    ).toBeUndefined();
+  });
+
+  it("accepts a push for the worker's own tenant", async () => {
+    const result = await syncFor(
+      dispatcherToTenant({ ...env, TENANT_ID: "acme" }),
+    )("acme", { dryRun: false, force: false });
+
+    expect(result.status).toBe("applied");
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(1);
+  });
+
+  it("rejects a malformed body", async () => {
+    const res = await app.fetch(
+      new Request("https://tenant.internal/internal/sync-config", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer push-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ tenantId: "acme" }),
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(400);
   });
 });

@@ -157,10 +157,17 @@ export interface ManagementApiExtension {
  */
 export interface TenantOperationExecutorBinding {
   engine: string;
+  /**
+   * The kinds this executor can run. Absent means any. A request for another
+   * kind is answered `501` without creating an operation.
+   */
+  kinds?: readonly TenantOperationKind[];
   enqueue(params: {
     kind: TenantOperationKind;
     tenant_id: string | null;
     initiated_by?: string;
+    /** Kind-specific parameters, fixed at creation. Never contains secrets. */
+    input?: Record<string, unknown>;
   }): Promise<TenantOperation>;
 }
 

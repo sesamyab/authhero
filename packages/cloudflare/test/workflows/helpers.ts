@@ -140,6 +140,8 @@ export function fakeStores(): TenantOperationStores & {
           target_database_version: input.target_database_version ?? null,
           error: null,
           initiated_by: input.initiated_by ?? null,
+          input: input.input ?? null,
+          result: null,
           created_at: now,
           updated_at: now,
           finished_at: null,

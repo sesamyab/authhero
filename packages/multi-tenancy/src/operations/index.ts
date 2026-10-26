@@ -21,4 +21,12 @@ export type {
   TenantOperationStepContext,
 } from "./inline-executor";
 export { enqueueTenantOperation } from "./enqueue";
+export {
+  createInProcessSyncConfig,
+  runSyncDefaultsStep,
+  summarizeSyncResult,
+  syncErrors,
+  syncOptionsOf,
+} from "./sync-defaults";
+export type { SyncConfigFn, SyncConfigOptions } from "./sync-defaults";
 export { runRecordedTenantOperation } from "./record-provision";

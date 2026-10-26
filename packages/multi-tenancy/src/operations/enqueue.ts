@@ -25,6 +25,7 @@ export async function createOperationRow(
     initiated_by: params.initiated_by,
     target_worker_version: params.target_worker_version,
     target_database_version: params.target_database_version,
+    input: params.input,
   });
 
   const engine_instance_id = buildEngineInstanceId(created);
@@ -54,6 +55,14 @@ export async function enqueueTenantOperation(
   stores: TenantOperationStores,
   executor: TenantOperationExecutor,
   params: EnqueueTenantOperationParams,
+  options: {
+    /**
+     * Resolve with the failed operation row instead of rethrowing when the
+     * executor's run fails. For operations whose row is the deliverable
+     * (a sync reports its outcome there), not for callers that need the error.
+     */
+    returnFailed?: boolean;
+  } = {},
 ): Promise<TenantOperation> {
   const recorder = createOperationRecorder(stores);
 
@@ -64,14 +73,17 @@ export async function enqueueTenantOperation(
   } catch (error) {
     // The start failure is the authoritative outcome — a broken lookup or
     // write-back here must not mask it.
+    let failed: TenantOperation | null = null;
     try {
       const current = await stores.tenantOperations.get(operation.id);
       if (current && !isTerminalStatus(current.status)) {
         await recorder.markFailed(operation.id, error);
       }
+      failed = await stores.tenantOperations.get(operation.id);
     } catch (recordError) {
       console.warn("Failed to record tenant operation failure:", recordError);
     }
+    if (options.returnFailed && failed) return failed;
     throw error;
   }
 

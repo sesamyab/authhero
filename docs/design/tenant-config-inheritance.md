@@ -152,6 +152,9 @@ A new `sync-defaults` operation kind on the tenant-operations machinery
   include actions and hooks with their scope and override fields.
 - `applyControlPlaneDefaultsPayload` stays the apply side: idempotent upserts keyed by
   stable key, create-if-missing for FK seeds.
+- As an operation (#1498), a sync is a `sync-defaults` tenant operation with history and a
+  `dry_run` that returns the diff. Tenants with their own database receive the resolved block
+  on `/internal/sync-config` rather than through the provisioning seed.
 - The payload carries a content hash. The tenant stores the hash it last applied, so a
   push to an up-to-date tenant is a no-op.
 - Deletes are explicit entries in the payload, and are off by default for the first

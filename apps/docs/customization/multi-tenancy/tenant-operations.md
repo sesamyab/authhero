@@ -43,13 +43,31 @@ When the control plane carries the operations adapters, `createProvisioningHooks
 
 Mounted only when the operations adapters are present. Scopes: `read:tenant_operations`, `create:tenant_operations`.
 
-| Route                                  | Purpose                                                                                            |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET /api/v2/tenants/{id}/operations`  | Paginated history for a tenant (filters: `kind`, `status`)                                         |
-| `GET /api/v2/operations/{id}`          | One operation plus its full event timeline                                                         |
-| `POST /api/v2/tenants/{id}/operations` | Enqueue `{ "kind": "upgrade" }` (control-plane only; retry = enqueue again — steps are idempotent) |
+| Route                                  | Purpose                                                                                                                             |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v2/tenants/{id}/operations`  | Paginated history for a tenant (filters: `kind`, `status`)                                                                          |
+| `GET /api/v2/operations/{id}`          | One operation plus its full event timeline                                                                                          |
+| `POST /api/v2/tenants/{id}/operations` | Enqueue `{ "kind": "upgrade" }` or `{ "kind": "sync-defaults" }` (control-plane only; retry = enqueue again — steps are idempotent) |
 
 Clients poll `GET /operations/{id}` while an operation runs; the inline engine returns it already terminal.
+
+## Syncing a tenant's config (`sync-defaults`)
+
+`sync-defaults` copies the config a tenant inherits (its parent chain, resolved: actions, hooks and hook code, connections, resource servers and more) into the tenant's own database, as a tracked operation. See [syncing a resolved parent chain](./control-plane-defaults.md#syncing-a-resolved-parent-chain) for what is copied and how.
+
+```http
+POST /api/v2/tenants/acme/operations
+{ "kind": "sync-defaults", "input": { "dry_run": true } }
+```
+
+- **`input.dry_run`** computes the diff and writes nothing. **`input.force`** applies even when the tenant's stored hash matches. Other kinds take no `input`.
+- **History:** the operation has a `sync-defaults` step with a `started` and a `succeeded` (or `failed`) event, and appears in `GET /tenants/{id}/operations?kind=sync-defaults`.
+- **Result:** `result` holds `status` (`applied`, `up-to-date` or `dry-run`), the content `hash`, per-entity counts (`added`, `changed`, `unchanged`, `deleted`, `errors`) and `changes`, the list of `entity:key` that were or would be changed. It never contains row content or secrets.
+- **Failure:** if any row reports an error, or the push to the tenant fails, the operation ends `failed` with `error` set. When the sync completed and reported row errors, `result` still shows what happened; when the push itself was rejected or unreachable there is no `result`, only the `error` and the `failed` event. The tenant's stored hash is only updated by a fully successful run.
+- **What the request returns:** with the inline executor the sync runs in the request, so a failed run comes back as the failed operation row (`201`, `status: "failed"`) instead of a server error. With Cloudflare Workflows the request returns the enqueued operation before the sync runs; poll `GET /operations/{id}` until it is terminal to learn whether it failed.
+- **Transport:** tenants that share the control plane's database are synced in-process. A tenant with its own worker and database (`deployment_type: "wfp"`) needs a dispatch transport: pass `syncDefaults: createDispatchSyncConfig({...})` to `initMultiTenant`, which pushes the resolved block to the tenant worker's `/internal/sync-config`. Without it such a tenant's sync fails with a message saying so.
+- **Executors:** the inline executor runs it in the request. On Cloudflare Workflows the same `TenantOperationWorkflow` class handles it (`runSyncDefaultsOperation`, branching on the params' `kind`); the instance retries the step a few times, since a sync is idempotent.
+- Whether a deployment offers a kind depends on its executor: a request for a kind the executor does not run answers `501`. A deployment without an upgrade handler therefore offers `sync-defaults` only.
 
 ## Durable provisioning on Cloudflare Workflows
 
@@ -65,7 +83,7 @@ Two steps close the "ready but empty D1" incident class permanently:
 - **seed-defaults** is a retried step _before_ `ready` whose per-entity errors fail the operation (not a `console.error`).
 - **verify** queries the tenant D1 (via the same REST path migrations use) and throws until it actually holds signing keys and the tenant row — a propagation race becomes a few retried verifies.
 
-The workflow writes back to the operation log inside every `step.do`, so the history is durable too. If an instance dies before its terminal write, `reconcileTenantOperations` (run from the worker's `scheduled` handler — at least daily; engine retention is 30 days) copies the engine's terminal state into the database.
+The workflow writes back to the operation log inside every `step.do`, so the history is durable too. If an instance dies before its terminal write, `reconcileTenantOperations` (run from the worker's `scheduled` handler — at least daily; engine retention is 30 days) copies the engine's terminal state into the database. A `sync-defaults` instance that completed without throwing is marked `succeeded`; one that errored is marked `failed` with the engine's error.
 
 ### Wiring the downstream worker
 

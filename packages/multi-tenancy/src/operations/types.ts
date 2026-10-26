@@ -43,6 +43,8 @@ export interface EnqueueTenantOperationParams {
   initiated_by?: string;
   target_worker_version?: string;
   target_database_version?: string;
+  /** Kind-specific parameters, fixed at creation. Never contains secrets. */
+  input?: Record<string, unknown>;
 }
 
 /**

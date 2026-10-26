@@ -8,7 +8,14 @@ import {
 } from "authhero";
 import { createSyncHooks, EntitySyncConfig } from "./hooks/sync";
 import { createProvisioningHooks } from "./hooks";
-import { createInlineExecutor, enqueueTenantOperation } from "./operations";
+import {
+  createInProcessSyncConfig,
+  createInlineExecutor,
+  createOperationRecorder,
+  enqueueTenantOperation,
+  runSyncDefaultsStep,
+} from "./operations";
+import type { SyncConfigFn } from "./operations";
 import { createTenantsOpenAPIRouter } from "./routes";
 import {
   buildResolver,
@@ -90,6 +97,14 @@ export interface MultiTenantConfig extends Omit<
    * @default false
    */
   inheritanceShadow?: boolean | InheritanceShadowOptions;
+
+  /**
+   * How the `sync-defaults` tenant operation reaches a tenant's database. The
+   * default syncs tenants that share the control plane's database in-process
+   * and refuses tenants with their own worker and database; pass a transport
+   * (for example a dispatch push to the tenant worker) to reach those.
+   */
+  syncDefaults?: SyncConfigFn;
 
   /**
    * Control which entities to sync from control plane to child tenants.
@@ -220,6 +235,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     } = {},
     resolveControlPlane,
     inheritanceShadow,
+    syncDefaults,
     sync = { resourceServers: true, roles: true },
     defaultPermissions = ["tenant:admin"],
     requireOrganizationMatch = false,
@@ -290,37 +306,60 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
   if (
     !tenantOperationExecutor &&
     rawDataAdapter.tenantOperations &&
-    rawDataAdapter.tenantOperationEvents &&
-    restConfig.tenantUpgrade
+    rawDataAdapter.tenantOperationEvents
   ) {
     const stores = {
       tenantOperations: rawDataAdapter.tenantOperations,
       tenantOperationEvents: rawDataAdapter.tenantOperationEvents,
     };
     const tenantUpgrade = restConfig.tenantUpgrade;
+    const recorder = createOperationRecorder(stores);
+    // Tenants that share the control plane's database are synced in-process;
+    // pass `syncDefaults` to reach tenants with their own database.
+    const syncConfig =
+      syncDefaults ??
+      createInProcessSyncConfig(rawDataAdapter, {
+        controlPlaneTenantId,
+        resolveControlPlane,
+      });
     const inlineExecutor = createInlineExecutor({
       stores,
       definitions: {
-        upgrade: (operation) => [
+        ...(tenantUpgrade
+          ? {
+              upgrade: (operation) => [
+                {
+                  name: "upgrade",
+                  async run() {
+                    if (!operation.tenant_id) {
+                      throw new Error("upgrade operations require a tenant_id");
+                    }
+                    await tenantUpgrade(operation.tenant_id);
+                  },
+                },
+              ],
+            }
+          : {}),
+        "sync-defaults": (operation) => [
           {
-            name: "upgrade",
-            async run() {
-              if (!operation.tenant_id) {
-                throw new Error("upgrade operations require a tenant_id");
-              }
-              await tenantUpgrade(operation.tenant_id);
-            },
+            name: "sync-defaults",
+            run: () => runSyncDefaultsStep({ operation, syncConfig, recorder }),
           },
         ],
       },
     });
     tenantOperationExecutor = {
       engine: inlineExecutor.engine,
+      kinds: tenantUpgrade ? ["upgrade", "sync-defaults"] : ["sync-defaults"],
       enqueue: (params) =>
-        enqueueTenantOperation(stores, inlineExecutor, {
-          ...params,
-          tenant_id: params.tenant_id,
-        }),
+        enqueueTenantOperation(
+          stores,
+          inlineExecutor,
+          { ...params, tenant_id: params.tenant_id },
+          // A sync reports its outcome in the operation row, so a failed run
+          // is returned (status "failed") rather than thrown.
+          { returnFailed: params.kind === "sync-defaults" },
+        ),
     };
   }
 
