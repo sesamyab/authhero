@@ -461,16 +461,12 @@ A row published with `scope: "platform"` is copied into the child so it can run,
 
 ### Cutting a tenant over to synced config
 
-1. Run a [`sync-defaults` operation](./tenant-operations.md#syncing-a-tenant-s-config-sync-defaults)
-   with `input.dry_run: true` and review the diff in its `result` (or call
-   `applyResolvedConfigBlock` with `dryRun: true` yourself).
-2. Run it for real, then run [shadow mode](./runtime-fallback.md#shadow-mode-for-config-inheritance)
-   and check the `cfgdiff` logs for unexpected differences.
-3. Set the tenant's `config_sync` to `synced` with a control-plane token (see
-   [per-tenant sync mode](./runtime-fallback.md#per-tenant-sync-mode-config-sync)).
-   The tenant now reads only its own database.
-4. To roll back, set `config_sync` back to `inherit-on-read`. The control plane
-   still holds the data, so inheritance resumes straight away.
+The short version: dry run, sync with inheritance still on, check the
+[shadow comparison](./runtime-fallback.md#shadow-mode-for-config-inheritance),
+set the tenant's `config_sync` to `synced` with a control-plane token, and keep
+a rollback window. The full procedure, with the checklist, what is not synced,
+verification and the limits of rollback, is in
+[Migrating a tenant to synced config](./config-sync-migration.md).
 
 ## Complete setup example
 
