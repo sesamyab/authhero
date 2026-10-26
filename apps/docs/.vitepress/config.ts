@@ -48,35 +48,25 @@ export default withMermaid(
       theme: "neutral",
       themeVariables: {
         primaryColor: "#f9f9f9",
-        primaryTextColor: "#213547",
-        primaryBorderColor: "#cccccc",
-        lineColor: "#333333",
+        primaryTextColor: "#18181B",
+        primaryBorderColor: "#d4d4d8",
+        lineColor: "#3f3f46",
         secondaryColor: "#ffffff",
         tertiaryColor: "#f9f9f9",
         background: "#ffffff",
         mainBkg: "#ffffff",
-        secondBkg: "#f8fafc",
-        tertiaryBkg: "#f1f5f9",
+        secondBkg: "#fafaf9",
+        tertiaryBkg: "#f5f5f4",
         entityFillColor: "#ffffff",
-        entityBorderColor: "#cccccc",
+        entityBorderColor: "#d4d4d8",
       },
     },
     head: [
       // Favicon and icons
-      ["link", { rel: "icon", href: "/favicon.ico" }],
-      [
-        "link",
-        {
-          rel: "icon",
-          type: "image/png",
-          sizes: "32x32",
-          href: "/favicon.ico",
-        },
-      ],
-      ["link", { rel: "apple-touch-icon", href: "/favicon.ico" }],
+      ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
 
       // Primary meta tags
-      ["meta", { name: "theme-color", content: "#3B82F6" }],
+      ["meta", { name: "theme-color", content: "#18181B" }],
       [
         "meta",
         {
@@ -179,6 +169,7 @@ gtag('config', 'G-DNZWG3PF2L');`,
     cleanUrls: true,
     themeConfig: {
       // https://vitepress.dev/reference/default-theme-config
+      logo: "/favicon.svg",
       nav: [
         { text: "Home", link: "/" },
         { text: "Getting Started", link: "/getting-started" },
