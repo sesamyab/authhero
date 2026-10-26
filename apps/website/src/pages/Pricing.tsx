@@ -12,13 +12,13 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { CLOUD, formatMau } from "@/lib/pricing";
+import { GITHUB_URL } from "@/lib/links";
 
 // --- Tier definitions (driven by the pricing config) ------------------------
 
 interface Tier {
   name: string;
   price: string;
-  cadence?: string;
   desc: string;
   features: string[];
   cta: React.ReactNode;
@@ -39,11 +39,7 @@ const selfHostedTiers: Tier[] = [
     ],
     cta: (
       <Button variant="outline" size="lg" className="w-full" asChild>
-        <a
-          href="https://github.com/sesamyab/authhero"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
           View on GitHub
         </a>
       </Button>
@@ -86,7 +82,7 @@ const cloudTiers: Tier[] = [
     ],
     cta: (
       <EarlyAccessDialog size="lg" className="w-full">
-        Sign up free
+        Get early access
       </EarlyAccessDialog>
     ),
   },
@@ -104,7 +100,7 @@ const cloudTiers: Tier[] = [
     ],
     cta: (
       <EarlyAccessDialog size="lg" className="w-full">
-        Start with Pro
+        Get early access
       </EarlyAccessDialog>
     ),
   },
@@ -134,21 +130,18 @@ const cloudTiers: Tier[] = [
 
 const TierCard = ({ tier }: { tier: Tier }) => (
   <SpotlightCard
-    className={`flex h-full flex-col ${tier.featured ? "ring-1 ring-accent/40" : ""}`}
+    className={`flex h-full flex-col ${tier.featured ? "ring-2 ring-brand" : ""}`}
   >
     <div className="mb-4 flex items-center justify-between">
       <h3 className="font-semibold">{tier.name}</h3>
       {tier.featured && (
-        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
+        <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-brand-foreground">
           Popular
         </span>
       )}
     </div>
     <div className="mb-1 flex items-baseline gap-1">
       <span className="text-3xl font-semibold">{tier.price}</span>
-      {tier.cadence && (
-        <span className="text-sm text-muted-foreground">{tier.cadence}</span>
-      )}
     </div>
     <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
       {tier.desc}
@@ -314,7 +307,7 @@ const Pricing = () => (
     <section className="container pb-24">
       <FadeIn>
         <div className="mb-2 flex items-center gap-2">
-          <Cloud className="h-5 w-5 text-accent" strokeWidth={1.5} />
+          <Cloud className="h-5 w-5" strokeWidth={1.5} />
           <h2 className="text-2xl font-semibold">AuthHero Cloud</h2>
         </div>
         <p className="mb-8 text-sm text-muted-foreground">
@@ -334,7 +327,7 @@ const Pricing = () => (
     <section className="container pb-24">
       <FadeIn>
         <div className="mb-8 flex items-center gap-2">
-          <Server className="h-5 w-5 text-accent" strokeWidth={1.5} />
+          <Server className="h-5 w-5" strokeWidth={1.5} />
           <h2 className="text-2xl font-semibold">Self-hosted</h2>
         </div>
       </FadeIn>
@@ -422,12 +415,11 @@ const Pricing = () => (
             Ready to own your auth?
           </h2>
           <p className="mx-auto mb-8 max-w-md text-muted-foreground">
-            Start free on the cloud, or self-host the open-source engine today.
+            Join the AuthHero Cloud early access, or self-host the open-source
+            engine today.
           </p>
           <div className="flex justify-center gap-3">
-            <EarlyAccessDialog size="lg">
-              Get Started for Free
-            </EarlyAccessDialog>
+            <EarlyAccessDialog size="lg">Get early access</EarlyAccessDialog>
             <ContactDialog variant="outline" size="lg" topic="General">
               Talk to us
             </ContactDialog>

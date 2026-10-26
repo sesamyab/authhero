@@ -25,7 +25,7 @@ interface EarlyAccessDialogProps {
 }
 
 const EarlyAccessDialog = ({
-  children = "Get Started for Free",
+  children = "Get early access",
   size = "lg",
   variant = "default",
   className,
@@ -91,7 +91,7 @@ const EarlyAccessDialog = ({
         {status === "success" ? (
           <div className="text-center py-4">
             <CheckCircle2
-              className="h-10 w-10 text-accent mx-auto mb-4"
+              className="h-10 w-10 text-success mx-auto mb-4"
               strokeWidth={1.5}
             />
             <DialogTitle className="mb-2">You're on the list</DialogTitle>

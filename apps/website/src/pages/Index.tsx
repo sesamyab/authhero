@@ -26,7 +26,7 @@ const pillars = [
   {
     icon: Globe2,
     title: "Fast everywhere",
-    body: "Logins run on Cloudflare's network, in the data centre closest to each user. No region to be slow from, no servers to patch, no cold starts.",
+    body: "Logins run on Cloudflare's network, in the data centre closest to each user. No region to be slow from, and no servers to patch.",
   },
   {
     icon: ShieldCheck,
@@ -64,12 +64,8 @@ const features = [
   },
 ];
 
-const terminalSteps = [
-  "Creating project in ./my-auth",
-  "Creating D1 database",
-  "Running migrations",
-  "Deploying worker",
-];
+// The commands the "local" template prints as its next steps.
+const terminalCommands = ["cd my-auth", "npm run migrate", "npm run dev"];
 
 /** A static picture of the hosted login page; not a working form. */
 const LoginIllustration = () => (
@@ -107,13 +103,13 @@ const LoginIllustration = () => (
         </svg>
         Continue with Google
       </div>
-      <div className="flex items-center gap-3 text-sm text-zinc-500">
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <span className="h-px flex-1 bg-border" />
         or
         <span className="h-px flex-1 bg-border" />
       </div>
       <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-zinc-700">Email</span>
+        <span className="text-sm font-medium text-foreground/80">Email</span>
         <span className="rounded-[10px] border border-input px-3.5 py-3 text-base">
           maria@acme.eu
         </span>
@@ -121,7 +117,7 @@ const LoginIllustration = () => (
       <div className="rounded-[10px] bg-primary px-4 py-[13px] text-center text-base font-semibold text-primary-foreground">
         Send me a login code
       </div>
-      <span className="pt-1 text-center text-[13px] text-zinc-500">
+      <span className="pt-1 text-center text-[13px] text-muted-foreground">
         Secured by AuthHero
       </span>
     </div>
@@ -143,13 +139,13 @@ const Index = () => (
         <h1 className="text-[clamp(46px,6.4vw,84px)] font-bold leading-[0.98] tracking-[-0.045em]">
           Open-source auth that runs at the edge.
         </h1>
-        <p className="max-w-[30em] text-[21px] leading-normal text-zinc-700">
+        <p className="max-w-[30em] text-[21px] leading-normal text-foreground/80">
           AuthHero is an OAuth and OpenID Connect server for your apps.
           Self-host it on Cloudflare in minutes, or let us run it for you.
         </p>
         <div className="flex flex-wrap gap-3">
           <EarlyAccessDialog className={solidButton}>
-            Start free
+            Get early access
           </EarlyAccessDialog>
           <a href="#open-source" className={outlineButton}>
             Deploy it yourself
@@ -171,7 +167,7 @@ const Index = () => (
     </section>
 
     {/* Pillars */}
-    <section id="product" className="bg-surface">
+    <section id="product" className="bg-muted">
       <div className="page grid grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))] gap-14 py-24">
         {pillars.map(({ icon: Icon, title, body }) => (
           <div key={title} className="flex flex-col gap-3.5">
@@ -179,7 +175,7 @@ const Index = () => (
             <h2 className="text-[26px] font-bold tracking-[-0.025em]">
               {title}
             </h2>
-            <p className="text-zinc-700">{body}</p>
+            <p className="text-foreground/80">{body}</p>
           </div>
         ))}
       </div>
@@ -194,9 +190,10 @@ const Index = () => (
         <h2 className={sectionHeading}>
           Your own auth server in about five minutes.
         </h2>
-        <p className="max-w-[30em] text-[19px] text-zinc-700">
-          One command scaffolds a project, creates the database and deploys it
-          to your Cloudflare account. The free tier is enough to run real apps.
+        <p className="max-w-[30em] text-[19px] text-foreground/80">
+          One command scaffolds a Cloudflare Workers project with its database
+          migrations. Run it locally, then deploy it to your own Cloudflare
+          account. The free tier is enough to run real apps.
         </p>
         <div className="flex flex-wrap gap-3">
           <a
@@ -222,40 +219,36 @@ const Index = () => (
           {[0, 1, 2].map((dot) => (
             <span
               key={dot}
-              className="h-[11px] w-[11px] rounded-full bg-zinc-700"
+              className="h-[11px] w-[11px] rounded-full bg-primary-foreground/20"
             />
           ))}
         </div>
-        <pre className="overflow-x-auto px-7 pb-8 pt-2 font-mono text-[15px] leading-loose text-zinc-200">
-          <span className="text-zinc-400">$</span> npx create-authhero my-auth
-          {"\n"}
-          {terminalSteps.map((step) => (
-            <span key={step} className="text-zinc-400">
-              {"  "}
-              {step}
-              {"\n"}
-            </span>
-          ))}
+        <pre className="overflow-x-auto px-7 pb-8 pt-2 font-mono text-[15px] leading-loose text-primary-foreground/90">
+          {["npx create-authhero my-auth", ...terminalCommands].map(
+            (command) => (
+              <span key={command}>
+                <span className="text-primary-foreground/60">$</span> {command}
+                {"\n"}
+              </span>
+            ),
+          )}
           {"\n"}
           <span className="rounded bg-brand px-2 py-0.5 font-bold text-brand-foreground">
-            Live
+            Ready
           </span>
-          {"  "}https://auth.my-app.dev{"\n"}
-          <span className="text-zinc-400">
-            {"  "}Admin: https://auth.my-app.dev/admin
-          </span>
+          {"  "}https://localhost:3000
         </pre>
       </div>
     </section>
 
     {/* Auth0 compatibility */}
-    <section id="auth0" className="bg-surface">
+    <section id="auth0" className="bg-muted">
       <div className="page flex flex-wrap items-center gap-[72px] py-24 md:py-[120px]">
         <div className="order-2 flex min-w-0 flex-[1_1_520px] flex-col gap-[22px]">
           <h2 className={sectionHeading}>
             Already using Auth0? Keep your code.
           </h2>
-          <p className="max-w-[30em] text-[19px] text-zinc-700">
+          <p className="max-w-[30em] text-[19px] text-foreground/80">
             AuthHero implements the Auth0 Authentication and Management APIs, so
             auth0-spa-js, auth0-react and the rest work as they are. Import your
             users with their passwords, then point the SDK at your new domain.
@@ -272,7 +265,7 @@ const Index = () => (
             src/auth.ts
           </div>
           <div className="overflow-x-auto whitespace-pre py-5 font-mono text-[15px] leading-[1.9]">
-            <div className="px-6 text-zinc-500">
+            <div className="px-6 text-muted-foreground">
               {"const auth = new Auth0Client({"}
             </div>
             <div className="bg-[#FDECEA] px-6 text-[#A3261A]">
@@ -281,10 +274,10 @@ const Index = () => (
             <div className="bg-brand px-6 font-bold text-brand-foreground">
               {'+  domain: "auth.acme.eu",'}
             </div>
-            <div className="px-6 text-zinc-500">
+            <div className="px-6 text-muted-foreground">
               {'   clientId: "YOUR_CLIENT_ID",'}
             </div>
-            <div className="px-6 text-zinc-500">{"});"}</div>
+            <div className="px-6 text-muted-foreground">{"});"}</div>
           </div>
         </div>
       </div>
@@ -297,7 +290,7 @@ const Index = () => (
     >
       <div className="flex min-w-0 flex-[1_1_340px] flex-col gap-[18px]">
         <h2 className={sectionHeading}>Everything a login needs.</h2>
-        <p className="text-[19px] text-zinc-700">
+        <p className="text-[19px] text-foreground/80">
           Standards-based, so it fits whatever you already run.
         </p>
       </div>
@@ -322,7 +315,7 @@ const Index = () => (
           <span className="text-[44px] font-bold leading-none tracking-[-0.04em]">
             Free
           </span>
-          <p className="text-zinc-700">
+          <p className="text-foreground/80">
             The full server, on your own Cloudflare account. Community support
             on GitHub.
           </p>
@@ -342,7 +335,7 @@ const Index = () => (
           <span className="text-[44px] font-bold leading-none tracking-[-0.04em]">
             Coming soon
           </span>
-          <p className="text-zinc-300">
+          <p className="text-primary-foreground/80">
             Fully managed on Cloudflare, with custom domains and no servers to
             run. Free up to {formatMau(CLOUD.free.mau)} monthly active users.
           </p>
@@ -353,7 +346,7 @@ const Index = () => (
                 "bg-brand py-[15px] text-brand-foreground hover:bg-brand/90",
               )}
             >
-              Start free
+              Get early access
             </EarlyAccessDialog>
             <Link
               to="/pricing"
@@ -369,7 +362,7 @@ const Index = () => (
     {/* Customers */}
     <section className="page pb-24 md:pb-[120px]">
       <div className="flex flex-wrap items-center justify-between gap-8 border-t border-border pt-12">
-        <p className="max-w-[24em] text-[19px] text-zinc-700">
+        <p className="max-w-[24em] text-[19px] text-foreground/80">
           Handling sign-in for millions of users at Linkfire and Sesamy.
         </p>
         <div className="flex flex-wrap items-center gap-10 sm:gap-14">
@@ -391,14 +384,14 @@ const Index = () => (
         </h2>
         <div className="flex flex-wrap gap-3">
           <EarlyAccessDialog className={solidButton}>
-            Start free
+            Get early access
           </EarlyAccessDialog>
           <ContactDialog
             topic="Landing page"
             variant="outline"
             className={cn(
               outlineButton,
-              "border-brand-foreground hover:bg-brand-foreground/10",
+              "border-brand-foreground hover:bg-brand-foreground/10 hover:text-brand-foreground",
             )}
           >
             Talk to us

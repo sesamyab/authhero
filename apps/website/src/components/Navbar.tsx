@@ -86,7 +86,7 @@ const Navbar = () => {
             size="default"
             className="h-auto rounded-[10px] px-[18px] py-[11px] text-base font-semibold"
           >
-            Start free
+            Get early access
           </EarlyAccessDialog>
         </div>
 
@@ -105,36 +105,37 @@ const Navbar = () => {
         </button>
       </div>
 
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <div className="page space-y-1 border-t border-border bg-background pb-5 pt-3 md:hidden">
-          {navItems.map((item) => (
-            <NavItemLink
-              key={item.href}
-              item={item}
-              onClick={() => setMobileOpen(false)}
-              className="block py-2 text-base"
-            />
-          ))}
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+      {/* Mobile menu. Hidden rather than unmounted, so closing it doesn't
+          unmount the early-access dialog its button just opened. */}
+      <div
+        className={`page space-y-1 border-t border-border bg-background pb-5 pt-3 md:hidden ${mobileOpen ? "" : "hidden"}`}
+      >
+        {navItems.map((item) => (
+          <NavItemLink
+            key={item.href}
+            item={item}
             onClick={() => setMobileOpen(false)}
             className="block py-2 text-base"
+          />
+        ))}
+        <a
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => setMobileOpen(false)}
+          className="block py-2 text-base"
+        >
+          GitHub
+        </a>
+        <div className="pt-2" onClick={() => setMobileOpen(false)}>
+          <EarlyAccessDialog
+            size="default"
+            className="h-auto w-full rounded-[10px] py-3 text-base font-semibold"
           >
-            GitHub
-          </a>
-          <div className="pt-2">
-            <EarlyAccessDialog
-              size="default"
-              className="h-auto w-full rounded-[10px] py-3 text-base font-semibold"
-            >
-              Start free
-            </EarlyAccessDialog>
-          </div>
+            Get early access
+          </EarlyAccessDialog>
         </div>
-      )}
+      </div>
     </header>
   );
 };

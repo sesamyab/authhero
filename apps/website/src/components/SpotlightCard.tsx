@@ -30,7 +30,7 @@ const SpotlightCard = ({ children, className = "" }: SpotlightCardProps) => {
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-300"
           style={{
-            background: `radial-gradient(300px circle at ${position.x}px ${position.y}px, hsl(var(--accent) / 0.06), transparent 60%)`,
+            background: `radial-gradient(300px circle at ${position.x}px ${position.y}px, hsl(var(--brand) / 0.12), transparent 60%)`,
           }}
         />
       )}

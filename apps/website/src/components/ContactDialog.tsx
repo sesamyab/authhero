@@ -97,7 +97,7 @@ const ContactDialog = ({
         {status === "success" ? (
           <div className="text-center py-4">
             <CheckCircle2
-              className="h-10 w-10 text-accent mx-auto mb-4"
+              className="h-10 w-10 text-success mx-auto mb-4"
               strokeWidth={1.5}
             />
             <DialogTitle className="mb-2">
