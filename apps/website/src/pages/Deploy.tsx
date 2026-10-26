@@ -56,12 +56,12 @@ const Deploy = () => (
             >
               <SpotlightCard className="h-full">
                 <div className="flex items-center gap-2 mb-4">
-                  <a.icon className="h-5 w-5 text-accent" strokeWidth={1.5} />
+                  <a.icon className="h-5 w-5" strokeWidth={1.5} />
                   <span className="text-xs text-muted-foreground hairline rounded-full px-2 py-0.5">
                     {a.tag}
                   </span>
                 </div>
-                <h3 className="font-semibold mb-2 group-hover:text-accent transition-colors">
+                <h3 className="font-semibold mb-2 group-hover:text-muted-foreground transition-colors">
                   {a.title}
                 </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -84,9 +84,7 @@ const Deploy = () => (
             </p>
             <div className="flex flex-col md:flex-row items-center justify-center gap-8 text-sm">
               <div className="text-center">
-                <div className="text-3xl font-semibold text-accent mb-1">
-                  ~0ms
-                </div>
+                <div className="text-3xl font-semibold mb-1">~0ms</div>
                 <div className="text-muted-foreground">
                   AuthHero (in-process)
                 </div>

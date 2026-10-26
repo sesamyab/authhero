@@ -11,22 +11,14 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  CLOUD,
-  COMMERCIAL_LICENSE_PER_YEAR,
-  formatMau,
-  formatPrice,
-  formatRate,
-  proMonthlyCost,
-  CURRENCY,
-} from "@/lib/pricing";
+import { CLOUD, formatMau } from "@/lib/pricing";
+import { GITHUB_URL } from "@/lib/links";
 
 // --- Tier definitions (driven by the pricing config) ------------------------
 
 interface Tier {
   name: string;
   price: string;
-  cadence?: string;
   desc: string;
   features: string[];
   cta: React.ReactNode;
@@ -47,11 +39,7 @@ const selfHostedTiers: Tier[] = [
     ],
     cta: (
       <Button variant="outline" size="lg" className="w-full" asChild>
-        <a
-          href="https://github.com/markusahlstrand/authhero"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
           View on GitHub
         </a>
       </Button>
@@ -59,9 +47,8 @@ const selfHostedTiers: Tier[] = [
   },
   {
     name: "Commercial / Sovereign",
-    price: formatPrice(COMMERCIAL_LICENSE_PER_YEAR),
-    cadence: "/year",
-    desc: "A flat annual license that removes the AGPL copyleft obligation and includes support.",
+    price: "Custom",
+    desc: "An annual license that removes the AGPL copyleft obligation and includes support.",
     featured: true,
     features: [
       "Removes AGPLv3 copyleft requirements",
@@ -95,28 +82,25 @@ const cloudTiers: Tier[] = [
     ],
     cta: (
       <EarlyAccessDialog size="lg" className="w-full">
-        Sign up free
+        Get early access
       </EarlyAccessDialog>
     ),
   },
   {
     name: "Pro",
-    price: formatPrice(CLOUD.pro.basePerMonth),
-    cadence: "/month",
+    price: "Coming soon",
     featured: true,
-    desc: `Flat base fee including ${formatMau(CLOUD.pro.includedMau)} MAU, then linear ${formatRate(
-      CLOUD.pro.mauOverage,
-    )}/MAU — no tiered cliffs.`,
+    desc: "Usage-based pricing that grows linearly with your MAU — no tiered cliffs.",
     features: [
       `${formatMau(CLOUD.pro.includedMau)} MAU included`,
-      `Then ${formatRate(CLOUD.pro.mauOverage)} per MAU, billed linearly`,
+      "Linear per-MAU pricing above that",
       `${CLOUD.pro.ssoConnections} SSO connections`,
       "Customer-managed encryption / crypto-shredding PII vault",
       "Email support",
     ],
     cta: (
       <EarlyAccessDialog size="lg" className="w-full">
-        Start with Pro
+        Get early access
       </EarlyAccessDialog>
     ),
   },
@@ -146,21 +130,18 @@ const cloudTiers: Tier[] = [
 
 const TierCard = ({ tier }: { tier: Tier }) => (
   <SpotlightCard
-    className={`flex h-full flex-col ${tier.featured ? "ring-1 ring-accent/40" : ""}`}
+    className={`flex h-full flex-col ${tier.featured ? "ring-2 ring-brand" : ""}`}
   >
     <div className="mb-4 flex items-center justify-between">
       <h3 className="font-semibold">{tier.name}</h3>
       {tier.featured && (
-        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
+        <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-brand-foreground">
           Popular
         </span>
       )}
     </div>
     <div className="mb-1 flex items-baseline gap-1">
       <span className="text-3xl font-semibold">{tier.price}</span>
-      {tier.cadence && (
-        <span className="text-sm text-muted-foreground">{tier.cadence}</span>
-      )}
     </div>
     <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
       {tier.desc}
@@ -252,10 +233,6 @@ const MatrixCell = ({ value }: { value: CellValue }) => {
   return <span className="text-sm text-muted-foreground">{value}</span>;
 };
 
-// --- Auth0 cost comparison (linear, no growth penalty) ----------------------
-
-const sampleMau = [CLOUD.pro.includedMau, 100_000, 250_000, 500_000];
-
 // --- FAQ --------------------------------------------------------------------
 
 const faqs = [
@@ -330,7 +307,7 @@ const Pricing = () => (
     <section className="container pb-24">
       <FadeIn>
         <div className="mb-2 flex items-center gap-2">
-          <Cloud className="h-5 w-5 text-accent" strokeWidth={1.5} />
+          <Cloud className="h-5 w-5" strokeWidth={1.5} />
           <h2 className="text-2xl font-semibold">AuthHero Cloud</h2>
         </div>
         <p className="mb-8 text-sm text-muted-foreground">
@@ -350,7 +327,7 @@ const Pricing = () => (
     <section className="container pb-24">
       <FadeIn>
         <div className="mb-8 flex items-center gap-2">
-          <Server className="h-5 w-5 text-accent" strokeWidth={1.5} />
+          <Server className="h-5 w-5" strokeWidth={1.5} />
           <h2 className="text-2xl font-semibold">Self-hosted</h2>
         </div>
       </FadeIn>
@@ -407,48 +384,6 @@ const Pricing = () => (
       </FadeIn>
     </section>
 
-    {/* Auth0 cost comparison — predictable linear pricing */}
-    <section className="container pb-24">
-      <FadeIn>
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="mb-4 text-2xl font-semibold">
-            Pricing that doesn't punish growth
-          </h2>
-          <p className="mb-8 text-muted-foreground">
-            Above the included {formatMau(CLOUD.pro.includedMau)} MAU, Cloud Pro
-            bills a flat {formatRate(CLOUD.pro.mauOverage)} for every additional
-            MAU — a straight line. There are no tier boundaries to cross and no
-            step jumps in your bill as you scale, unlike the bracketed per-MAU
-            curve typical of legacy providers like Auth0.
-          </p>
-        </div>
-        <div className="hairline mx-auto max-w-2xl rounded-lg p-8">
-          <p className="mb-6 text-center text-xs uppercase tracking-widest text-muted-foreground">
-            AuthHero Cloud Pro — estimated monthly cost
-          </p>
-          <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-            {sampleMau.map((mau) => (
-              <div key={mau} className="text-center">
-                <div className="mb-1 text-2xl font-semibold text-accent">
-                  {CURRENCY}
-                  {Math.round(proMonthlyCost(mau)).toLocaleString("en-US")}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {formatMau(mau)} MAU
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {formatPrice(CLOUD.pro.basePerMonth)}/mo base +{" "}
-            {formatRate(CLOUD.pro.mauOverage)} × (MAU above{" "}
-            {formatMau(CLOUD.pro.includedMau)}). Same rate at 60k or 600k — no
-            growth penalty.
-          </p>
-        </div>
-      </FadeIn>
-    </section>
-
     {/* FAQ */}
     <section className="container pb-24">
       <FadeIn>
@@ -480,12 +415,11 @@ const Pricing = () => (
             Ready to own your auth?
           </h2>
           <p className="mx-auto mb-8 max-w-md text-muted-foreground">
-            Start free on the cloud, or self-host the open-source engine today.
+            Join the AuthHero Cloud early access, or self-host the open-source
+            engine today.
           </p>
           <div className="flex justify-center gap-3">
-            <EarlyAccessDialog size="lg">
-              Get Started for Free
-            </EarlyAccessDialog>
+            <EarlyAccessDialog size="lg">Get early access</EarlyAccessDialog>
             <ContactDialog variant="outline" size="lg" topic="General">
               Talk to us
             </ContactDialog>

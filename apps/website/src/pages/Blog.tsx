@@ -27,7 +27,7 @@ const Blog = () => (
             <time className="text-xs text-muted-foreground">
               {formatDate(post.date)}
             </time>
-            <h2 className="text-lg font-semibold mt-1 mb-2 group-hover:text-accent transition-colors">
+            <h2 className="text-lg font-semibold mt-1 mb-2 group-hover:text-muted-foreground transition-colors">
               {post.title}
             </h2>
             <p className="text-sm text-muted-foreground leading-relaxed">

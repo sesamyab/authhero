@@ -22,13 +22,16 @@ interface EarlyAccessDialogProps {
   variant?: "default" | "outline" | "secondary" | "ghost";
   /** Extra classes for the trigger button (e.g. "w-full"). */
   className?: string;
+  /** Overrides where focus goes on close (defaults to the trigger). */
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 const EarlyAccessDialog = ({
-  children = "Get Started for Free",
+  children = "Get early access",
   size = "lg",
   variant = "default",
   className,
+  onCloseAutoFocus,
 }: EarlyAccessDialogProps) => {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -87,11 +90,14 @@ const EarlyAccessDialog = ({
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         {status === "success" ? (
           <div className="text-center py-4">
             <CheckCircle2
-              className="h-10 w-10 text-accent mx-auto mb-4"
+              className="h-10 w-10 text-success mx-auto mb-4"
               strokeWidth={1.5}
             />
             <DialogTitle className="mb-2">You're on the list</DialogTitle>
