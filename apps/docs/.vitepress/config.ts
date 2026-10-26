@@ -675,6 +675,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
                   link: "/customization/multi-tenancy/control-plane-defaults",
                 },
                 {
+                  text: "Migrating to Synced Config",
+                  link: "/customization/multi-tenancy/config-sync-migration",
+                },
+                {
                   text: "Subdomain Routing",
                   link: "/customization/multi-tenancy/subdomain-routing",
                 },

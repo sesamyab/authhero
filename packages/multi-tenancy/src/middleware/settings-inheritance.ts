@@ -11,6 +11,7 @@ import {
   InheritanceShadowOptions,
   createShadowReporter,
 } from "../inheritance/report";
+import { syncedRowId } from "../rollout/resolved-sync";
 import {
   ConfigSyncResolver,
   createConfigSyncResolver,
@@ -653,7 +654,20 @@ function wrapHooksWithInheritance(
       // Sub-tenant rows take precedence — if both sides somehow share the
       // same hook_id (vanishingly unlikely with random ids) keep the local.
       const localIds = new Set((result.hooks || []).map((h) => h.hook_id));
-      const additions = inherited.filter((h) => !localIds.has(h.hook_id));
+      // A tenant that has been synced holds its own copy of the hook under a
+      // deterministic id; inheriting the original as well would run it twice
+      // (for instance after flipping back to inherit-on-read).
+      const additions: typeof inherited = [];
+      for (const hook of inherited) {
+        if (localIds.has(hook.hook_id)) continue;
+        if (
+          hook.hook_id &&
+          localIds.has(await syncedRowId("hook", tenantId, hook.hook_id))
+        ) {
+          continue;
+        }
+        additions.push(hook);
+      }
 
       return {
         ...result,

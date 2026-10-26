@@ -384,14 +384,18 @@ The admin UI exposes the same switch under **Settings → Advanced**.
   skipped. A tenant created with `config_sync` set keeps it only when the
   creator is a control-plane credential.
 - **Rollback:** set it back to `inherit-on-read`. Nothing is written to the
-  control plane by either mode, so its copy is untouched and inheritance resumes
-  immediately.
+  control plane by either mode, so its copy is untouched and inheritance resumes.
+  The synced rows (`sy` ids) are left in the tenant and are not updated while
+  it inherits on read; see
+  [the runbook](./config-sync-migration.md#_5-watch-and-keep-the-rollback-window)
+  for what that means.
 - **Eventual consistency:** each isolate remembers a tenant's mode for 30
-  seconds, so a change reaches every instance within that time. If the lookup
+  seconds. The instance that handles the change forgets it at once, so a change
+  reaches every other instance within that time. If the lookup
   fails the tenant keeps inheriting; a failed lookup never breaks a request.
 - **Before you flip:** make sure the tenant's database already holds what it
   used to inherit, and use [shadow mode](#shadow-mode-for-config-inheritance) to
-  compare. `inherit: true` action stubs only resolve against the control plane
+  compare. The [runbook](./config-sync-migration.md) walks through it. `inherit: true` action stubs only resolve against the control plane
   while the tenant is `inherit-on-read`, and client URLs from the control
   plane's client are no longer merged in `synced` mode.
 - Shadow mode skips `synced` tenants, since comparing them with read-time

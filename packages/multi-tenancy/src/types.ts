@@ -233,6 +233,13 @@ export interface MultiTenancyConfig {
    * Supplied by `initMultiTenant`; the route is not mounted without it.
    */
   configSyncStatus?: (tenantId: string) => Promise<ConfigSyncStatus | null>;
+
+  /**
+   * Called after a tenant is created or its `config_sync` mode is changed, so
+   * the sync mode the runtime remembers for it is dropped. Other isolates still
+   * take up to the resolver's TTL (30 s) to notice. Supplied by `initMultiTenant`.
+   */
+  onConfigSyncChange?: (tenantId: string) => void;
 }
 
 // ============================================================================

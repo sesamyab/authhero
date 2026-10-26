@@ -5,6 +5,7 @@ import createAdapters, {
   migrateToLatest,
 } from "@authhero/kysely-adapter";
 import { withRuntimeFallback } from "../src/middleware/settings-inheritance";
+import { syncedRowId } from "../src/rollout/resolved-sync";
 
 import { createMigratedDb } from "./helpers/migrated-db";
 const controlPlaneTenantId = "control_plane";
@@ -52,6 +53,32 @@ describe("Hook inheritance from control plane", () => {
     const inherited = hooks[0] as any;
     expect(inherited.template_id).toBe("account-linking");
     expect(inherited.metadata?.inheritable).toBe(true);
+  });
+
+  it("does not list an inheritable hook twice when the tenant holds its synced copy", async () => {
+    const original = await baseAdapters.hooks.create(controlPlaneTenantId, {
+      trigger_id: "post-user-login",
+      template_id: "account-linking",
+      enabled: true,
+      metadata: { inheritable: true },
+    });
+    await baseAdapters.hooks.create(subTenantId, {
+      hook_id: await syncedRowId("hook", subTenantId, original.hook_id),
+      trigger_id: "post-user-login",
+      template_id: "account-linking",
+      enabled: true,
+      metadata: { inheritable: true },
+    } as Parameters<typeof baseAdapters.hooks.create>[1]);
+
+    const { hooks } = await adapters.hooks.list(subTenantId, {
+      q: "trigger_id:post-user-login",
+      page: 0,
+      per_page: 100,
+      include_totals: false,
+    });
+
+    expect(hooks).toHaveLength(1);
+    expect(hooks[0]!.hook_id).not.toBe(original.hook_id);
   });
 
   it("does NOT surface a non-inheritable control-plane hook", async () => {
