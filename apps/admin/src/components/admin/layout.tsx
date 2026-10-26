@@ -15,7 +15,11 @@ import { Error } from "@/components/admin/error";
 import { Loading } from "@/components/admin/loading";
 import { TenantSwitcher } from "@/components/admin/tenant-switcher";
 import { GlobalSearch } from "@/components/admin/global-search";
-import { getAppName, getConfigValue } from "@/utils/runtimeConfig";
+import {
+  DEFAULT_APP_NAME,
+  getAppName,
+  getConfigValue,
+} from "@/utils/runtimeConfig";
 import { BrandMark } from "@/components/BrandMark";
 
 /**
@@ -34,6 +38,16 @@ export const Layout = (props: CoreLayoutProps) => {
   };
   const appName = getAppName();
   const logoUrl = getConfigValue("logoUrl");
+  // The AuthHero mark is only for the unbranded admin; a deployment that sets
+  // its own appName gets a neutral initials badge instead.
+  const showBrandMark = appName === DEFAULT_APP_NAME;
+  const initials = appName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
   return (
     <SidebarProvider>
       <div className="flex h-svh w-full flex-col">
@@ -59,7 +73,13 @@ export const Layout = (props: CoreLayoutProps) => {
               />
             ) : (
               <>
-                <BrandMark className="size-7" />
+                {showBrandMark ? (
+                  <BrandMark className="size-7" />
+                ) : (
+                  <span className="flex size-7 items-center justify-center rounded-md bg-brand text-brand-foreground text-[11px] font-bold tracking-tight sm:hidden">
+                    {initials || "AH"}
+                  </span>
+                )}
                 <span className="hidden sm:inline text-lg font-bold tracking-[-0.03em]">
                   {appName}
                 </span>

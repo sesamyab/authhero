@@ -29,15 +29,17 @@ function UserEditTitle() {
   if (!record) return null;
   const heading = record.name || record.email || record.user_id || "";
   return (
-    <span className="flex min-w-0 items-center gap-4">
-      <Avatar className="size-14 text-xl">
+    <span className="flex min-w-0 max-w-full items-center gap-4">
+      <Avatar className="size-14 shrink-0 text-xl">
         <AvatarImage src={record.picture} alt="" />
         <AvatarFallback className="bg-brand font-bold text-brand-foreground">
           {heading.charAt(0).toUpperCase() || "?"}
         </AvatarFallback>
       </Avatar>
       <span className="flex min-w-0 flex-col gap-1.5">
-        <span className="truncate">{heading}</span>
+        {/* overflow-wrap: anywhere lets a long name or ID wrap, so the title
+            never forces horizontal scroll on a narrow screen. */}
+        <span className="[overflow-wrap:anywhere]">{heading}</span>
         <span className="flex flex-wrap items-center gap-2 text-sm font-normal tracking-normal text-muted-foreground">
           {record.email && record.email !== heading && (
             <span>{record.email}</span>
@@ -49,7 +51,7 @@ function UserEditTitle() {
           )}
           {record.blocked && <Badge variant="destructive">Blocked</Badge>}
           {record.user_id && (
-            <code className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs text-foreground/80">
+            <code className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs text-foreground/80 [overflow-wrap:anywhere]">
               {record.user_id}
             </code>
           )}

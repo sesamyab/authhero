@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useDataProvider } from "ra-core";
+import { useDataProvider, type RaRecord } from "ra-core";
+import type { Log } from "@authhero/adapter-interfaces";
 import { Link } from "react-router-dom";
 import {
   Bar,
@@ -24,14 +25,7 @@ interface DailyStats {
   leaked_passwords: number;
 }
 
-interface RecentLog {
-  id: string;
-  type: string;
-  date: string;
-  description?: string;
-  user_name?: string;
-  client_name?: string;
-}
+type RecentLog = Log & RaRecord;
 
 interface ChartDatum {
   date: string;
@@ -217,13 +211,13 @@ export function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     dataProvider
-      .getList("logs", {
+      .getList<RecentLog>("logs", {
         pagination: { page: 1, perPage: 5 },
         sort: { field: "date", order: "DESC" },
         filter: {},
       })
       .then((res) => {
-        if (!cancelled) setLogs(res.data as RecentLog[]);
+        if (!cancelled) setLogs(res.data);
       })
       .catch((err) => console.error("Recent activity load failed", err))
       .finally(() => {
@@ -305,10 +299,10 @@ export function Dashboard() {
     <div className="flex flex-col gap-6 py-2">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1.5">
-          <h2 className="text-3xl font-bold tracking-[-0.04em] sm:text-4xl">
-            Dashboard
-          </h2>
-          <p className="text-muted-foreground">Last 30 days</p>
+          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground">
+            Totals for this tenant, with activity from the last 30 days
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
@@ -333,9 +327,13 @@ export function Dashboard() {
         />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Daily logins" data={loginsData} loading={loading} />
         <ChartCard
-          title="Daily signups"
+          title="Daily logins, last 30 days"
+          data={loginsData}
+          loading={loading}
+        />
+        <ChartCard
+          title="Daily signups, last 30 days"
           data={signupsData}
           loading={loading}
           color="var(--chart-2)"
