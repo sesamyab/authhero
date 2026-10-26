@@ -1,4 +1,9 @@
 import { Bindings, Variables } from "../../types";
+import {
+  conflict,
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   Action,
@@ -248,7 +253,7 @@ const getById = defineRoute({
     const action = await ctx.env.data.actions.get(tenantId, id);
 
     if (!action) {
-      throw new HTTPException(404, { message: "Action not found" });
+      throw notFound.action();
     }
 
     // Strip secret values from response
@@ -307,12 +312,12 @@ const patchById = defineRoute({
 
     const updated = await ctx.env.data.actions.update(tenantId, id, body);
     if (!updated) {
-      throw new HTTPException(404, { message: "Action not found" });
+      throw notFound.action();
     }
 
     const action = await ctx.env.data.actions.get(tenantId, id);
     if (!action) {
-      throw new HTTPException(404, { message: "Action not found" });
+      throw notFound.action();
     }
 
     // Re-deploy if code changed. PATCH effectively double-deploys when
@@ -387,27 +392,25 @@ const deleteById = defineRoute({
       q: `code_id:${escapeLuceneValue(id)}`,
     });
     if (hooks.hooks.length > 0) {
-      throw new HTTPException(409, {
-        message:
-          "Action is bound to a trigger. Remove the binding before deleting.",
-      });
+      throw conflict.other(
+        "Action is bound to a trigger. Remove the binding before deleting.",
+      );
     }
 
     // A token exchange profile runs its action by id, and the id cannot be
     // changed on the profile, so the action must outlive the profile.
     const profiles = await ctx.env.data.tokenExchangeProfiles?.list(tenantId);
     if (profiles?.some((profile) => profile.action_id === id)) {
-      throw new HTTPException(409, {
-        message:
-          "Action is used by a token exchange profile. Delete the profile before deleting the action.",
-      });
+      throw conflict.other(
+        "Action is used by a token exchange profile. Delete the profile before deleting the action.",
+      );
     }
 
     const existing = await ctx.env.data.actions.get(tenantId, id);
 
     const result = await ctx.env.data.actions.remove(tenantId, id);
     if (!result) {
-      throw new HTTPException(404, { message: "Action not found" });
+      throw notFound.action();
     }
 
     await ctx.env.data.actionVersions.removeForAction(tenantId, id);
@@ -475,7 +478,7 @@ const postByIdDeploy = defineRoute({
 
     const action = await ctx.env.data.actions.get(tenantId, id);
     if (!action) {
-      throw new HTTPException(404, { message: "Action not found" });
+      throw notFound.action();
     }
 
     // Deploy to execution environment
@@ -563,7 +566,7 @@ const getByActionIdVersions = defineRoute({
 
     const action = await ctx.env.data.actions.get(tenantId, actionId);
     if (!action) {
-      throw new HTTPException(404, { message: "Action not found" });
+      throw notFound.action();
     }
 
     const result = await ctx.env.data.actionVersions.list(tenantId, actionId, {
@@ -629,9 +632,7 @@ const getByActionIdVersionsById = defineRoute({
       id,
     );
     if (!version) {
-      throw new HTTPException(404, {
-        message: "Action version not found",
-      });
+      throw notFound.actionVersion();
     }
 
     return ctx.json({
@@ -684,9 +685,7 @@ const postByActionIdVersionsByIdDeploy = defineRoute({
       id,
     );
     if (!version) {
-      throw new HTTPException(404, {
-        message: "Action version not found",
-      });
+      throw notFound.actionVersion();
     }
 
     if (ctx.env.codeExecutor?.deploy) {
@@ -717,7 +716,7 @@ const postByActionIdVersionsByIdDeploy = defineRoute({
 
     const updated = await ctx.env.data.actions.get(tenantId, actionId);
     if (!updated) {
-      throw new HTTPException(404, { message: "Action not found" });
+      throw notFound.action();
     }
 
     await snapshotActionVersion(ctx.env.data, tenantId, updated, true);
@@ -807,7 +806,7 @@ const postByIdTest = defineRoute({
 
     const action = await ctx.env.data.actions.get(tenantId, id);
     if (!action) {
-      throw new HTTPException(404, { message: "Action not found" });
+      throw notFound.action();
     }
 
     const rawTriggerId =
@@ -840,7 +839,7 @@ const postByIdTest = defineRoute({
 export const actionsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   postRoot,
   getById,

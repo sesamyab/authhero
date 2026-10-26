@@ -1,4 +1,5 @@
 import { Bindings, Variables } from "../../types";
+import { managementValidationHook } from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import {
@@ -346,7 +347,7 @@ export function createAnalyticsRoutes(options: AnalyticsRoutesOptions = {}) {
   const app = new OpenAPIHono<{
     Bindings: Bindings;
     Variables: Variables;
-  }>();
+  }>({ defaultHook: managementValidationHook });
 
   function makeRoute(resource: AnalyticsResource) {
     return createRoute({

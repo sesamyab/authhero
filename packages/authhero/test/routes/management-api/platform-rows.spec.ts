@@ -153,10 +153,16 @@ describe("platform-scoped rows in the tenant management API", () => {
               ? { body: JSON.stringify({ name: "x" }) }
               : {}),
           });
+          // Auth0 answers DELETE of a missing connection or resource server
+          // with 204, so that is what "does not exist" looks like there.
+          const deleteIs204 =
+            method === "DELETE" &&
+            (path.startsWith("/connections/") ||
+              path.startsWith("/resource-servers/"));
           expect(
             response.status,
             `${method} ${path} must look like it does not exist`,
-          ).toBe(404);
+          ).toBe(deleteIs204 ? 204 : 404);
         }
       }
 
@@ -164,6 +170,13 @@ describe("platform-scoped rows in the tenant management API", () => {
       expect(
         (await ctx.env.data.actions.get("tenantId", platformAction.id))?.name,
       ).toBe("platform-action");
+      // A 204 DELETE on a hidden row must not have removed it.
+      expect(
+        await ctx.env.data.connections.get("tenantId", sy("con_")),
+      ).toBeTruthy();
+      expect(
+        await ctx.env.data.resourceServers.get("tenantId", sy("api_")),
+      ).toBeTruthy();
     });
 
     it("never returns platform code or secrets from any list", async () => {

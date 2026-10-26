@@ -1,11 +1,14 @@
 import { Bindings, Variables } from "../../types";
+import {
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   actionExecutionLogsSchema,
   actionExecutionResultSchema,
   actionExecutionStatusSchema,
 } from "@authhero/adapter-interfaces";
-import { HTTPException } from "hono/http-exception";
 
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
@@ -53,7 +56,7 @@ const getById = defineRoute({
     const { id } = ctx.req.valid("param");
     const execution = await ctx.env.data.actionExecutions.get(tenantId, id);
     if (!execution) {
-      throw new HTTPException(404, { message: "Execution not found" });
+      throw notFound.actionExecution();
     }
     return ctx.json({
       id: execution.id,
@@ -95,7 +98,7 @@ const getByIdLogs = defineRoute({
     const { id } = ctx.req.valid("param");
     const execution = await ctx.env.data.actionExecutions.get(tenantId, id);
     if (!execution) {
-      throw new HTTPException(404, { message: "Execution not found" });
+      throw notFound.actionExecution();
     }
     return ctx.json({ logs: execution.logs ?? [] });
   },
@@ -104,4 +107,7 @@ const getByIdLogs = defineRoute({
 export const actionExecutionsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getById, getByIdLogs] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getById,
+  getByIdLogs,
+] as const);

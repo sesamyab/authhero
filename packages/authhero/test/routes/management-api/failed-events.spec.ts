@@ -308,17 +308,31 @@ describe("management-api failed-events", () => {
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(empty.status).toBe(400);
+    expect(await empty.json()).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message:
+        "Payload validation error: 'Value [] is less than minimum 1' on property ids.",
+      errorCode: "invalid_body",
+    });
 
+    const ids = Array.from({ length: 101 }, (_, i) => `evt-${i}`);
     const tooMany = await (managementClient["failed-events"] as any)[
       "bulk-retry"
     ].$post(
       {
-        json: { ids: Array.from({ length: 101 }, (_, i) => `evt-${i}`) },
+        json: { ids },
         header: { "tenant-id": "tenantId" },
       },
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(tooMany.status).toBe(400);
+    expect(await tooMany.json()).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: `Payload validation error: 'Value ${JSON.stringify(ids)} is greater than maximum 100' on property ids.`,
+      errorCode: "invalid_body",
+    });
   });
 
   it("returns 404 when replaying an unknown event id", async () => {

@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { managementValidationHook } from "../../errors/management-api-error";
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { LogTypes } from "@authhero/adapter-interfaces";
@@ -456,4 +457,7 @@ const importRoute = defineRoute({
 export const tenantExportImportRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([exportRoute, importRoute] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  exportRoute,
+  importRoute,
+] as const);

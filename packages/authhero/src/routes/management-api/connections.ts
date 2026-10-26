@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Bindings, Variables } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import { logMessage } from "../../helpers/logging";
@@ -259,7 +263,7 @@ const getById = defineRoute({
     const connection = await ctx.env.data.connections.get(tenantId, id);
 
     if (!connection) {
-      throw new HTTPException(404);
+      throw notFound.connection();
     }
 
     return ctx.json(stripConnectionSecrets(connection));
@@ -288,6 +292,9 @@ const deleteById = defineRoute({
       200: {
         description: "Status",
       },
+      204: {
+        description: "The connection does not exist",
+      },
     },
   }),
   handler: async (ctx) => {
@@ -295,10 +302,9 @@ const deleteById = defineRoute({
     const tenantId = requireTenantId(ctx);
 
     const result = await ctx.env.data.connections.remove(tenantId, id);
+    // Auth0 answers 204 for deleting a connection that doesn't exist.
     if (!result) {
-      throw new HTTPException(404, {
-        message: "Connection not found",
-      });
+      return ctx.body(null, 204);
     }
 
     await logMessage(ctx, tenantId, {
@@ -398,17 +404,13 @@ const patchById = defineRoute({
       patchBody,
     );
     if (!result) {
-      throw new HTTPException(404, {
-        message: "Connection not found",
-      });
+      throw notFound.connection();
     }
 
     const connection = await ctx.env.data.connections.get(tenantId, id);
 
     if (!connection) {
-      throw new HTTPException(404, {
-        message: "Connection not found",
-      });
+      throw notFound.connection();
     }
 
     // Secrets are kept out of API responses, so they must stay out of the
@@ -528,9 +530,7 @@ const getByIdClients = defineRoute({
     const connection = await ctx.env.data.connections.get(tenantId, id);
 
     if (!connection) {
-      throw new HTTPException(404, {
-        message: "Connection not found",
-      });
+      throw notFound.connection();
     }
 
     // Filter to clients that have this connection enabled. Page through the
@@ -598,9 +598,7 @@ const patchByIdClients = defineRoute({
     const connection = await ctx.env.data.connections.get(tenantId, id);
 
     if (!connection) {
-      throw new HTTPException(404, {
-        message: "Connection not found",
-      });
+      throw notFound.connection();
     }
 
     // Process each client update; respond 204 to match Auth0's contract.
@@ -708,7 +706,7 @@ const postByIdTry = defineRoute({
 
     const connection = await ctx.env.data.connections.get(tenantId, id);
     if (!connection) {
-      throw new HTTPException(404, { message: "Connection not found" });
+      throw notFound.connection();
     }
     const connectionId: string = connection.id ?? id;
 
@@ -826,7 +824,7 @@ const postByIdTry = defineRoute({
 export const connectionRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   deleteById,

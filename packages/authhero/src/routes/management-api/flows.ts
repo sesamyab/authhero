@@ -1,6 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { Bindings, Variables } from "../../types";
-import { HTTPException } from "hono/http-exception";
 import { querySchema } from "../../types";
 import {
   flowInsertSchema,
@@ -117,7 +120,7 @@ const getById = defineRoute({
 
     const flow = await ctx.env.data.flows.get(tenant_id, id);
     if (!flow) {
-      throw new HTTPException(404);
+      throw notFound.flow();
     }
 
     return ctx.json(flow);
@@ -155,9 +158,7 @@ const deleteById = defineRoute({
     const existing = await ctx.env.data.flows.get(tenant_id, id);
     const result = await ctx.env.data.flows.remove(tenant_id, id);
     if (!result) {
-      throw new HTTPException(404, {
-        message: "Flow not found",
-      });
+      throw notFound.flow();
     }
 
     // A delete has no after state — consumers fall back to `before`.
@@ -217,9 +218,7 @@ const patchById = defineRoute({
     const existing = await ctx.env.data.flows.get(tenant_id, id);
     const flow = await ctx.env.data.flows.update(tenant_id, id, body);
     if (!flow) {
-      throw new HTTPException(404, {
-        message: "Flow not found",
-      });
+      throw notFound.flow();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -289,7 +288,7 @@ const postRoot = defineRoute({
 export const flowsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   deleteById,

@@ -2,6 +2,10 @@ import {
   DEFAULT_CA_CERT_VALIDITY_DAYS,
   certificateAuthorityIssuance,
 } from "../../helpers/signing-certificate-authority";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Context } from "hono";
 import { X509Certificate } from "@peculiar/x509";
 import { Bindings, Variables } from "../../types";
@@ -246,11 +250,11 @@ async function findKeyByKid(
   });
   const existing = signingKeys.find((k) => k.kid === kid);
   if (!existing) {
-    throw new HTTPException(404, { message: "Key not found" });
+    throw notFound.key(kid);
   }
   const tenantId = ctx.var.tenant_id;
   if (tenantId && existing.tenant_id && existing.tenant_id !== tenantId) {
-    throw new HTTPException(404, { message: "Key not found" });
+    throw notFound.key(kid);
   }
   return existing;
 }
@@ -387,7 +391,7 @@ const getSigningByKid = defineRoute({
     });
     const key = signingKeys.find((k) => k.kid === kid);
     if (!key) {
-      throw new HTTPException(404, { message: "Key not found" });
+      throw notFound.key(kid);
     }
 
     // Hide keys belonging to other tenants when scoped via tenant-id header.
@@ -399,7 +403,7 @@ const getSigningByKid = defineRoute({
       key.tenant_id &&
       key.tenant_id !== ctx.var.tenant_id
     ) {
-      throw new HTTPException(404, { message: "Key not found" });
+      throw notFound.key(kid);
     }
 
     return ctx.json(toResponse(key));
@@ -594,7 +598,7 @@ const putSigningByKidRevoke = defineRoute({
       revoked_at: new Date().toISOString(),
     });
     if (!revoked) {
-      throw new HTTPException(404, { message: "Key not found" });
+      throw notFound.key(kid);
     }
 
     // See rotate handler: stamp current_since so the new key sorts ahead
@@ -678,7 +682,7 @@ const postSigningByKidRenew = defineRoute({
       thumbprint: renewed.thumbprint,
     });
     if (!updated) {
-      throw new HTTPException(404, { message: "Key not found" });
+      throw notFound.key(kid);
     }
 
     return ctx.json(
@@ -693,7 +697,7 @@ const postSigningByKidRenew = defineRoute({
 export const keyRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getSigning,
   getSigningByKid,
   postSigningRotate,

@@ -347,4 +347,25 @@ describe("hooks", () => {
       expect(tryResponse.status).toBe(404);
     });
   });
+
+  it("returns Auth0's error body for a missing hook", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const response = await managementClient.hooks[":hook_id"].$get(
+      {
+        param: { hook_id: "hook_does_not_exist" },
+        header: { "tenant-id": "tenantId" },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      statusCode: 404,
+      error: "Not Found",
+      message: "Error: Hook does not exist",
+      errorCode: "HookDoesNotExist",
+    });
+  });
 });

@@ -1,6 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Bindings, Variables } from "../../types";
-import { HTTPException } from "hono/http-exception";
 import { grantSchema } from "@authhero/adapter-interfaces";
 
 import { defineRoute } from "../../utils/define-route";
@@ -153,11 +156,11 @@ const deleteById = defineRoute({
     const tenantId = requireTenantId(ctx);
     const { id } = ctx.req.valid("param");
     if (!ctx.env.data.grants) {
-      throw new HTTPException(404);
+      throw notFound.grant();
     }
     const removed = await ctx.env.data.grants.remove(tenantId, id);
     if (!removed) {
-      throw new HTTPException(404);
+      throw notFound.grant();
     }
     return ctx.body(null, 204);
   },
@@ -195,4 +198,8 @@ const deleteByUserId = defineRoute({
 export const grantRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getRoot, deleteById, deleteByUserId] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getRoot,
+  deleteById,
+  deleteByUserId,
+] as const);

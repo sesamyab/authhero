@@ -1,4 +1,5 @@
 import { Bindings, Variables } from "../../types";
+import { managementValidationHook } from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { themeSchema, LogTypes } from "@authhero/adapter-interfaces";
 import { DEFAULT_THEME } from "../../constants/defaultTheme";
@@ -137,4 +138,7 @@ const patchDefault = defineRoute({
 export const themesRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getDefault, patchDefault] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getDefault,
+  patchDefault,
+] as const);

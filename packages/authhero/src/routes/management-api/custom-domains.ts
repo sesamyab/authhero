@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Bindings, Variables } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import { querySchema } from "../../types";
@@ -85,7 +89,7 @@ const getById = defineRoute({
     const customDomain = await ctx.env.data.customDomains.get(tenantId, id);
 
     if (!customDomain) {
-      throw new HTTPException(404);
+      throw notFound.customDomain(id);
     }
 
     return ctx.json(customDomain);
@@ -123,9 +127,7 @@ const deleteById = defineRoute({
     const existing = await ctx.env.data.customDomains.get(tenantId, id);
     const result = await ctx.env.data.customDomains.remove(tenantId, id);
     if (!result) {
-      throw new HTTPException(404, {
-        message: "Custom domain not found",
-      });
+      throw notFound.customDomain(id);
     }
 
     // A delete has no after state — consumers fall back to `before`.
@@ -185,13 +187,13 @@ const patchById = defineRoute({
     const existing = await ctx.env.data.customDomains.get(tenantId, id);
     const result = await ctx.env.data.customDomains.update(tenantId, id, body);
     if (!result) {
-      throw new HTTPException(404);
+      throw notFound.customDomain(id);
     }
 
     const customDomain = await ctx.env.data.customDomains.get(tenantId, id);
 
     if (!customDomain) {
-      throw new HTTPException(404);
+      throw notFound.customDomain(id);
     }
 
     await logMessage(ctx, tenantId, {
@@ -363,7 +365,7 @@ const postByIdVerify = defineRoute({
 export const customDomainRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   deleteById,

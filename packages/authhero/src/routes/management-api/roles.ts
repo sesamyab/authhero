@@ -1,4 +1,8 @@
 import { HTTPException } from "hono/http-exception";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Bindings, Variables } from "../../types";
 import { querySchema } from "../../types/auth0/Query";
@@ -192,7 +196,7 @@ const getById = defineRoute({
     const role = await ctx.env.data.roles.get(tenantId, id);
 
     if (!role) {
-      throw new HTTPException(404);
+      throw notFound.role();
     }
 
     return ctx.json(role);
@@ -296,7 +300,7 @@ const patchById = defineRoute({
     const updated = await ctx.env.data.roles.update(tenantId, id, body);
 
     if (!updated) {
-      throw new HTTPException(404);
+      throw notFound.roleOnUpdate();
     }
 
     const role = await ctx.env.data.roles.get(tenantId, id);
@@ -347,7 +351,7 @@ const deleteById = defineRoute({
     const deleted = await ctx.env.data.roles.remove(tenantId, id);
 
     if (!deleted) {
-      throw new HTTPException(404);
+      throw notFound.role();
     }
 
     // A delete has no after state — consumers fall back to `before`.
@@ -418,9 +422,7 @@ const getByIdPermissions = defineRoute({
     const role = await ctx.env.data.roles.get(tenantId, id);
 
     if (!role) {
-      throw new HTTPException(404, {
-        message: "Role not found",
-      });
+      throw notFound.role();
     }
 
     // Checkpoint (from/take) is an authhero extension here; Auth0 pages this
@@ -519,9 +521,7 @@ const getByIdUsers = defineRoute({
 
     const role = await ctx.env.data.roles.get(tenantId, id);
     if (!role) {
-      throw new HTTPException(404, {
-        message: "Role not found",
-      });
+      throw notFound.role();
     }
 
     // Pass through checkpoint pagination (from/take) as well as
@@ -621,9 +621,7 @@ const postByIdPermissions = defineRoute({
     // Check if role exists first
     const role = await ctx.env.data.roles.get(tenantId, id);
     if (!role) {
-      throw new HTTPException(404, {
-        message: "Role not found",
-      });
+      throw notFound.role();
     }
 
     const permissionsToAssign = permissions.map((p) => ({
@@ -704,9 +702,7 @@ const deleteByIdPermissions = defineRoute({
     // Check if role exists first
     const role = await ctx.env.data.roles.get(tenantId, id);
     if (!role) {
-      throw new HTTPException(404, {
-        message: "Role not found",
-      });
+      throw notFound.role();
     }
 
     // Use the role permissions adapter to remove permissions
@@ -736,7 +732,7 @@ const deleteByIdPermissions = defineRoute({
 export const roleRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   postRoot,

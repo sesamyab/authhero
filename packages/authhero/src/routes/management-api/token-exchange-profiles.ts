@@ -1,4 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  conflict,
+  notFound,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import { Context } from "hono";
 import {
@@ -71,11 +76,9 @@ async function assertSubjectTokenTypeFree(
         profile.id !== exceptId,
     )
   ) {
-    throw new JSONHTTPException(409, {
-      statusCode: 409,
-      error: "Conflict",
-      message: `A token exchange profile for subject_token_type '${subjectTokenType}' already exists`,
-    });
+    throw conflict.other(
+      `A token exchange profile for subject_token_type '${subjectTokenType}' already exists`,
+    );
   }
 }
 
@@ -204,7 +207,7 @@ const getProfile = defineRoute({
     const tenantId = requireTenantId(ctx);
     const { id } = ctx.req.valid("param");
     const profile = await requireProfiles(ctx).get(tenantId, id);
-    if (!profile) throw new HTTPException(404);
+    if (!profile) throw notFound.tokenExchangeProfile();
     return ctx.json(profile);
   },
 });
@@ -283,7 +286,7 @@ const updateProfile = defineRoute({
     const profiles = requireProfiles(ctx);
 
     const existing = await profiles.get(tenantId, id);
-    if (!existing) throw new HTTPException(404);
+    if (!existing) throw notFound.tokenExchangeProfile();
 
     if (body.jwt_verification) {
       // The mode is fixed at creation, like the action a profile runs.
@@ -305,7 +308,7 @@ const updateProfile = defineRoute({
 
     await profiles.update(tenantId, id, body);
     const updated = await profiles.get(tenantId, id);
-    if (!updated) throw new HTTPException(404);
+    if (!updated) throw notFound.tokenExchangeProfile();
     await auditLog(ctx, tenantId, "Update token exchange profile", updated);
     return ctx.json(updated);
   },
@@ -330,7 +333,7 @@ const deleteProfile = defineRoute({
     const { id } = ctx.req.valid("param");
     const profiles = requireProfiles(ctx);
     const existing = await profiles.get(tenantId, id);
-    if (!existing) throw new HTTPException(404);
+    if (!existing) throw notFound.tokenExchangeProfile();
     await profiles.remove(tenantId, id);
     await logMessage(ctx, tenantId, {
       type: LogTypes.SUCCESS_API_OPERATION,
@@ -345,7 +348,7 @@ const deleteProfile = defineRoute({
 export const tokenExchangeProfilesRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   listProfiles,
   getProfile,
   createProfile,

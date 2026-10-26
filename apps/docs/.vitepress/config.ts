@@ -28,7 +28,7 @@ function changelogSidebar() {
     const raw = readFileSync(join(CHANGELOG_DIR, file), "utf8");
     const title = /^title:\s*(.+)$/m
       .exec(raw)?.[1]
-      .trim()
+      ?.trim()
       .replace(/^['"]|['"]$/g, "");
     return { text: title ?? slug, link: `/changelog/${slug}` };
   });

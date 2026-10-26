@@ -335,7 +335,8 @@ describe("GET/DELETE /api/v2/users/:user_id", () => {
     expect(response.status).toBe(404);
   });
 
-  it("returns 404 when deleting a user that does not exist", async () => {
+  // Auth0 answers DELETE of a missing user with 204, not 404.
+  it("returns 204 when deleting a user that does not exist", async () => {
     const { managementApp, env } = await getTestServer();
     const client = testClient(managementApp, env);
     const token = await getAdminToken();
@@ -348,7 +349,7 @@ describe("GET/DELETE /api/v2/users/:user_id", () => {
       { headers: { authorization: `Bearer ${token}` } },
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(204);
   });
 
   it("does not reach a user belonging to another tenant", async () => {

@@ -1,6 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Bindings, Variables } from "../../types";
-import { HTTPException } from "hono/http-exception";
 import {
   refreshTokenInsertSchema,
   LogTypes,
@@ -45,7 +48,7 @@ const getById = defineRoute({
     const session = await ctx.env.data.refreshTokens.get(tenantId, id);
 
     if (!session) {
-      throw new HTTPException(404);
+      throw notFound.refreshToken();
     }
 
     return ctx.json(session);
@@ -103,9 +106,7 @@ const deleteById = defineRoute({
 
     const result = await ctx.env.data.refreshTokens.remove(tenantId, id);
     if (!result) {
-      throw new HTTPException(404, {
-        message: "Session not found",
-      });
+      throw notFound.refreshToken();
     }
 
     await logMessage(ctx, tenantId, {
@@ -122,4 +123,7 @@ const deleteById = defineRoute({
 export const refreshTokensRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getById, deleteById] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getById,
+  deleteById,
+] as const);

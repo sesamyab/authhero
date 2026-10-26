@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import {
   LogTypes,
@@ -67,7 +71,7 @@ const getOperation = defineRoute({
       (!isControlPlaneTenant(ctx, ctx.var.tenant_id) &&
         operation.tenant_id !== ctx.var.tenant_id)
     ) {
-      throw new HTTPException(404, { message: "Operation not found" });
+      throw notFound.tenantOperation();
     }
 
     const { events } = await tenantOperationEvents.listByOperation(id);
@@ -78,7 +82,9 @@ const getOperation = defineRoute({
 export const operationRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getOperation] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getOperation,
+] as const);
 
 // GET /tenants/:id/operations — paginated history for one tenant. The
 // target tenant id comes from the mount path (like
@@ -203,7 +209,7 @@ const createTenantOperation = defineRoute({
 
     const tenant = await ctx.env.data.tenants.get(tenantId);
     if (!tenant) {
-      throw new HTTPException(404, { message: "Tenant not found" });
+      throw notFound.tenant();
     }
 
     if (kind === "provision" || kind === "deprovision") {
@@ -258,4 +264,7 @@ const createTenantOperation = defineRoute({
 export const tenantOperationsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([listTenantOperations, createTenantOperation] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  listTenantOperations,
+  createTenantOperation,
+] as const);

@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { inviteSchema, roleSchema } from "@authhero/adapter-interfaces";
@@ -6,6 +10,7 @@ import { Bindings, Variables } from "../../types";
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
 import {
+  TenantInvitationNotFoundError,
   TenantMembersBackend,
   TenantMembersNotFoundError,
   tenantInvitationInputSchema,
@@ -47,8 +52,11 @@ async function orNotFound<T>(op: () => Promise<T>): Promise<T> {
   try {
     return await op();
   } catch (err) {
+    if (err instanceof TenantInvitationNotFoundError) {
+      throw notFound.invitation();
+    }
     if (err instanceof TenantMembersNotFoundError) {
-      throw new HTTPException(404, { message: "Not found" });
+      throw notFound.member();
     }
     throw err;
   }
@@ -341,7 +349,7 @@ export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
   return new OpenAPIHono<{
     Bindings: Bindings;
     Variables: Variables;
-  }>().openapiRoutes([
+  }>({ defaultHook: managementValidationHook }).openapiRoutes([
     // More specific literal paths before the `/{user_id}` param routes so
     // `/roles` and `/invitations` are not swallowed by `/{user_id}/roles`.
     listRoles,

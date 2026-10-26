@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Context } from "hono";
 import { Bindings, Variables } from "../../types";
 import { HTTPException } from "hono/http-exception";
@@ -260,9 +264,7 @@ const getById = defineRoute({
     const clientGrant = await ctx.env.data.clientGrants.get(tenant_id, id);
 
     if (!clientGrant) {
-      throw new HTTPException(404, {
-        message: "Client grant not found",
-      });
+      throw notFound.clientGrant();
     }
 
     return ctx.json(clientGrant);
@@ -291,6 +293,9 @@ const deleteById = defineRoute({
       200: {
         description: "Status",
       },
+      204: {
+        description: "The client grant does not exist",
+      },
     },
   }),
   handler: async (ctx) => {
@@ -298,10 +303,9 @@ const deleteById = defineRoute({
     const { id } = ctx.req.valid("param");
 
     const result = await ctx.env.data.clientGrants.remove(tenant_id, id);
+    // Auth0 answers 204 for deleting a grant that doesn't exist.
     if (!result) {
-      throw new HTTPException(404, {
-        message: "Client grant not found",
-      });
+      return ctx.body(null, 204);
     }
 
     await logMessage(ctx, tenant_id, {
@@ -358,9 +362,7 @@ const patchById = defineRoute({
 
     const exists = await ctx.env.data.clientGrants.get(tenant_id, id);
     if (!exists) {
-      throw new HTTPException(404, {
-        message: "Client grant not found",
-      });
+      throw notFound.clientGrant();
     }
 
     // A patch may change the audience, the scopes, or neither: check the grant
@@ -381,9 +383,7 @@ const patchById = defineRoute({
 
     const clientGrant = await ctx.env.data.clientGrants.get(tenant_id, id);
     if (!clientGrant) {
-      throw new HTTPException(404, {
-        message: "Client grant not found",
-      });
+      throw notFound.clientGrant();
     }
 
     await logMessage(ctx, tenant_id, {
@@ -455,7 +455,7 @@ const postRoot = defineRoute({
 export const clientGrantRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   getById,
   deleteById,

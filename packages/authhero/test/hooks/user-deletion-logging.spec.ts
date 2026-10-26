@@ -358,7 +358,8 @@ describe("user deletion - Management API logging", () => {
       },
     );
 
-    expect(deleteResponse.status).toBe(404);
+    // Auth0 answers DELETE of a missing user with 204.
+    expect(deleteResponse.status).toBe(204);
 
     // Get logs after deletion attempt
     const afterLogs = await env.data.logs.list("tenantId", {

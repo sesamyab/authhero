@@ -1,4 +1,8 @@
 import { callerIsControlPlane } from "../../helpers/control-plane-caller";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables } from "../../types";
@@ -43,9 +47,7 @@ const getSettings = defineRoute({
     const tenant = await ctx.env.data.tenants.get(tenant_id);
 
     if (!tenant) {
-      throw new HTTPException(404, {
-        message: "Tenant not found",
-      });
+      throw notFound.tenant();
     }
 
     return ctx.json({
@@ -112,9 +114,7 @@ const patchSettings = defineRoute({
     const existingTenant = await ctx.env.data.tenants.get(tenant_id);
 
     if (!existingTenant) {
-      throw new HTTPException(404, {
-        message: "Tenant not found",
-      });
+      throw notFound.tenant();
     }
 
     // Switching how a tenant inherits config is an operator decision: a child
@@ -257,9 +257,7 @@ const redeployTenant = defineRoute({
 
     const existingTenant = await ctx.env.data.tenants.get(id);
     if (!existingTenant) {
-      throw new HTTPException(404, {
-        message: "Tenant not found",
-      });
+      throw notFound.tenant();
     }
 
     // Only WFP-provisioned tenants have their own worker/D1 to redeploy. A
@@ -306,7 +304,11 @@ const redeployTenant = defineRoute({
 export const tenantRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getSettings, patchSettings, redeployTenant] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getSettings,
+  patchSettings,
+  redeployTenant,
+] as const);
 
 // True when the current tenant is the deployment's control plane. In
 // multi-tenant deployments `multiTenancyConfig.controlPlaneTenantId` names the

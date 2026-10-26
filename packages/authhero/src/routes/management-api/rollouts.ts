@@ -1,6 +1,10 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
+import {
   LogTypes,
   rolloutKindSchema,
   rolloutSchema,
@@ -163,8 +167,7 @@ const getRollout = defineRoute({
     }
     const { id } = ctx.req.valid("param");
     const rollout = await rollouts.get(id);
-    if (!rollout)
-      throw new HTTPException(404, { message: "Rollout not found" });
+    if (!rollout) throw notFound.rollout();
     return ctx.json({
       ...rollout,
       summary: await summarize(tenantOperations, id),
@@ -291,8 +294,7 @@ const pauseRollout = defineRoute({
     const { id } = ctx.req.valid("param");
     const body = ctx.req.valid("json") as { reason?: string } | undefined;
     const rollout = await controller.pause(id, body?.reason);
-    if (!rollout)
-      throw new HTTPException(404, { message: "Rollout not found" });
+    if (!rollout) throw notFound.rollout();
     return ctx.json(rollout);
   },
 });
@@ -327,8 +329,7 @@ const resumeRollout = defineRoute({
     }
     const { id } = ctx.req.valid("param");
     const rollout = await controller.resume(id);
-    if (!rollout)
-      throw new HTTPException(404, { message: "Rollout not found" });
+    if (!rollout) throw notFound.rollout();
     return ctx.json(rollout);
   },
 });
@@ -336,7 +337,7 @@ const resumeRollout = defineRoute({
 export const rolloutRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
   listRollouts,
   getRollout,
   createRollout,

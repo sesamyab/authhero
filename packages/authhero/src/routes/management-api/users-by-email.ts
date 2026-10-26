@@ -1,4 +1,5 @@
 import { getUsersByEmail } from "../../helpers/users";
+import { managementValidationHook } from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { Bindings, Variables } from "../../types";
 import { userSchema } from "@authhero/adapter-interfaces";
@@ -48,4 +49,4 @@ const getRoot = defineRoute({
 export const usersByEmailRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getRoot] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([getRoot] as const);

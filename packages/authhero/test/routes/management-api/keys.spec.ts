@@ -186,6 +186,34 @@ describe("keys", () => {
     const key = await keyResponse.json();
     expect(key.kid).toBe(kid);
   });
+
+  it("returns Auth0's 404 body for an unknown kid", async () => {
+    const { managementApp, env } = await getTestServer();
+    const managementClient = testClient(managementApp, env);
+
+    const token = await getAdminToken();
+
+    const keyResponse = await managementClient.keys.signing["missing-kid"].$get(
+      {
+        header: {
+          "tenant-id": "tenantId",
+        },
+      },
+      {
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    expect(keyResponse.status).toBe(404);
+    expect(await keyResponse.json()).toEqual({
+      statusCode: 404,
+      error: "Not Found",
+      message: 'The key with key ID "missing-kid" was not found.',
+      errorCode: "inexistent_tenant_key",
+    });
+  });
 });
 
 describe("saml_encryption keys", () => {

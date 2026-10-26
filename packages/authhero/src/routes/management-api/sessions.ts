@@ -1,6 +1,9 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { Bindings, Variables } from "../../types";
-import { HTTPException } from "hono/http-exception";
 import { sessionSchema, LogTypes } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
 import { sendBackchannelLogout } from "../../helpers/backchannel-logout";
@@ -44,7 +47,7 @@ const getById = defineRoute({
     const session = await ctx.env.data.sessions.get(tenantId, id);
 
     if (!session) {
-      throw new HTTPException(404);
+      throw notFound.session();
     }
 
     return ctx.json(session);
@@ -98,9 +101,7 @@ const deleteById = defineRoute({
 
     const result = await ctx.env.data.sessions.remove(tenantId, id);
     if (!result) {
-      throw new HTTPException(404, {
-        message: "Session not found",
-      });
+      throw notFound.session();
     }
 
     if (session) {
@@ -153,9 +154,7 @@ const postByIdRevoke = defineRoute({
       revoked_at: revokedAt,
     });
     if (!result) {
-      throw new HTTPException(404, {
-        message: "Session not found",
-      });
+      throw notFound.session();
     }
 
     // "Revokes a session by ID and all associated refresh tokens" — the
@@ -188,4 +187,8 @@ const postByIdRevoke = defineRoute({
 export const sessionsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getById, deleteById, postByIdRevoke] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getById,
+  deleteById,
+  postByIdRevoke,
+] as const);

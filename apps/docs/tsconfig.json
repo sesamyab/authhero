@@ -22,6 +22,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": [".vitepress/**/*"],
-  "exclude": [".vitepress/config.ts", ".vitepress/cache", ".vitepress/dist"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "exclude": [".vitepress/cache", ".vitepress/dist"]
 }

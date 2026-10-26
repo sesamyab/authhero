@@ -1,4 +1,8 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import { Context } from "hono";
 import type {
@@ -157,7 +161,7 @@ async function getOwnedOperation(
     operation.kind !== "users_import" ||
     operation.tenant_id !== ctx.var.tenant_id
   ) {
-    throw new HTTPException(404, { message: "Job not found" });
+    throw notFound.job();
   }
   return operation;
 }
@@ -447,4 +451,8 @@ const getJobErrors = defineRoute({
 export const jobsRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([postUsersImports, getJobById, getJobErrors] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  postUsersImports,
+  getJobById,
+  getJobErrors,
+] as const);

@@ -1,4 +1,5 @@
 import { Bindings, Variables } from "../../types";
+import { managementValidationHook } from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   brandingSchema,
@@ -366,7 +367,7 @@ const postTemplatesUniversalLoginPreview = defineRoute({
 export const brandingRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>()
+}>({ defaultHook: managementValidationHook })
   .openapiRoutes([
     getRoot,
     patchRoot,

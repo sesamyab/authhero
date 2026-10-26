@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { managementValidationHook } from "../../errors/management-api-error";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { logMessage } from "../../helpers/logging";
@@ -106,4 +107,6 @@ const postRoot = defineRoute({
 export const clientRegistrationTokenRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([postRoot] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  postRoot,
+] as const);

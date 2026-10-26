@@ -1,0 +1,1195 @@
+{
+  "_comment": "Auth0 Management API error bodies captured 2026-10-26 from a live Auth0 tenant with non-mutating requests. Source of truth for src/errors/management-api-error.ts; see apps/docs/api/error-codes.md.",
+  "responses": [
+    {
+      "case": "user",
+      "method": "GET",
+      "path": "/users/{user_id}",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "user roles",
+      "method": "GET",
+      "path": "/users/{user_id}/roles",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "user permissions",
+      "method": "GET",
+      "path": "/users/{user_id}/permissions",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "user organizations",
+      "method": "GET",
+      "path": "/users/{user_id}/organizations",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "user enrollments",
+      "method": "GET",
+      "path": "/users/{user_id}/enrollments",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "user auth methods",
+      "method": "GET",
+      "path": "/users/{user_id}/authentication-methods",
+      "status": 403,
+      "body": {
+        "statusCode": 403,
+        "error": "Forbidden",
+        "message": "Insufficient scope, expected any of: read:authentication_methods",
+        "errorCode": "insufficient_scope"
+      }
+    },
+    {
+      "case": "user malformed id (no provider)",
+      "method": "GET",
+      "path": "/users/notavalidid",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Object didn't pass validation for format user-id: notavalidid",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "client",
+      "method": "GET",
+      "path": "/clients/doesnotexist0000000000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The client does not exist",
+        "errorCode": "inexistent_client"
+      }
+    },
+    {
+      "case": "connection",
+      "method": "GET",
+      "path": "/connections/con_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The connection does not exist",
+        "errorCode": "inexistent_connection"
+      }
+    },
+    {
+      "case": "connection malformed",
+      "method": "GET",
+      "path": "/connections/bad",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format connection-id: bad' on property id (The id of the connection to retrieve).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "resource server",
+      "method": "GET",
+      "path": "/resource-servers/doesnotexist000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The resource server does not exist",
+        "errorCode": "inexistent_resource_server"
+      }
+    },
+    {
+      "case": "role",
+      "method": "GET",
+      "path": "/roles/rol_doesnotexist00000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format role-id: rol_doesnotexist00000' on property id (ID of the role to retrieve).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "role malformed",
+      "method": "GET",
+      "path": "/roles/bad",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format role-id: bad' on property id (ID of the role to retrieve).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "role users",
+      "method": "GET",
+      "path": "/roles/rol_doesnotexist00000/users",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format role-id: rol_doesnotexist00000' on property id (ID of the role to retrieve a list of users associated with).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "role permissions",
+      "method": "GET",
+      "path": "/roles/rol_doesnotexist00000/permissions",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format role-id: rol_doesnotexist00000' on property id (ID of the role to list granted permissions).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "rule",
+      "method": "GET",
+      "path": "/rules/rul_doesnotexist00000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'String does not match pattern ^rul_[A-Za-z0-9]{16}$: rul_doesnotexist00000' on property id (ID of the rule to retrieve).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "hook",
+      "method": "GET",
+      "path": "/hooks/01234567-89ab-cdef-0123-456789abcdef",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "Error: Hook does not exist",
+        "errorCode": "HookDoesNotExist"
+      }
+    },
+    {
+      "case": "action",
+      "method": "GET",
+      "path": "/actions/actions/01234567-89ab-cdef-0123-456789abcdef",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "That action does not exist."
+      }
+    },
+    {
+      "case": "action malformed",
+      "method": "GET",
+      "path": "/actions/actions/bad",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "invalid GetActionRequest.Id: value must be a valid UUID | caused by: invalid uuid format"
+      }
+    },
+    {
+      "case": "organization",
+      "method": "GET",
+      "path": "/organizations/org_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No organization found by that id or name"
+      }
+    },
+    {
+      "case": "organization malformed",
+      "method": "GET",
+      "path": "/organizations/bad",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format organization-id: bad' on property id (ID of the organization to retrieve).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "organization by name",
+      "method": "GET",
+      "path": "/organizations/name/doesnotexist-org-xyz",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No organization found by that id or name"
+      }
+    },
+    {
+      "case": "organization members",
+      "method": "GET",
+      "path": "/organizations/org_doesnotexist0000/members",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No organization found by that id"
+      }
+    },
+    {
+      "case": "organization invitations",
+      "method": "GET",
+      "path": "/organizations/org_doesnotexist0000/invitations",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No organization found by that id or name"
+      }
+    },
+    {
+      "case": "organization invitation",
+      "method": "GET",
+      "path": "/organizations/org_doesnotexist0000/invitations/uinv_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No organization found by that id or name"
+      }
+    },
+    {
+      "case": "organization connections",
+      "method": "GET",
+      "path": "/organizations/org_doesnotexist0000/enabled_connections",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No organization found by that id"
+      }
+    },
+    {
+      "case": "log",
+      "method": "GET",
+      "path": "/logs/90020240101000000000000000000000000000000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The log does not exist.",
+        "errorCode": "inexistent_log"
+      }
+    },
+    {
+      "case": "custom domain",
+      "method": "GET",
+      "path": "/custom-domains/cd_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The custom domain cd_doesnotexist0000 does not exist",
+        "errorCode": "inexistent_custom_domain"
+      }
+    },
+    {
+      "case": "client grant",
+      "method": "GET",
+      "path": "/client-grants/cgr_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The grant does not exist.",
+        "errorCode": "inexistent_client_grant"
+      }
+    },
+    {
+      "case": "email template unknown name",
+      "method": "GET",
+      "path": "/email-templates/not_a_template",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Invalid value \"not_a_template\"' on property templateName (Template name. Can be `verify_email`, `verify_email_by_code`, `auth_email_by_code`, `reset_email`, `reset_email_by_code`, `welcome_email`, `blocked_account`, `stolen_credentials`, `enrollment_email`, `mfa_oob_code`, `user_invitation`, `async_approval`, `change_password` (legacy), or `password_reset` (legacy)).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "form",
+      "method": "GET",
+      "path": "/forms/ap_doesnotexist000000000000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format form-id: ap_doesnotexist000000000000' on property id (The ID of the form to retrieve).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "flow",
+      "method": "GET",
+      "path": "/flows/af_doesnotexist000000000000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format flow-id: af_doesnotexist000000000000' on property id (Flow identifier).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "signing key",
+      "method": "GET",
+      "path": "/keys/signing/doesnotexist",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The key with key ID \"doesnotexist\" was not found.",
+        "errorCode": "inexistent_tenant_key"
+      }
+    },
+    {
+      "case": "job",
+      "method": "GET",
+      "path": "/jobs/job_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The job does not exist",
+        "errorCode": "inexistent_job"
+      }
+    },
+    {
+      "case": "guardian enrollment",
+      "method": "GET",
+      "path": "/guardian/enrollments/dev_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "Enrollment not found",
+        "errorCode": "enrollment_not_found"
+      }
+    },
+    {
+      "case": "unknown route",
+      "method": "GET",
+      "path": "/doesnotexist",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "Not Found"
+      }
+    },
+    {
+      "case": "method not allowed",
+      "method": "PUT",
+      "path": "/users/{user_id}",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "Not Found"
+      }
+    },
+    {
+      "case": "patch user",
+      "method": "PATCH",
+      "path": "/users/{user_id}",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "patch role",
+      "method": "PATCH",
+      "path": "/roles/rol_doesnotexist00000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format role-id: rol_doesnotexist00000' on property id (ID of the role to update).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "patch client",
+      "method": "PATCH",
+      "path": "/clients/doesnotexist0000000000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The client does not exist.",
+        "errorCode": "inexistent_client"
+      }
+    },
+    {
+      "case": "patch organization",
+      "method": "PATCH",
+      "path": "/organizations/org_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No organization found by that id or name"
+      }
+    },
+    {
+      "case": "patch connection",
+      "method": "PATCH",
+      "path": "/connections/con_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The connection does not exist",
+        "errorCode": "inexistent_connection"
+      }
+    },
+    {
+      "case": "patch resource server",
+      "method": "PATCH",
+      "path": "/resource-servers/doesnotexist000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The resource server does not exist",
+        "errorCode": "inexistent_resource_server"
+      }
+    },
+    {
+      "case": "assign roles to fake user",
+      "method": "POST",
+      "path": "/users/{user_id}/roles",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "add users to fake role",
+      "method": "POST",
+      "path": "/roles/rol_doesnotexist00000/users",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format role-id: rol_doesnotexist00000' on property id (ID of the role to assign users to).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "delete role",
+      "method": "DELETE",
+      "path": "/roles/rol_doesnotexist00000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format role-id: rol_doesnotexist00000' on property id (ID of the role to delete).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "delete organization",
+      "method": "DELETE",
+      "path": "/organizations/org_doesnotexist0000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No organization found by that id or name"
+      }
+    },
+    {
+      "case": "create user empty",
+      "method": "POST",
+      "path": "/users",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Missing required property: connection'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create user unknown connection",
+      "method": "POST",
+      "path": "/users",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "The connection does not exist.",
+        "errorCode": "inexistent_connection"
+      }
+    },
+    {
+      "case": "create user invalid email",
+      "method": "POST",
+      "path": "/users",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Object didn't pass validation for format email: notanemail' on property email (The user's email).",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create user unknown property",
+      "method": "POST",
+      "path": "/users",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Additional properties not allowed: foo (consider storing them in app_metadata or user_metadata. See \"Users Metadata\" in https://auth0.com/docs/api/v2/changes for more details)'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create client empty",
+      "method": "POST",
+      "path": "/clients",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Missing required property: name'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create role empty",
+      "method": "POST",
+      "path": "/roles",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Missing required property: name'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create organization empty",
+      "method": "POST",
+      "path": "/organizations",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Missing required property: name'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create organization bad name",
+      "method": "POST",
+      "path": "/organizations",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Object didn't pass validation for format organization-name: Bad Name!!' on property name (The name of this organization).",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create resource server empty",
+      "method": "POST",
+      "path": "/resource-servers",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Missing required property: identifier'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create connection empty",
+      "method": "POST",
+      "path": "/connections",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Missing required property: strategy'. (also) Payload validation error: 'Missing required property: name'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create connection bad strategy",
+      "method": "POST",
+      "path": "/connections",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Invalid value \"not-a-strategy\"' on property strategy (The identity provider identifier for the connection).",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create client grant empty",
+      "method": "POST",
+      "path": "/client-grants",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Missing required property: audience'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "create client grant fake client",
+      "method": "POST",
+      "path": "/client-grants",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No resource with identifier https://doesnotexist.example/",
+        "errorCode": "inexistent_resource_server"
+      }
+    },
+    {
+      "case": "patch user wrong type",
+      "method": "PATCH",
+      "path": "/users/{user_id}",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Expected type boolean but found type string' on property blocked (Whether this user was blocked by an administrator (true) or not (false)).",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "patch tenant unknown prop",
+      "method": "PATCH",
+      "path": "/tenants/settings",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Additional properties not allowed: not_a_setting_xyz'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "malformed json",
+      "method": "POST",
+      "path": "/roles",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Invalid request payload JSON format"
+      }
+    },
+    {
+      "case": "wrong content type",
+      "method": "POST",
+      "path": "/roles",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Expected type object but found type string'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "per_page too large",
+      "method": "GET",
+      "path": "/users?per_page=1000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'Value 1000 is greater than maximum 100' on property per_page (Number of results per page).",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "negative page",
+      "method": "GET",
+      "path": "/users?page=-1",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'Value -1 is less than minimum 0' on property page (Page index of the results to return. First page is 0).",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "bad sort",
+      "method": "GET",
+      "path": "/users?sort=notafield:9",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'String does not match pattern ^(([a-zA-Z0-9_\\\\.]+))\\:(1|-1)$: notafield:9' on property sort (Field to sort by. Use <code>field:order</code> where order is <code>1</code> for ascending and <code>-1</code> for descending. e.g. <code>created_at:1</code>).",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "bad lucene",
+      "method": "GET",
+      "path": "/users?q=((email:&search_engine=v3",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "invalid query: undefined"
+      }
+    },
+    {
+      "case": "bad search_engine",
+      "method": "GET",
+      "path": "/users?search_engine=v9",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'Invalid value \"v9\"' on property search_engine (The version of the search engine).",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "include_totals not bool",
+      "method": "GET",
+      "path": "/users?include_totals=maybe",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'Expected type boolean but found type string' on property include_totals (Return results inside an object that contains the total result count (true) or as a direct array of results (false, default)).",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "users-by-email missing",
+      "method": "GET",
+      "path": "/users-by-email",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'Missing required property: email'.",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "logs per_page too large",
+      "method": "GET",
+      "path": "/logs?per_page=1000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'Value 1000 is greater than maximum 100' on property per_page (Number of results per page. Paging is disabled if parameter not sent. Default: <code>50</code>. Max value: <code>100</code>).",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "logs bad from+take",
+      "method": "GET",
+      "path": "/logs?from=xyz&take=1000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'Value 1000 is greater than maximum 100' on property take (The total amount of entries to retrieve when using the <code>from</code> parameter. Default: <code>50</code>. Max value: <code>100</code>).",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "no token",
+      "method": "GET",
+      "path": "/users/{user_id}",
+      "status": 401,
+      "body": {
+        "statusCode": 401,
+        "error": "Unauthorized",
+        "message": "Missing authentication"
+      }
+    },
+    {
+      "case": "garbage token",
+      "method": "GET",
+      "path": "/users/{user_id}",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Bad HTTP authentication header format",
+        "errorCode": "Bearer"
+      }
+    },
+    {
+      "case": "bad signature",
+      "method": "GET",
+      "path": "/users/{user_id}",
+      "status": 401,
+      "body": {
+        "statusCode": 401,
+        "error": "Unauthorized",
+        "message": "Invalid signature received for JSON Web Token validation",
+        "attributes": {
+          "error": "Invalid signature received for JSON Web Token validation"
+        }
+      }
+    },
+    {
+      "case": "basic auth scheme",
+      "method": "GET",
+      "path": "/users/{user_id}",
+      "status": 401,
+      "body": {
+        "statusCode": 401,
+        "error": "Unauthorized",
+        "message": "Missing authentication"
+      }
+    },
+    {
+      "case": "missing scope (sessions)",
+      "method": "GET",
+      "path": "/sessions/doesnotexist",
+      "status": 403,
+      "body": {
+        "statusCode": 403,
+        "error": "Forbidden",
+        "message": "Insufficient scope, expected any of: read:sessions",
+        "errorCode": "insufficient_scope"
+      }
+    },
+    {
+      "case": "missing scope (refresh tokens)",
+      "method": "GET",
+      "path": "/refresh-tokens/doesnotexist",
+      "status": 403,
+      "body": {
+        "statusCode": 403,
+        "error": "Forbidden",
+        "message": "Insufficient scope, expected any of: read:refresh_tokens",
+        "errorCode": "insufficient_scope"
+      }
+    },
+    {
+      "case": "conflict: org name",
+      "method": "POST",
+      "path": "/organizations",
+      "status": 409,
+      "body": {
+        "statusCode": 409,
+        "error": "Conflict",
+        "message": "An organization with this name already exists."
+      }
+    },
+    {
+      "case": "conflict: resource server identifier",
+      "method": "POST",
+      "path": "/resource-servers",
+      "status": 409,
+      "body": {
+        "statusCode": 409,
+        "error": "Conflict",
+        "message": "A resource server already exists with identifer https://api.example.com",
+        "errorCode": "resource_server_conflict"
+      }
+    },
+    {
+      "case": "conflict: user email",
+      "method": "POST",
+      "path": "/users",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Payload validation error: 'Missing required property: username'.",
+        "errorCode": "invalid_body"
+      }
+    },
+    {
+      "case": "role (valid format)",
+      "method": "GET",
+      "path": "/roles/rol_0000000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The role does not exist."
+      }
+    },
+    {
+      "case": "role users (valid format)",
+      "method": "GET",
+      "path": "/roles/rol_0000000000000000/users",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The role does not exist."
+      }
+    },
+    {
+      "case": "patch role (valid format)",
+      "method": "PATCH",
+      "path": "/roles/rol_0000000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "No such role."
+      }
+    },
+    {
+      "case": "delete role (valid format)",
+      "method": "DELETE",
+      "path": "/roles/rol_0000000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The role does not exist."
+      }
+    },
+    {
+      "case": "add users to role (valid format)",
+      "method": "POST",
+      "path": "/roles/rol_0000000000000000/users",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "One or more of the users do not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "assign fake role to fake user",
+      "method": "POST",
+      "path": "/users/{user_id}/roles",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "rule (valid format)",
+      "method": "GET",
+      "path": "/rules/rul_0000000000000000",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The rule does not exist",
+        "errorCode": "inexistent_rule"
+      }
+    },
+    {
+      "case": "form 22",
+      "method": "GET",
+      "path": "/forms/ap_0000000000000000000000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "The provided input does not satisfy the expected schema"
+      }
+    },
+    {
+      "case": "form 24",
+      "method": "GET",
+      "path": "/forms/ap_000000000000000000000000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format form-id: ap_000000000000000000000000' on property id (The ID of the form to retrieve).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "flow 22",
+      "method": "GET",
+      "path": "/flows/af_0000000000000000000000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "The provided input does not satisfy the expected schema"
+      }
+    },
+    {
+      "case": "flow 24",
+      "method": "GET",
+      "path": "/flows/af_000000000000000000000000",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Path validation error: 'Object didn't pass validation for format flow-id: af_000000000000000000000000' on property id (Flow identifier).",
+        "errorCode": "invalid_uri"
+      }
+    },
+    {
+      "case": "org member roles",
+      "method": "GET",
+      "path": "/organizations/org_0000000000000000/members/auth0%7Cx/roles",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "grant delete",
+      "method": "DELETE",
+      "path": "/grants/doesnotexist",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Invalid grant id"
+      }
+    },
+    {
+      "case": "email template not configured?",
+      "method": "GET",
+      "path": "/email-templates/async_approval",
+      "status": 403,
+      "body": {
+        "statusCode": 403,
+        "error": "Forbidden",
+        "message": "async_approval template support is only available with a paid add-on.",
+        "errorCode": "feature_not_enabled"
+      }
+    },
+    {
+      "case": "user identity unlink fake",
+      "method": "DELETE",
+      "path": "/users/{user_id}/identities/google-oauth2/123",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "users-by-email bad email",
+      "method": "GET",
+      "path": "/users-by-email?email=notanemail",
+      "status": 400,
+      "body": {
+        "statusCode": 400,
+        "error": "Bad Request",
+        "message": "Query validation error: 'Object didn't pass validation for format email: notanemail' on property email (Email address to search for (case-sensitive)).",
+        "errorCode": "invalid_query_string"
+      }
+    },
+    {
+      "case": "permissions fake api on fake user",
+      "method": "POST",
+      "path": "/users/{user_id}/permissions",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    },
+    {
+      "case": "conflict: user email+username",
+      "method": "POST",
+      "path": "/users",
+      "status": 409,
+      "body": {
+        "statusCode": 409,
+        "error": "Conflict",
+        "message": "The user already exists.",
+        "errorCode": "auth0_idp_error"
+      }
+    },
+    {
+      "case": "patch fake user email to existing",
+      "method": "PATCH",
+      "path": "/users/fake",
+      "status": 404,
+      "body": {
+        "statusCode": 404,
+        "error": "Not Found",
+        "message": "The user does not exist.",
+        "errorCode": "inexistent_user"
+      }
+    }
+  ]
+}

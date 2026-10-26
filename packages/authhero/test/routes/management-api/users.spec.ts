@@ -7,6 +7,43 @@ import { USERNAME_PASSWORD_PROVIDER } from "../../../src/constants";
 
 describe("users management API endpoint", () => {
   describe("POST", () => {
+    it.each([undefined, "migration-provider"])(
+      "supports an unstored migration connection with provider %s",
+      async (provider) => {
+        const { managementApp, env } = await getTestServer();
+        const token = await getAdminToken();
+        const response = await managementApp.request(
+          "/users",
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "tenant-id": "tenantId",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              email: "migration@example.com",
+              connection: "migration-connection",
+              ...(provider && { provider }),
+            }),
+          },
+          env,
+        );
+
+        expect(response.status).toBe(201);
+        const user = await response.json();
+        expect(user.user_id).toMatch(
+          new RegExp(`^${provider ?? "migration-connection"}\\|`),
+        );
+        expect(
+          await env.data.users.get("tenantId", user.user_id),
+        ).toMatchObject({
+          connection: "migration-connection",
+          provider: provider ?? "migration-connection",
+        });
+      },
+    );
+
     it("should create a new sms user", async () => {
       const { managementApp, env } = await getTestServer();
       const managementClient = testClient(managementApp, env);
@@ -1179,6 +1216,30 @@ describe("users management API endpoint", () => {
   });
 
   describe("DELETE", () => {
+    it("should return 204 without logging when the user does not exist", async () => {
+      const token = await getAdminToken();
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+
+      const { logs: logsBefore } = await env.data.logs.list("tenantId");
+
+      const response = await managementClient.users[":user_id"].$delete(
+        {
+          param: { user_id: "auth0|does-not-exist" },
+          header: { "tenant-id": "tenantId" },
+        },
+        {
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      expect(response.status).toBe(204);
+      const { logs: logsAfter } = await env.data.logs.list("tenantId");
+      expect(logsAfter.length).toBe(logsBefore.length);
+    });
+
     it("should unlink secondary account when deleting primary account", async () => {
       const token = await getAdminToken();
       const { managementApp, env } = await getTestServer();
@@ -2202,6 +2263,32 @@ describe("users management API endpoint", () => {
   });
 
   describe("get by id", () => {
+    it("should return an Auth0-shaped 404 body for a missing user", async () => {
+      const token = await getAdminToken();
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+
+      const response = await managementClient.users[":user_id"].$get(
+        {
+          param: { user_id: "auth0|does-not-exist" },
+          header: { "tenant-id": "tenantId" },
+        },
+        {
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        statusCode: 404,
+        error: "Not Found",
+        message: "The user does not exist.",
+        errorCode: "inexistent_user",
+      });
+    });
+
     it("should return primary user with secondary user nested in identities, but should not return linked secondary user (should act as though the secondary user does not exist)", async () => {
       const token = await getAdminToken();
 

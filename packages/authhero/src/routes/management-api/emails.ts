@@ -1,8 +1,12 @@
 import { Bindings, Variables } from "../../types";
+import {
+  conflict,
+  managementValidationHook,
+  notFound,
+} from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { emailProviderSchema, LogTypes } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
-import { HTTPException } from "hono/http-exception";
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
 const getRoot = defineRoute({
@@ -84,9 +88,7 @@ const postRoot = defineRoute({
     // return 409 — clients should PATCH to update, or DELETE first.
     const existing = await ctx.env.data.emailProviders.get(tenantId);
     if (existing) {
-      throw new HTTPException(409, {
-        message: "Email provider already configured",
-      });
+      throw conflict.other("Email provider already configured");
     }
 
     await ctx.env.data.emailProviders.create(tenantId, emailProvider);
@@ -144,7 +146,7 @@ const patchRoot = defineRoute({
 
     const updated = await ctx.env.data.emailProviders.get(tenantId);
     if (!updated) {
-      throw new HTTPException(404, { message: "Email provider not found" });
+      throw notFound.emailProvider();
     }
 
     await logMessage(ctx, tenantId, {
@@ -186,7 +188,7 @@ const deleteRoot = defineRoute({
     const tenantId = requireTenantId(ctx);
     const existing = await ctx.env.data.emailProviders.get(tenantId);
     if (!existing) {
-      throw new HTTPException(404, { message: "Email provider not found" });
+      throw notFound.emailProvider();
     }
 
     await ctx.env.data.emailProviders.remove(tenantId);
@@ -205,4 +207,9 @@ const deleteRoot = defineRoute({
 export const emailProviderRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
-}>().openapiRoutes([getRoot, postRoot, patchRoot, deleteRoot] as const);
+}>({ defaultHook: managementValidationHook }).openapiRoutes([
+  getRoot,
+  postRoot,
+  patchRoot,
+  deleteRoot,
+] as const);

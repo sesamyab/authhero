@@ -6,6 +6,12 @@ import { Bindings, Variables, AuthHeroConfig } from "../../types";
 import { getIssuer } from "../../variables";
 import { logMessage } from "../../helpers/logging";
 import { isHTTPExceptionLike } from "../../errors/is-http-exception-like";
+import {
+  ERROR_TEXT_BY_STATUS,
+  formatValidationMessage,
+  managementErrorBody,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { actionsRoutes } from "./actions";
 import { actionExecutionsRoutes } from "./action-executions";
 import { actionTriggersRoutes } from "./action-triggers";
@@ -108,7 +114,7 @@ export default function create(config: AuthHeroConfig) {
   const app = new OpenAPIHono<{
     Bindings: Bindings;
     Variables: Variables;
-  }>();
+  }>({ defaultHook: managementValidationHook });
 
   // Use managementDataAdapter if provided, otherwise fall back to dataAdapter
   const managementAdapter = config.managementDataAdapter ?? config.dataAdapter;
@@ -248,7 +254,7 @@ export default function create(config: AuthHeroConfig) {
   // strictly as { statusCode, error, message, errorCode }. Cover the two cases
   // authhero produces by default that aren't that shape: (1) plaintext from
   // HTTPException, (2) zod-openapi's default validation-failure JSON.
-  app.onError((err, ctx) => {
+  app.onError(async (err, ctx) => {
     // Duck-typed rather than `instanceof HTTPException`: adapter packages
     // bundle their own hono, so their HTTPExceptions have a different class
     // identity.
@@ -259,29 +265,48 @@ export default function create(config: AuthHeroConfig) {
     const status = err.status;
     if (status < 400 || status >= 500) throw err;
 
-    // If the exception already carries a Response (e.g. JSONHTTPException
-    // sets a JSON body), pass it through untouched. Only wrap the bare
-    // HTTPException case where the message was meant to be a plaintext body.
+    // A JSON body already in Auth0's shape (managementError) passes through.
+    // Older `JSONHTTPException(status, { message })` bodies are lifted into it.
     const existing = err.getResponse();
     if (existing.headers.get("content-type")?.includes("application/json")) {
-      return existing;
+      const body: unknown = await existing
+        .clone()
+        .json()
+        .catch(() => undefined);
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        "statusCode" in body ||
+        !("message" in body) ||
+        typeof body.message !== "string"
+      ) {
+        return existing;
+      }
+      const errorCode =
+        "errorCode" in body && typeof body.errorCode === "string"
+          ? body.errorCode
+          : undefined;
+      return new Response(
+        JSON.stringify(managementErrorBody(status, body.message, errorCode)),
+        { status, headers: existing.headers },
+      );
     }
-    const errorTextByStatus: Record<number, string> = {
-      400: "Bad Request",
-      401: "Unauthorized",
-      403: "Forbidden",
-      404: "Not Found",
-      405: "Method Not Allowed",
-      409: "Conflict",
-      422: "Unprocessable Entity",
-      429: "Too Many Requests",
-    };
+    // hono's validator throws a bare 400 for an unparseable JSON body.
+    if (status === 400 && err.message === "Malformed JSON in request body") {
+      return ctx.json(
+        managementErrorBody(
+          400,
+          "Invalid request payload JSON format",
+          "invalid_json",
+        ),
+        400,
+      );
+    }
     return ctx.json(
-      {
-        statusCode: status,
-        error: errorTextByStatus[status] ?? "Error",
-        message: err.message || errorTextByStatus[status] || "Error",
-      },
+      managementErrorBody(
+        status,
+        err.message || ERROR_TEXT_BY_STATUS[status] || "Error",
+      ),
       status as 400 | 401 | 403 | 404 | 405 | 409 | 422 | 429,
     );
   });
@@ -316,26 +341,14 @@ export default function create(config: AuthHeroConfig) {
     ) {
       return;
     }
+    // Route apps carry managementValidationHook, which knows the failing
+    // request part; this fallback only sees the issues, so it assumes body.
     const issues =
       "issues" in body.error && Array.isArray(body.error.issues)
-        ? (body.error.issues as Array<{ path?: unknown; message?: string }>)
+        ? body.error.issues
         : [];
-    const message = issues.length
-      ? `Payload validation error: ${issues
-          .map((i) => {
-            const segments = Array.isArray(i.path) ? i.path : [];
-            const pathStr = segments.length ? segments.join(".") : "root";
-            return `'${pathStr}': ${i.message ?? "invalid"}`;
-          })
-          .join("; ")}`
-      : "Payload validation error";
     ctx.res = new Response(
-      JSON.stringify({
-        statusCode: 400,
-        error: "Bad Request",
-        message,
-        errorCode: "invalid_body",
-      }),
+      JSON.stringify(formatValidationMessage("json", issues, undefined)),
       { status: 400, headers: { "content-type": "application/json" } },
     );
   });
