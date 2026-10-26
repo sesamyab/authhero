@@ -186,6 +186,25 @@ export async function encryptFieldWithRing(
 }
 
 /**
+ * Whether `ring` can decrypt `value`. Plaintext values are trivially readable.
+ * For ciphertext this checks that the key id embedded in it is in the ring and
+ * that decryption succeeds (a key can be present but wrong). Never throws and
+ * never returns the plaintext.
+ */
+export async function canDecrypt(
+  value: string,
+  ring: KeyRing,
+): Promise<boolean> {
+  if (!isEncrypted(value)) return true;
+  try {
+    await decryptFieldWithRing(value, ring);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Decrypts a value using a key ring, selecting the key from the id embedded in
  * the ciphertext (or the default key for legacy unkeyed values). Plaintext
  * values (no `enc:v1:` prefix) are returned unchanged.
