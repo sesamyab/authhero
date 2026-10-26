@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Github, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import LogoMark from "@/components/Logo";
 import EarlyAccessDialog from "@/components/EarlyAccessDialog";
 import { DOCS_URL, GITHUB_URL } from "@/lib/links";
@@ -47,6 +47,7 @@ const NavItemLink = ({
 
 const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileToggleRef = useRef<HTMLButtonElement>(null);
 
   return (
     <header className="sticky top-0 z-50 w-full bg-background/90 backdrop-blur-sm">
@@ -92,6 +93,7 @@ const Navbar = () => {
 
         {/* Mobile toggle */}
         <button
+          ref={mobileToggleRef}
           className="flex h-11 w-11 items-center justify-center md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle menu"
@@ -131,6 +133,12 @@ const Navbar = () => {
           <EarlyAccessDialog
             size="default"
             className="h-auto w-full rounded-[10px] py-3 text-base font-semibold"
+            // The menu (and with it this trigger) is hidden by now, so hand
+            // focus back to the visible menu toggle instead.
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              mobileToggleRef.current?.focus();
+            }}
           >
             Get early access
           </EarlyAccessDialog>

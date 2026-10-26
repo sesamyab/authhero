@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigationType } from "react-router-dom";
 import { Head } from "vite-react-ssg";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,12 +11,14 @@ import Footer from "@/components/Footer";
 const queryClient = new QueryClient();
 
 // Client-side navigation keeps the old scroll position, so start each new page
-// at the top. Hash links are left to the browser.
+// at the top. Hash links and Back/Forward (POP) are left to the browser, which
+// restores the previous position itself.
 const ScrollToTop = () => {
   const { pathname, hash } = useLocation();
+  const navigationType = useNavigationType();
   useEffect(() => {
-    if (!hash) window.scrollTo(0, 0);
-  }, [pathname, hash]);
+    if (navigationType !== "POP" && !hash) window.scrollTo(0, 0);
+  }, [pathname, hash, navigationType]);
   return null;
 };
 
