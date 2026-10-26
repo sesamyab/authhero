@@ -269,6 +269,74 @@ describe("fleet rollouts", () => {
       expect(lenient.next.wave).toBe(2);
     });
 
+    it("ends a rollout failed when its last wave is unhealthy", async () => {
+      await addFleet(3);
+      failing.add("t3");
+      const rollout = await createRolloutController(deps).create({
+        canary: 1,
+        waves: [100],
+      });
+      await tick(rollout.id); // wave 1 runs, t3 fails
+      expect((await tick(rollout.id)).outcome).toBe("done");
+
+      const row = await adapters.rollouts!.get(rollout.id);
+      expect(row?.status).toBe("failed");
+      expect(row?.paused_reason).toMatch(/wave 1 failed for 1 of 2/);
+    });
+
+    it("applies the failure threshold, not zero tolerance, to wave 0 without a canary", async () => {
+      await addFleet(10);
+      failing.add("t1");
+      const rollout = await createRolloutController(deps).create({
+        canary: 0,
+        waves: [50, 100],
+        failureThreshold: 0.25,
+      });
+      // Wave 0 is 5 tenants with one failure (20%): below the threshold.
+      expect((await tick(rollout.id)).outcome).toBe("started");
+      expect((await adapters.rollouts!.get(rollout.id))?.status).not.toBe(
+        "paused",
+      );
+    });
+
+    it("does not plan the same tenants twice", async () => {
+      await addFleet(3);
+      const rollout = await adapters.rollouts!.create({
+        kind: "config-sync",
+        initiated_by: "test",
+        config: { root_tenant_id: CP, planned: false },
+      });
+      await planRollout(deps, rollout);
+      await planRollout(deps, rollout);
+      expect(await operationsOf(rollout.id)).toHaveLength(3);
+    });
+
+    it("reserves an operation before the executor returns", async () => {
+      await addFleet(3);
+      const started: string[] = [];
+      // An executor that returns before the work runs, like Workflows.
+      deps = {
+        ...deps,
+        executor: {
+          engine: "cloudflare-workflows",
+          start: async (operation) => {
+            started.push(operation.id);
+          },
+        },
+      };
+      const rollout = await createRolloutController(deps).create({
+        canary: 0,
+        waves: [100],
+        maxConcurrent: 2,
+      });
+      expect(started).toHaveLength(2);
+      await tick(rollout.id);
+      await tick(rollout.id);
+      // Nothing is started twice and the cap holds while they are in flight.
+      expect(new Set(started).size).toBe(started.length);
+      expect(started).toHaveLength(2);
+    });
+
     it("starts at most max_concurrent operations per tick", async () => {
       await addFleet(5);
       const rollout = await createRolloutController(deps).create({
@@ -507,6 +575,21 @@ describe("fleet rollouts", () => {
         reason: "never-synced",
         applied_hash: null,
       });
+    });
+
+    it("does not start another rollout for a tenant whose sync just failed", async () => {
+      await addFleet(1);
+      failing.add("t1");
+      const first = await reconcileConfigDrift(deps);
+      expect(first.rolloutId).toBeTruthy();
+      await tick(first.rolloutId!); // the sync runs and fails
+
+      const again = await reconcileConfigDrift(deps);
+      expect(again).toMatchObject({ drifted: 1, recentlyFailed: 1 });
+      expect(again.rolloutId).toBeUndefined();
+
+      clock += 2 * 3_600_000;
+      expect((await reconcileConfigDrift(deps)).rolloutId).toBeTruthy();
     });
 
     it("does not report tenants that are not synced", async () => {

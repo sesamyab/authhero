@@ -90,8 +90,14 @@ export async function planRollout(
     return { planned: 0, upToDate };
   }
 
+  // A tick that planned this rollout already (or a concurrent one) left its
+  // operations; a second plan must not duplicate them.
+  const existing = new Set(
+    (await listRolloutOperations(deps, rollout.id)).map((op) => op.tenant_id),
+  );
   const waves = assignWaves(targets.length, config.canary, config.waves);
   for (const [index, target] of targets.entries()) {
+    if (existing.has(target.tenantId)) continue;
     await createOperationRow(
       stores,
       {

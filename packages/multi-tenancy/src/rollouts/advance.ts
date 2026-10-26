@@ -1,11 +1,12 @@
 import type { Rollout, TenantOperation } from "authhero";
-import { isTerminalStatus } from "../operations";
-import { readRolloutConfig } from "./config";
+import { createOperationRecorder, isTerminalStatus } from "../operations";
+import { readRolloutConfig, type ConfigSyncRolloutConfig } from "./config";
 import {
   OPEN_ROLLOUT_STATUSES,
   listRolloutOperations,
   planRollout,
   rolloutsOf,
+  storesOf,
 } from "./plan";
 import type { RolloutDeps } from "./types";
 
@@ -35,10 +36,27 @@ const waveOf = (operation: TenantOperation): number => {
 const isFailed = (operation: TenantOperation) =>
   operation.status === "failed" || operation.status === "cancelled";
 
-function waveFailureRatio(operations: TenantOperation[], wave: number) {
+/**
+ * Why a finished wave is unhealthy, or null. Wave 0 is the canary only when
+ * the rollout has one; it tolerates no failure, other waves tolerate
+ * `failure_threshold`.
+ */
+function waveBreach(
+  config: ConfigSyncRolloutConfig,
+  operations: TenantOperation[],
+  wave: number,
+): string | null {
   const inWave = operations.filter((op) => waveOf(op) === wave);
   const failed = inWave.filter(isFailed).length;
-  return { total: inWave.length, failed };
+  const isCanary = wave === 0 && config.canary > 0;
+  const threshold = isCanary ? 0 : config.failure_threshold;
+  if (
+    inWave.length === 0 ||
+    failed === 0 ||
+    failed / inWave.length <= threshold
+  )
+    return null;
+  return `${isCanary ? "canary" : `wave ${wave}`} failed for ${failed} of ${inWave.length} tenant(s)`;
 }
 
 /**
@@ -97,10 +115,16 @@ export async function advanceRollout(
   const operations = await listRolloutOperations(deps, id);
   const unfinished = operations.filter((op) => !isTerminalStatus(op.status));
 
-  // 4. Nothing left to do.
+  // 4. Nothing left to do, unless the last wave itself was unhealthy.
   if (unfinished.length === 0) {
+    const last = Math.max(0, ...operations.map(waveOf));
+    const breach =
+      operations.length > 0 && last > (config.accepted_through ?? -1)
+        ? waveBreach(config, operations, last)
+        : null;
     await rollouts.update(id, {
-      status: "done",
+      status: breach ? "failed" : "done",
+      ...(breach ? { paused_reason: breach } : {}),
       finished_at: new Date(now).toISOString(),
     });
     return { rolloutId: id, outcome: "done", started: 0 };
@@ -110,13 +134,9 @@ export async function advanceRollout(
   const wave = Math.min(...unfinished.map(waveOf));
   const previous = wave - 1;
   if (previous >= 0 && previous > (config.accepted_through ?? -1)) {
-    const { total, failed } = waveFailureRatio(operations, previous);
-    const threshold = previous === 0 ? 0 : config.failure_threshold;
-    if (total > 0 && failed > 0 && failed / total > threshold) {
-      await rollouts.update(id, {
-        status: "paused",
-        paused_reason: `${previous === 0 ? "canary" : `wave ${previous}`} failed for ${failed} of ${total} tenant(s)`,
-      });
+    const breach = waveBreach(config, operations, previous);
+    if (breach) {
+      await rollouts.update(id, { status: "paused", paused_reason: breach });
       return { rolloutId: id, outcome: "paused", started: 0, wave };
     }
   }
@@ -128,15 +148,31 @@ export async function advanceRollout(
   const inWave = unfinished.filter((op) => waveOf(op) === wave);
   const running = inWave.filter((op) => op.status === "running").length;
   const slots = Math.max(0, config.max_concurrent - running);
+  const { tenantOperations, tenantOperationEvents } = storesOf(deps);
+  const recorder = createOperationRecorder({
+    tenantOperations,
+    tenantOperationEvents,
+  });
   let started = 0;
   for (const operation of inWave
     .filter((op) => op.status === "pending")
     .slice(0, slots)) {
+    // Reserve it first: an executor that returns before the operation runs
+    // (Workflows) would otherwise leave it `pending` for the next tick to pick
+    // up again, and it would not count against `max_concurrent`.
     try {
+      await recorder.markRunning(operation.id);
       await deps.executor.start(operation);
-    } catch {
-      // The failure is on the operation row (failed, with its error); the
-      // wave gate judges it once the wave is finished.
+    } catch (error) {
+      // The wave gate judges the failure once the wave is finished.
+      try {
+        const current = await tenantOperations.get(operation.id);
+        if (current && !isTerminalStatus(current.status)) {
+          await recorder.markFailed(operation.id, error);
+        }
+      } catch {
+        // The store is broken; the next tick sees whatever state it left.
+      }
     }
     started++;
   }

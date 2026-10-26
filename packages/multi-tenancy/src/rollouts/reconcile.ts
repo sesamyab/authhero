@@ -7,6 +7,7 @@ import {
   listRolloutOperations,
   planRollout,
   rolloutsOf,
+  storesOf,
 } from "./plan";
 import type { RolloutDeps } from "./types";
 import { isTerminalStatus } from "../operations";
@@ -16,6 +17,12 @@ export interface ReconcileConfigDriftOptions {
   rootTenantId?: string;
   /** Most tenants to report and roll out in one call. @default 500 */
   limit?: number;
+  /**
+   * A tenant whose latest sync failed less than this long ago is reported but
+   * not rolled out again, so a tenant that keeps failing does not get a new
+   * rollout on every run. @default 3600000 (one hour)
+   */
+  retryAfterMs?: number;
   logger?: Pick<Console, "warn">;
 }
 
@@ -26,6 +33,8 @@ export interface ReconcileConfigDriftResult {
   drifted: number;
   /** Drifted tenants a running rollout already covers. */
   alreadyCovered: number;
+  /** Drifted tenants left out because their latest sync failed recently. */
+  recentlyFailed: number;
   /** The rollout created for the rest, if any. */
   rolloutId?: string;
 }
@@ -82,6 +91,7 @@ export async function reconcileConfigDrift(
     checked: candidates.length,
     drifted: drifted.length,
     alreadyCovered: 0,
+    recentlyFailed: 0,
   };
   if (drifted.length === 0) return result;
 
@@ -125,8 +135,44 @@ export async function reconcileConfigDrift(
     }
   }
 
-  const uncovered = drifted.filter((d) => !covered.has(d.tenantId));
-  result.alreadyCovered = drifted.length - uncovered.length;
+  const openDrift = drifted.filter((d) => !covered.has(d.tenantId));
+  result.alreadyCovered = drifted.length - openDrift.length;
+
+  const { tenantOperations } = storesOf(deps);
+  const now = deps.now?.() ?? Date.now();
+  const retryAfterMs = options.retryAfterMs ?? 3_600_000;
+  const uncovered: typeof drifted = [];
+  for (const entry of openDrift) {
+    try {
+      const { operations } = await tenantOperations.list({
+        tenant_id: entry.tenantId,
+        kind: "sync-defaults",
+        per_page: 5,
+      });
+      const latest = operations.sort((a, b) =>
+        a.created_at === b.created_at
+          ? a.id < b.id
+            ? 1
+            : -1
+          : a.created_at < b.created_at
+            ? 1
+            : -1,
+      )[0];
+      if (
+        latest?.status === "failed" &&
+        now - Date.parse(latest.updated_at) < retryAfterMs
+      ) {
+        result.recentlyFailed++;
+        continue;
+      }
+    } catch (error) {
+      options.logger?.warn(
+        `Could not read the latest sync of ${entry.tenantId}:`,
+        error,
+      );
+    }
+    uncovered.push(entry);
+  }
   if (uncovered.length === 0) return result;
 
   const rollout = await rollouts.create({
