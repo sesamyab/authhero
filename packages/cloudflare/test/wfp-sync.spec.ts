@@ -1097,6 +1097,29 @@ describe("sync-defaults operation transport (createDispatchSyncConfig → /inter
     expect(second.status).toBe("up-to-date");
   });
 
+  it("removes a copy the control plane stopped sharing only when asked to prune", async () => {
+    const sync = syncFor(dispatcherToTenant());
+    await sync("acme", { dryRun: false, force: false });
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(1);
+
+    const [shared] = (await cp.actions.list(CP)).actions;
+    await cp.actions.remove(CP, shared!.id);
+
+    const preview = await sync("acme", { dryRun: true, force: false });
+    expect(preview.changes).toContain("delete action:enrich");
+
+    await sync("acme", { dryRun: false, force: true });
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(1);
+
+    const pruned = await sync("acme", {
+      dryRun: false,
+      force: false,
+      prune: true,
+    });
+    expect(pruned.entities.action.deleted).toBe(1);
+    expect((await tenant.actions.list("acme")).actions).toHaveLength(0);
+  });
+
   it("writes only the block: no signing key is minted and no defaults are projected", async () => {
     await syncFor(dispatcherToTenant())("acme", {
       dryRun: false,

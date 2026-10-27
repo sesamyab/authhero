@@ -22,6 +22,8 @@ export interface SyncConfigOptions {
   dryRun: boolean;
   /** Apply even when the tenant's stored hash equals the block's. */
   force: boolean;
+  /** Remove synced copies the parent no longer shares. */
+  prune?: boolean;
 }
 
 /** Syncs one tenant and returns what happened (or, for a dry run, what would). */
@@ -35,7 +37,11 @@ export function syncOptionsOf(
   operation: Pick<TenantOperation, "input">,
 ): SyncConfigOptions {
   const input = (operation.input ?? {}) as Record<string, unknown>;
-  return { dryRun: input.dry_run === true, force: input.force === true };
+  return {
+    dryRun: input.dry_run === true,
+    force: input.force === true,
+    prune: input.prune === true,
+  };
 }
 
 /** Every per-entity error message the sync reported. */
@@ -54,6 +60,7 @@ export function summarizeSyncResult(
 ): Record<string, unknown> {
   return {
     dry_run: options.dryRun,
+    prune: options.prune,
     status: result.status,
     hash: result.hash,
     changes: result.changes,
@@ -141,6 +148,7 @@ export function createInProcessSyncConfig(
     return applyResolvedConfigBlock(block, adapters, tenantId, {
       dryRun: options.dryRun,
       force: options.force,
+      prune: options.prune,
     });
   };
 }

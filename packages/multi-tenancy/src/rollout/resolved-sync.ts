@@ -16,12 +16,13 @@ import {
   emailProviderSchema,
   hookCodeInsertSchema,
   hookInsertSchema,
+  isSyncedRowId,
   resourceServerInsertSchema,
 } from "authhero";
 import { resolveTenantChain } from "../inheritance/chain";
 import { mergeConfig } from "../inheritance/merge";
 import { readConfigRows } from "../inheritance/read";
-import { emptyConfigRows } from "../inheritance/types";
+import { ConfigRows, emptyConfigRows } from "../inheritance/types";
 
 /**
  * Sync of a tenant's resolved config (docs/design/tenant-config-inheritance.md,
@@ -232,6 +233,12 @@ export interface ApplyResolvedBlockOptions {
   dryRun?: boolean;
   /** Execute the block's explicit `deletes`. @default false */
   deletes?: boolean;
+  /**
+   * Remove synced copies (`sy` ids) the block no longer carries, e.g. a row the
+   * parent stopped sharing. The tenant's own rows are never touched. A dry run
+   * lists them as `delete ...` whether or not this is set. @default false
+   */
+  prune?: boolean;
   /** Apply even when the stored hash equals the block hash. */
   force?: boolean;
   /**
@@ -280,6 +287,13 @@ export async function applyResolvedConfigBlock(
 ): Promise<ApplyResolvedBlockResult> {
   const { dryRun = false, continueOnError = true } = options;
 
+  // Before any read or write: every synced copy would look stale.
+  if (options.prune && block.chain.length === 0) {
+    throw new Error(
+      `Cannot prune '${tenantId}': the block resolved no ancestors, so every synced copy would look stale. Nothing was written.`,
+    );
+  }
+
   const result: ApplyResolvedBlockResult = {
     status: dryRun ? "dry-run" : "applied",
     hash: block.hash,
@@ -300,10 +314,12 @@ export async function applyResolvedConfigBlock(
   // Pending deletes still need to run when the hash matches: the hash covers
   // them, but an earlier apply may have skipped them (deletes are opt-in).
   const deletesPending = !!options.deletes && block.deletes.length > 0;
+  // A prune has to look at the tenant's rows, which the hash says nothing about.
   if (
     !dryRun &&
     !options.force &&
     !deletesPending &&
+    !options.prune &&
     tenant?.config_sync_hash === block.hash
   ) {
     return { ...result, status: "up-to-date" };
@@ -319,6 +335,15 @@ export async function applyResolvedConfigBlock(
       );
     }
   }
+
+  // The tenant's rows as they are before this apply. Hook code has no list and
+  // is found through the hooks that reference it, so read it before the hooks
+  // are rewritten to point at their new code: a replaced copy is then still
+  // reachable.
+  const before =
+    (dryRun || options.prune) && block.chain.length > 0
+      ? await readConfigRows(target, tenantId)
+      : null;
 
   const attempt = async (
     entity: keyof ApplyResolvedBlockResult["entities"],
@@ -512,9 +537,39 @@ export async function applyResolvedConfigBlock(
     }
   }
 
-  const failed = Object.values(result.entities).some(
-    (o) => o.errors.length > 0,
-  );
+  const hasErrors = () =>
+    Object.values(result.entities).some((o) => o.errors.length > 0);
+
+  // Stale copies go last, and only after every upsert succeeded: a half-applied
+  // block must not also lose rows.
+  if (before && !hasErrors()) {
+    const desired = new Set<string>();
+    for (const entity of SYNC_ENTITIES) {
+      for (const row of rowsOf(block, entity)) {
+        desired.add(
+          entity === "hookCode" || entity === "action"
+            ? codeIds.get((row as { id: string }).id)!
+            : await id(entity, keyOf(entity, row)),
+        );
+      }
+    }
+    for (const stale of findStaleSyncedRows(before, desired)) {
+      const label = `${stale.entity}:${stale.label}`;
+      try {
+        result.changes.push(`delete ${label}`);
+        if (options.prune && !dryRun) {
+          await removeRow(target, tenantId, stale.entity, stale.id);
+          result.entities[stale.entity].deleted += 1;
+        }
+      } catch (error) {
+        result.entities[stale.entity].errors.push(
+          `delete ${label}: ${error instanceof Error ? error.message : error}`,
+        );
+      }
+    }
+  }
+
+  const failed = hasErrors();
   if (!dryRun && !failed && tenant) {
     await target.tenants.update(tenantId, {
       config_sync_hash: block.hash,
@@ -523,6 +578,71 @@ export async function applyResolvedConfigBlock(
   }
 
   return result;
+}
+
+function rowsOf(block: ResolvedConfigBlock, entity: SyncEntity): unknown[] {
+  switch (entity) {
+    case "connection":
+      return block.connections;
+    case "resourceServer":
+      return block.resourceServers;
+    case "hookCode":
+      return block.hookCode;
+    case "action":
+      return block.actions;
+    case "hook":
+      return block.hooks;
+  }
+}
+
+interface StaleRow {
+  entity: SyncEntity;
+  id: string;
+  label: string;
+}
+
+/**
+ * Synced copies (`sy` ids) the tenant holds that are not in `desired`, in the
+ * order they can be removed: hooks before the code they point at, and rows
+ * before nothing else depends on them. `rows` is the tenant's snapshot from
+ * before the apply, so code a hook referenced until this apply is still listed.
+ */
+function findStaleSyncedRows(
+  rows: ConfigRows,
+  desired: Set<string>,
+): StaleRow[] {
+  const stale = (id: string | undefined) =>
+    !!id && isSyncedRowId(id) && !desired.has(id);
+
+  return [
+    ...rows.hooks
+      .filter((r) => stale(r.hook_id))
+      .map((r) => ({
+        entity: "hook" as const,
+        id: r.hook_id!,
+        label: r.hook_id!,
+      })),
+    ...rows.actions
+      .filter((r) => stale(r.id))
+      .map((r) => ({ entity: "action" as const, id: r.id, label: r.name })),
+    ...rows.hookCode
+      .filter((r) => stale(r.id))
+      .map((r) => ({ entity: "hookCode" as const, id: r.id, label: r.id })),
+    ...rows.connections
+      .filter((r) => stale(r.id))
+      .map((r) => ({
+        entity: "connection" as const,
+        id: r.id!,
+        label: `${r.strategy}:${r.name}`,
+      })),
+    ...rows.resourceServers
+      .filter((r) => stale(r.id))
+      .map((r) => ({
+        entity: "resourceServer" as const,
+        id: r.id!,
+        label: r.identifier,
+      })),
+  ];
 }
 
 async function rowExists(
