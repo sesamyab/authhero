@@ -148,6 +148,12 @@ form {
   order: var(--ah-fields-order, 0);
 }
 
+/* Secondary-actions partials on a screen without social buttons: always below
+   the fields and footer, whatever the social layout is. */
+.secondary-actions {
+  order: 3;
+}
+
 .prompt-partial .ulp-field {
   display: flex;
   flex-direction: column;

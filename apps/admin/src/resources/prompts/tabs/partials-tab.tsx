@@ -430,11 +430,14 @@ function FieldRow({
 const POINT_DESCRIPTIONS: Record<PartialInsertionPoint, string> = {
   "form-content-start": "Top of the form, before the built-in fields",
   "form-content-end": "After the built-in fields, before the submit button",
-  "form-footer-start": "Just above the submit button",
-  "form-footer-end": "Just below the submit button",
-  "secondary-actions-start": "Above the link at the bottom (e.g. Sign in)",
-  "secondary-actions-end": "Below the link at the bottom (e.g. Sign in)",
+  "form-footer-start": "Just below the submit button, above the links",
+  "form-footer-end": "Below the links at the bottom (e.g. Sign up)",
+  "secondary-actions-start": "Above the social login buttons",
+  "secondary-actions-end": "Below the social login buttons",
 };
+
+const zonePlaceholder = (point: string) =>
+  `<div style="border:1px dashed #9ca3af;border-radius:6px;color:#6b7280;font:12px ui-monospace,monospace;margin:6px 0;padding:6px 8px;text-align:center">${point}</div>`;
 
 const hasContent = (html?: string) => !!html && html.trim().length > 0;
 
@@ -984,8 +987,13 @@ export function PartialsTab() {
       : prompt === "login-password"
         ? screenConfigs.password
         : screenConfigs.login;
+    // Empty zones get a labelled placeholder so the preview shows where each
+    // insertion point sits. Preview only: never saved.
     const partials = Object.fromEntries(
-      Object.entries(html).filter(([, v]) => v && v.trim()),
+      PARTIAL_INSERTION_POINTS.map((point) => [
+        point,
+        html[point]?.trim() ? html[point] : zonePlaceholder(point),
+      ]),
     );
     return { ...base, partials };
   }, [prompt, html]);

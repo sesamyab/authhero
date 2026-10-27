@@ -2104,15 +2104,28 @@ export class AuthheroWidget {
     const hasPromptPartials = Object.values(screen.partials ?? {}).some(
       (html) => !!html,
     );
-    const footerComponents = hasPromptPartials
-      ? fieldComponents.filter(
+    // With partials the screen is split into zones, matching Auth0:
+    //   form-content-*      around the fields
+    //   form-footer-*       the submit button, then form-footer-start, then the
+    //                       bottom links (components ordered after the submit
+    //                       button, e.g. sign-up, plus the screen links), then
+    //                       form-footer-end
+    //   secondary-actions-* around the social/enterprise buttons
+    const submitIndex = hasPromptPartials
+      ? fieldComponents.findIndex(
           (component) =>
             component.id === "submit" && component.type === "NEXT_BUTTON",
         )
-      : [];
+      : -1;
+    const footerComponents =
+      submitIndex >= 0 ? [fieldComponents[submitIndex]] : [];
+    const secondaryComponents =
+      submitIndex >= 0 ? fieldComponents.slice(submitIndex + 1) : [];
     const contentFieldComponents = hasPromptPartials
       ? fieldComponents.filter(
-          (component) => !footerComponents.includes(component),
+          (component) =>
+            !footerComponents.includes(component) &&
+            !secondaryComponents.includes(component),
         )
       : fieldComponents;
     const hasDivider = !!dividerComponent;
@@ -2173,6 +2186,58 @@ export class AuthheroWidget {
 
     // Get logo URL from theme.widget (takes precedence) or branding
     const logoUrl = this._theme?.widget?.logo_url || this._branding?.logo_url;
+
+    // Social buttons, their divider and the secondary-actions partials. Their
+    // visual order is set by CSS from the theme's social_buttons_layout, so the
+    // DOM order has to follow it for tab order and screen readers: with
+    // partials and the default (bottom) layout they come after the fields and
+    // footer, with the "top" layout before them. A screen without partials
+    // keeps its existing markup.
+    const hasSecondaryPartials = !!(
+      screen.partials?.["secondary-actions-start"] ||
+      screen.partials?.["secondary-actions-end"]
+    );
+    const socialOnTop = this._theme?.widget?.social_buttons_layout === "top";
+    const secondaryAfterFields =
+      hasPromptPartials && (!socialOnTop || socialComponents.length === 0);
+    const socialSectionClass =
+      socialComponents.length > 0 ? "social-section" : "secondary-actions";
+    const socialEl =
+      socialComponents.length > 0 || hasSecondaryPartials ? (
+        <div key="social" class={socialSectionClass} part={socialSectionClass}>
+          {this.renderPromptPartial(screen, "secondary-actions-start")}
+          {socialComponents.map((component) => (
+            <authhero-node
+              key={component.id}
+              component={component}
+              locale={this.locale}
+              value={this.formData[component.id]}
+              onFieldChange={(e: CustomEvent<{ id: string; value: string }>) =>
+                this.handleInputChange(e.detail.id, e.detail.value)
+              }
+              onButtonClick={(
+                e: CustomEvent<{
+                  id: string;
+                  type: string;
+                  value?: string;
+                }>,
+              ) => this.handleButtonClick(e.detail)}
+              disabled={this.loading}
+              exportparts={getExportParts(component)}
+            />
+          ))}
+          {this.renderPromptPartial(screen, "secondary-actions-end")}
+        </div>
+      ) : null;
+    // Divider between social and form fields.
+    const dividerEl =
+      socialComponents.length > 0 &&
+      fieldComponents.length > 0 &&
+      hasDivider ? (
+        <div key="divider" class="divider" part="divider">
+          <span class="divider-text">{dividerText}</span>
+        </div>
+      ) : null;
 
     return (
       <div class="widget-container" part="container" data-authstack-container>
@@ -2238,40 +2303,8 @@ export class AuthheroWidget {
               />
             ))}
             <div class="form-content">
-              {/* Social buttons section - order controlled by CSS */}
-              {socialComponents.length > 0 && (
-                <div class="social-section" part="social-section">
-                  {socialComponents.map((component) => (
-                    <authhero-node
-                      key={component.id}
-                      component={component}
-                      locale={this.locale}
-                      value={this.formData[component.id]}
-                      onFieldChange={(
-                        e: CustomEvent<{ id: string; value: string }>,
-                      ) => this.handleInputChange(e.detail.id, e.detail.value)}
-                      onButtonClick={(
-                        e: CustomEvent<{
-                          id: string;
-                          type: string;
-                          value?: string;
-                        }>,
-                      ) => this.handleButtonClick(e.detail)}
-                      disabled={this.loading}
-                      exportparts={getExportParts(component)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Divider between social and form fields */}
-              {socialComponents.length > 0 &&
-                fieldComponents.length > 0 &&
-                hasDivider && (
-                  <div class="divider" part="divider">
-                    <span class="divider-text">{dividerText}</span>
-                  </div>
-                )}
+              {/* Social buttons and divider - order controlled by CSS */}
+              {!secondaryAfterFields && [socialEl, dividerEl]}
 
               {/* Form fields section - order controlled by CSS */}
               <div class="fields-section" part="fields-section">
@@ -2349,7 +2382,6 @@ export class AuthheroWidget {
 
               {hasPromptPartials && (
                 <div class="form-footer" part="form-footer">
-                  {this.renderPromptPartial(screen, "form-footer-start")}
                   {footerComponents.map((component) => (
                     <authhero-node
                       key={component.id}
@@ -2374,18 +2406,33 @@ export class AuthheroWidget {
                       }
                     />
                   ))}
+                  {this.renderPromptPartial(screen, "form-footer-start")}
+                  {secondaryComponents.map((component) => (
+                    <authhero-node
+                      key={component.id}
+                      component={component}
+                      locale={this.locale}
+                      value={this.formData[component.id]}
+                      onFieldChange={(
+                        e: CustomEvent<{ id: string; value: string }>,
+                      ) => this.handleInputChange(e.detail.id, e.detail.value)}
+                      onButtonClick={(
+                        e: CustomEvent<{
+                          id: string;
+                          type: string;
+                          value?: string;
+                        }>,
+                      ) => this.handleButtonClick(e.detail)}
+                      disabled={this.loading}
+                    />
+                  ))}
+                  {this.renderScreenLinks(screen)}
                   {this.renderPromptPartial(screen, "form-footer-end")}
                 </div>
               )}
-            </div>
 
-            {hasPromptPartials && (
-              <div class="secondary-actions" part="secondary-actions">
-                {this.renderPromptPartial(screen, "secondary-actions-start")}
-                {this.renderScreenLinks(screen)}
-                {this.renderPromptPartial(screen, "secondary-actions-end")}
-              </div>
-            )}
+              {secondaryAfterFields && [dividerEl, socialEl]}
+            </div>
           </form>
 
           {!hasPromptPartials && this.renderScreenLinks(screen)}
