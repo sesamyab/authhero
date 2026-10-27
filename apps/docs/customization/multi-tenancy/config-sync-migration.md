@@ -105,8 +105,19 @@ The pilot is migrated when: the sync ended `succeeded`, `drifted` is `false`, th
 
 ## Not supported yet
 
-- **Re-parenting.** Changing `parent_tenant_id` of a synced tenant changes the hash, and the next sync adds the new parent's rows and updates shared ones. Rows only the old parent published stay behind until you run a sync with `prune` (preview it first). Re-parenting is still unsupported as a procedure: nothing detaches the tenant cleanly.
-- **Detaching.** There is no operation that turns the synced rows into the tenant's own. After the parent is removed the copies stay locked and, for platform rows, hidden. The intended behaviour is a snapshot (the tenant keeps what it has), but until a `detach` operation exists, the only way out is manual: recreate the rows you want to keep as ordinary rows and remove the copies from the database.
+- **Re-parenting.** Changing `parent_tenant_id` of a synced tenant changes the hash, and the next sync adds the new parent's rows and updates shared ones. Rows only the old parent published stay behind until you run a sync with `prune` (preview it first). To leave a parent for good, [detach](#detaching-a-tenant) the tenant instead.
+- **Detaching a tenant with its own database.** The `detach` operation works on tenants that share the control plane's database. A tenant with its own worker and database (`deployment_type: "wfp"`) has no transport for it yet.
 - **Automatic delete propagation.** A row removed or unshared on the parent is removed from a synced tenant by a sync with `prune` (_Remove unshared_ on the tenant's Operations page), never by a plain sync. A preview always lists what would go.
 
 These are tracked as follow-up issues of the [config inheritance epic](https://github.com/sesamyab/authhero/issues/1524).
+
+## Detaching a tenant
+
+A synced tenant leaves its parent with a `detach` [tenant operation](./tenant-operations.md) (_Detach_ on the tenant's Operations page). Run _Preview detach_ first: it lists every row as `convert`, `remove` or `skip` and writes nothing.
+
+- **Keep (the default).** The copies a sync delivered become the tenant's own rows: the content is kept, the ids are normal, and `scope`, `override` and `enforce` are dropped, so nothing locks them. Hooks run the converted code, and the tenant's clients and organizations that used a copied connection use the new row.
+- **Clean (`clean: true`).** The copies are removed instead, platform rows included, and the clients' connection lists are cleaned up. The tenant keeps only its own rows.
+- **Platform rows** (`scope: "platform"`) run for the tenant but are hidden from its admins. Converting them would expose their code and secrets, so a plain detach keeps them as copies and reports `skip ... (platform: stays a copy)`. Only `clean` removes them.
+- **The tenant** gets `config_sync: "detached"`, no parent and no sync state. It no longer inherits, and `sync-defaults`, rollouts and the drift check leave it alone. To attach it again, set `config_sync` and `parent_tenant_id` back and run a sync.
+
+Rows are created before the copies they replace are removed, but the operation is not atomic: if it fails part-way the tenant is not marked detached, and a retry can leave a duplicate of a row that was already converted, so review the list afterwards. SCIM configurations that point at a copied connection are not moved. Connection order on a client's login page is not kept for converted connections.
