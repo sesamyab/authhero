@@ -453,13 +453,13 @@ export async function applyResolvedConfigBlock(
     }
   };
 
-  /** True (and reported) when creating `entity:key` would sit next to the tenant's own row. */
-  const collides = (
-    entity: keyof typeof ownKeys,
-    key: string,
-    existing: unknown,
-  ) => {
-    if (existing || !ownKeys[entity].has(key)) return false;
+  /**
+   * True (and reported) when the tenant owns a row with this key. The tenant's
+   * row wins even if a synced copy already sits next to it: the copy is left
+   * as it is, and a prune removes it.
+   */
+  const collides = (entity: keyof typeof ownKeys, key: string) => {
+    if (!ownKeys[entity].has(key)) return false;
     result.changes.push(`skip ${entity}:${key} (the tenant has its own)`);
     return true;
   };
@@ -469,16 +469,24 @@ export async function applyResolvedConfigBlock(
     const key = keyOf("connection", row);
     const rowId = await id("connection", key);
     await attempt("connection", key, async () => {
+      if (collides("connection", key)) return "unchanged";
       const { enabled_clients: _e, ...rest } = row;
       const desired = connectionInsertSchema.parse({ ...rest, id: rowId });
       const existing = await target.connections.get(tenantId, rowId);
-      if (collides("connection", key, existing)) return "unchanged";
       return upsert({
         existing: existing ? connectionInsertSchema.parse(existing) : null,
         desired,
         create: async () => {
           await target.connections.create(tenantId, desired);
-          await enableForClients(rowId);
+          try {
+            await enableForClients(rowId);
+          } catch (error) {
+            // Enabling happens only when the copy is created, so a copy left
+            // behind would never be enabled by a retry. Remove it and let the
+            // next sync create it again.
+            await target.connections.remove(tenantId, rowId).catch(() => {});
+            throw error;
+          }
         },
         update: () => target.connections.update(tenantId, rowId, desired),
         view: (r) => r,
@@ -490,9 +498,9 @@ export async function applyResolvedConfigBlock(
     const key = keyOf("resourceServer", row);
     const rowId = await id("resourceServer", key);
     await attempt("resourceServer", key, async () => {
+      if (collides("resourceServer", key)) return "unchanged";
       const desired = resourceServerInsertSchema.parse({ ...row, id: rowId });
       const existing = await target.resourceServers.get(tenantId, rowId);
-      if (collides("resourceServer", key, existing)) return "unchanged";
       return upsert({
         existing: existing ? resourceServerInsertSchema.parse(existing) : null,
         desired,
@@ -526,9 +534,9 @@ export async function applyResolvedConfigBlock(
     const key = keyOf("action", row);
     const rowId = codeIds.get(row.id)!;
     await attempt("action", key, async () => {
+      if (collides("action", key)) return "unchanged";
       const desired = actionInsertSchema.parse(row);
       const found = await target.actions.get(tenantId, rowId);
-      if (collides("action", key, found)) return "unchanged";
       return upsert({
         existing: found ? actionInsertSchema.parse(found) : null,
         desired,
@@ -571,9 +579,22 @@ export async function applyResolvedConfigBlock(
   // Otherwise it is kept and later parent edits do not reach the tenant.
   const locked = (row: { override?: string; enforce?: boolean }) =>
     row.override === "none" || row.enforce === true;
-  const sameAs = (existing: unknown, desired: unknown) =>
-    fingerprint({ ...(existing as object), ...(desired as object) }) ===
-    fingerprint(existing);
+  // Compared both ways through the schema, so a field the parent dropped counts
+  // as a change.
+  const sameAs = (
+    schema: { parse: (value: unknown) => unknown },
+    existing: unknown,
+    desired: unknown,
+  ) => fingerprint(schema.parse(existing)) === fingerprint(desired);
+  // The adapters update only the fields they are given, so a field the parent
+  // dropped is cleared by sending it as null.
+  const clearAbsent = <T extends object>(existing: T, desired: T): T => {
+    const next: Record<string, unknown> = { ...(desired as object) };
+    for (const [key, value] of Object.entries(existing)) {
+      if (value != null && next[key] === undefined) next[key] = null;
+    }
+    return next as T;
+  };
 
   if (block.emailProvider) {
     await attempt("emailProvider", "singleton", async () => {
@@ -583,8 +604,16 @@ export async function applyResolvedConfigBlock(
         if (!dryRun) await target.emailProviders.create(tenantId, desired);
         return "added";
       }
-      if (!locked(desired) || sameAs(existing, desired)) return "unchanged";
-      if (!dryRun) await target.emailProviders.update(tenantId, desired);
+      if (!locked(desired) || sameAs(emailProviderSchema, existing, desired)) {
+        return "unchanged";
+      }
+      if (!dryRun) {
+        const current = emailProviderSchema.parse(existing);
+        await target.emailProviders.update(
+          tenantId,
+          clearAbsent(current, desired),
+        );
+      }
       return "changed";
     });
   }
@@ -596,8 +625,17 @@ export async function applyResolvedConfigBlock(
         if (!dryRun) await target.branding.set(tenantId, desired);
         return "added";
       }
-      if (!locked(desired) || sameAs(existing, desired)) return "unchanged";
-      if (!dryRun) await target.branding.set(tenantId, desired);
+      if (!locked(desired) || sameAs(brandingSchema, existing, desired)) {
+        return "unchanged";
+      }
+      if (!dryRun) {
+        const current = brandingSchema.parse(existing);
+        const next = clearAbsent(current, desired) as Record<string, unknown>;
+        // Colors and font are stored flattened, so clear their fields.
+        if (current.colors && !desired.colors) next.colors = { primary: null };
+        if (current.font && !desired.font) next.font = { url: null };
+        await target.branding.set(tenantId, next as Branding);
+      }
       return "changed";
     });
   }
@@ -607,7 +645,7 @@ export async function applyResolvedConfigBlock(
     await attempt("promptSettings", "singleton", async () => {
       const desired = promptSettingSchema.parse(block.promptSettings);
       const existing = await target.promptSettings.get(tenantId);
-      if (sameAs(existing, desired)) return "unchanged";
+      if (sameAs(promptSettingSchema, existing, desired)) return "unchanged";
       if (!dryRun) await target.promptSettings.set(tenantId, desired);
       return "changed";
     });
@@ -641,6 +679,15 @@ export async function applyResolvedConfigBlock(
     const desired = new Set<string>();
     for (const entity of SYNC_ENTITIES) {
       for (const row of rowsOf(block, entity)) {
+        // A row the tenant owns replaces the copy, which is then stale.
+        if (
+          (entity === "connection" ||
+            entity === "resourceServer" ||
+            entity === "action") &&
+          ownKeys[entity].has(keyOf(entity, row))
+        ) {
+          continue;
+        }
         desired.add(
           entity === "hookCode" || entity === "action"
             ? codeIds.get((row as { id: string }).id)!

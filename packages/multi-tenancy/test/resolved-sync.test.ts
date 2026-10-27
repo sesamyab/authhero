@@ -547,6 +547,110 @@ describe("resolved config sync", () => {
       expect(again.entities.emailProvider.changed).toBe(0);
     });
 
+    it("clears a field the locking parent dropped", async () => {
+      await raw.branding.set(CP, {
+        logo_url: "https://cp.example.com/logo.png",
+        colors: { primary: "#112233" },
+        scope: "shared",
+        override: "none",
+      } as any);
+      await applyResolvedConfigBlock(await block(), raw, CHILD);
+      expect((await raw.branding.get(CHILD))?.logo_url).toBe(
+        "https://cp.example.com/logo.png",
+      );
+
+      await raw.branding.set(CP, {
+        logo_url: null,
+        colors: { primary: "#112233" },
+      } as any);
+      const result = await applyResolvedConfigBlock(await block(), raw, CHILD);
+
+      expect(result.entities.branding.changed).toBe(1);
+      expect((await raw.branding.get(CHILD))?.logo_url).toBeFalsy();
+    });
+
+    it("lets the tenant's own row win over an existing synced copy, and prunes the copy", async () => {
+      await raw.actions.create(CP, {
+        name: "enrich",
+        code: CODE,
+        scope: "shared",
+      });
+      await applyResolvedConfigBlock(await block(), raw, CHILD);
+      expect((await raw.actions.list(CHILD)).actions).toHaveLength(1);
+      await raw.actions.create(CHILD, { name: "enrich", code: "// mine" });
+
+      const preview = await applyResolvedConfigBlock(
+        await block(),
+        raw,
+        CHILD,
+        {
+          dryRun: true,
+        },
+      );
+      expect(preview.changes).toEqual(
+        expect.arrayContaining([
+          "skip action:enrich (the tenant has its own)",
+          "delete action:enrich",
+        ]),
+      );
+
+      await applyResolvedConfigBlock(await block(), raw, CHILD, {
+        prune: true,
+      });
+      const actions = (await raw.actions.list(CHILD)).actions;
+      expect(actions).toHaveLength(1);
+      expect(actions[0]!.code).toBe("// mine");
+    });
+
+    it("removes a new synced connection again when enabling it fails, so a retry enables it", async () => {
+      await raw.connections.create(CP, {
+        name: "google",
+        strategy: "google-oauth2",
+        options: { client_id: "cp" },
+        scope: "shared",
+      } as any);
+      const own = await raw.connections.create(CHILD, {
+        name: "email",
+        strategy: "email",
+        options: {},
+      });
+      await raw.clients.create(CHILD, {
+        client_id: "listed",
+        client_secret: "s",
+        name: "listed",
+      });
+      await raw.clientConnections.updateByClient(CHILD, "listed", [own.id!]);
+
+      const failing = {
+        ...raw,
+        clientConnections: {
+          ...raw.clientConnections,
+          addClientToConnection: async () => {
+            throw new Error("boom");
+          },
+        },
+      } as typeof raw;
+      const first = await applyResolvedConfigBlock(
+        await block(),
+        failing,
+        CHILD,
+      );
+      expect(first.entities.connection.errors).toHaveLength(1);
+      expect((await raw.connections.list(CHILD)).connections).toHaveLength(1);
+
+      await applyResolvedConfigBlock(await block(), raw, CHILD);
+      const copy = await syncedRowId(
+        "connection",
+        CHILD,
+        "google-oauth2:google",
+      );
+      expect(
+        (await raw.clientConnections.listByClient(CHILD, "listed")).map(
+          (c) => c.id,
+        ),
+      ).toContain(copy);
+    });
+
     it("applies locked prompt settings and leaves open ones alone", async () => {
       await raw.promptSettings.set(CP, {
         identifier_first: false,
