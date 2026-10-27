@@ -42,6 +42,10 @@ const codeHookAllowedTriggers = z.enum([
   "credentials-exchange",
   "pre-user-registration",
   "post-user-registration",
+  "pre-user-update",
+  "post-user-update",
+  "pre-user-deletion",
+  "post-user-deletion",
 ]);
 
 // Page hooks render a built-in universal-login interstitial (e.g. the

@@ -119,3 +119,41 @@ describe("u2 account screens i18n", () => {
     expect(body).toContain('Type "DELETE" to confirm');
   });
 });
+
+it("keeps the account and session when a pre-deletion Action denies self-service deletion", async () => {
+  const { LocalCodeExecutor } =
+    await import("../../../src/hooks/code-executor/local");
+  const { u2App, env } = await getTestServer({
+    codeExecutor: new LocalCodeExecutor(),
+  });
+  const state = await seedAccountSession(env);
+  const action = await env.data.actions.create("tenantId", {
+    name: "protect-account",
+    code: 'exports.onExecutePreUserDeletion = async (event, api) => api.access.deny("Protected account");',
+  });
+  await env.data.hooks.create("tenantId", {
+    trigger_id: "pre-user-deletion",
+    enabled: true,
+    code_id: action.id,
+  });
+  const response = await u2App.request(
+    `/account/delete?state=${encodeURIComponent(state)}`,
+    {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: "confirmation=DELETE",
+    },
+    env,
+  );
+  expect(await response.text()).toContain("Failed to delete");
+  expect(
+    await env.data.users.get("tenantId", "email|account-i18n"),
+  ).not.toBeNull();
+  expect(
+    (await env.data.sessions.get("tenantId", "account-i18n-session"))
+      ?.revoked_at,
+  ).toBeFalsy();
+});

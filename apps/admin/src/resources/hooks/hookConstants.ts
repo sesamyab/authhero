@@ -62,6 +62,7 @@ export const triggerChoices = [
   { id: "post-user-login", name: "Post User Login" },
   { id: "credentials-exchange", name: "Credentials Exchange" },
   { id: "pre-user-update", name: "Pre User Update" },
+  { id: "post-user-update", name: "Post User Update" },
   { id: "pre-user-deletion", name: "Pre User Deletion" },
   { id: "post-user-deletion", name: "Post User Deletion" },
 ];
@@ -121,6 +122,10 @@ export const codeHookTriggerChoices = triggerChoices.filter((c) =>
     "credentials-exchange",
     "pre-user-registration",
     "post-user-registration",
+    "pre-user-update",
+    "post-user-update",
+    "pre-user-deletion",
+    "post-user-deletion",
   ].includes(c.id),
 );
 
@@ -139,6 +144,10 @@ export const triggerHandlerNames: Record<string, string> = {
   "credentials-exchange": "onExecuteCredentialsExchange",
   "pre-user-registration": "onExecutePreUserRegistration",
   "post-user-registration": "onExecutePostUserRegistration",
+  "pre-user-update": "onExecutePreUserUpdate",
+  "post-user-update": "onExecutePostUserUpdate",
+  "pre-user-deletion": "onExecutePreUserDeletion",
+  "post-user-deletion": "onExecutePostUserDeletion",
   "custom-token-exchange": "onExecuteCustomTokenExchange",
 };
 
@@ -198,6 +207,20 @@ async function verifySubjectToken(event) {
 
 /** Returns the default code template for the given trigger ID. */
 export function getDefaultCodeTemplate(triggerId?: string): string {
+  if (triggerId === "pre-user-update" || triggerId === "pre-user-deletion") {
+    return `exports.${triggerHandlerNames[triggerId]} = async (event, api) => {
+  // Inspect event.user${triggerId === "pre-user-update" ? " and event.updates" : ""} before the write.
+  // Call api.access.deny("Reason") to cancel the operation.
+};
+`;
+  }
+  if (triggerId === "post-user-update" || triggerId === "post-user-deletion") {
+    return `exports.${triggerHandlerNames[triggerId]} = async (event, api) => {
+  // The write has committed. Use event.idempotency_key to deduplicate retries.
+  // Add your downstream integration here.
+};
+`;
+  }
   if (triggerId === "custom-token-exchange") {
     return CUSTOM_TOKEN_EXCHANGE_TEMPLATE;
   }

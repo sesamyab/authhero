@@ -17,6 +17,7 @@ import { generateHookId } from "../../utils/entity-id";
 
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
+import { isSyncedRowId } from "../../helpers/synced-rows";
 // Map Auth0 trigger IDs to internal trigger IDs
 const TRIGGER_ID_MAP: Record<string, string> = {
   "post-login": "post-user-login",
@@ -55,6 +56,10 @@ const CODE_HOOK_TRIGGER_IDS = [
   "credentials-exchange",
   "pre-user-registration",
   "post-user-registration",
+  "pre-user-update",
+  "post-user-update",
+  "pre-user-deletion",
+  "post-user-deletion",
 ] as const satisfies readonly CodeHookTriggerId[];
 
 /**
@@ -213,6 +218,7 @@ const patchByTriggerIdBindings = defineRoute({
         },
         description: "Updated trigger bindings",
       },
+      403: { description: "Trigger contains enforced inherited bindings" },
     },
   }),
   handler: async (ctx) => {
@@ -281,11 +287,25 @@ const patchByTriggerIdBindings = defineRoute({
       resolved.push({ binding, actionId, action });
     }
 
-    // All bindings valid — safe to swap out existing code hooks.
+    // Binding replacement removes hooks through adapters, so path-based
+    // management middleware cannot enforce the copied row's deletion lock.
     const existingHooks = await ctx.env.data.hooks.list(tenantId, {
       q: `trigger_id:${escapeLuceneValue(internalTriggerId)}`,
       per_page: 100,
     });
+    if (
+      existingHooks.hooks.some(
+        (hook) =>
+          "code_id" in hook &&
+          isSyncedRowId(hook.hook_id) &&
+          hook.enforce === true,
+      )
+    ) {
+      throw new HTTPException(403, {
+        message:
+          "This trigger contains enforced bindings synced from a parent tenant. Manage local hooks individually instead of replacing the trigger's bindings.",
+      });
+    }
 
     // Snapshot the bindings about to be dropped so the audit event can show
     // what the trigger was wired to before the swap. Kept to the same shape as

@@ -24,6 +24,8 @@ interface WebhookInvocation {
     trigger_id: string;
     user?: unknown;
     request?: unknown;
+    previous_user?: unknown;
+    updates?: unknown;
   };
 }
 
@@ -85,6 +87,12 @@ export class WebhookDestination implements EventDestination {
         trigger_id: triggerId,
         user: event.target?.after,
         request: event.request,
+        ...(event.target?.before !== undefined && {
+          previous_user: event.target.before,
+        }),
+        ...(event.details?.updates !== undefined && {
+          updates: event.details.updates,
+        }),
       },
     };
   }

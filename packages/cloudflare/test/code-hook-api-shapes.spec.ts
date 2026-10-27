@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { TRIGGER_API_SHAPES } from "@authhero/adapter-interfaces";
+import {
+  TRIGGER_API_SHAPES,
+  TRIGGER_FUNCTION_NAMES,
+} from "@authhero/adapter-interfaces";
 import { generateWorkerScript } from "../src/code-executor/worker-template";
 
 /**
@@ -20,5 +23,17 @@ describe("code-hook API shapes parity", () => {
     expect(TRIGGER_API_SHAPES["post-user-login"]?.user).toContain(
       "setLinkedTo",
     );
+  });
+
+  it("the production worker embeds lifecycle handlers and denial APIs", () => {
+    expect(generateWorkerScript("// user code")).toContain(
+      JSON.stringify(TRIGGER_FUNCTION_NAMES),
+    );
+    expect(TRIGGER_API_SHAPES["pre-user-update"]).toEqual({ access: ["deny"] });
+    expect(TRIGGER_API_SHAPES["pre-user-deletion"]).toEqual({
+      access: ["deny"],
+    });
+    expect(TRIGGER_API_SHAPES["post-user-update"]).toEqual({});
+    expect(TRIGGER_API_SHAPES["post-user-deletion"]).toEqual({});
   });
 });

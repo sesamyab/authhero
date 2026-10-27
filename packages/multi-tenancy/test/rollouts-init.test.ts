@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import createAdapters from "@authhero/kysely-adapter";
 import { encodeBase64Url } from "@authhero/adapter-interfaces";
-import { init } from "authhero";
+import { init, LocalCodeExecutor } from "authhero";
 import { initMultiTenant } from "../src/init";
 import {
   advanceRollout,
@@ -54,9 +54,11 @@ describe("initMultiTenant fleet rollouts", () => {
     method: string,
     path: string,
     body?: unknown,
+    tenantId?: string,
   ) => Promise<Response>;
   let adapters: ReturnType<typeof createAdapters>;
   let rollouts: RolloutDeps;
+  let actionCalls: Array<{ tenant: string; trigger: string }>;
 
   beforeEach(async () => {
     adapters = createAdapters(await createMigratedDb());
@@ -80,8 +82,19 @@ describe("initMultiTenant fleet rollouts", () => {
     const signingKey = await createX509Certificate({ name: "CN=test" });
     await adapters.keys.create({ ...signingKey, type: "jwt_signing" });
 
+    actionCalls = [];
+    const localExecutor = new LocalCodeExecutor();
     const result = initMultiTenant({
       dataAdapter: adapters,
+      codeExecutor: {
+        async execute(params) {
+          actionCalls.push({
+            tenant: (params.event.tenant as { id: string }).id,
+            trigger: params.triggerId,
+          });
+          return localExecutor.execute(params);
+        },
+      },
       controlPlane: {
         tenantId: CONTROL_PLANE,
         clientId: "control-plane-client",
@@ -90,30 +103,43 @@ describe("initMultiTenant fleet rollouts", () => {
     rollouts = result.rollouts!;
 
     const now = Math.floor(Date.now() / 1000);
-    const token = await signRs256(signingKey.pkcs7!, signingKey.kid, {
-      iss: ISSUER,
-      aud: MANAGEMENT_AUDIENCE,
-      sub: "admin",
-      tenant_id: CONTROL_PLANE,
-      permissions: [
-        "read:tenants",
-        "read:rollouts",
-        "create:rollouts",
-        "update:rollouts",
-        "read:tenant_operations",
-        "create:actions",
-        "update:actions",
-      ],
-      iat: now,
-      exp: now + 3600,
-    });
+    const signToken = (tenantId: string) =>
+      signRs256(signingKey.pkcs7!, signingKey.kid, {
+        iss: ISSUER,
+        aud: MANAGEMENT_AUDIENCE,
+        sub: "admin",
+        tenant_id: tenantId,
+        permissions: [
+          "read:tenants",
+          "read:rollouts",
+          "create:rollouts",
+          "update:rollouts",
+          "read:tenant_operations",
+          "create:actions",
+          "update:actions",
+          "read:actions",
+          "update:users",
+          "delete:users",
+        ],
+        iat: now,
+        exp: now + 3600,
+      });
     const env = {
       ISSUER,
       AUTH_URL: "https://auth.example.com",
       ENVIRONMENT: "test",
     };
-    request = (method, path, body) =>
-      app_request(result.app, method, path, token, env, body);
+    const token = await signToken(CONTROL_PLANE);
+    request = async (method, path, body, tenantId) =>
+      app_request(
+        result.app,
+        method,
+        path,
+        tenantId ? await signToken(tenantId) : token,
+        env,
+        body,
+        tenantId,
+      );
   });
 
   async function json(response: Response) {
@@ -317,6 +343,115 @@ describe("initMultiTenant fleet rollouts", () => {
     for (let i = 0; i < 4; i++) await advanceRollouts(rollouts);
     expect((await reconcileConfigDrift(rollouts)).drifted).toBe(0);
   });
+
+  it.each(["shared", "platform"] as const)(
+    "syncs %s lifecycle Actions and bindings into every tenant and executes them",
+    async (scope) => {
+      const policies = [
+        [
+          "pre-user-update",
+          "onExecutePreUserUpdate",
+          'if (event.updates.name === "Blocked") api.access.deny("Update protected");',
+        ],
+        [
+          "post-user-update",
+          "onExecutePostUserUpdate",
+          'console.log("updated", event.previous_user.name, event.user.name);',
+        ],
+        [
+          "pre-user-deletion",
+          "onExecutePreUserDeletion",
+          'if (event.user.name === "Protected") api.access.deny("Deletion protected");',
+        ],
+        [
+          "post-user-deletion",
+          "onExecutePostUserDeletion",
+          'console.log("deleted", event.user_id);',
+        ],
+      ] as const;
+      for (const [trigger, handler, body] of policies) {
+        const action = await adapters.actions.create(CONTROL_PLANE, {
+          name: trigger,
+          scope,
+          code: `exports.${handler} = async (event, api) => { ${body} };`,
+        });
+        await adapters.hooks.create(CONTROL_PLANE, {
+          trigger_id: trigger,
+          code_id: action.id,
+          enabled: true,
+          scope,
+        });
+      }
+      const response = await request("POST", "/api/v2/rollouts", {
+        canary: 0,
+        waves: [100],
+      });
+      expect(response.status).toBe(201);
+      for (let i = 0; i < 3; i++) await advanceRollouts(rollouts);
+
+      for (const tenantId of ["a", "b", "c"]) {
+        const hooks = (await adapters.hooks.list(tenantId)).hooks;
+        expect(hooks).toHaveLength(4);
+        for (const hook of hooks) {
+          expect("code_id" in hook).toBe(true);
+          const action = await adapters.actions.get(
+            tenantId,
+            (hook as { code_id: string }).code_id,
+          );
+          expect(action?.name).toBe(hook.trigger_id);
+        }
+        const user = await adapters.users.create(tenantId, {
+          user_id: "email|policy",
+          provider: "email",
+          connection: "email",
+          is_social: false,
+          name: "Protected",
+          email: "policy@example.com",
+          registration_completed_at: new Date().toISOString(),
+        });
+        const path = `/api/v2/users/${encodeURIComponent(user.user_id)}`;
+        expect(
+          (await request("PATCH", path, { name: "Blocked" }, tenantId)).status,
+        ).toBe(400);
+        expect(
+          (await request("DELETE", path, undefined, tenantId)).status,
+        ).toBe(400);
+        expect((await adapters.users.get(tenantId, user.user_id))?.name).toBe(
+          "Protected",
+        );
+        expect(
+          (await request("PATCH", path, { name: "Allowed" }, tenantId)).status,
+        ).toBe(200);
+        expect(
+          (await request("DELETE", path, undefined, tenantId)).status,
+        ).toBe(204);
+        expect(
+          actionCalls
+            .filter((call) => call.tenant === tenantId)
+            .map((call) => call.trigger),
+        ).toEqual([
+          "pre-user-update",
+          "pre-user-deletion",
+          "pre-user-update",
+          "post-user-update",
+          "pre-user-deletion",
+          "post-user-deletion",
+        ]);
+        if (scope === "platform") {
+          const list = await request(
+            "GET",
+            "/api/v2/actions/actions",
+            undefined,
+            tenantId,
+          );
+          const body = (await list.json()) as Array<{ name: string }>;
+          expect(body.map((row) => row.name)).not.toContain(
+            "pre-user-deletion",
+          );
+        }
+      }
+    },
+  );
 });
 
 function app_request(
@@ -332,6 +467,7 @@ function app_request(
   token: string,
   env: unknown,
   body?: unknown,
+  tenantId = CONTROL_PLANE,
 ) {
   return Promise.resolve(
     app.request(
@@ -340,7 +476,7 @@ function app_request(
         method,
         headers: {
           authorization: `Bearer ${token}`,
-          "tenant-id": CONTROL_PLANE,
+          "tenant-id": tenantId,
           "content-type": "application/json",
         },
         ...(body ? { body: JSON.stringify(body) } : {}),

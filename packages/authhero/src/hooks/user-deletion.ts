@@ -18,6 +18,7 @@ import {
 import { preUserDeletionWebhook } from "./webhooks";
 import { createTokenAPI } from "./helpers/token-api";
 import { stripInternalUserFields } from "../helpers/hook-user-payload";
+import { runPreUserActions } from "./lifecycle-codehooks";
 
 /**
  * Decorator applied by `addDataHooks` to `users.remove`. Runs pre-deletion
@@ -31,71 +32,95 @@ export function createUserDeletionHooks(
   data: DataAdapters,
 ) {
   return async (tenant_id: string, user_id: string) => {
-    // Get user details before deletion for logging and hooks
-    const userToDelete = await data.users.get(tenant_id, user_id);
+    const commit = await prepareUserDeletion(ctx, data, tenant_id, user_id);
+    return commit ? commit() : false;
+  };
+}
 
-    // If user doesn't exist, return false immediately
-    if (!userToDelete) {
-      return false;
-    }
+/**
+ * Approve deletion before a caller performs retryable access/mapping cleanup.
+ * The returned commit runs the existing transactional delete and post hooks;
+ * it never repeats pre hooks. If cleanup fails, the user still exists for retry.
+ */
+export async function prepareUserDeletion(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  data: DataAdapters,
+  tenant_id: string,
+  user_id: string,
+): Promise<(() => Promise<boolean>) | null> {
+  // Get user details before deletion for logging and hooks
+  const userToDelete = await data.users.get(tenant_id, user_id);
 
-    // Build request object for hooks
-    const request: HookRequest = {
-      method: ctx.req.method,
-      ip: ctx.var.ip || ctx.get("ip") || "",
-      user_agent: ctx.var.useragent || ctx.get("useragent") || "",
-      url: ctx.req.url,
-    };
+  // A missing user has no deletion to prepare.
+  if (!userToDelete) {
+    return null;
+  }
 
-    // Call pre-user-deletion hook if configured
-    if (ctx.env.hooks?.onExecutePreUserDeletion) {
-      try {
-        await ctx.env.hooks.onExecutePreUserDeletion(
-          {
-            ctx,
-            user: stripInternalUserFields(userToDelete),
-            user_id,
-            request,
-            tenant: {
-              id: tenant_id,
-            },
-          },
-          {
-            cancel: () => {
-              throw new JSONHTTPException(400, {
-                message: "User deletion cancelled by pre-deletion hook",
-              });
-            },
-            token: createTokenAPI(ctx, tenant_id),
-          },
-        );
-      } catch (err) {
-        if (err instanceof HTTPException) {
-          throw err;
-        }
-        logMessage(ctx, tenant_id, {
-          type: LogTypes.FAILED_HOOK,
-          description: `Pre user deletion hook failed: ${err instanceof Error ? err.message : String(err)}`,
-        });
-        throw new JSONHTTPException(400, {
-          message: "Pre user deletion hook failed",
-        });
-      }
-    }
+  // Build request object for hooks
+  const request: HookRequest = {
+    method: ctx.req.method,
+    ip: ctx.var.ip || ctx.get("ip") || "",
+    user_agent: ctx.var.useragent || ctx.get("useragent") || "",
+    url: ctx.req.url,
+  };
 
-    // Invoke pre-user-deletion webhooks
+  // Call pre-user-deletion hook if configured
+  if (ctx.env.hooks?.onExecutePreUserDeletion) {
     try {
-      await preUserDeletionWebhook(ctx)(tenant_id, userToDelete);
+      await ctx.env.hooks.onExecutePreUserDeletion(
+        {
+          ctx,
+          user: stripInternalUserFields(userToDelete),
+          user_id,
+          request,
+          tenant: {
+            id: tenant_id,
+          },
+        },
+        {
+          cancel: () => {
+            throw new JSONHTTPException(400, {
+              message: "User deletion cancelled by pre-deletion hook",
+            });
+          },
+          token: createTokenAPI(ctx, tenant_id),
+        },
+      );
     } catch (err) {
+      if (err instanceof HTTPException) {
+        throw err;
+      }
       logMessage(ctx, tenant_id, {
         type: LogTypes.FAILED_HOOK,
-        description: `Pre user deletion webhook failed: ${err instanceof Error ? err.message : String(err)}`,
+        description: `Pre user deletion hook failed: ${err instanceof Error ? err.message : String(err)}`,
       });
       throw new JSONHTTPException(400, {
-        message: "Pre user deletion webhook failed",
+        message: "Pre user deletion hook failed",
       });
     }
+  }
 
+  await runPreUserActions(ctx, tenant_id, "pre-user-deletion", {
+    user: stripInternalUserFields(userToDelete),
+    user_id,
+    tenant: { id: tenant_id },
+    request,
+  });
+
+  // Invoke pre-user-deletion webhooks
+  try {
+    await preUserDeletionWebhook(ctx)(tenant_id, userToDelete);
+  } catch (err) {
+    logMessage(ctx, tenant_id, {
+      type: LogTypes.FAILED_HOOK,
+      description: `Pre user deletion webhook failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+    throw new JSONHTTPException(400, {
+      message: "Pre user deletion webhook failed",
+    });
+  }
+
+  return async () => {
     // Build the post-user-deletion outbox event up front (with a fixed id) so
     // it can be written atomically with the delete (issue #1057). `undefined`
     // when the outbox isn't configured — the inline fallback below runs then.

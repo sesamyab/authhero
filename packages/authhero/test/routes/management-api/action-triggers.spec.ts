@@ -660,3 +660,79 @@ describe("management-api action trigger bindings", () => {
     });
   });
 });
+
+it.each(["pre-user-update", "pre-user-deletion"] as const)(
+  "cannot remove an enforced synced %s policy through binding replacement",
+  async (trigger) => {
+    const { LocalCodeExecutor } =
+      await import("../../../src/hooks/code-executor/local");
+    const { app, env } = await getTestServer({
+      codeExecutor: new LocalCodeExecutor(),
+    });
+    env.data.multiTenancyConfig = { controlPlaneTenantId: "control_plane" };
+    const handler =
+      trigger === "pre-user-update"
+        ? "onExecutePreUserUpdate"
+        : "onExecutePreUserDeletion";
+    const action = await env.data.actions.create(
+      TENANT,
+      {
+        name: "required-policy",
+        code: `exports.${handler} = async (event, api) => api.access.deny("Protected account");`,
+        scope: "shared",
+        override: "none",
+        enforce: true,
+      },
+      { importMetadata: { id: "act_sy000000000000000" } },
+    );
+    const hook = await env.data.hooks.create(TENANT, {
+      hook_id: "h_sy000000000000000",
+      code_id: action.id,
+      trigger_id: trigger,
+      enabled: true,
+      scope: "shared",
+      override: "none",
+      enforce: true,
+    });
+    const user = await env.data.users.create(TENANT, {
+      user_id: "email|enforced",
+      connection: "email",
+      provider: "email",
+      is_social: false,
+      name: "Before",
+    });
+    const headers = {
+      authorization: `Bearer ${await getAdminToken({ tenant_id: TENANT })}`,
+      "tenant-id": TENANT,
+      "content-type": "application/json",
+    };
+    const response = await app.request(
+      `/api/v2/actions/triggers/${trigger}/bindings`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ bindings: [] }),
+      },
+      env,
+    );
+    expect(response.status).toBe(403);
+    expect((await env.data.hooks.get(TENANT, hook.hook_id))?.enforce).toBe(
+      true,
+    );
+    const denied = await app.request(
+      `/api/v2/users/${encodeURIComponent(user.user_id)}`,
+      {
+        method: trigger === "pre-user-update" ? "PATCH" : "DELETE",
+        headers,
+        ...(trigger === "pre-user-update"
+          ? { body: JSON.stringify({ name: "After" }) }
+          : {}),
+      },
+      env,
+    );
+    expect(denied.status).toBe(400);
+    expect((await env.data.users.get(TENANT, user.user_id))?.name).toBe(
+      "Before",
+    );
+  },
+);

@@ -9,6 +9,7 @@ import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import { resolveAccountUser } from "./account-helpers";
 import { createTranslation } from "../../../i18n";
 import { escapeHtml } from "../sanitization-utils";
+import { prepareUserDeletion } from "../../../hooks/user-deletion";
 
 // The literal word users must type; intentionally not localized.
 const CONFIRMATION_WORD = "DELETE";
@@ -131,13 +132,20 @@ async function handleAccountDeleteSubmit(
   }
 
   try {
+    // Approve before revoking, and retain the user if session cleanup fails.
+    const commitDeletion = await prepareUserDeletion(
+      ctx,
+      ctx.env.data,
+      tenant.id,
+      user.user_id,
+    );
+    if (!commitDeletion) throw new Error("User not found");
+
     // Revoke the session
     await ctx.env.data.sessions.update(tenant.id, session.id, {
       revoked_at: new Date().toISOString(),
     });
-
-    // Delete the user
-    await ctx.env.data.users.remove(tenant.id, user.user_id);
+    await commitDeletion();
 
     // Get login session for redirect
     const loginSession = await ctx.env.data.loginSessions.get(tenant.id, state);
