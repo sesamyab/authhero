@@ -101,12 +101,15 @@ for (const trigger of ["pre-user-update", "pre-user-deletion"] as const) {
         : s.request("DELETE");
 
     it("times out a hanging executor and records failure before any write", async () => {
-      let started = false;
+      let signalStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        signalStarted = resolve;
+      });
       const local = new LocalCodeExecutor();
       const s = await setup({
         executor: {
           execute(params) {
-            started = true;
+            signalStarted();
             return local.execute(params);
           },
         },
@@ -115,12 +118,9 @@ for (const trigger of ["pre-user-update", "pre-user-deletion"] as const) {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       try {
         const response = mutate(s);
-        // Authentication uses async crypto, which must finish before advancing
-        // the Action deadline. Keep setImmediate on the real event loop.
-        for (let n = 0; !started && n < 100; n++) {
-          await new Promise((resolve) => setImmediate(resolve));
-        }
-        expect(started).toBe(true);
+        // Authentication uses real async crypto. Wait for the executor itself
+        // to start before advancing its deadline, independent of runner load.
+        await started;
         await vi.advanceTimersByTimeAsync(5001);
         expect((await response).status).toBe(400);
         expect((await s.env.data.users.get(TENANT, USER))?.name).toBe("Before");

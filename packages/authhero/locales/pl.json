@@ -208,7 +208,21 @@
       "expired-code": "Kod wygasł",
       "invalid-code": "Wprowadzony kod jest nieprawidłowy",
       "pageTitle": "Aktywacja urządzenia | ${clientName}",
-      "title": "Aktywuj swoje urządzenie"
+      "title": "Aktywuj swoje urządzenie",
+      "codeLabel": "Kod urządzenia",
+      "confirmTitle": "Potwierdź swoje urządzenie",
+      "confirmDescription": "Kontynuuj tylko wtedy, gdy ten kod jest zgodny z kodem wyświetlanym na Twoim urządzeniu.",
+      "requestDescription": "${clientName} prosi o dostęp do Twojego konta.",
+      "scopesLabel": "Żądane uprawnienia",
+      "audienceLabel": "Docelowe API",
+      "decisionLabel": "Zezwolić temu urządzeniu na logowanie?",
+      "approveText": "Zezwól",
+      "denyText": "Odmów",
+      "completeTitle": "Żądanie urządzenia zakończone",
+      "approvedDescription": "Twoje urządzenie jest połączone. Możesz zamknąć tę stronę.",
+      "deniedDescription": "Żądanie urządzenia zostało odrzucone. Możesz zamknąć tę stronę.",
+      "alreadyCompleted": "To żądanie urządzenia zostało już zakończone.",
+      "sessionExpired": "Sesja aktywacji wygasła. Rozpocznij ponownie na swoim urządzeniu."
     }
   },
   "email-otp-challenge": {

@@ -222,9 +222,7 @@
       "approvedDescription": "Your device is connected. You can close this page.",
       "deniedDescription": "The device request was denied. You can close this page.",
       "alreadyCompleted": "This device request has already been completed.",
-      "sessionExpired": "Your activation session has expired. Start again on your device.",
-      "tooManyAttempts": "Too many attempts. Start again later.",
-      "notReady": "Complete sign-in before approving this device."
+      "sessionExpired": "Your activation session has expired. Start again on your device."
     }
   },
   "email-otp-challenge": {

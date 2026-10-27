@@ -208,7 +208,21 @@
       "expired-code": "Koden har utløpt",
       "invalid-code": "Koden du skrev inn er ugyldig",
       "pageTitle": "Enhetsaktivering | ${clientName}",
-      "title": "Aktiver enheten din"
+      "title": "Aktiver enheten din",
+      "codeLabel": "Enhetskode",
+      "confirmTitle": "Bekreft enheten din",
+      "confirmDescription": "Fortsett bare hvis denne koden stemmer med koden på enheten din.",
+      "requestDescription": "${clientName} ber om tilgang til kontoen din.",
+      "scopesLabel": "Forespurte tillatelser",
+      "audienceLabel": "Mål-API",
+      "decisionLabel": "Vil du tillate at denne enheten logger inn?",
+      "approveText": "Godkjenn",
+      "denyText": "Avslå",
+      "completeTitle": "Enhetsforespørsel fullført",
+      "approvedDescription": "Enheten din er tilkoblet. Du kan lukke denne siden.",
+      "deniedDescription": "Enhetsforespørselen ble avslått. Du kan lukke denne siden.",
+      "alreadyCompleted": "Denne enhetsforespørselen er allerede fullført.",
+      "sessionExpired": "Aktiveringsøkten din har utløpt. Start på nytt på enheten din."
     }
   },
   "email-otp-challenge": {

@@ -208,7 +208,21 @@
       "expired-code": "Il codice è scaduto",
       "invalid-code": "Il codice inserito non è valido",
       "pageTitle": "Attivazione dispositivo | ${clientName}",
-      "title": "Attiva il tuo dispositivo"
+      "title": "Attiva il tuo dispositivo",
+      "codeLabel": "Codice del dispositivo",
+      "confirmTitle": "Conferma il tuo dispositivo",
+      "confirmDescription": "Continua solo se questo codice corrisponde a quello mostrato sul tuo dispositivo.",
+      "requestDescription": "${clientName} richiede l’accesso al tuo account.",
+      "scopesLabel": "Autorizzazioni richieste",
+      "audienceLabel": "API di destinazione",
+      "decisionLabel": "Consentire a questo dispositivo di accedere?",
+      "approveText": "Approva",
+      "denyText": "Nega",
+      "completeTitle": "Richiesta del dispositivo completata",
+      "approvedDescription": "Il tuo dispositivo è connesso. Puoi chiudere questa pagina.",
+      "deniedDescription": "La richiesta del dispositivo è stata rifiutata. Puoi chiudere questa pagina.",
+      "alreadyCompleted": "Questa richiesta del dispositivo è già stata completata.",
+      "sessionExpired": "La sessione di attivazione è scaduta. Ricomincia dal tuo dispositivo."
     }
   },
   "email-otp-challenge": {
