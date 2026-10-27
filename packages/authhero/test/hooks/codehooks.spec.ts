@@ -1,7 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
-import { CodeExecutor } from "@authhero/adapter-interfaces";
-import { handleCodeHook } from "../../src/hooks/codehooks";
+import {
+  CodeExecutor,
+  CodeExecutionResult,
+} from "@authhero/adapter-interfaces";
+import { executeCodeHook, handleCodeHook } from "../../src/hooks/codehooks";
 import { Bindings, Variables } from "../../src/types";
 import { getTestServer } from "../helpers/test-server";
 
@@ -176,4 +179,48 @@ describe("handleCodeHook code resolution", () => {
       },
     });
   });
+});
+
+it("discards API calls returned after the host execution deadline", async () => {
+  const { env } = await getTestServer();
+  const action = await env.data.actions.create("tenantId", {
+    name: "late",
+    code: "// delayed executor",
+  });
+  let finish!: (result: CodeExecutionResult) => void;
+  let started = false;
+  const deny = vi.fn();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const execution = executeCodeHook({
+      data: env.data,
+      tenantId: "tenantId",
+      hook: { code_id: action.id },
+      event: {},
+      triggerId: "pre-user-deletion",
+      api: { access: { deny } },
+      codeExecutor: {
+        execute: () =>
+          new Promise((resolve) => {
+            started = true;
+            finish = resolve;
+          }),
+      },
+    });
+    for (let n = 0; !started && n < 100; n++)
+      await new Promise((resolve) => setImmediate(resolve));
+    expect(started).toBe(true);
+    await vi.advanceTimersByTimeAsync(5001);
+    expect((await execution).result.error?.msg).toContain("timed out");
+    finish({
+      success: true,
+      durationMs: 6000,
+      apiCalls: [{ method: "access.deny", args: ["too late"] }],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(deny).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });

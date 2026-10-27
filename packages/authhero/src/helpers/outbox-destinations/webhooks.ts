@@ -24,6 +24,8 @@ interface WebhookInvocation {
     trigger_id: string;
     user?: unknown;
     request?: unknown;
+    previous_user?: unknown;
+    updates?: unknown;
   };
 }
 
@@ -74,6 +76,7 @@ export class WebhookDestination implements EventDestination {
     return event.event_type.startsWith(HOOK_EVENT_PREFIX);
   }
 
+  /** Build the webhook payload from the event's committed user and update snapshots. */
   transform(event: AuditEvent): WebhookInvocation {
     const triggerId = event.event_type.slice(HOOK_EVENT_PREFIX.length);
     return {
@@ -85,6 +88,12 @@ export class WebhookDestination implements EventDestination {
         trigger_id: triggerId,
         user: event.target?.after,
         request: event.request,
+        ...(event.target?.before !== undefined && {
+          previous_user: event.target.before,
+        }),
+        ...(event.details?.updates !== undefined && {
+          updates: event.details.updates,
+        }),
       },
     };
   }

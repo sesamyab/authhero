@@ -427,3 +427,214 @@ describe("SCIM /Users endpoints", () => {
     expect(body.bulk.supported).toBe(false);
   });
 });
+
+it("applies lifecycle policies to SCIM writes and preserves IdP mappings on denial", async () => {
+  const { LocalCodeExecutor } =
+    await import("../../../src/hooks/code-executor/local");
+  const { app, env } = await getTestServer({
+    codeExecutor: new LocalCodeExecutor(),
+    outbox: true,
+  });
+  const { connection, token } = await setupScim(env);
+  const base = `/scim/v2/connections/${connection.id}/Users`;
+  const h = headers(token);
+  const created = await app.request(
+    base,
+    {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({
+        userName: "protected@example.com",
+        externalId: "protected-idp",
+        active: true,
+      }),
+    },
+    env,
+  );
+  expect(created.status).toBe(201);
+  const user = await created.json();
+  for (const [trigger, handler] of [
+    ["pre-user-update", "onExecutePreUserUpdate"],
+    ["pre-user-deletion", "onExecutePreUserDeletion"],
+  ] as const) {
+    const action = await env.data.actions.create(TENANT, {
+      name: trigger,
+      code: `exports.${handler} = async (event, api) => api.access.deny("Protected by policy");`,
+    });
+    await env.data.hooks.create(TENANT, {
+      trigger_id: trigger,
+      enabled: true,
+      code_id: action.id,
+    });
+  }
+  const path = `${base}/${encodeURIComponent(user.id)}`;
+  const update = await app.request(
+    path,
+    {
+      method: "PATCH",
+      headers: h,
+      body: JSON.stringify({
+        Operations: [{ op: "replace", path: "active", value: false }],
+      }),
+    },
+    env,
+  );
+  expect(update.status).toBe(400);
+  expect((await env.data.users.get(TENANT, user.id))?.blocked).toBeFalsy();
+  const removed = await app.request(
+    path,
+    { method: "DELETE", headers: h },
+    env,
+  );
+  expect(removed.status).toBe(400);
+  expect((await removed.json()).detail).toBe("Protected by policy");
+  expect(await env.data.users.get(TENANT, user.id)).not.toBeNull();
+  expect(
+    await env.data.scimExternalIds!.getByUserId(TENANT, connection.id, user.id),
+  ).not.toBeNull();
+});
+
+it("delivers SCIM post-update and post-deletion Actions through the outbox", async () => {
+  const calls: string[] = [];
+  const { app, env } = await getTestServer({
+    outbox: true,
+    codeExecutor: {
+      async execute(params) {
+        calls.push(params.triggerId);
+        expect(typeof params.event.idempotency_key).toBe("string");
+        return { success: true, durationMs: 1, apiCalls: [] };
+      },
+    },
+  });
+  const { connection, token } = await setupScim(env);
+  const base = `/scim/v2/connections/${connection.id}/Users`;
+  const h = headers(token);
+  const created = await app.request(
+    base,
+    {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({ userName: "post@example.com", active: true }),
+    },
+    env,
+  );
+  const user = await created.json();
+  for (const trigger of ["post-user-update", "post-user-deletion"] as const) {
+    const action = await env.data.actions.create(TENANT, {
+      name: trigger,
+      code: "// executor fixture",
+    });
+    await env.data.hooks.create(TENANT, {
+      trigger_id: trigger,
+      enabled: true,
+      code_id: action.id,
+    });
+  }
+  const path = `${base}/${encodeURIComponent(user.id)}`;
+  expect(
+    (
+      await app.request(
+        path,
+        {
+          method: "PATCH",
+          headers: h,
+          body: JSON.stringify({
+            Operations: [
+              { op: "replace", path: "displayName", value: "After" },
+            ],
+          }),
+        },
+        env,
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (await app.request(path, { method: "DELETE", headers: h }, env)).status,
+  ).toBe(204);
+  expect(calls).toEqual(["post-user-update", "post-user-deletion"]);
+});
+
+it.each(["sessions", "mapping"] as const)(
+  "can retry SCIM deletion after %s cleanup fails",
+  async (failure) => {
+    let failCleanup = false;
+    let approved = 0;
+    let deleted = 0;
+    const { app, env } = await getTestServer({
+      hooks: {
+        onExecutePreUserDeletion: async () => {
+          approved++;
+        },
+        onExecutePostUserDeletion: async () => {
+          deleted++;
+        },
+      },
+      wrapDataAdapter: (data) => ({
+        ...data,
+        sessions: {
+          ...data.sessions,
+          list: async (...args) => {
+            if (failCleanup && failure === "sessions")
+              throw new Error("Session store unavailable");
+            return data.sessions.list(...args);
+          },
+        },
+        scimExternalIds: {
+          ...data.scimExternalIds!,
+          remove: async (...args) => {
+            if (failCleanup && failure === "mapping")
+              throw new Error("IdP mapping store unavailable");
+            return data.scimExternalIds!.remove(...args);
+          },
+        },
+      }),
+    });
+    const { connection, token } = await setupScim(env);
+    const base = `/scim/v2/connections/${connection.id}/Users`;
+    const h = headers(token);
+    const response = await app.request(
+      base,
+      {
+        method: "POST",
+        headers: h,
+        body: JSON.stringify({
+          userName: "retry-delete@example.com",
+          externalId: "retry-idp",
+          active: true,
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const user = await response.json();
+    const path = `${base}/${encodeURIComponent(user.id)}`;
+    failCleanup = true;
+    expect(
+      (await app.request(path, { method: "DELETE", headers: h }, env)).status,
+    ).toBe(500);
+    expect(await env.data.users.get(TENANT, user.id)).not.toBeNull();
+    expect(
+      await env.data.scimExternalIds!.getByUserId(
+        TENANT,
+        connection.id,
+        user.id,
+      ),
+    ).not.toBeNull();
+    expect(approved).toBe(1);
+    expect(deleted).toBe(0);
+    failCleanup = false;
+    expect(
+      (await app.request(path, { method: "DELETE", headers: h }, env)).status,
+    ).toBe(204);
+    expect(await env.data.users.get(TENANT, user.id)).toBeNull();
+    expect(
+      await env.data.scimExternalIds!.getByUserId(
+        TENANT,
+        connection.id,
+        user.id,
+      ),
+    ).toBeNull();
+    expect(approved).toBe(2);
+    expect(deleted).toBe(1);
+  },
+);

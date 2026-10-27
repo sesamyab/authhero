@@ -6,6 +6,7 @@ import {
   ActionExecutionResult,
   ActionExecutionStatus,
   CodeExecutionLog,
+  CodeExecutionResult,
   CodeExecutor,
   DataAdapters,
   Hook,
@@ -274,13 +275,36 @@ export async function executeCodeHook(params: {
     serializableEvent.idempotency_key = params.idempotencyKey;
   }
 
-  const execResult = await codeExecutor.execute({
-    code: codeRecord.code,
-    hookCodeId: hook.code_id,
-    triggerId,
-    event: serializableEvent,
-    timeoutMs: 5000,
-  });
+  const timeoutMs = 5000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let execResult: CodeExecutionResult;
+  try {
+    // Executors such as Worker Loader cannot enforce timeoutMs themselves.
+    // Bound the host's wait and discard late results, including their API calls.
+    execResult = await Promise.race([
+      codeExecutor.execute({
+        code: codeRecord.code,
+        hookCodeId: hook.code_id,
+        triggerId,
+        event: serializableEvent,
+        timeoutMs,
+      }),
+      new Promise<CodeExecutionResult>((resolve) => {
+        timer = setTimeout(
+          () =>
+            resolve({
+              success: false,
+              error: `Action execution timed out after ${timeoutMs}ms`,
+              durationMs: timeoutMs,
+              apiCalls: [],
+            }),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 
   const ended_at = new Date().toISOString();
 

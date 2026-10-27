@@ -18,6 +18,9 @@ interface CodeHookInvocation {
   triggerId: string;
   /** Serialized user snapshot from the audit event (`target.after`). */
   user?: unknown;
+  userId?: string;
+  previousUser?: unknown;
+  updates?: unknown;
   /** Serialized request context from the audit event. */
   request?: unknown;
 }
@@ -46,9 +49,9 @@ interface CodeHookInvocation {
  * Constructed per-request (via `getDestinations(ctx)`) so it can close over
  * `ctx.env.codeExecutor`. The same class is used by the cron `drainOutbox`
  * safety net when a `codeExecutor` is supplied to `createDefaultDestinations`.
- * When no executor is configured, code hooks cannot run (nor be deployed), so
- * `deliver` is a no-op success — matching the inline `handleCodeHook` which
- * returns `null` without an executor.
+ * Missing executors fail delivery for post-update/deletion so the event can be
+ * retried when the configuration is repaired. Registration retains its legacy
+ * no-op behavior without an executor.
  */
 export class CodeHookDestination implements EventDestination {
   name = "code-hooks";
@@ -70,34 +73,52 @@ export class CodeHookDestination implements EventDestination {
     return event.event_type.startsWith(HOOK_EVENT_PREFIX);
   }
 
+  /** Recover the user write and stable delivery ID from a persisted hook event. */
   transform(event: AuditEvent): CodeHookInvocation {
     return {
       eventId: event.id,
       tenantId: event.tenant_id,
       triggerId: event.event_type.slice(HOOK_EVENT_PREFIX.length),
       user: event.target?.after,
+      userId: event.target?.id,
+      previousUser: event.target?.before,
+      updates: event.details?.updates,
       request: event.request,
     };
   }
 
+  /** Run matching Actions, record outcomes, and fail delivery when the relay must retry. */
   async deliver(invocations: CodeHookInvocation[]): Promise<void> {
     const codeExecutor = this.codeExecutor;
-    // No executor configured: code hooks can't have been deployed, so there is
-    // nothing to run. Treat as delivered so the event isn't retried forever.
-    if (!codeExecutor) return;
-
     for (const invocation of invocations) {
+      // Preserve the legacy no-executor behavior for registration; the new
+      // post lifecycle policies must retry rather than silently lose delivery.
+      if (
+        !codeExecutor &&
+        invocation.triggerId !== "post-user-update" &&
+        invocation.triggerId !== "post-user-deletion"
+      )
+        continue;
       const hooks = await this.listAllHooks(invocation.tenantId);
-      const codeHooks = hooks.filter(
-        (h) =>
-          h.enabled && h.trigger_id === invocation.triggerId && isCodeHook(h),
-      );
+      const codeHooks = hooks
+        .filter(
+          (h) =>
+            h.enabled && h.trigger_id === invocation.triggerId && isCodeHook(h),
+        )
+        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
       if (codeHooks.length === 0) continue;
 
       const event: CodeHookEventInput = {
         user: invocation.user,
+        user_id: invocation.userId,
         request: invocation.request,
         tenant: { id: invocation.tenantId },
+        ...(invocation.previousUser !== undefined && {
+          previous_user: invocation.previousUser,
+        }),
+        ...(invocation.updates !== undefined && {
+          updates: invocation.updates,
+        }),
       };
 
       const outcomes: HandleCodeHookOutcome[] = [];
@@ -105,6 +126,7 @@ export class CodeHookDestination implements EventDestination {
         // Re-narrow: `filter` above keeps the array typed as `Hook[]`.
         if (!isCodeHook(hook)) continue;
         try {
+          if (!codeExecutor) throw new Error("No code executor configured");
           outcomes.push(
             await executeCodeHook({
               codeExecutor,
@@ -113,7 +135,7 @@ export class CodeHookDestination implements EventDestination {
               hook,
               event,
               triggerId: invocation.triggerId,
-              // Post-registration / post-deletion have no token to mutate, so
+              // Post lifecycle events have no token to mutate, so
               // the api surface is empty (matches the inline call sites).
               api: { user: {} },
               idempotencyKey: invocation.eventId,

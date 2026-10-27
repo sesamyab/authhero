@@ -9,10 +9,19 @@ import {
 import { Bindings, Variables } from "../types";
 import { waitUntil } from "./wait-until";
 import { invokeHooks } from "../hooks/webhooks";
-import { stripInternalUserFields } from "./hook-user-payload";
+import {
+  sanitizeUserUpdates,
+  stripInternalUserFields,
+} from "./hook-user-payload";
 import { getExecutorData } from "./request-data";
+import { CodeHookDestination } from "./outbox-destinations/code-hooks";
 
 type HookCtx = Context<{ Bindings: Bindings; Variables: Variables }>;
+
+interface HookChangeContext {
+  previousUser?: User;
+  updates?: Partial<User>;
+}
 
 /**
  * Whether the outbox is configured for this request. When false, hook dispatch
@@ -38,11 +47,23 @@ export function buildPostHookEvent(
   tenantId: string,
   triggerId: string,
   user: User,
+  changes: HookChangeContext = {},
 ): OutboxEventInsert | undefined {
   if (!outboxEnabled(ctx)) {
     return undefined;
   }
 
+  return buildHookEvent(ctx, tenantId, triggerId, user, changes);
+}
+
+/** Capture a sanitized user write as a hook event for durable or best-effort delivery. */
+function buildHookEvent(
+  ctx: HookCtx,
+  tenantId: string,
+  triggerId: string,
+  user: User,
+  changes: HookChangeContext,
+): OutboxEventInsert {
   const event: AuditEventInsert = {
     tenant_id: tenantId,
     event_type: `hook.${triggerId}`,
@@ -64,6 +85,9 @@ export function buildPostHookEvent(
     target: {
       type: "user",
       id: user.user_id,
+      ...(changes.previousUser && {
+        before: stripInternalUserFields(changes.previousUser),
+      }),
       after: stripInternalUserFields(user) as unknown as Record<
         string,
         unknown
@@ -77,6 +101,9 @@ export function buildPostHookEvent(
     },
     hostname: ctx.var.host || "",
     auth0_client: ctx.var.auth0_client,
+    ...(changes.updates && {
+      details: { updates: sanitizeUserUpdates(changes.updates) },
+    }),
     timestamp: new Date().toISOString(),
   };
 
@@ -97,8 +124,8 @@ export function relayOutboxEvent(ctx: HookCtx, id: string): void {
 }
 
 /**
- * Fallback dispatch for when the outbox is not configured: invoke the
- * post-hook webhooks inline (fire-and-forget via `waitUntil`). No retry /
+ * Fallback dispatch for when the outbox is not configured: invoke post-hook
+ * webhooks and update/deletion Actions via `waitUntil`. No retry /
  * dead-letter support in this mode — configure the outbox for durable
  * delivery.
  */
@@ -107,17 +134,21 @@ export function dispatchPostHookInline(
   tenantId: string,
   triggerId: string,
   user: User,
+  changes: HookChangeContext = {},
 ): void {
-  waitUntil(ctx, dispatchInline(ctx, tenantId, triggerId, user));
+  waitUntil(ctx, dispatchInline(ctx, tenantId, triggerId, user, changes));
 }
 
+/** Deliver fallback webhooks and update/deletion Actions without outbox retries. */
 async function dispatchInline(
   ctx: HookCtx,
   tenantId: string,
   triggerId: string,
   user: User,
+  changes: HookChangeContext,
 ): Promise<void> {
-  const { hooks } = await getExecutorData(ctx).hooks.list(tenantId);
+  const data = getExecutorData(ctx);
+  const { hooks } = await data.hooks.list(tenantId);
   const filtered = hooks.filter(
     (h: any) => h.enabled && h.trigger_id === triggerId && "url" in h,
   );
@@ -126,7 +157,25 @@ async function dispatchInline(
       tenant_id: tenantId,
       user: stripInternalUserFields(user),
       trigger_id: triggerId,
+      ...(changes.previousUser && {
+        previous_user: stripInternalUserFields(changes.previousUser),
+      }),
+      ...(changes.updates && { updates: sanitizeUserUpdates(changes.updates) }),
     });
+  }
+
+  // Reuse the post-commit executor and execution records without promising
+  // durable delivery when no outbox is installed.
+  if (triggerId === "post-user-update" || triggerId === "post-user-deletion") {
+    const destination = new CodeHookDestination(data, ctx.env.codeExecutor, {
+      logCapture: ctx.env.actionExecutionLogs,
+    });
+    const event = buildHookEvent(ctx, tenantId, triggerId, user, changes);
+    try {
+      await destination.deliver([destination.transform(event)]);
+    } catch (error) {
+      console.error(`Best-effort ${triggerId} Action failed:`, error);
+    }
   }
 
   // Mirror the finalizer destination used by the outbox path: once the

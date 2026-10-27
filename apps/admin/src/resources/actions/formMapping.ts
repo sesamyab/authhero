@@ -28,6 +28,10 @@ export const ACTION_TRIGGER_IDS = [
   "credentials-exchange",
   "pre-user-registration",
   "post-user-registration",
+  "pre-user-update",
+  "post-user-update",
+  "pre-user-deletion",
+  "post-user-deletion",
   // Not bindable: a token exchange profile references the action by id.
   "custom-token-exchange",
 ] as const;

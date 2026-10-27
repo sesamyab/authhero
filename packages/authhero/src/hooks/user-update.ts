@@ -10,7 +10,11 @@ import { logMessage } from "../helpers/logging";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { HookRequest } from "../types/Hooks";
 import { createTokenAPI } from "./helpers/token-api";
-import { stripInternalUserFields } from "../helpers/hook-user-payload";
+import {
+  sanitizeUserUpdates,
+  stripInternalUserFields,
+} from "../helpers/hook-user-payload";
+import { runPreUserActions } from "./lifecycle-codehooks";
 import { isTemplateHook, handleTemplateHook } from "./templatehooks";
 import { builtInUserLinkingEnabled } from "../helpers/user-linking";
 import { compareUsersByAge, linkUserTo } from "../helpers/users";
@@ -82,6 +86,7 @@ export function createUserUpdateHooks(
         message: "User not found",
       });
     }
+    const previousUser = structuredClone(user);
 
     // Build request object once for reuse
     const request: HookRequest = {
@@ -138,6 +143,19 @@ export function createUserUpdateHooks(
     // carry the stored value.
     updates = withNormalizedEmail(updates);
 
+    const updateContext = {
+      previousUser,
+      updates: sanitizeUserUpdates(updates),
+    };
+    await runPreUserActions(ctx, tenant_id, "pre-user-update", {
+      user: stripInternalUserFields(previousUser),
+      previous_user: stripInternalUserFields(previousUser),
+      updates: updateContext.updates,
+      user_id,
+      tenant: { id: tenant_id },
+      request,
+    });
+
     // Decide whether the built-in email→primary auto-link runs inside the
     // commit transaction. With "off", linking on email update only happens
     // via the `account-linking` template hook below.
@@ -156,10 +174,13 @@ export function createUserUpdateHooks(
     // hooks (those repoint `linked_to` / run their own writes and can emit
     // their own events). `undefined` when the outbox isn't configured; the
     // inline fallback after the commit runs instead.
-    const updateEvent = buildPostHookEvent(ctx, tenant_id, "post-user-update", {
-      ...user,
-      ...updates,
-    });
+    const updateEvent = buildPostHookEvent(
+      ctx,
+      tenant_id,
+      "post-user-update",
+      { ...user, ...updates },
+      updateContext,
+    );
 
     // Wrap the update and potential account linking in a transaction
     await data.transaction(async (trxData) => {
@@ -289,10 +310,13 @@ export function createUserUpdateHooks(
     if (updateEvent) {
       relayOutboxEvent(ctx, updateEvent.id);
     } else {
-      dispatchPostHookInline(ctx, tenant_id, "post-user-update", {
-        ...user,
-        ...updates,
-      });
+      dispatchPostHookInline(
+        ctx,
+        tenant_id,
+        "post-user-update",
+        { ...user, ...updates },
+        updateContext,
+      );
     }
 
     // Template hooks at `post-user-update` run after the transaction commits.

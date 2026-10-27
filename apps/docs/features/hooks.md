@@ -134,6 +134,73 @@ When a user is deleted:
    - **Asynchronous**: Errors are logged but don't prevent deletion
    - **Can modify**: Cannot modify user (already deleted)
 
+## Stored user lifecycle Actions
+
+In addition to callbacks supplied in `init({ hooks })`, Actions stored through
+the Management API can bind to these user lifecycle triggers:
+
+| Trigger              | Handler export              | Execution                           |
+| -------------------- | --------------------------- | ----------------------------------- |
+| `pre-user-update`    | `onExecutePreUserUpdate`    | Before the update; can deny         |
+| `post-user-update`   | `onExecutePostUserUpdate`   | After commit; outbox delivery       |
+| `pre-user-deletion`  | `onExecutePreUserDeletion`  | Before unlinking/deleting; can deny |
+| `post-user-deletion` | `onExecutePostUserDeletion` | After commit; outbox delivery       |
+
+Create an Action, then attach it under **Action Triggers** or with
+`PATCH /api/v2/actions/triggers/{triggerId}/bindings`. A code hook created through
+`POST /api/v2/hooks` with its `code_id` pointing to the Action also works. Enabled
+Actions run in descending priority order. The configured pre callback runs
+first, followed by stored pre Actions, before the database transaction starts.
+Replacing a trigger's bindings is refused when it contains an enforced synced
+binding; manage the tenant's local hooks individually instead.
+
+```javascript
+exports.onExecutePreUserDeletion = async (event, api) => {
+  if (event.user.app_metadata?.deletion_protected) {
+    api.access.deny("This account cannot be deleted yet.");
+  }
+};
+```
+
+Both pre triggers expose `api.access.deny(reason)`. A denial stops subsequent
+Actions and returns HTTP 400 without committing the write. Execution errors,
+timeouts, missing code, and a missing executor also stop the operation. The
+host stops waiting for an Action after five seconds and discards late API calls;
+it cannot terminate an executor's already-running external requests. The
+existing configured callbacks retain their `api.cancel()` API. Stored pre
+Actions inspect the proposed operation; they do not expose mutation APIs.
+
+Each event includes `user`, `user_id`, `tenant.id`, request metadata and the
+Action's `secrets`. Update events additionally include `previous_user` (the
+snapshot before the update) and `updates` (the proposed or committed write
+payload, including changes made by the configured pre-update callback).
+Pre-update `user` is the previous snapshot; post-update `user` reflects that
+write. The post-update snapshot precedes automatic account linking and
+post-update template side effects. Internal bookkeeping and top-level password
+fields are omitted from these payloads; live application context is never sent
+to stored Actions.
+
+Post Actions expose no mutation API and cannot undo an already committed write.
+With the outbox enabled, their events commit atomically with the write and use
+the existing retry/dead-letter machinery. Delivery is at least once: use
+`event.idempotency_key` to deduplicate downstream side effects. Retries may run
+earlier Actions and webhooks again. Without an outbox, post-update and
+post-deletion Actions run best effort in background work, with no retries.
+Executions, including denied and failed pre Actions, are recorded under the
+existing Action execution logging settings.
+
+These hooks apply to decorated user writes, including the Management API,
+self-service account screens and SCIM. Internal writes that change only
+`linked_to` bypass update hooks to prevent account-linking recursion. Direct
+writes through raw adapters bypass lifecycle hooks.
+
+For control-plane publishing, publish **both the Action and its hook binding**
+with `scope: "shared"` or `"platform"`. Existing config sync copies the Action
+and remaps its binding to the tenant's copy. Platform policies execute even
+though tenant management APIs hide them. Fleet propagation still requires
+synced descendants, the scheduled rollout driver and, for separate workers,
+the configured sync transport. See [fleet rollouts](../customization/multi-tenancy/tenant-operations.md#fleet-rollouts-of-synced-config).
+
 ## Entity Hooks
 
 In addition to user lifecycle hooks, AuthHero provides entity hooks that allow you to execute custom logic when management entities (roles, connections, resource servers, and role permissions) are created, updated, deleted, or modified.
@@ -1204,7 +1271,10 @@ Supported triggers and their export names:
 | `credentials-exchange` | `exports.onExecuteCredentialsExchange` | Inline (mutates the token) |
 | `pre-user-registration` | `exports.onExecutePreUserRegistration` | Inline (blocks / mutates the user before creation) |
 | `post-user-registration` | `exports.onExecutePostUserRegistration` | Outbox-backed (retried) |
-| `post-user-deletion` | `exports.onExecutePostUserDeletion` | Outbox-backed (retried) |
+| `pre-user-update` | `exports.onExecutePreUserUpdate` | Inline (can deny the update) |
+| `post-user-update` | `exports.onExecutePostUserUpdate` | Outbox-backed (retried); best effort without outbox |
+| `pre-user-deletion` | `exports.onExecutePreUserDeletion` | Inline (can deny deletion) |
+| `post-user-deletion` | `exports.onExecutePostUserDeletion` | Outbox-backed (retried); best effort without outbox |
 
 ### Console output is persisted
 
@@ -1241,13 +1311,15 @@ The setting applies only at persistence time. Hooks still capture and see their 
 
 `"errors"` or `"off"` is recommended for high-volume triggers such as `credentials-exchange`, and anywhere hook output may contain user data you do not want stored.
 
-### Outbox-backed delivery for post-registration / post-deletion code hooks
+### Delivery for post-registration, post-update and post-deletion code hooks
 
-`post-user-registration` and `post-user-deletion` code hooks are delivered through the [outbox pipeline](../architecture/hooks-pipeline.md), the same durable path as webhooks — via `CodeHookDestination`. They are **not** run inline in the request:
+`post-user-registration` code hooks require the [outbox pipeline](../architecture/hooks-pipeline.md), where `CodeHookDestination` delivers them through the same durable path as webhooks.
 
-- **Retries + dead-letter**: a failing code hook is retried with exponential backoff and dead-lettered after `maxRetries`, then surfaced via the [Failed events](/customization/failed-events) endpoints. Previously a failure was only logged and dropped.
-- **At-least-once**: because the event can be retried (and re-enqueued by [self-healing](../architecture/hooks-pipeline.md#self-healing-post-user-registration) on the user's next login), a code hook may run more than once. The outbox event id is passed to your code as `event.idempotency_key` — key non-idempotent side effects on it, or check `app_metadata`, so re-delivery is safe.
-- **Ordering**: they run after the user row is committed and after any `account-linking` template hook, so `event.user` reflects the linked/primary user.
+When the outbox is enabled, `post-user-update` and `post-user-deletion` use that pipeline too, with the guarantees below. Without an outbox, these two triggers run as best-effort background work, with no retries or dead-letter support.
+
+- **Retries + dead-letter**: a failing code hook is retried with exponential backoff and dead-lettered after `maxRetries`, then surfaced via the [Failed events](/customization/failed-events) endpoints.
+- **At-least-once**: an outbox event can be retried, so a code hook may run more than once. Its event id is passed to your code as `event.idempotency_key` — use it to deduplicate downstream side effects.
+- **Ordering**: delivery follows the committed user write. Post-update snapshots describe that write before automatic account linking and post-update template side effects; see [stored user lifecycle Actions](#stored-user-lifecycle-actions).
 
 The token-mutating triggers (`post-user-login`, `credentials-exchange`) still run inline — they must alter the live token in the request and cannot be deferred.
 

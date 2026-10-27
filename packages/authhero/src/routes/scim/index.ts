@@ -1,5 +1,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
+import { JSONHTTPException } from "../../errors/json-http-exception";
 import {
   LogTypes,
   Connection,
@@ -17,6 +19,10 @@ import { outboxMiddleware } from "../../middlewares/outbox";
 import { LogsDestination } from "../../helpers/outbox-destinations/logs";
 import { LogStreamDestination } from "../../helpers/outbox-destinations/log-streams";
 import { PipelineDestination } from "../../helpers/outbox-destinations/pipeline";
+import { CodeHookDestination } from "../../helpers/outbox-destinations/code-hooks";
+import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
+import { createServiceToken } from "../../helpers/service-token";
+import { RegistrationFinalizerDestination } from "../../helpers/outbox-destinations/registration-finalizer";
 import { serverTimingMiddleware } from "../../helpers/server-timing";
 import { composeAuthData } from "../../helpers/compose-auth-data";
 import { createInMemoryCache } from "../../adapters/cache/in-memory";
@@ -25,6 +31,7 @@ import { logMessage } from "../../helpers/logging";
 import { userIdGenerate } from "../../utils/user-id";
 import { normalizeEmail } from "../../utils/email";
 import { revokeUserSessions } from "../../helpers/revoke-user-sessions";
+import { prepareUserDeletion } from "../../hooks/user-deletion";
 import {
   ScimError,
   SCIM_CONTENT_TYPE,
@@ -490,6 +497,7 @@ function logScim(
   });
 }
 
+/** Mount connection-scoped SCIM provisioning with user lifecycle hooks and outbox delivery. */
 export function createScimApi(config: AuthHeroConfig) {
   const app = new OpenAPIHono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -499,6 +507,19 @@ export function createScimApi(config: AuthHeroConfig) {
         JSON.stringify(scimErrorBody(err.status, err.message, err.scimType)),
         err.status,
         { "content-type": SCIM_CONTENT_TYPE },
+      );
+    }
+    if (err instanceof HTTPException && err.status < 500) {
+      const body =
+        err instanceof JSONHTTPException ? JSON.parse(err.message) : undefined;
+      const message =
+        typeof body?.message === "string" ? body.message : err.message;
+      return ctx.body(
+        JSON.stringify(scimErrorBody(err.status, message)),
+        err.status,
+        {
+          "content-type": SCIM_CONTENT_TYPE,
+        },
       );
     }
     // Anything else is a bug or an adapter failure: log the detail, but never
@@ -518,6 +539,18 @@ export function createScimApi(config: AuthHeroConfig) {
         const base = getBaseData(ctx, config.dataAdapter);
         return [
           new LogsDestination(base.logs),
+          new WebhookDestination(
+            base.hooks,
+            async (tenantId) => {
+              const token = await createServiceToken(ctx, tenantId, "webhook");
+              return token.access_token;
+            },
+            { webhookInvoker: config.webhookInvoker },
+          ),
+          new CodeHookDestination(base, ctx.env.codeExecutor, {
+            logCapture: config.actionExecutionLogs,
+          }),
+          new RegistrationFinalizerDestination(base.users),
           ...(base.logStreams
             ? [new LogStreamDestination(base.logStreams)]
             : []),
@@ -749,13 +782,22 @@ export function createScimApi(config: AuthHeroConfig) {
     // Deprovisioning must end the user's access immediately, exactly as
     // deactivation does — removing the row alone would leave live sessions and
     // refresh tokens behind.
+    // Approve first, then clean up while the row still exists. A cleanup
+    // failure remains retryable: the next DELETE can still find this user.
+    const commitDeletion = await prepareUserDeletion(
+      ctx,
+      s.data,
+      s.tenant_id,
+      user.user_id,
+    );
+    if (!commitDeletion) throw new ScimError(404, "User not found");
     await revokeUserSessions(ctx, s.tenant_id, user.user_id);
     await s.data.scimExternalIds.remove(
       s.tenant_id,
       s.connection_id,
       user.user_id,
     );
-    await s.data.users.remove(s.tenant_id, user.user_id);
+    await commitDeletion();
     logScim(ctx, s, "SCIM user deleted", user.user_id);
 
     return ctx.body(null, 204);

@@ -41,6 +41,10 @@ export const TRIGGER_API_SHAPES: Readonly<
     validation: ["error"],
   },
   "post-user-registration": {},
+  "pre-user-update": { access: ["deny"] },
+  "post-user-update": {},
+  "pre-user-deletion": { access: ["deny"] },
+  "post-user-deletion": {},
   // Not bound through trigger bindings: a Custom Token Exchange profile names
   // the action it runs (issue #1417). Exactly one of the two `authentication`
   // setters must be called for the exchange to succeed.
@@ -60,6 +64,10 @@ export const TRIGGER_FUNCTION_NAMES: Readonly<Record<string, string>> = {
   "credentials-exchange": "onExecuteCredentialsExchange",
   "pre-user-registration": "onExecutePreUserRegistration",
   "post-user-registration": "onExecutePostUserRegistration",
+  "pre-user-update": "onExecutePreUserUpdate",
+  "post-user-update": "onExecutePostUserUpdate",
+  "pre-user-deletion": "onExecutePreUserDeletion",
+  "post-user-deletion": "onExecutePostUserDeletion",
   "custom-token-exchange": "onExecuteCustomTokenExchange",
 };
 
