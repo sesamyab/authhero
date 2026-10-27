@@ -75,7 +75,9 @@ describe("runSyncDefaultsOperation", () => {
       step,
     );
 
-    expect(calls).toEqual([["kvartal", { dryRun: false, force: false }]]);
+    expect(calls).toEqual([
+      ["kvartal", { dryRun: false, force: false, prune: false }],
+    ]);
     expect(step.calls.map((c) => c.name)).toEqual([
       "mark-running",
       "sync-defaults",
@@ -94,9 +96,13 @@ describe("runSyncDefaultsOperation", () => {
     ]);
   });
 
-  it("passes dry_run and force from the operation input, and keeps the diff", async () => {
+  it("passes dry_run, force and prune from the operation input, and keeps the diff", async () => {
     const stores = fakeStores();
-    const params = await seed(stores, { dry_run: true, force: true });
+    const params = await seed(stores, {
+      dry_run: true,
+      force: true,
+      prune: true,
+    });
     const seen: unknown[] = [];
 
     await runSyncDefaultsOperation(
@@ -111,7 +117,7 @@ describe("runSyncDefaultsOperation", () => {
       fakeStepRunner(),
     );
 
-    expect(seen).toEqual([{ dryRun: true, force: true }]);
+    expect(seen).toEqual([{ dryRun: true, force: true, prune: true }]);
     expect(stores.operations.get(params.operation_id)?.result).toMatchObject({
       dry_run: true,
       status: "dry-run",
