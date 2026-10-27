@@ -106,8 +106,8 @@ The pilot is migrated when: the sync ended `succeeded`, `drifted` is `false`, th
 
 ## Not supported yet
 
-- **Re-parenting.** Changing `parent_tenant_id` of a synced tenant changes the hash, and the next sync adds the new parent's rows and updates shared ones, but rows only the old parent published **stay behind**: deletes are not sent over the dispatch transport. Treat re-parenting as unsupported until stale rows are handled.
+- **Re-parenting.** Changing `parent_tenant_id` of a synced tenant changes the hash, and the next sync adds the new parent's rows and updates shared ones. Rows only the old parent published stay behind until you run a sync with `prune` (preview it first). Re-parenting is still unsupported as a procedure: nothing detaches the tenant cleanly.
 - **Detaching.** There is no operation that turns the synced rows into the tenant's own. After the parent is removed the copies stay locked and, for platform rows, hidden. The intended behaviour is a snapshot (the tenant keeps what it has), but until a `detach` operation exists, the only way out is manual: recreate the rows you want to keep as ordinary rows and remove the copies from the database.
-- **Propagating deletes.** A row removed on the parent is not removed from synced tenants.
+- **Automatic delete propagation.** A row removed or unshared on the parent is removed from a synced tenant by a sync with `prune` (_Remove unshared_ on the tenant's Operations page), never by a plain sync. A preview always lists what would go.
 
 These are tracked as follow-up issues of the [config inheritance epic](https://github.com/sesamyab/authhero/issues/1524).

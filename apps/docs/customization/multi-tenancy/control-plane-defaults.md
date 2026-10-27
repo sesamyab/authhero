@@ -434,6 +434,9 @@ const result = await applyResolvedConfigBlock(block, tenantAdapters, tenantId, {
   changed `entity:key` list, and writes nothing.
 - **Deletes** are explicit entries (`deletes` on the build options) and are only
   executed with `deletes: true`.
+- **Stale copies** (a synced row the chain no longer publishes) are found from the
+  tenant's own `sy` rows, and removed only with `prune: true`. Removal is
+  skipped when any upsert failed, and refused for a block with no ancestors.
 - **Secrets** are copied as stored. Pass the tenant's `keyRing`: if it cannot
   decrypt a key id the block carries, the apply fails before writing and names
   the key ids (never the values). Action and hook code secrets are encrypted at
