@@ -203,6 +203,57 @@ describe("sync-defaults operation (inline)", () => {
     expect(events.at(-1)).toMatchObject({ outcome: "failed" });
   });
 
+  it("keeps the structured rows and a capped list of error messages on the result", async () => {
+    const entityOutcome = {
+      added: 0,
+      changed: 0,
+      unchanged: 0,
+      deleted: 0,
+      errors: [] as string[],
+    };
+    const noisy: SyncConfigFn = async () => ({
+      status: "applied",
+      hash: "abc",
+      changes: [
+        "connection:google",
+        "skip action:enrich (the tenant has its own)",
+      ],
+      rows: [
+        { entity: "connection", key: "google", action: "added" },
+        { entity: "action", key: "enrich", action: "skipped" },
+      ],
+      entities: {
+        connection: { ...entityOutcome },
+        resourceServer: { ...entityOutcome },
+        hookCode: { ...entityOutcome },
+        action: {
+          ...entityOutcome,
+          errors: Array.from(
+            { length: 30 },
+            (_, n) => `action a${n}: ${"x".repeat(400)}`,
+          ),
+        },
+        hook: { ...entityOutcome },
+        emailProvider: { ...entityOutcome },
+        branding: { ...entityOutcome },
+        promptSettings: { ...entityOutcome },
+      },
+    });
+
+    const operation = await enqueue(noisy);
+
+    const result = operation.result as {
+      rows: unknown[];
+      error_messages: string[];
+    };
+    expect(result.rows).toEqual([
+      { entity: "connection", key: "google", action: "added" },
+      { entity: "action", key: "enrich", action: "skipped" },
+    ]);
+    expect(result.error_messages).toHaveLength(20);
+    expect(result.error_messages.every((m) => m.length <= 300)).toBe(true);
+  });
+
   it("records a transport failure as a failed row", async () => {
     const operation = await enqueue(async () => {
       throw new Error("tenant worker unreachable");

@@ -423,6 +423,25 @@ describe("resolved config sync", () => {
     expect(actions[0]!.code).toBe("// mine");
   });
 
+  it("reports each change as a structured row", async () => {
+    await seedControlPlane();
+    await raw.actions.create(CHILD, { name: "enrich", code: "// mine" });
+    const first = await buildResolvedConfigBlock(raw, CHILD, {
+      legacyControlPlane: CP,
+    });
+    const preview = await applyResolvedConfigBlock(first, raw, CHILD, {
+      dryRun: true,
+    });
+
+    expect(preview.rows).toEqual(
+      expect.arrayContaining([
+        { entity: "action", key: "enrich", action: "skipped" },
+        expect.objectContaining({ entity: "hook", action: "added" }),
+      ]),
+    );
+    expect(preview.rows.length).toBe(preview.changes.length);
+  });
+
   describe("rows the tenant already has", () => {
     const block = () =>
       buildResolvedConfigBlock(raw, CHILD, { legacyControlPlane: CP });
