@@ -282,6 +282,36 @@ describe("resolved config sync", () => {
       expect(again.changes.some((c) => c.startsWith("delete "))).toBe(false);
     });
 
+    it("prunes the old code copy of a hook that now points at other code", async () => {
+      const { hookCode } = await seedControlPlane();
+      const first = await buildResolvedConfigBlock(raw, CHILD, {
+        legacyControlPlane: CP,
+      });
+      await applyResolvedConfigBlock(first, raw, CHILD);
+      const oldCopy = await syncedRowId("hookCode", CHILD, hookCode.id);
+      expect(await raw.hookCode.get(CHILD, oldCopy)).toBeTruthy();
+
+      // The parent swaps the hook's code for a new row.
+      const next = await cpData.hookCode.create(CP, { code: CODE + "// v2" });
+      const [hook] = (await raw.hooks.list(CP)).hooks.filter(
+        (h) => (h as any).code_id,
+      );
+      await raw.hooks.update(CP, hook!.hook_id!, { code_id: next.id } as any);
+      await raw.hookCode.remove(CP, hookCode.id);
+
+      const block = await buildResolvedConfigBlock(raw, CHILD, {
+        legacyControlPlane: CP,
+      });
+      const result = await applyResolvedConfigBlock(block, raw, CHILD, {
+        prune: true,
+      });
+
+      expect(result.entities.hookCode.deleted).toBe(1);
+      expect(await raw.hookCode.get(CHILD, oldCopy)).toBeFalsy();
+      const newCopy = await syncedRowId("hookCode", CHILD, next.id);
+      expect(await raw.hookCode.get(CHILD, newCopy)).toBeTruthy();
+    });
+
     it("refuses to prune a block that resolved no ancestors", async () => {
       await seedControlPlane();
       const block = await buildResolvedConfigBlock(raw, CHILD, {
@@ -289,11 +319,21 @@ describe("resolved config sync", () => {
       });
       await applyResolvedConfigBlock(block, raw, CHILD);
 
+      await raw.actions.create(CP, {
+        name: "added",
+        code: CODE,
+        scope: "shared",
+      });
+      const changed = await buildResolvedConfigBlock(raw, CHILD, {
+        legacyControlPlane: CP,
+      });
+
       await expect(
-        applyResolvedConfigBlock({ ...block, chain: [] }, raw, CHILD, {
+        applyResolvedConfigBlock({ ...changed, chain: [] }, raw, CHILD, {
           prune: true,
         }),
       ).rejects.toThrow(/no ancestors/);
+      // Not even the upserts ran.
       expect((await raw.actions.list(CHILD)).actions).toHaveLength(1);
     });
   });

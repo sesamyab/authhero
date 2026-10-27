@@ -22,7 +22,7 @@ import {
 import { resolveTenantChain } from "../inheritance/chain";
 import { mergeConfig } from "../inheritance/merge";
 import { readConfigRows } from "../inheritance/read";
-import { emptyConfigRows } from "../inheritance/types";
+import { ConfigRows, emptyConfigRows } from "../inheritance/types";
 
 /**
  * Sync of a tenant's resolved config (docs/design/tenant-config-inheritance.md,
@@ -287,6 +287,13 @@ export async function applyResolvedConfigBlock(
 ): Promise<ApplyResolvedBlockResult> {
   const { dryRun = false, continueOnError = true } = options;
 
+  // Before any read or write: every synced copy would look stale.
+  if (options.prune && block.chain.length === 0) {
+    throw new Error(
+      `Cannot prune '${tenantId}': the block resolved no ancestors, so every synced copy would look stale. Nothing was written.`,
+    );
+  }
+
   const result: ApplyResolvedBlockResult = {
     status: dryRun ? "dry-run" : "applied",
     hash: block.hash,
@@ -328,6 +335,15 @@ export async function applyResolvedConfigBlock(
       );
     }
   }
+
+  // The tenant's rows as they are before this apply. Hook code has no list and
+  // is found through the hooks that reference it, so read it before the hooks
+  // are rewritten to point at their new code: a replaced copy is then still
+  // reachable.
+  const before =
+    (dryRun || options.prune) && block.chain.length > 0
+      ? await readConfigRows(target, tenantId)
+      : null;
 
   const attempt = async (
     entity: keyof ApplyResolvedBlockResult["entities"],
@@ -526,41 +542,29 @@ export async function applyResolvedConfigBlock(
 
   // Stale copies go last, and only after every upsert succeeded: a half-applied
   // block must not also lose rows.
-  if ((dryRun || options.prune) && !hasErrors()) {
-    if (block.chain.length === 0) {
-      if (options.prune) {
-        throw new Error(
-          `Cannot prune '${tenantId}': the block resolved no ancestors, so every synced copy would look stale. Nothing was removed.`,
+  if (before && !hasErrors()) {
+    const desired = new Set<string>();
+    for (const entity of SYNC_ENTITIES) {
+      for (const row of rowsOf(block, entity)) {
+        desired.add(
+          entity === "hookCode" || entity === "action"
+            ? codeIds.get((row as { id: string }).id)!
+            : await id(entity, keyOf(entity, row)),
         );
       }
-    } else {
-      const desired = new Set<string>();
-      for (const entity of SYNC_ENTITIES) {
-        for (const row of rowsOf(block, entity)) {
-          desired.add(
-            entity === "hookCode" || entity === "action"
-              ? codeIds.get((row as { id: string }).id)!
-              : await id(entity, keyOf(entity, row)),
-          );
+    }
+    for (const stale of findStaleSyncedRows(before, desired)) {
+      const label = `${stale.entity}:${stale.label}`;
+      try {
+        result.changes.push(`delete ${label}`);
+        if (options.prune && !dryRun) {
+          await removeRow(target, tenantId, stale.entity, stale.id);
+          result.entities[stale.entity].deleted += 1;
         }
-      }
-      for (const stale of await findStaleSyncedRows(
-        target,
-        tenantId,
-        desired,
-      )) {
-        const label = `${stale.entity}:${stale.label}`;
-        try {
-          result.changes.push(`delete ${label}`);
-          if (options.prune && !dryRun) {
-            await removeRow(target, tenantId, stale.entity, stale.id);
-            result.entities[stale.entity].deleted += 1;
-          }
-        } catch (error) {
-          result.entities[stale.entity].errors.push(
-            `delete ${label}: ${error instanceof Error ? error.message : error}`,
-          );
-        }
+      } catch (error) {
+        result.entities[stale.entity].errors.push(
+          `delete ${label}: ${error instanceof Error ? error.message : error}`,
+        );
       }
     }
   }
@@ -600,15 +604,13 @@ interface StaleRow {
 /**
  * Synced copies (`sy` ids) the tenant holds that are not in `desired`, in the
  * order they can be removed: hooks before the code they point at, and rows
- * before nothing else depends on them. Hook code has no list, so it is found
- * through the hooks that still reference it.
+ * before nothing else depends on them. `rows` is the tenant's snapshot from
+ * before the apply, so code a hook referenced until this apply is still listed.
  */
-async function findStaleSyncedRows(
-  target: DataAdapters,
-  tenantId: string,
+function findStaleSyncedRows(
+  rows: ConfigRows,
   desired: Set<string>,
-): Promise<StaleRow[]> {
-  const rows = await readConfigRows(target, tenantId);
+): StaleRow[] {
   const stale = (id: string | undefined) =>
     !!id && isSyncedRowId(id) && !desired.has(id);
 
