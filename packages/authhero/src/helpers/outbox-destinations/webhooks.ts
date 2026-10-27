@@ -76,6 +76,7 @@ export class WebhookDestination implements EventDestination {
     return event.event_type.startsWith(HOOK_EVENT_PREFIX);
   }
 
+  /** Build the webhook payload from the event's committed user and update snapshots. */
   transform(event: AuditEvent): WebhookInvocation {
     const triggerId = event.event_type.slice(HOOK_EVENT_PREFIX.length);
     return {

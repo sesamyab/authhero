@@ -497,6 +497,7 @@ function logScim(
   });
 }
 
+/** Mount connection-scoped SCIM provisioning with user lifecycle hooks and outbox delivery. */
 export function createScimApi(config: AuthHeroConfig) {
   const app = new OpenAPIHono<{ Bindings: Bindings; Variables: Variables }>();
 

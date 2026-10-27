@@ -1274,7 +1274,7 @@ Supported triggers and their export names:
 | `pre-user-update` | `exports.onExecutePreUserUpdate` | Inline (can deny the update) |
 | `post-user-update` | `exports.onExecutePostUserUpdate` | Outbox-backed (retried); best effort without outbox |
 | `pre-user-deletion` | `exports.onExecutePreUserDeletion` | Inline (can deny deletion) |
-| `post-user-deletion` | `exports.onExecutePostUserDeletion` | Outbox-backed (retried) |
+| `post-user-deletion` | `exports.onExecutePostUserDeletion` | Outbox-backed (retried); best effort without outbox |
 
 ### Console output is persisted
 
@@ -1311,13 +1311,15 @@ The setting applies only at persistence time. Hooks still capture and see their 
 
 `"errors"` or `"off"` is recommended for high-volume triggers such as `credentials-exchange`, and anywhere hook output may contain user data you do not want stored.
 
-### Outbox-backed delivery for post-registration / post-deletion code hooks
+### Delivery for post-registration, post-update and post-deletion code hooks
 
-`post-user-registration` and `post-user-deletion` code hooks are delivered through the [outbox pipeline](../architecture/hooks-pipeline.md), the same durable path as webhooks — via `CodeHookDestination`. They are **not** run inline in the request:
+`post-user-registration` code hooks require the [outbox pipeline](../architecture/hooks-pipeline.md), where `CodeHookDestination` delivers them through the same durable path as webhooks.
 
-- **Retries + dead-letter**: a failing code hook is retried with exponential backoff and dead-lettered after `maxRetries`, then surfaced via the [Failed events](/customization/failed-events) endpoints. Previously a failure was only logged and dropped.
-- **At-least-once**: because the event can be retried (and re-enqueued by [self-healing](../architecture/hooks-pipeline.md#self-healing-post-user-registration) on the user's next login), a code hook may run more than once. The outbox event id is passed to your code as `event.idempotency_key` — key non-idempotent side effects on it, or check `app_metadata`, so re-delivery is safe.
-- **Ordering**: they run after the user row is committed and after any `account-linking` template hook, so `event.user` reflects the linked/primary user.
+When the outbox is enabled, `post-user-update` and `post-user-deletion` use that pipeline too, with the guarantees below. Without an outbox, these two triggers run as best-effort background work, with no retries or dead-letter support.
+
+- **Retries + dead-letter**: a failing code hook is retried with exponential backoff and dead-lettered after `maxRetries`, then surfaced via the [Failed events](/customization/failed-events) endpoints.
+- **At-least-once**: an outbox event can be retried, so a code hook may run more than once. Its event id is passed to your code as `event.idempotency_key` — use it to deduplicate downstream side effects.
+- **Ordering**: delivery follows the committed user write. Post-update snapshots describe that write before automatic account linking and post-update template side effects; see [stored user lifecycle Actions](#stored-user-lifecycle-actions).
 
 The token-mutating triggers (`post-user-login`, `credentials-exchange`) still run inline — they must alter the live token in the request and cannot be deferred.
 

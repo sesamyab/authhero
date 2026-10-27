@@ -56,6 +56,7 @@ export function buildPostHookEvent(
   return buildHookEvent(ctx, tenantId, triggerId, user, changes);
 }
 
+/** Capture a sanitized user write as a hook event for durable or best-effort delivery. */
 function buildHookEvent(
   ctx: HookCtx,
   tenantId: string,
@@ -138,6 +139,7 @@ export function dispatchPostHookInline(
   waitUntil(ctx, dispatchInline(ctx, tenantId, triggerId, user, changes));
 }
 
+/** Deliver fallback webhooks and update/deletion Actions without outbox retries. */
 async function dispatchInline(
   ctx: HookCtx,
   tenantId: string,

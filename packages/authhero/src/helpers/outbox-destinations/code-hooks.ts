@@ -73,6 +73,7 @@ export class CodeHookDestination implements EventDestination {
     return event.event_type.startsWith(HOOK_EVENT_PREFIX);
   }
 
+  /** Recover the user write and stable delivery ID from a persisted hook event. */
   transform(event: AuditEvent): CodeHookInvocation {
     return {
       eventId: event.id,
@@ -86,6 +87,7 @@ export class CodeHookDestination implements EventDestination {
     };
   }
 
+  /** Run matching Actions, record outcomes, and fail delivery when the relay must retry. */
   async deliver(invocations: CodeHookInvocation[]): Promise<void> {
     const codeExecutor = this.codeExecutor;
     for (const invocation of invocations) {
