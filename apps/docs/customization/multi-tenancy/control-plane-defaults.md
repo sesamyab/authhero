@@ -423,7 +423,8 @@ const result = await applyResolvedConfigBlock(block, tenantAdapters, tenantId, {
 ```
 
 - **Covers** connections, resource servers, code hooks with their `hook_code`,
-  actions, and the email provider and branding when the tenant has none.
+  actions, the email provider and branding (created when the tenant has none,
+  replaced only when locked) and prompt settings (applied only when locked).
 - **Ids:** synced rows get deterministic ids derived from the tenant, entity and
   stable key, so a re-sync updates its own rows and never touches rows the
   tenant owns. Hooks are pointed at the copied code.
@@ -443,9 +444,15 @@ const result = await applyResolvedConfigBlock(block, tenantAdapters, tenantId, {
   rest like connection secrets (see [encryption at rest](/security/encryption-at-rest)).
 - **Platform rows** (`scope: "platform"`) are included, because they have to run,
   and listed in `block.hidden` so the management API can redact them.
-- **Limits:** prompt settings are not applied yet, and the email provider and
-  branding are only created when the tenant has none, so later changes to the
-  inherited row do not reach a tenant that already has one.
+- **Singletons** have no id to mark a copy by. A row the tenant already has is
+  replaced only when the parent's row has `override: none` or `enforce`;
+  otherwise it stays.
+- **Collisions:** a tenant row with the same key (connection strategy and name,
+  resource server identifier, action name) wins. No copy is added next to it and
+  the change list shows `skip entity:key (the tenant has its own)`.
+- **Clients:** a connection's `enabled_clients` is not copied. A new synced
+  connection is added to the tenant's clients that list their connections
+  explicitly, once, when it is created.
 
 `applyControlPlaneDefaultsPayload` applies a payload's `resolved` block when you
 pass `options.resolved = { tenantId, ... }`; without it the block is ignored.

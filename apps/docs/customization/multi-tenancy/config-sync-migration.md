@@ -25,10 +25,9 @@ Background: [per-tenant sync mode](./runtime-fallback.md#per-tenant-sync-mode-co
 
 **Know what is not synced.** Look at these before the dry run, because the sync will not change them:
 
-- Email provider and branding are only created when the tenant has none. A later edit on the parent never reaches a tenant that already has one.
-- Prompt settings are not applied.
-- A connection's `enabled_clients` is dropped: which of the tenant's clients may use an inherited connection is a tenant-side decision. Enable the synced connection for the right clients.
-- A row the tenant already has with the same strategy and name (connections), identifier (resource servers) or name (actions) is **not adopted**. The synced copy is added next to it. Look for these in the dry run and resolve them by renaming or removing one side.
+- Email provider and branding have no id to mark a synced copy by, so a row the tenant already has is only replaced when the parent locks it (`override: none` or `enforce`). Otherwise it stays, and a later edit on the parent does not reach the tenant. Prompt settings follow the same rule, and are applied only when locked.
+- A connection's `enabled_clients` is not copied (it holds the parent's client ids). When a synced connection is **first added**, it is enabled on the tenant's clients that list their connections explicitly; clients without a list already use every connection. Later syncs leave the tenant's choice alone, so enable or disable it per client afterwards if you want something else.
+- A row the tenant already has with the same strategy and name (connections), identifier (resource servers) or name (actions) **wins**: no synced copy is added next to it, and the dry run lists `skip entity:key (the tenant has its own)`. Rename or remove one side if you want the parent's row instead.
 - `inherit: true` action stubs only resolve against the control plane while the tenant is `inherit-on-read`, and client URLs from the control plane's client are no longer merged once it is `synced`. Copy what the tenant needs into the tenant itself.
 - Platform-scoped rows are copied so they can run, but are hidden from the tenant's management API.
 
@@ -44,7 +43,7 @@ Read `result`: `status` (`dry-run`), per-entity counts (`added`, `changed`, `unc
 Expect `added` for everything the tenant inherited. Investigate:
 
 - any `errors`;
-- `changed` on a row the tenant owns (a name collision from the list above);
+- `skip ... (the tenant has its own)` lines (a name collision from the list above);
 - anything you did not expect to be published (check its `scope` on the control plane).
 
 The same preview is in the admin UI on the tenant's **Operations** page (_Preview sync_).
