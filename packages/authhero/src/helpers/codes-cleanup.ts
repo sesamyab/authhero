@@ -28,7 +28,7 @@ export interface CodesCleanupParams {
  * ```
  */
 export async function cleanupCodes(
-  codes: CodesAdapter,
+  codes: Pick<CodesAdapter, "cleanup">,
   params: CodesCleanupParams = {},
 ): Promise<number> {
   const retentionDays = params.retentionDays ?? 1;

@@ -25,6 +25,7 @@ import { prefetchClientBundle } from "../helpers/prefetch-client-bundle";
 import { isCimdClientId } from "../helpers/cimd";
 import { getOrCreateUserByProvider } from "../helpers/users";
 import { finalizeAuthenticatedSession } from "./common";
+import { isDeviceLoginSession } from "../helpers/device-flow";
 import { isConnectLoginSession } from "../helpers/dcr/connect-state";
 import { setTenantId } from "../helpers/set-tenant-id";
 import { writeTryConnectionResult } from "./try-connection";
@@ -160,6 +161,11 @@ export async function connectionCallback(
     loginSession.authParams.client_id,
   );
 
+  if (isDeviceLoginSession(loginSession.state_data))
+    client.client_metadata = {
+      ...client.client_metadata,
+      universal_login_version: "2",
+    };
   ctx.set("client_id", client.client_id);
   setTenantId(ctx, client.tenant.id);
 
@@ -194,6 +200,7 @@ export async function connectionCallback(
   // the connect screen.
   if (
     !isConnectLoginSession(loginSession.state_data) &&
+    !isDeviceLoginSession(loginSession.state_data) &&
     !loginSession.authParams.redirect_uri
   ) {
     await logMessage(ctx, client.tenant.id, {

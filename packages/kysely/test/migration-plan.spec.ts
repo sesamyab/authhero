@@ -22,16 +22,6 @@ async function tableNames(db: Kysely<Database>): Promise<string[]> {
   return rows.map((row) => row.name);
 }
 
-async function columnNames(
-  db: Kysely<Database>,
-  table: string,
-): Promise<string[]> {
-  const { rows } = await sql<{
-    name: string;
-  }>`SELECT name FROM pragma_table_info(${table})`.execute(db);
-  return rows.map((row) => row.name);
-}
-
 describe("planMigrations", () => {
   it("lists every migration on an empty database without writing anything", async () => {
     const db = createDb();
@@ -66,7 +56,7 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-10-28T12:00:00_rollout_config";
+    const last = "2026-10-29T12:00:00_device_codes";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
 
@@ -75,12 +65,12 @@ describe("planMigrations", () => {
     expect(plan.pending.map((it) => it.name)).toEqual([last]);
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
-    expect(output).toMatch(/alter table "rollouts" add column "config"/i);
-    expect(await columnNames(db, "rollouts")).not.toContain("paused_reason");
+    expect(output).toMatch(/create table "device_codes"/i);
+    expect(await tableNames(db)).not.toContain("device_codes");
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    expect(await columnNames(db, "rollouts")).toContain("paused_reason");
+    expect(await tableNames(db)).toContain("device_codes");
     await db.destroy();
   });
 });

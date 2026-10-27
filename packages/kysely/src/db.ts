@@ -544,6 +544,15 @@ export interface Database {
   // `expires_at` stays canonical (it is what the adapter reads); `expires_at_ts`
   // is an indexed numeric twin written alongside it so retention sweeps don't
   // have to scan. Nullable for rows written before 2026-07-16T12:00:00.
+  device_codes: import("@authhero/adapter-interfaces").DeviceCode & {
+    tenant_id: string;
+  };
+  device_flow_limits: {
+    tenant_id: string;
+    key: string;
+    attempts: number;
+    expires_at: string;
+  };
   codes: Code & { tenant_id: string; expires_at_ts?: number | null };
   connections: z.infer<typeof sqlConnectionSchema>;
   custom_domains: z.infer<typeof sqlCustomDomainSchema>;

@@ -77,6 +77,11 @@ async function buildAuthServerMetadata(ctx: {
     issuer: getIssuer(ctx.env, customDomain),
     authorization_endpoint: `${getAuthUrl(ctx.env, customDomain)}authorize`,
     token_endpoint: `${getAuthUrl(ctx.env, customDomain)}oauth/token`,
+    ...(ctx.var.data.deviceCodes
+      ? {
+          device_authorization_endpoint: `${getAuthUrl(ctx.env, customDomain)}oauth/device/code`,
+        }
+      : {}),
     userinfo_endpoint: `${getAuthUrl(ctx.env, customDomain)}userinfo`,
     jwks_uri: `${getAuthUrl(ctx.env, customDomain)}.well-known/jwks.json`,
     ...(dcrEnabled
@@ -121,6 +126,9 @@ async function buildAuthServerMetadata(ctx: {
       "code id_token token",
     ],
     grant_types_supported: [
+      ...(ctx.var.data.deviceCodes
+        ? ["urn:ietf:params:oauth:grant-type:device_code"]
+        : []),
       "authorization_code",
       "client_credentials",
       "refresh_token",

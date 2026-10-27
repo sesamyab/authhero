@@ -1,3 +1,4 @@
+import { isDeviceLoginSession } from "../../helpers/device-flow";
 import { HTTPException } from "hono/http-exception";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
@@ -58,7 +59,7 @@ async function returnError(
   }
 
   const { redirect_uri } = loginSession.authParams;
-  if (!redirect_uri) {
+  if (!redirect_uri && !isDeviceLoginSession(loginSession.state_data)) {
     throw new HTTPException(400, { message: "Redirect uri not found" });
   }
 
@@ -80,6 +81,11 @@ async function returnError(
   // client, as connectionCallback does, so the log isn't written without one.
   if (client) {
     setTenantId(ctx, client.tenant.id);
+    if (isDeviceLoginSession(loginSession.state_data))
+      client.client_metadata = {
+        ...client.client_metadata,
+        universal_login_version: "2",
+      };
   }
 
   if (ctx.var.tenant_id) {
