@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -143,6 +145,7 @@ export function TenantOperations() {
     Record<string, TenantOperationEventRecord[]>
   >({});
   const [enqueuing, setEnqueuing] = useState(false);
+  const [prune, setPrune] = useState(false);
   const mounted = useRef(true);
 
   const refresh = useCallback(async () => {
@@ -221,7 +224,7 @@ export function TenantOperations() {
 
   const enqueue = async (
     kind: "upgrade" | "sync-defaults",
-    input: { dry_run?: boolean; force?: boolean } | undefined,
+    input: { dry_run?: boolean; force?: boolean; prune?: boolean } | undefined,
     label: string,
   ) => {
     if (!tenantId) return;
@@ -279,6 +282,17 @@ export function TenantOperations() {
             </CardDescription>
           </div>
           <div className="flex gap-2">
+            <div
+              className="flex items-center gap-2"
+              title="Also remove synced copies the parent no longer shares. A preview always lists them."
+            >
+              <Checkbox
+                id="sync-prune"
+                checked={prune}
+                onCheckedChange={(v) => setPrune(v === true)}
+              />
+              <Label htmlFor="sync-prune">Remove unshared</Label>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -304,7 +318,11 @@ export function TenantOperations() {
               variant="outline"
               size="sm"
               onClick={() =>
-                enqueue("sync-defaults", { force: true }, "Forced sync")
+                enqueue(
+                  "sync-defaults",
+                  { force: true, ...(prune ? { prune: true } : {}) },
+                  "Forced sync",
+                )
               }
               disabled={enqueuing || hasActive}
               title="Apply the config even when the tenant is already up to date"
@@ -315,7 +333,13 @@ export function TenantOperations() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => enqueue("sync-defaults", undefined, "Sync")}
+              onClick={() =>
+                enqueue(
+                  "sync-defaults",
+                  prune ? { prune: true } : undefined,
+                  "Sync",
+                )
+              }
               disabled={enqueuing || hasActive}
               title="Copy the config this tenant inherits into its own database"
             >

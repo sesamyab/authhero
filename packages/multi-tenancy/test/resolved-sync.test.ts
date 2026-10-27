@@ -207,6 +207,97 @@ describe("resolved config sync", () => {
     expect(run.entities.action.deleted).toBe(1);
   });
 
+  describe("pruning stale synced copies", () => {
+    async function syncThenUnshare() {
+      const { hookCode, action } = await seedControlPlane();
+      await raw.actions.create(CP, {
+        name: "keep",
+        code: CODE,
+        scope: "shared",
+      });
+      const first = await buildResolvedConfigBlock(raw, CHILD, {
+        legacyControlPlane: CP,
+      });
+      await applyResolvedConfigBlock(first, raw, CHILD);
+      // The tenant's own row, which a prune must never touch.
+      const own = await raw.actions.create(CHILD, { name: "own", code: CODE });
+      expect((await raw.actions.list(CHILD)).actions).toHaveLength(3);
+
+      // The parent stops sharing the hook, its code and one action.
+      const [hook] = (await raw.hooks.list(CP)).hooks.filter(
+        (h) => (h as any).code_id,
+      );
+      await raw.hooks.remove(CP, hook!.hook_id!);
+      await raw.hookCode.remove(CP, hookCode.id);
+      await raw.actions.remove(CP, action.id);
+      return buildResolvedConfigBlock(raw, CHILD, { legacyControlPlane: CP });
+    }
+
+    it("lists stale copies on a dry run and removes nothing", async () => {
+      const block = await syncThenUnshare();
+      const result = await applyResolvedConfigBlock(block, raw, CHILD, {
+        dryRun: true,
+      });
+
+      expect(result.changes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^delete hook:/),
+          "delete action:enrich",
+          expect.stringMatching(/^delete hookCode:/),
+        ]),
+      );
+      expect(result.entities.action.deleted).toBe(0);
+      expect((await raw.actions.list(CHILD)).actions).toHaveLength(3);
+      expect((await raw.hooks.list(CHILD)).hooks).toHaveLength(1);
+    });
+
+    it("leaves stale copies alone unless asked to prune", async () => {
+      const block = await syncThenUnshare();
+      const result = await applyResolvedConfigBlock(block, raw, CHILD);
+
+      expect(result.changes.some((c) => c.startsWith("delete "))).toBe(false);
+      expect((await raw.actions.list(CHILD)).actions).toHaveLength(3);
+    });
+
+    it("prunes stale copies, keeps shared and own rows, and ignores the hash", async () => {
+      const block = await syncThenUnshare();
+      // The hash of the new block is already stored: prune must still look.
+      await raw.tenants.update(CHILD, { config_sync_hash: block.hash });
+
+      const result = await applyResolvedConfigBlock(block, raw, CHILD, {
+        prune: true,
+      });
+
+      expect(result.status).toBe("applied");
+      expect(result.entities.hook.deleted).toBe(1);
+      expect(result.entities.hookCode.deleted).toBe(1);
+      expect(result.entities.action.deleted).toBe(1);
+      const names = (await raw.actions.list(CHILD)).actions.map((a) => a.name);
+      expect(names.sort()).toEqual(["keep", "own"]);
+      expect((await raw.hooks.list(CHILD)).hooks).toHaveLength(0);
+
+      const again = await applyResolvedConfigBlock(block, raw, CHILD, {
+        prune: true,
+      });
+      expect(again.changes.some((c) => c.startsWith("delete "))).toBe(false);
+    });
+
+    it("refuses to prune a block that resolved no ancestors", async () => {
+      await seedControlPlane();
+      const block = await buildResolvedConfigBlock(raw, CHILD, {
+        legacyControlPlane: CP,
+      });
+      await applyResolvedConfigBlock(block, raw, CHILD);
+
+      await expect(
+        applyResolvedConfigBlock({ ...block, chain: [] }, raw, CHILD, {
+          prune: true,
+        }),
+      ).rejects.toThrow(/no ancestors/);
+      expect((await raw.actions.list(CHILD)).actions).toHaveLength(1);
+    });
+  });
+
   it("refuses to write when the key ring cannot decrypt a key id, naming only the id", async () => {
     await seedControlPlane();
     const block = await buildResolvedConfigBlock(raw, CHILD, {

@@ -455,7 +455,7 @@ export interface AuthHeroDataProvider extends DataProvider {
   createTenantOperation: (
     tenantId: string,
     kind: "upgrade" | "seed" | "backup" | "sync-defaults",
-    input?: { dry_run?: boolean; force?: boolean },
+    input?: { dry_run?: boolean; force?: boolean; prune?: boolean },
   ) => Promise<TenantOperationRecord>;
 
   /**

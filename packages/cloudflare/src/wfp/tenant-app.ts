@@ -325,6 +325,7 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
       resolved?: ResolvedConfigBlock;
       dryRun?: boolean;
       force?: boolean;
+      prune?: boolean;
     };
     try {
       body = await c.req.json();
@@ -354,6 +355,7 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
         {
           dryRun: body.dryRun === true,
           force: body.force === true,
+          prune: body.prune === true,
           keyRing: ring,
           continueOnError: options.continueOnError ?? true,
         },

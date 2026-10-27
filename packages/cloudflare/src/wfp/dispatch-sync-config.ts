@@ -60,7 +60,7 @@ export function createDispatchSyncConfig(
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options;
 
-  return async (tenantId, { dryRun, force }) => {
+  return async (tenantId, { dryRun, force, prune }) => {
     const resolved = await buildResolvedConfigBlock(
       controlPlaneAdapters,
       tenantId,
@@ -81,7 +81,7 @@ export function createDispatchSyncConfig(
             "content-type": "application/json",
             authorization: `Bearer ${internalSecret}`,
           },
-          body: JSON.stringify({ tenantId, resolved, dryRun, force }),
+          body: JSON.stringify({ tenantId, resolved, dryRun, force, prune }),
           signal: controller.signal,
         });
     } finally {
