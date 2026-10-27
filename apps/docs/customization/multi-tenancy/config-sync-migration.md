@@ -78,7 +78,7 @@ curl -X PATCH https://auth.example.com/api/v2/tenants/settings \
   -d '{"config_sync": "synced"}'
 ```
 
-Or **Settings → Advanced** in the admin UI. The instance that handles the request drops its remembered mode at once; every other instance within 30 seconds. Wait at least a minute before judging the result.
+Or **Settings → Advanced** in the admin UI. The instance that handles the request drops its remembered mode at once; every other instance within 10 seconds (`configSyncCacheTtlMs` in `initMultiTenant`). Wait that long, plus a margin, before judging the result.
 
 Then repeat the smoke tests from step 3. The tenant now reads only its own database.
 

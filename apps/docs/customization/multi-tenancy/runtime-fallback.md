@@ -389,9 +389,11 @@ The admin UI exposes the same switch under **Settings → Advanced**.
   it inherits on read; see
   [the runbook](./config-sync-migration.md#_5-watch-and-keep-the-rollback-window)
   for what that means.
-- **Eventual consistency:** each isolate remembers a tenant's mode for 30
-  seconds. The instance that handles the change forgets it at once, so a change
-  reaches every other instance within that time. If the lookup
+- **Eventual consistency:** each isolate remembers a tenant's mode for 10
+  seconds by default. The instance that handles the change forgets it at once, so
+  a change reaches every other instance within that time. Set
+  `configSyncCacheTtlMs` on `initMultiTenant` to change it: lower is faster, at
+  the cost of one more `tenants.get` per isolate and tenant per period. If the lookup
   fails the tenant keeps inheriting; a failed lookup never breaks a request.
 - **Before you flip:** make sure the tenant's database already holds what it
   used to inherit, and use [shadow mode](#shadow-mode-for-config-inheritance) to
