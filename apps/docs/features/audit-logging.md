@@ -79,6 +79,15 @@ Request Handler
 
 The management API `GET /api/v2/logs` endpoints work identically in both modes. When the outbox is enabled, the relay populates the same logs table via the `LogsDestination` transformer.
 
+### Who performed an operation
+
+The top-level `user_id` identifies the affected user. The authenticated caller is recorded separately in `details.request.auth`:
+
+- Management API requests use `strategy: "jwt"`, with `user` for user tokens and token metadata in `credentials`. For client-credentials requests, `client_id` identifies the calling application.
+- Account-management screens use `strategy: "session"`, with the verified session user's ID, name, and email in `user`. This snapshot is captured before mutations, so self-service deletion retains the caller after the account is gone.
+
+Caller attribution is preserved even when a log supplies custom details, in both direct and outbox logging modes. Requests without an authenticated caller do not receive an authentication block.
+
 ### Login details
 
 A `Successful Login` (`s`) log usually comes from the callback or `/authorize/resume` request, so `qs` holds only `code` and `state`. AuthHero adds the details of the authorization the login completes:

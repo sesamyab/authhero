@@ -41,5 +41,16 @@ export async function resolveAccountUser(
     );
   }
 
+  // Keep the verified caller separate from the management API's admin context.
+  // Snapshot it before mutations so deletion and email changes cannot erase it.
+  ctx.set("sessionAuth", {
+    strategy: "session",
+    user: {
+      user_id: user.user_id,
+      ...(user.name ? { name: user.name } : {}),
+      ...(user.email ? { email: user.email } : {}),
+    },
+  });
+
   return { user, session };
 }

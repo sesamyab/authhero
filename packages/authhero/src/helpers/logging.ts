@@ -165,7 +165,8 @@ export type LogParams = {
   };
   /**
    * When provided, replaces the auto-generated `{ request, response? }` details
-   * object entirely. Use this to store a compact, pre-built details payload
+   * object, except for verified caller attribution. Use this to store a compact,
+   * pre-built details payload
    * (e.g. for webhook logs) that fits within storage limits (Analytics Engine
    * blob: 1024 bytes). `execution_id` is still merged on top when set — pass it
    * via its own field rather than inlining it here, or the request block is lost.
@@ -210,7 +211,9 @@ function subjectUserId(params: LogParams, ctx: RequestContext): string {
   ) {
     return params.targetId;
   }
-  return params.userId || ctx.var.user_id || "";
+  return (
+    params.userId || ctx.var.user_id || ctx.var.sessionAuth?.user?.user_id || ""
+  );
 }
 
 function computeDiff(
@@ -236,6 +239,7 @@ function inferCategory(ctx: RequestContext, params: LogParams): AuditCategory {
   // Admin-like action outside the management API (e.g. impersonation) where
   // the actor differs from the subject user
   if (params.actorUserId) return "admin_action";
+  if (ctx.var.sessionAuth?.user) return "user_action";
   // User-initiated action (login, signup, password change) — params.userId identifies the acting user
   if (params.userId) return "user_action";
   // Client credentials flow
@@ -255,7 +259,7 @@ type LogEnrichment = {
   connection: string;
   client_name: string;
   user_name: string;
-  /** The bearer-token caller, as Auth0's `details.request.auth`. */
+  /** The authenticated caller, as Auth0's `details.request.auth`. */
   request_auth?: RequestAuth;
   /** The caller's client id when the token is a client-credentials token that
    *  carries no `azp` (authhero mints those with `sub` = the client id). */
@@ -273,9 +277,10 @@ type CallerInfo = {
 };
 
 /**
- * Describe the bearer-token caller the way Auth0 does in
- * `details.request.auth`, so a management operation records who made it even
- * when the log's `user_id` names the target user.
+ * Describe the authenticated caller in `details.request.auth`, so an operation
+ * records who made it even when the log's `user_id` names the target user.
+ * Account screens supply a verified session snapshot; management requests
+ * resolve the bearer-token caller the way Auth0 does.
  *
  * A token is treated as a client-credentials token when its subject looks
  * like a client (`…@clients`, `sub === azp`, a `gty` claim) or, failing that,
@@ -289,7 +294,7 @@ async function resolveCaller(
   getUser: UserLookup,
 ): Promise<CallerInfo> {
   const token = ctx.var.user;
-  if (!token?.sub) return {};
+  if (!token?.sub) return { request_auth: ctx.var.sessionAuth };
 
   const scopes = token.scope ? token.scope.split(" ").filter(Boolean) : [];
   const credentials = {
@@ -403,6 +408,10 @@ async function resolveLogEnrichment(
         const explicit = ctx.var.username || params.username;
         if (explicit) return explicit;
       }
+      const sessionUser = ctx.var.sessionAuth?.user;
+      if (subjectId && subjectId === sessionUser?.user_id) {
+        return sessionUser.email || sessionUser.name || "";
+      }
       if (!subjectId) return "";
       try {
         const user = await getUser(tenantId, subjectId);
@@ -461,7 +470,12 @@ function buildAuditEvent(
   // actor's email when the subject is that same actor — never attribute a
   // target user's email to an admin actor.
   const subjectId = subjectUserId(params, ctx);
-  const actorId = ctx.var.user_id || params.actorUserId || params.userId;
+  const sessionUser = ctx.var.sessionAuth?.user;
+  const actorId =
+    ctx.var.user_id ||
+    params.actorUserId ||
+    sessionUser?.user_id ||
+    params.userId;
   const actorEmailFallback =
     enrichment && subjectId && subjectId === actorId
       ? enrichment.user_name
@@ -480,14 +494,18 @@ function buildAuditEvent(
       type:
         ctx.var.user_id || params.actorUserId
           ? "admin"
-          : params.userId
+          : sessionUser || params.userId
             ? "user"
             : ctx.var.client_id
               ? "client_credentials"
               : "system",
-      id: ctx.var.user_id || params.actorUserId || params.userId || undefined,
+      id: actorId || undefined,
       email:
-        ctx.var.username || params.username || actorEmailFallback || undefined,
+        ctx.var.username ||
+        params.username ||
+        (actorId === sessionUser?.user_id ? sessionUser?.email : undefined) ||
+        actorEmailFallback ||
+        undefined,
       org_id: ctx.var.organization_id || ctx.var.user?.org_id || undefined,
       org_name: ctx.var.org_name || ctx.var.user?.org_name || undefined,
       scopes: ctx.var.user?.scope ? ctx.var.user.scope.split(" ") : undefined,
@@ -628,15 +646,9 @@ export async function logMessage(
       resolveLogEnrichment(ctx, tenantId, params),
     ]);
 
-    const log: LogInsert = {
-      type: params.type,
-      description: params.description || "",
-      ip: ctx.var.ip,
-      user_agent: ctx.var.useragent || "",
-      auth0_client: ctx.var.auth0_client,
-      date: new Date().toISOString(),
-      details: {
-        ...(params.details || {
+    const details = params.details
+      ? { ...params.details }
+      : {
           request: {
             method: ctx.req.method,
             path: ctx.req.path,
@@ -645,14 +657,27 @@ export async function logMessage(
             ...(params.redirect_uri
               ? { redirect_uri: params.redirect_uri }
               : {}),
-            ...(enrichment.request_auth
-              ? { auth: enrichment.request_auth }
-              : {}),
           },
-          ...(params.response && {
-            response: params.response,
-          }),
-        }),
+          ...(params.response && { response: params.response }),
+        };
+    // Custom details must not suppress the verified caller. Preserve any
+    // custom request fields, but never let them override authentication.
+    if (enrichment.request_auth) {
+      details.request = {
+        ...(isPlainObject(details.request) ? details.request : {}),
+        auth: enrichment.request_auth,
+      };
+    }
+
+    const log: LogInsert = {
+      type: params.type,
+      description: params.description || "",
+      ip: ctx.var.ip,
+      user_agent: ctx.var.useragent || "",
+      auth0_client: ctx.var.auth0_client,
+      date: new Date().toISOString(),
+      details: {
+        ...details,
         ...(params.execution_id ? { execution_id: params.execution_id } : {}),
         ...(loginSessionId ? { login_session_id: loginSessionId } : {}),
       },
