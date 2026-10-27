@@ -1,4 +1,8 @@
-import { DataAdapters, LoginSession } from "@authhero/adapter-interfaces";
+import {
+  DataAdapters,
+  LoginSession,
+  RequestAuth,
+} from "@authhero/adapter-interfaces";
 import { CountryCode } from "libphonenumber-js";
 import { Auth0Client } from "./Auth0Client";
 import type { PreferState } from "../middlewares/prefer";
@@ -40,6 +44,8 @@ export type Variables = {
   client_id?: string;
   user_id?: string;
   username?: string;
+  /** Verified account-session caller, captured before account mutations. */
+  sessionAuth?: RequestAuth;
   connection?: string;
   body?: any;
   /**

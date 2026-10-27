@@ -34,10 +34,10 @@ export const targetSchema = z.object({
 export type Target = z.infer<typeof targetSchema>;
 
 /**
- * The authenticated caller of a bearer-token request, mirroring Auth0's
- * `details.request.auth` on `sapi` logs. `user` is set when the token was
- * issued to a user and omitted for client-credentials tokens. Absent on
- * requests that carry no bearer token, such as login flows.
+ * The authenticated caller, mirroring Auth0's `details.request.auth` on
+ * `sapi` logs. `user` is set for user tokens and verified account sessions,
+ * and omitted for client-credentials tokens. `strategy` identifies JWT or
+ * session authentication. Absent on unauthenticated requests.
  */
 export const requestAuthSchema = z.object({
   user: z
@@ -75,7 +75,7 @@ export const requestContextSchema = z.object({
    * into the logs table, since it can be large and carries `login_hint`.
    */
   authorization_url: z.string().optional(),
-  /** Who made the request, for bearer-token (management API) calls. */
+  /** Who made the request, for bearer-token or verified account-session calls. */
   auth: requestAuthSchema.optional(),
 });
 
