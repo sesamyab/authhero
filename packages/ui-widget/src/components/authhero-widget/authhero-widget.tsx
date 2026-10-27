@@ -2187,6 +2187,58 @@ export class AuthheroWidget {
     // Get logo URL from theme.widget (takes precedence) or branding
     const logoUrl = this._theme?.widget?.logo_url || this._branding?.logo_url;
 
+    // Social buttons, their divider and the secondary-actions partials. Their
+    // visual order is set by CSS from the theme's social_buttons_layout, so the
+    // DOM order has to follow it for tab order and screen readers: with
+    // partials and the default (bottom) layout they come after the fields and
+    // footer, with the "top" layout before them. A screen without partials
+    // keeps its existing markup.
+    const hasSecondaryPartials = !!(
+      screen.partials?.["secondary-actions-start"] ||
+      screen.partials?.["secondary-actions-end"]
+    );
+    const socialOnTop = this._theme?.widget?.social_buttons_layout === "top";
+    const secondaryAfterFields =
+      hasPromptPartials && (!socialOnTop || socialComponents.length === 0);
+    const socialSectionClass =
+      socialComponents.length > 0 ? "social-section" : "secondary-actions";
+    const socialEl =
+      socialComponents.length > 0 || hasSecondaryPartials ? (
+        <div key="social" class={socialSectionClass} part={socialSectionClass}>
+          {this.renderPromptPartial(screen, "secondary-actions-start")}
+          {socialComponents.map((component) => (
+            <authhero-node
+              key={component.id}
+              component={component}
+              locale={this.locale}
+              value={this.formData[component.id]}
+              onFieldChange={(e: CustomEvent<{ id: string; value: string }>) =>
+                this.handleInputChange(e.detail.id, e.detail.value)
+              }
+              onButtonClick={(
+                e: CustomEvent<{
+                  id: string;
+                  type: string;
+                  value?: string;
+                }>,
+              ) => this.handleButtonClick(e.detail)}
+              disabled={this.loading}
+              exportparts={getExportParts(component)}
+            />
+          ))}
+          {this.renderPromptPartial(screen, "secondary-actions-end")}
+        </div>
+      ) : null;
+    // Divider between social and form fields.
+    const dividerEl =
+      socialComponents.length > 0 &&
+      fieldComponents.length > 0 &&
+      hasDivider ? (
+        <div key="divider" class="divider" part="divider">
+          <span class="divider-text">{dividerText}</span>
+        </div>
+      ) : null;
+
     return (
       <div class="widget-container" part="container" data-authstack-container>
         <header class="widget-header" part="header">
@@ -2251,42 +2303,8 @@ export class AuthheroWidget {
               />
             ))}
             <div class="form-content">
-              {/* Social buttons section - order controlled by CSS */}
-              {socialComponents.length > 0 && (
-                <div class="social-section" part="social-section">
-                  {this.renderPromptPartial(screen, "secondary-actions-start")}
-                  {socialComponents.map((component) => (
-                    <authhero-node
-                      key={component.id}
-                      component={component}
-                      locale={this.locale}
-                      value={this.formData[component.id]}
-                      onFieldChange={(
-                        e: CustomEvent<{ id: string; value: string }>,
-                      ) => this.handleInputChange(e.detail.id, e.detail.value)}
-                      onButtonClick={(
-                        e: CustomEvent<{
-                          id: string;
-                          type: string;
-                          value?: string;
-                        }>,
-                      ) => this.handleButtonClick(e.detail)}
-                      disabled={this.loading}
-                      exportparts={getExportParts(component)}
-                    />
-                  ))}
-                  {this.renderPromptPartial(screen, "secondary-actions-end")}
-                </div>
-              )}
-
-              {/* Divider between social and form fields */}
-              {socialComponents.length > 0 &&
-                fieldComponents.length > 0 &&
-                hasDivider && (
-                  <div class="divider" part="divider">
-                    <span class="divider-text">{dividerText}</span>
-                  </div>
-                )}
+              {/* Social buttons and divider - order controlled by CSS */}
+              {!secondaryAfterFields && [socialEl, dividerEl]}
 
               {/* Form fields section - order controlled by CSS */}
               <div class="fields-section" part="fields-section">
@@ -2412,6 +2430,8 @@ export class AuthheroWidget {
                   {this.renderPromptPartial(screen, "form-footer-end")}
                 </div>
               )}
+
+              {secondaryAfterFields && [dividerEl, socialEl]}
             </div>
           </form>
 

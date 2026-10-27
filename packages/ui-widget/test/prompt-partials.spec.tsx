@@ -91,6 +91,55 @@ describe("prompt partials", () => {
     expect(root.querySelector("form > .links")).toBeNull();
   });
 
+  it("renders secondary-actions partials on a screen without social buttons", async () => {
+    const noSocial: UiScreen = {
+      ...screen,
+      components: screen.components.filter((c) => c.type !== "SOCIAL"),
+    };
+    const page = await newSpecPage({
+      components: [AuthheroWidget, AuthheroNode],
+      template: () => <authhero-widget screen={noSocial}></authhero-widget>,
+    });
+    await page.waitForChanges();
+
+    const form = page.root!.shadowRoot!.querySelector("form")!;
+    expect(form.querySelector(".social-section")).toBeNull();
+    const secondary = form.querySelector(".secondary-actions")!;
+    expect(
+      secondary.firstElementChild?.getAttribute("data-insertion-point"),
+    ).toBe("secondary-actions-start");
+    expect(
+      secondary.lastElementChild?.getAttribute("data-insertion-point"),
+    ).toBe("secondary-actions-end");
+  });
+
+  it("orders the social block after the footer by default and before the fields with the top layout", async () => {
+    const childClasses = async (theme?: object) => {
+      const page = await newSpecPage({
+        components: [AuthheroWidget, AuthheroNode],
+        template: () => (
+          <authhero-widget screen={screen} theme={theme}></authhero-widget>
+        ),
+      });
+      await page.waitForChanges();
+      const content = page.root!.shadowRoot!.querySelector(".form-content")!;
+      return Array.from(content.children).map((el) =>
+        el.classList.contains("social-section")
+          ? "social"
+          : el.classList.contains("fields-section")
+            ? "fields"
+            : el.classList.contains("form-footer")
+              ? "footer"
+              : "other",
+      );
+    };
+
+    expect(await childClasses()).toEqual(["fields", "footer", "social"]);
+    expect(
+      await childClasses({ widget: { social_buttons_layout: "top" } }),
+    ).toEqual(["social", "fields", "footer"]);
+  });
+
   it("runs native validity and includes ulp-* controls in submitted data", async () => {
     const submitted: Array<Record<string, string>> = [];
     const page = await newSpecPage({
