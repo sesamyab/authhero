@@ -419,8 +419,153 @@ describe("resolved config sync", () => {
     await applyResolvedConfigBlock(block, raw, CHILD);
 
     const actions = (await raw.actions.list(CHILD)).actions;
-    expect(actions).toHaveLength(2);
-    expect(actions.find((a) => a.code === "// mine")).toBeDefined();
+    expect(actions).toHaveLength(1);
+    expect(actions[0]!.code).toBe("// mine");
+  });
+
+  describe("rows the tenant already has", () => {
+    const block = () =>
+      buildResolvedConfigBlock(raw, CHILD, { legacyControlPlane: CP });
+
+    it("does not copy a connection or resource server next to the tenant's own", async () => {
+      await raw.connections.create(CP, {
+        name: "google",
+        strategy: "google-oauth2",
+        options: { client_id: "cp" },
+        scope: "shared",
+      } as any);
+      await raw.resourceServers.create(CP, {
+        identifier: "https://api.example.com",
+        name: "api",
+        scope: "shared",
+      } as any);
+      await raw.connections.create(CHILD, {
+        name: "google",
+        strategy: "google-oauth2",
+        options: { client_id: "own" },
+      });
+      await raw.resourceServers.create(CHILD, {
+        identifier: "https://api.example.com",
+        name: "own api",
+      });
+
+      const result = await applyResolvedConfigBlock(await block(), raw, CHILD);
+
+      expect(result.entities.resourceServer.errors).toEqual([]);
+      expect(result.changes).toEqual(
+        expect.arrayContaining([
+          "skip connection:google-oauth2:google (the tenant has its own)",
+          "skip resourceServer:https://api.example.com (the tenant has its own)",
+        ]),
+      );
+      expect((await raw.connections.list(CHILD)).connections).toHaveLength(1);
+      expect(
+        (await raw.resourceServers.list(CHILD)).resource_servers,
+      ).toHaveLength(1);
+    });
+
+    it("enables a new synced connection on clients with an explicit list only", async () => {
+      await raw.connections.create(CP, {
+        name: "google",
+        strategy: "google-oauth2",
+        options: { client_id: "cp" },
+        scope: "shared",
+      } as any);
+      const own = await raw.connections.create(CHILD, {
+        name: "email",
+        strategy: "email",
+        options: {},
+      });
+      for (const client_id of ["listed", "unlisted"]) {
+        await raw.clients.create(CHILD, {
+          client_id,
+          client_secret: "s",
+          name: client_id,
+        });
+      }
+      await raw.clientConnections.updateByClient(CHILD, "listed", [own.id!]);
+
+      await applyResolvedConfigBlock(await block(), raw, CHILD);
+
+      const copy = await syncedRowId(
+        "connection",
+        CHILD,
+        "google-oauth2:google",
+      );
+      expect(
+        (await raw.clientConnections.listByClient(CHILD, "listed")).map(
+          (c) => c.id,
+        ),
+      ).toEqual([own.id, copy]);
+      expect(
+        await raw.clientConnections.listByClient(CHILD, "unlisted"),
+      ).toEqual([]);
+
+      // A later sync leaves the tenant's choice alone.
+      await raw.clientConnections.updateByClient(CHILD, "listed", [own.id!]);
+      await applyResolvedConfigBlock(await block(), raw, CHILD, {
+        force: true,
+      });
+      expect(
+        (await raw.clientConnections.listByClient(CHILD, "listed")).map(
+          (c) => c.id,
+        ),
+      ).toEqual([own.id]);
+    });
+
+    it("replaces a singleton only when the parent locks it", async () => {
+      await raw.emailProviders.create(CP, {
+        name: "mailgun",
+        enabled: true,
+        credentials: { api_key: "k1" },
+        scope: "shared",
+      } as any);
+      await raw.emailProviders.create(CHILD, {
+        name: "mailgun",
+        enabled: true,
+        credentials: { api_key: "own" },
+      });
+
+      const open = await applyResolvedConfigBlock(await block(), raw, CHILD);
+      expect(open.entities.emailProvider.changed).toBe(0);
+      expect((await raw.emailProviders.get(CHILD))?.credentials).toEqual({
+        api_key: "own",
+      });
+
+      await raw.emailProviders.update(CP, { override: "none" } as any);
+      const locked = await applyResolvedConfigBlock(await block(), raw, CHILD, {
+        force: true,
+      });
+      expect(locked.entities.emailProvider.changed).toBe(1);
+      expect((await raw.emailProviders.get(CHILD))?.credentials).toEqual({
+        api_key: "k1",
+      });
+
+      const again = await applyResolvedConfigBlock(await block(), raw, CHILD, {
+        force: true,
+      });
+      expect(again.entities.emailProvider.changed).toBe(0);
+    });
+
+    it("applies locked prompt settings and leaves open ones alone", async () => {
+      await raw.promptSettings.set(CP, {
+        identifier_first: false,
+        scope: "shared",
+      } as any);
+      await raw.promptSettings.set(CHILD, { identifier_first: true });
+
+      await applyResolvedConfigBlock(await block(), raw, CHILD);
+      expect((await raw.promptSettings.get(CHILD)).identifier_first).toBe(true);
+
+      await raw.promptSettings.set(CP, { enforce: true } as any);
+      const result = await applyResolvedConfigBlock(await block(), raw, CHILD, {
+        force: true,
+      });
+      expect(result.entities.promptSettings.changed).toBe(1);
+      expect((await raw.promptSettings.get(CHILD)).identifier_first).toBe(
+        false,
+      );
+    });
   });
 
   it("applies a payload's resolved block only when asked to", async () => {

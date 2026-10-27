@@ -16,7 +16,9 @@ import {
   emailProviderSchema,
   hookCodeInsertSchema,
   hookInsertSchema,
+  fetchAll,
   isSyncedRowId,
+  promptSettingSchema,
   resourceServerInsertSchema,
 } from "authhero";
 import { resolveTenantChain } from "../inheritance/chain";
@@ -340,10 +342,32 @@ export async function applyResolvedConfigBlock(
   // is found through the hooks that reference it, so read it before the hooks
   // are rewritten to point at their new code: a replaced copy is then still
   // reachable.
+  const rows = await readConfigRows(target, tenantId);
   const before =
-    (dryRun || options.prune) && block.chain.length > 0
-      ? await readConfigRows(target, tenantId)
-      : null;
+    (dryRun || options.prune) && block.chain.length > 0 ? rows : null;
+
+  // Keys of rows the tenant owns. A parent row with the same key is not copied
+  // next to it: the tenant's row wins, as it does when config is read through.
+  const ownKeys: Record<
+    "connection" | "resourceServer" | "action",
+    Set<string>
+  > = {
+    connection: new Set(),
+    resourceServer: new Set(),
+    action: new Set(),
+  };
+  for (const row of rows.connections) {
+    if (!isSyncedRowId(row.id))
+      ownKeys.connection.add(keyOf("connection", row));
+  }
+  for (const row of rows.resourceServers) {
+    if (!isSyncedRowId(row.id)) {
+      ownKeys.resourceServer.add(keyOf("resourceServer", row));
+    }
+  }
+  for (const row of rows.actions) {
+    if (!isSyncedRowId(row.id)) ownKeys.action.add(keyOf("action", row));
+  }
 
   const attempt = async (
     entity: keyof ApplyResolvedBlockResult["entities"],
@@ -398,6 +422,48 @@ export async function applyResolvedConfigBlock(
     codeIds.set(action.id, await id("action", keyOf("action", action)));
   }
 
+  /**
+   * Clients of the tenant that list their connections explicitly. A new synced
+   * connection is added to those so it shows up on login; clients without a
+   * list already use every connection of the tenant.
+   */
+  let explicitClients: string[] | undefined;
+  const enableForClients = async (connectionId: string) => {
+    if (!explicitClients) {
+      explicitClients = [];
+      const clients = await fetchAll<{ client_id: string }>(
+        (params) => target.clients.list(tenantId, params),
+        "clients",
+        { cursorField: "client_id", pageSize: 100 },
+      );
+      for (const client of clients) {
+        const enabled = await target.clientConnections.listByClient(
+          tenantId,
+          client.client_id,
+        );
+        if (enabled.length > 0) explicitClients.push(client.client_id);
+      }
+    }
+    for (const clientId of explicitClients) {
+      await target.clientConnections.addClientToConnection(
+        tenantId,
+        connectionId,
+        clientId,
+      );
+    }
+  };
+
+  /** True (and reported) when creating `entity:key` would sit next to the tenant's own row. */
+  const collides = (
+    entity: keyof typeof ownKeys,
+    key: string,
+    existing: unknown,
+  ) => {
+    if (existing || !ownKeys[entity].has(key)) return false;
+    result.changes.push(`skip ${entity}:${key} (the tenant has its own)`);
+    return true;
+  };
+
   // Order matters: code before the hooks that reference it.
   for (const row of block.connections) {
     const key = keyOf("connection", row);
@@ -406,10 +472,14 @@ export async function applyResolvedConfigBlock(
       const { enabled_clients: _e, ...rest } = row;
       const desired = connectionInsertSchema.parse({ ...rest, id: rowId });
       const existing = await target.connections.get(tenantId, rowId);
+      if (collides("connection", key, existing)) return "unchanged";
       return upsert({
         existing: existing ? connectionInsertSchema.parse(existing) : null,
         desired,
-        create: () => target.connections.create(tenantId, desired),
+        create: async () => {
+          await target.connections.create(tenantId, desired);
+          await enableForClients(rowId);
+        },
         update: () => target.connections.update(tenantId, rowId, desired),
         view: (r) => r,
       });
@@ -422,6 +492,7 @@ export async function applyResolvedConfigBlock(
     await attempt("resourceServer", key, async () => {
       const desired = resourceServerInsertSchema.parse({ ...row, id: rowId });
       const existing = await target.resourceServers.get(tenantId, rowId);
+      if (collides("resourceServer", key, existing)) return "unchanged";
       return upsert({
         existing: existing ? resourceServerInsertSchema.parse(existing) : null,
         desired,
@@ -457,6 +528,7 @@ export async function applyResolvedConfigBlock(
     await attempt("action", key, async () => {
       const desired = actionInsertSchema.parse(row);
       const found = await target.actions.get(tenantId, rowId);
+      if (collides("action", key, found)) return "unchanged";
       return upsert({
         existing: found ? actionInsertSchema.parse(found) : null,
         desired,
@@ -493,30 +565,53 @@ export async function applyResolvedConfigBlock(
     });
   }
 
-  // Singletons are created only when the tenant has none of its own, so a local
-  // edit is never clobbered. Later changes to the inherited row therefore do not
-  // reach a tenant that already has one.
+  // Singletons have no id to mark a synced copy by, so a row the tenant already
+  // has is only replaced when the parent locks it (`override: none` or
+  // `enforce`), meaning the tenant is not allowed to have its own version.
+  // Otherwise it is kept and later parent edits do not reach the tenant.
+  const locked = (row: { override?: string; enforce?: boolean }) =>
+    row.override === "none" || row.enforce === true;
+  const sameAs = (existing: unknown, desired: unknown) =>
+    fingerprint({ ...(existing as object), ...(desired as object) }) ===
+    fingerprint(existing);
+
   if (block.emailProvider) {
     await attempt("emailProvider", "singleton", async () => {
       const desired = emailProviderSchema.parse(block.emailProvider);
       const existing = await target.emailProviders.get(tenantId);
-      if (existing) return "unchanged";
-      if (!dryRun) await target.emailProviders.create(tenantId, desired);
-      return "added";
+      if (!existing) {
+        if (!dryRun) await target.emailProviders.create(tenantId, desired);
+        return "added";
+      }
+      if (!locked(desired) || sameAs(existing, desired)) return "unchanged";
+      if (!dryRun) await target.emailProviders.update(tenantId, desired);
+      return "changed";
     });
   }
   if (block.branding) {
     await attempt("branding", "singleton", async () => {
       const desired = brandingSchema.parse(block.branding);
       const existing = await target.branding.get(tenantId);
-      if (existing) return "unchanged";
+      if (!existing) {
+        if (!dryRun) await target.branding.set(tenantId, desired);
+        return "added";
+      }
+      if (!locked(desired) || sameAs(existing, desired)) return "unchanged";
       if (!dryRun) await target.branding.set(tenantId, desired);
-      return "added";
+      return "changed";
     });
   }
-  // Prompt settings are not applied: a tenant always has an effective row
-  // (defaults), so there is no way to tell an untouched row from a customised
-  // one without a per-row marker. Left for the management API step.
+  // A tenant always has an effective prompt settings row (defaults), so there is
+  // nothing to create: it is applied only when the parent locks it.
+  if (block.promptSettings && locked(block.promptSettings)) {
+    await attempt("promptSettings", "singleton", async () => {
+      const desired = promptSettingSchema.parse(block.promptSettings);
+      const existing = await target.promptSettings.get(tenantId);
+      if (sameAs(existing, desired)) return "unchanged";
+      if (!dryRun) await target.promptSettings.set(tenantId, desired);
+      return "changed";
+    });
+  }
 
   // Explicit deletes, off by default.
   for (const entry of block.deletes) {
