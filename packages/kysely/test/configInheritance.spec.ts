@@ -49,6 +49,33 @@ describe("config inheritance columns (kysely)", () => {
     ).toBeUndefined();
   });
 
+  it("clears the parent and the sync state with an explicit null", async () => {
+    await data.tenants.create({
+      id: "child",
+      friendly_name: "Child",
+      audience: "https://child.example.com",
+      sender_email: "login@example.com",
+      sender_name: "SenderName",
+      parent_tenant_id: tenantId,
+      config_sync: "synced",
+      config_sync_hash: "abc",
+      config_synced_at: "2026-10-27T10:00:00.000Z",
+    });
+
+    await data.tenants.update("child", {
+      parent_tenant_id: null,
+      config_sync: "detached",
+      config_sync_hash: null,
+      config_synced_at: null,
+    });
+
+    const child = await data.tenants.get("child");
+    expect(child?.parent_tenant_id).toBeUndefined();
+    expect(child?.config_sync).toBe("detached");
+    expect(child?.config_sync_hash).toBeUndefined();
+    expect(child?.config_synced_at).toBeUndefined();
+  });
+
   it("round-trips fields on connections", async () => {
     await data.connections.create(tenantId, {
       id: "c1",

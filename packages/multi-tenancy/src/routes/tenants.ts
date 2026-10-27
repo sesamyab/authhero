@@ -564,7 +564,11 @@ export function createTenantsOpenAPIRouter(
                 schema: z.object({
                   tenant_id: z.string(),
                   parent_tenant_id: z.string().nullable(),
-                  config_sync: z.enum(["inherit-on-read", "synced"]),
+                  config_sync: z.enum([
+                    "inherit-on-read",
+                    "synced",
+                    "detached",
+                  ]),
                   config_sync_hash: z.string().nullable(),
                   config_synced_at: z.string().nullable(),
                   expected_hash: z.string().nullable(),

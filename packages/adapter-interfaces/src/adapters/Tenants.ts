@@ -13,7 +13,7 @@ export interface CreateTenantParams {
 
   // Config inheritance: the tenant this one inherits published config from.
   parent_tenant_id?: string | null;
-  config_sync?: "inherit-on-read" | "synced" | null;
+  config_sync?: "inherit-on-read" | "synced" | "detached" | null;
 
   // Deployment / provisioning. See `Tenant` for field semantics; included here
   // so the adapter can write the initial row atomically when a wfp tenant is

@@ -61,6 +61,12 @@ export function createDispatchSyncConfig(
   } = options;
 
   return async (tenantId, { dryRun, force, prune }) => {
+    const tenant = await controlPlaneAdapters.tenants.get(tenantId);
+    if (tenant?.config_sync === "detached") {
+      throw new Error(
+        `Tenant "${tenantId}" is detached from its parent: set config_sync back to "inherit-on-read" or "synced" before syncing it`,
+      );
+    }
     const resolved = await buildResolvedConfigBlock(
       controlPlaneAdapters,
       tenantId,

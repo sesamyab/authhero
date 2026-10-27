@@ -51,7 +51,10 @@ export function createConfigSyncResolver(
 
     try {
       const tenant = await getTenant(tenantId);
-      const synced = tenant?.config_sync === "synced";
+      // A detached tenant has left its parent, so it no more inherits than a
+      // synced one does.
+      const synced =
+        tenant?.config_sync === "synced" || tenant?.config_sync === "detached";
       if (cache.size >= maxEntries) cache.clear();
       cache.set(tenantId, { synced, expires: now + ttlMs });
       return synced;

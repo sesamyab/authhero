@@ -11,8 +11,10 @@ export const tenantInsertSchema = z.object({
   // Where this tenant reads inherited config from. `inherit-on-read` (the
   // default when unset) merges the control plane's config at request time;
   // `synced` reads only this tenant's own database, which a config sync has
-  // populated. Only a control-plane caller may change it.
-  config_sync: z.enum(["inherit-on-read", "synced"]).nullish(),
+  // populated. `detached` is what a `detach` operation leaves: the tenant has
+  // left its parent, reads only its own database, and no sync or rollout
+  // reaches it. Only a control-plane caller may change it.
+  config_sync: z.enum(["inherit-on-read", "synced", "detached"]).nullish(),
 
   // Config sync state, written by the sync operation only: the content hash of
   // the resolved config last applied to this tenant, and when. A push whose

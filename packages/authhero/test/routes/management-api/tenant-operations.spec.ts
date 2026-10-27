@@ -235,6 +235,21 @@ describe("management-api tenant operations", () => {
       ]);
     });
 
+    it("takes the same input for a detach, with clean", async () => {
+      const { post, seen } = await setupSync();
+
+      const response = await post({
+        kind: "detach",
+        input: { dry_run: true, clean: true },
+      });
+
+      expect(response.status).toBe(201);
+      expect(seen[0]).toMatchObject({
+        kind: "detach",
+        input: { dry_run: true, clean: true },
+      });
+    });
+
     it("accepts a sync without input", async () => {
       const { post, seen } = await setupSync();
 

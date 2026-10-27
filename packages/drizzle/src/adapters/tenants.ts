@@ -181,6 +181,15 @@ export function createTenantsAdapter(db: DrizzleDb) {
         id,
         updated_at: new Date().toISOString(),
       });
+      // Cleared with an explicit null, which the mapping drops: a detached
+      // tenant has no parent and no sync state.
+      for (const field of [
+        "parent_tenant_id",
+        "config_sync_hash",
+        "config_synced_at",
+      ] as const) {
+        if (tenant[field] === null) sqlTenant[field] = null;
+      }
 
       await db.update(tenants).set(sqlTenant).where(eq(tenants.id, id));
     },

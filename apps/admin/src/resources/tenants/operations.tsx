@@ -10,11 +10,13 @@ import {
   Rocket,
   RefreshCcw,
   Eye,
+  Unlink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Confirm } from "@/components/admin/confirm";
 import {
   Card,
   CardContent,
@@ -146,6 +148,8 @@ export function TenantOperations() {
   >({});
   const [enqueuing, setEnqueuing] = useState(false);
   const [prune, setPrune] = useState(false);
+  const [detachOpen, setDetachOpen] = useState(false);
+  const [detachClean, setDetachClean] = useState(false);
   const mounted = useRef(true);
 
   const refresh = useCallback(async () => {
@@ -223,8 +227,15 @@ export function TenantOperations() {
   }, [expandedId, operations, loadEvents]);
 
   const enqueue = async (
-    kind: "upgrade" | "sync-defaults",
-    input: { dry_run?: boolean; force?: boolean; prune?: boolean } | undefined,
+    kind: "upgrade" | "sync-defaults" | "detach",
+    input:
+      | {
+          dry_run?: boolean;
+          force?: boolean;
+          prune?: boolean;
+          clean?: boolean;
+        }
+      | undefined,
     label: string,
   ) => {
     if (!tenantId) return;
@@ -269,6 +280,44 @@ export function TenantOperations() {
       <SyncStatusCard
         tenantId={tenantId}
         refreshToken={operations.map((o) => `${o.id}:${o.status}`).join(",")}
+      />
+
+      <Confirm
+        isOpen={detachOpen}
+        title={`Detach "${tenantId}" from its parent?`}
+        content={
+          <div className="flex flex-col gap-3">
+            <p>
+              The tenant keeps the config it inherited as its own rows, and
+              nothing is inherited or synced into it again. Rows a platform owns
+              stay as copies. Run <em>Preview detach</em> first to see what
+              changes.
+            </p>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="detach-clean"
+                checked={detachClean}
+                onCheckedChange={(v) => setDetachClean(v === true)}
+              />
+              <Label htmlFor="detach-clean">
+                Remove the inherited rows instead of keeping them
+              </Label>
+            </div>
+          </div>
+        }
+        confirm="Detach"
+        confirmColor="warning"
+        ConfirmIcon={Unlink}
+        onConfirm={() => {
+          setDetachOpen(false);
+          void enqueue(
+            "detach",
+            detachClean ? { clean: true } : undefined,
+            "Detach",
+          );
+        }}
+        onClose={() => setDetachOpen(false)}
+        loading={enqueuing}
       />
 
       <Card>
@@ -345,6 +394,28 @@ export function TenantOperations() {
             >
               <RefreshCcw className="h-4 w-4 mr-1" />
               Sync config
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                enqueue("detach", { dry_run: true }, "Detach preview")
+              }
+              disabled={enqueuing || hasActive}
+              title="Show what detaching this tenant from its parent would do, without writing anything"
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              Preview detach
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDetachOpen(true)}
+              disabled={enqueuing || hasActive}
+              title="Make this tenant independent of its parent"
+            >
+              <Unlink className="h-4 w-4 mr-1" />
+              Detach
             </Button>
             <Button
               size="sm"
@@ -452,7 +523,8 @@ export function TenantOperations() {
                               {operation.error}
                             </p>
                           ) : null}
-                          {operation.kind === "sync-defaults" ? (
+                          {operation.kind === "sync-defaults" ||
+                          operation.kind === "detach" ? (
                             <SyncResult operation={operation} />
                           ) : null}
                           {events[operation.id] ? (

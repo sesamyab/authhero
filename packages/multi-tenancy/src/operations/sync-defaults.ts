@@ -130,6 +130,11 @@ export function createInProcessSyncConfig(
   return async (tenantId, options) => {
     const tenant = await adapters.tenants.get(tenantId);
     if (!tenant) throw new Error(`Tenant "${tenantId}" not found`);
+    if (tenant.config_sync === "detached") {
+      throw new Error(
+        `Tenant "${tenantId}" is detached from its parent: set config_sync back to "inherit-on-read" or "synced" before syncing it`,
+      );
+    }
     if (tenant.deployment_type === "wfp") {
       throw new Error(
         `Tenant "${tenantId}" has its own database: configure a dispatch sync (syncDefaults) for it`,

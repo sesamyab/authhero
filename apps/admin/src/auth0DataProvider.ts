@@ -454,8 +454,13 @@ export interface AuthHeroDataProvider extends DataProvider {
   >;
   createTenantOperation: (
     tenantId: string,
-    kind: "upgrade" | "seed" | "backup" | "sync-defaults",
-    input?: { dry_run?: boolean; force?: boolean; prune?: boolean },
+    kind: "upgrade" | "seed" | "backup" | "sync-defaults" | "detach",
+    input?: {
+      dry_run?: boolean;
+      force?: boolean;
+      prune?: boolean;
+      clean?: boolean;
+    },
   ) => Promise<TenantOperationRecord>;
 
   /**
@@ -540,7 +545,7 @@ export interface TeamInvitationRecord {
 export interface ConfigSyncStatus {
   tenant_id: string;
   parent_tenant_id: string | null;
-  config_sync: "inherit-on-read" | "synced";
+  config_sync: "inherit-on-read" | "synced" | "detached";
   config_sync_hash: string | null;
   config_synced_at: string | null;
   expected_hash: string | null;
@@ -595,7 +600,8 @@ export interface TenantOperationRecord {
     | "backup"
     | "deprovision"
     | "users_import"
-    | "sync-defaults";
+    | "sync-defaults"
+    | "detach";
   status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   current_step?: string | null;
   engine: string;

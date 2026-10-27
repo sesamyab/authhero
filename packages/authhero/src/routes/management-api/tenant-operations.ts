@@ -170,11 +170,12 @@ const createTenantOperation = defineRoute({
           "application/json": {
             schema: z.object({
               kind: tenantOperationKindSchema,
-              // Kind-specific parameters. Only `sync-defaults` takes any.
+              // Kind-specific parameters. Only `sync-defaults` and `detach` take any.
               input: z
                 .object({
                   dry_run: z.boolean().optional(),
                   force: z.boolean().optional(),
+                  clean: z.boolean().optional(),
                 })
                 .optional(),
             }),
@@ -224,7 +225,7 @@ const createTenantOperation = defineRoute({
       });
     }
 
-    if (input && kind !== "sync-defaults") {
+    if (input && kind !== "sync-defaults" && kind !== "detach") {
       throw new HTTPException(400, {
         message: `Operations of kind "${kind}" take no input`,
       });
