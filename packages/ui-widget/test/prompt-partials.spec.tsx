@@ -12,6 +12,13 @@ const screen: UiScreen = {
   method: "POST",
   components: [
     {
+      id: "social-buttons",
+      type: "SOCIAL",
+      category: "FIELD",
+      config: { providers: ["google-oauth2"] },
+      order: 0,
+    },
+    {
       id: "email",
       type: "EMAIL",
       category: "FIELD",
@@ -51,7 +58,7 @@ describe("prompt partials", () => {
     const form = root.querySelector("form")!;
     const fieldsSection = form.querySelector(".fields-section")!;
     const formFooter = form.querySelector(".form-footer")!;
-    const secondaryActions = form.querySelector(".secondary-actions")!;
+    const socialSection = form.querySelector(".social-section")!;
 
     expect(form.querySelectorAll(".prompt-partial")).toHaveLength(6);
     // Inside the fields section so they follow the social/divider/fields
@@ -62,17 +69,23 @@ describe("prompt partials", () => {
     expect(
       fieldsSection.lastElementChild?.getAttribute("data-insertion-point"),
     ).toBe("form-content-end");
+    // Auth0 layout: submit button, form-footer-start, the bottom links, then
+    // form-footer-end.
+    const footerChildren = Array.from(formFooter.children);
+    expect(footerChildren[0].tagName.toLowerCase()).toBe("authhero-node");
+    expect(footerChildren[1].getAttribute("data-insertion-point")).toBe(
+      "form-footer-start",
+    );
+    expect(footerChildren[2].classList.contains("links")).toBe(true);
+    expect(footerChildren[3].getAttribute("data-insertion-point")).toBe(
+      "form-footer-end",
+    );
+    // secondary-actions-* wrap the social buttons.
     expect(
-      formFooter.firstElementChild?.getAttribute("data-insertion-point"),
-    ).toBe("form-footer-start");
-    expect(
-      formFooter.lastElementChild?.getAttribute("data-insertion-point"),
-    ).toBe("form-footer-end");
-    expect(
-      secondaryActions.firstElementChild?.getAttribute("data-insertion-point"),
+      socialSection.firstElementChild?.getAttribute("data-insertion-point"),
     ).toBe("secondary-actions-start");
     expect(
-      secondaryActions.lastElementChild?.getAttribute("data-insertion-point"),
+      socialSection.lastElementChild?.getAttribute("data-insertion-point"),
     ).toBe("secondary-actions-end");
     expect(form.querySelector(".links")).not.toBeNull();
     expect(root.querySelector("form > .links")).toBeNull();

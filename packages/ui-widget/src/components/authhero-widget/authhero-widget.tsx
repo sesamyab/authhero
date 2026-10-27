@@ -2104,15 +2104,28 @@ export class AuthheroWidget {
     const hasPromptPartials = Object.values(screen.partials ?? {}).some(
       (html) => !!html,
     );
-    const footerComponents = hasPromptPartials
-      ? fieldComponents.filter(
+    // With partials the screen is split into zones, matching Auth0:
+    //   form-content-*      around the fields
+    //   form-footer-*       the submit button, then form-footer-start, then the
+    //                       bottom links (components ordered after the submit
+    //                       button, e.g. sign-up, plus the screen links), then
+    //                       form-footer-end
+    //   secondary-actions-* around the social/enterprise buttons
+    const submitIndex = hasPromptPartials
+      ? fieldComponents.findIndex(
           (component) =>
             component.id === "submit" && component.type === "NEXT_BUTTON",
         )
-      : [];
+      : -1;
+    const footerComponents =
+      submitIndex >= 0 ? [fieldComponents[submitIndex]] : [];
+    const secondaryComponents =
+      submitIndex >= 0 ? fieldComponents.slice(submitIndex + 1) : [];
     const contentFieldComponents = hasPromptPartials
       ? fieldComponents.filter(
-          (component) => !footerComponents.includes(component),
+          (component) =>
+            !footerComponents.includes(component) &&
+            !secondaryComponents.includes(component),
         )
       : fieldComponents;
     const hasDivider = !!dividerComponent;
@@ -2241,6 +2254,7 @@ export class AuthheroWidget {
               {/* Social buttons section - order controlled by CSS */}
               {socialComponents.length > 0 && (
                 <div class="social-section" part="social-section">
+                  {this.renderPromptPartial(screen, "secondary-actions-start")}
                   {socialComponents.map((component) => (
                     <authhero-node
                       key={component.id}
@@ -2261,6 +2275,7 @@ export class AuthheroWidget {
                       exportparts={getExportParts(component)}
                     />
                   ))}
+                  {this.renderPromptPartial(screen, "secondary-actions-end")}
                 </div>
               )}
 
@@ -2349,7 +2364,6 @@ export class AuthheroWidget {
 
               {hasPromptPartials && (
                 <div class="form-footer" part="form-footer">
-                  {this.renderPromptPartial(screen, "form-footer-start")}
                   {footerComponents.map((component) => (
                     <authhero-node
                       key={component.id}
@@ -2374,18 +2388,31 @@ export class AuthheroWidget {
                       }
                     />
                   ))}
+                  {this.renderPromptPartial(screen, "form-footer-start")}
+                  {secondaryComponents.map((component) => (
+                    <authhero-node
+                      key={component.id}
+                      component={component}
+                      locale={this.locale}
+                      value={this.formData[component.id]}
+                      onFieldChange={(
+                        e: CustomEvent<{ id: string; value: string }>,
+                      ) => this.handleInputChange(e.detail.id, e.detail.value)}
+                      onButtonClick={(
+                        e: CustomEvent<{
+                          id: string;
+                          type: string;
+                          value?: string;
+                        }>,
+                      ) => this.handleButtonClick(e.detail)}
+                      disabled={this.loading}
+                    />
+                  ))}
+                  {this.renderScreenLinks(screen)}
                   {this.renderPromptPartial(screen, "form-footer-end")}
                 </div>
               )}
             </div>
-
-            {hasPromptPartials && (
-              <div class="secondary-actions" part="secondary-actions">
-                {this.renderPromptPartial(screen, "secondary-actions-start")}
-                {this.renderScreenLinks(screen)}
-                {this.renderPromptPartial(screen, "secondary-actions-end")}
-              </div>
-            )}
           </form>
 
           {!hasPromptPartials && this.renderScreenLinks(screen)}

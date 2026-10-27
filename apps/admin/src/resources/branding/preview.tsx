@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useTenantId } from "@/TenantContext";
 import { openFullPreview } from "./previewClient";
 
-const WIDGET_VERSION = "0.41.2";
+const WIDGET_VERSION = "0.41.6";
 const WIDGET_SRC = `https://unpkg.com/@authhero/widget@${WIDGET_VERSION}/dist/authhero-widget/authhero-widget.esm.js`;
 
 if (
