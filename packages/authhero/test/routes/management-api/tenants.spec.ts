@@ -51,6 +51,52 @@ describe("management-api tenants", () => {
       });
     });
 
+    describe("has_children", () => {
+      const get = async (
+        ctx: Awaited<ReturnType<typeof setup>>,
+        tenantId: string,
+      ) =>
+        (
+          await ctx.managementClient.tenants.settings.$get(
+            { header: { "tenant-id": tenantId } },
+            { headers: { authorization: `Bearer ${ctx.token}` } },
+          )
+        ).json();
+
+      it("is false for a lone control plane", async () => {
+        const ctx = await setup();
+        expect(await get(ctx, "tenantId")).toMatchObject({
+          is_control_plane: true,
+          has_children: false,
+        });
+      });
+
+      it("is true for the control plane once another tenant exists", async () => {
+        const ctx = await setup();
+        ctx.env.data.multiTenancyConfig = { controlPlaneTenantId: "tenantId" };
+        await seedTenant(ctx.env.data, "child");
+
+        expect(await get(ctx, "tenantId")).toMatchObject({
+          has_children: true,
+        });
+      });
+
+      it("is true only for a tenant that another tenant names as its parent", async () => {
+        const ctx = await setup();
+        ctx.env.data.multiTenancyConfig = { controlPlaneTenantId: "tenantId" };
+        await seedTenant(ctx.env.data, "partner");
+        await seedTenant(ctx.env.data, "leaf");
+        await seedTenant(ctx.env.data, "other");
+        await ctx.env.data.tenants.update("leaf", {
+          parent_tenant_id: "partner",
+        });
+
+        expect(await get(ctx, "partner")).toMatchObject({ has_children: true });
+        expect(await get(ctx, "leaf")).toMatchObject({ has_children: false });
+        expect(await get(ctx, "other")).toMatchObject({ has_children: false });
+      });
+    });
+
     it("returns the settings of the tenant named by the header, not another tenant's", async () => {
       const { env, managementClient, token } = await setup();
       await seedTenant(env.data, "otherTenant");

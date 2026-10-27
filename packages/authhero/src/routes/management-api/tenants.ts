@@ -9,6 +9,7 @@ import { Bindings, Variables } from "../../types";
 import {
   tenantInsertSchema,
   tenantSchema,
+  TenantsDataAdapter,
   LogTypes,
 } from "@authhero/adapter-interfaces";
 import { deepMergePatch } from "../../utils/deep-merge";
@@ -53,6 +54,7 @@ const getSettings = defineRoute({
     return ctx.json({
       ...tenant,
       is_control_plane: isControlPlaneTenant(ctx, tenant_id),
+      has_children: await hasChildTenants(ctx, tenant_id),
     });
   },
 });
@@ -200,6 +202,7 @@ const patchSettings = defineRoute({
     return ctx.json({
       ...updatedTenant,
       is_control_plane: isControlPlaneTenant(ctx, tenant_id),
+      has_children: await hasChildTenants(ctx, tenant_id),
     });
   },
 });
@@ -297,6 +300,7 @@ const redeployTenant = defineRoute({
     return ctx.json({
       ...upgradedTenant,
       is_control_plane: isControlPlaneTenant(ctx, id),
+      has_children: await hasChildTenants(ctx, id),
     });
   },
 });
@@ -309,6 +313,30 @@ export const tenantRoutes = new OpenAPIHono<{
   patchSettings,
   redeployTenant,
 ] as const);
+
+// True when another tenant inherits from `tenantId`. Every other tenant sits
+// below the control plane (a tenant without a parent inherits from it), so it
+// has children as soon as it is not alone; any other tenant needs a tenant that
+// names it as its parent.
+export async function hasChildTenants(
+  ctx: {
+    env: {
+      data: {
+        multiTenancyConfig?: { controlPlaneTenantId?: string };
+        tenants: TenantsDataAdapter;
+      };
+    };
+  },
+  tenantId: string,
+): Promise<boolean> {
+  const controlPlane = isControlPlaneTenant(ctx, tenantId);
+  const { totals } = await ctx.env.data.tenants.list({
+    per_page: 1,
+    include_totals: true,
+    ...(controlPlane ? {} : { q: `parent_tenant_id:${tenantId}` }),
+  });
+  return (totals?.length ?? 0) > (controlPlane ? 1 : 0);
+}
 
 // True when the current tenant is the deployment's control plane. In
 // multi-tenant deployments `multiTenancyConfig.controlPlaneTenantId` names the

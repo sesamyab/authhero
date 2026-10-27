@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useHasChildren } from "@/hooks/useHasChildren";
 import { isSyncedRowId, rowIdOf } from "@/lib/syncedRows";
 
 export const SCOPE_CHOICES = [
@@ -25,12 +26,15 @@ export const OVERRIDE_CHOICES = [
 /**
  * Publishing properties of a row (config inheritance): whether child tenants
  * receive it, and what they may change. Not shown for rows that are
- * themselves copies from a parent - the server forbids changing them there.
+ * themselves copies from a parent - the server forbids changing them there -
+ * nor on a tenant without child tenants.
  */
 export function PublishingFields() {
   const record = useRecordContext<{ id?: string; hook_id?: string }>();
   const scope = useWatch({ name: "scope" }) as string | undefined;
-  if (isSyncedRowId(rowIdOf(record))) return null;
+  const hasChildren = useHasChildren();
+  // Nobody below this tenant to receive the row, so there is nothing to set.
+  if (!hasChildren || isSyncedRowId(rowIdOf(record))) return null;
 
   const published = scope === "shared" || scope === "platform";
 

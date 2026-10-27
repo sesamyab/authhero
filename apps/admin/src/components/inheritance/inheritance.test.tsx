@@ -12,6 +12,7 @@ import { TenantProvider } from "@/TenantContext";
 import { InheritedFieldset } from "./InheritedFieldset";
 import { InheritedBadge } from "./InheritedBadge";
 import { PublishingFields } from "./PublishingFields";
+import { useShowInheritance } from "@/hooks/useHasChildren";
 import { SyncStatusCard } from "./SyncStatusCard";
 
 afterEach(cleanup);
@@ -162,6 +163,39 @@ describe("PublishingFields", () => {
     renderWith({ id: SYNCED_ID }, <PublishingFields />);
     expect(screen.queryByText("Publishing")).toBeNull();
   });
+
+  it("is hidden once the tenant is known to have no children", async () => {
+    const getOne = vi.fn(() =>
+      Promise.resolve({ data: { id: "settings", has_children: false } }),
+    );
+    renderWith({ id: "con_x", scope: "shared" }, <PublishingFields />, {
+      getOne,
+    });
+    await waitFor(() => expect(screen.queryByText("Publishing")).toBeNull());
+    expect(getOne).toHaveBeenCalledWith(
+      "settings",
+      expect.objectContaining({ id: "settings" }),
+    );
+  });
+
+  it("stays when the tenant has children, or the server does not say", async () => {
+    const getOne = vi.fn(() =>
+      Promise.resolve({ data: { id: "settings", has_children: true } }),
+    );
+    renderWith({ id: "con_x", scope: "shared" }, <PublishingFields />, {
+      getOne,
+    });
+    await waitFor(() => expect(getOne).toHaveBeenCalled());
+    expect(screen.getByText("Publishing")).toBeTruthy();
+  });
+
+  it("stays while the answer is still loading", () => {
+    const getOne = vi.fn(() => new Promise(() => {}));
+    renderWith({ id: "con_x", scope: "shared" }, <PublishingFields />, {
+      getOne,
+    });
+    expect(screen.getByText("Publishing")).toBeTruthy();
+  });
 });
 
 describe("SyncStatusCard", () => {
@@ -179,5 +213,30 @@ describe("SyncStatusCard", () => {
       ),
     });
     await waitFor(() => expect(screen.getByText("In sync")).toBeTruthy());
+  });
+});
+
+describe("useShowInheritance", () => {
+  function Probe() {
+    return <span>{useShowInheritance() ? "show" : "hide"}</span>;
+  }
+  const settings = (data: Record<string, unknown>) => ({
+    getOne: vi.fn(() => Promise.resolve({ data: { id: "settings", ...data } })),
+  });
+
+  it("hides the source columns on a tenant with nothing above or below it", async () => {
+    renderWith({}, <Probe />, settings({ has_children: false }));
+    expect(await screen.findByText("hide")).toBeTruthy();
+  });
+
+  it.each([
+    ["has children", { has_children: true }],
+    ["has a parent", { has_children: false, parent_tenant_id: "partner" }],
+    ["is synced", { has_children: false, config_sync: "synced" }],
+  ])("shows them when the tenant %s", async (_name, data) => {
+    const provider = settings(data);
+    renderWith({}, <Probe />, provider);
+    await waitFor(() => expect(provider.getOne).toHaveBeenCalled());
+    expect(screen.getByText("show")).toBeTruthy();
   });
 });
