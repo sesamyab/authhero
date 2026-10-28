@@ -35,6 +35,7 @@ import {
 import { LatestSyncCard } from "@/components/inheritance/LatestSyncCard";
 import { SyncChanges } from "@/components/inheritance/SyncChanges";
 import { SyncStatusCard } from "@/components/inheritance/SyncStatusCard";
+import { useConfigSyncStatus } from "@/hooks/useConfigSyncStatus";
 import type {
   AuthHeroDataProvider,
   TenantOperationRecord,
@@ -191,6 +192,16 @@ export function TenantOperations() {
   const hasActive = operations.some((op) =>
     ACTIVE_STATUSES.includes(op.status),
   );
+
+  // Detaching means leaving a parent: not for the control plane (nothing above
+  // it) or a tenant that has already left. Shown while the status is unknown.
+  const { status: syncStatus } = useConfigSyncStatus(
+    tenantId,
+    operations.map((o) => `${o.id}:${o.status}`).join(","),
+  );
+  const canDetach =
+    !syncStatus ||
+    (syncStatus.config_sync !== "detached" && syncStatus.chain.length > 0);
   useEffect(() => {
     if (!hasActive) return;
     const interval = setInterval(refresh, POLL_INTERVAL_MS);
@@ -287,7 +298,7 @@ export function TenantOperations() {
       <LatestSyncCard operations={operations} />
 
       <Confirm
-        isOpen={detachOpen}
+        isOpen={detachOpen && canDetach}
         title={`Detach "${tenantId}" from its parent?`}
         content={
           <div className="flex flex-col gap-3">
@@ -399,28 +410,32 @@ export function TenantOperations() {
               <RefreshCcw className="h-4 w-4 mr-1" />
               Sync config
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                enqueue("detach", { dry_run: true }, "Detach preview")
-              }
-              disabled={enqueuing || hasActive}
-              title="Show what detaching this tenant from its parent would do, without writing anything"
-            >
-              <Eye className="h-4 w-4 mr-1" />
-              Preview detach
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDetachOpen(true)}
-              disabled={enqueuing || hasActive}
-              title="Make this tenant independent of its parent"
-            >
-              <Unlink className="h-4 w-4 mr-1" />
-              Detach
-            </Button>
+            {canDetach && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  enqueue("detach", { dry_run: true }, "Detach preview")
+                }
+                disabled={enqueuing || hasActive}
+                title="Show what detaching this tenant from its parent would do, without writing anything"
+              >
+                <Eye className="h-4 w-4 mr-1" />
+                Preview detach
+              </Button>
+            )}
+            {canDetach && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDetachOpen(true)}
+                disabled={enqueuing || hasActive}
+                title="Make this tenant independent of its parent"
+              >
+                <Unlink className="h-4 w-4 mr-1" />
+                Detach
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={enqueueUpgrade}
