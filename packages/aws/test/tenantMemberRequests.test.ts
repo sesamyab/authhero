@@ -154,4 +154,24 @@ describe("DynamoDB tenant member request commands", () => {
       adapter.update("tenant", "tmr_1", { status: "failed" }),
     ).rejects.toThrow("throttled");
   });
+
+  it("stamps finished_at and a TTL when a request ends without a time, and skips a bad one", async () => {
+    const { send, adapter } = setup();
+    send.mockResolvedValue({});
+
+    await adapter.update("tenant", "tmr_1", { status: "succeeded" });
+    const stamped = (send.mock.calls[0]![0] as UpdateCommand).input
+      .ExpressionAttributeNames!;
+    expect(Object.values(stamped)).toEqual(
+      expect.arrayContaining(["finished_at", "ttl"]),
+    );
+
+    await adapter.update("tenant", "tmr_1", {
+      status: "failed",
+      finished_at: "not a date",
+    });
+    const bad = (send.mock.calls[1]![0] as UpdateCommand).input
+      .ExpressionAttributeNames!;
+    expect(Object.values(bad)).not.toContain("ttl");
+  });
 });

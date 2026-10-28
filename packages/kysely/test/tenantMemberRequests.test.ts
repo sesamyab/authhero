@@ -119,4 +119,21 @@ describe("tenant member requests storage", () => {
     expect(await store.get("tenant-a", done.id)).toBeNull();
     expect(await store.get("tenant-a", open.id)).not.toBeNull();
   });
+
+  it("stamps finished_at when a request ends without one, so it can be cleaned up", async () => {
+    const { data } = await getTestServer();
+    const store = data.tenantMemberRequests!;
+    const { id } = await store.create("tenant-a", invite());
+
+    await store.update(
+      "tenant-a",
+      id,
+      { status: "failed", error: "no" },
+      "pending",
+    );
+
+    const row = await store.get("tenant-a", id);
+    expect(row!.finished_at).toEqual(expect.any(String));
+    expect(await store.cleanup("2999-01-01T00:00:00.000Z")).toBe(1);
+  });
 });

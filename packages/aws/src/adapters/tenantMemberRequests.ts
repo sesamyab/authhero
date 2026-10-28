@@ -131,14 +131,25 @@ export function createTenantMemberRequestsAdapter(
       patch: TenantMemberRequestUpdate,
       expectedStatus?,
     ) {
+      const now = new Date().toISOString();
       const updates: Record<string, unknown> = {
         ...patch,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       };
-      if (patch.finished_at) {
-        updates.ttl =
-          Math.floor(Date.parse(patch.finished_at) / 1000) +
-          FINISHED_RETENTION_SECONDS;
+      // A request that ends without saying when has ended now, or it would
+      // never expire.
+      if (
+        patch.finished_at === undefined &&
+        (patch.status === "succeeded" || patch.status === "failed")
+      ) {
+        updates.finished_at = now;
+      }
+      const finishedAt = updates.finished_at;
+      if (typeof finishedAt === "string") {
+        const seconds = Math.floor(Date.parse(finishedAt) / 1000);
+        if (Number.isFinite(seconds)) {
+          updates.ttl = seconds + FINISHED_RETENTION_SECONDS;
+        }
       }
       const entries = Object.entries(updates).filter(
         ([, value]) => value !== undefined,

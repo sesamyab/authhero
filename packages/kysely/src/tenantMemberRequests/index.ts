@@ -118,8 +118,9 @@ export function createTenantMemberRequestsAdapter(
       patch: TenantMemberRequestUpdate,
       expectedStatus?,
     ) {
+      const now = new Date().toISOString();
       const set: Partial<RequestRow> = {
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       };
       if (patch.status !== undefined) set.status = patch.status;
       if (patch.result !== undefined)
@@ -127,6 +128,11 @@ export function createTenantMemberRequestsAdapter(
       if (patch.error !== undefined) set.error = patch.error;
       if (patch.notified_at !== undefined) set.notified_at = patch.notified_at;
       if (patch.finished_at !== undefined) set.finished_at = patch.finished_at;
+      // A request that ends without saying when has ended now, or `cleanup`
+      // would never remove it.
+      else if (patch.status === "succeeded" || patch.status === "failed") {
+        set.finished_at = now;
+      }
 
       let query = db
         .updateTable("tenant_member_requests")
