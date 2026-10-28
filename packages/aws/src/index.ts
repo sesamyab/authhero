@@ -12,6 +12,7 @@ import { createUsersAdapter } from "./adapters/users";
 import { createSessionsAdapter } from "./adapters/sessions";
 import { createPasswordsAdapter } from "./adapters/passwords";
 import { createDeviceCodesAdapter } from "./adapters/deviceCodes";
+import { createTenantMemberRequestsAdapter } from "./adapters/tenantMemberRequests";
 import { createCodesAdapter } from "./adapters/codes";
 import { createClientsAdapter } from "./adapters/clients";
 import { createClientGrantsAdapter } from "./adapters/clientGrants";
@@ -90,6 +91,7 @@ export default function createAdapters(
     clientGrants: createClientGrantsAdapter(ctx),
     clientRegistrationTokens: createClientRegistrationTokensAdapter(ctx),
     deviceCodes: createDeviceCodesAdapter(ctx),
+    tenantMemberRequests: createTenantMemberRequestsAdapter(ctx),
     codes: createCodesAdapter(ctx),
     connections: createConnectionsAdapter(ctx),
     customDomains: createCustomDomainsAdapter(ctx),

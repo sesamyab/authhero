@@ -81,6 +81,7 @@ export * from "./TenantOperation";
 export * from "./TenantOperationEvent";
 export * from "./TenantOperationRow";
 export * from "./Rollout";
+export * from "./TenantMemberRequest";
 export * from "./Token";
 export * from "./User";
 export * from "./Theme";

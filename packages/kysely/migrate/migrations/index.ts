@@ -31,6 +31,7 @@ import * as rolloutConfig from "./2026-10-28T12:00:00_rollout_config";
  * what survive bundling.
  */
 import * as deviceCodes from "./2026-10-29T12:00:00_device_codes";
+import * as tenantMemberRequests from "./2026-10-30T12:00:00_tenant_member_requests";
 
 export default {
   "2026-07-16T14:00:00_baseline": baseline,
@@ -52,4 +53,5 @@ export default {
   "2026-10-27T12:00:00_config_sync_mode": configSyncMode,
   "2026-10-28T12:00:00_rollout_config": rolloutConfig,
   "2026-10-29T12:00:00_device_codes": deviceCodes,
+  "2026-10-30T12:00:00_tenant_member_requests": tenantMemberRequests,
 };
