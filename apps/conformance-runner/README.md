@@ -68,7 +68,7 @@ pnpm conformance:device
 
 These tests start an isolated, in-memory AuthHero server on localhost:3100. They do not scaffold or modify `apps/conformance-auth-server`, and require no Docker services. Set `DEVICE_FLOW_TEST_PORT` to use another port.
 
-Coverage includes independently decoding the generated QR image, confirming its complete activation URL, manual code entry, password sign-in, explicit approval and denial, polling backoff, client binding, token/userinfo verification, and single-use redemption. The more extensive HTTP integration tests cover expiry, MFA, hooks, and concurrent redemption:
+Coverage includes independently decoding the generated QR image, confirming its complete activation URL, manual code entry, password sign-in, explicit approval and denial, polling backoff, client binding, token/userinfo verification, single-use redemption, and rejection of expired codes in both the browser and polling endpoints. Expiry uses an already-expired fixture to avoid a ten-minute wait. The more extensive HTTP integration tests also cover MFA, hooks, and concurrent redemption:
 
 ```sh
 pnpm authhero test test/routes/auth-api/device-flow.spec.ts

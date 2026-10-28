@@ -172,6 +172,30 @@ test.describe("RFC 8628 device authorization", () => {
     );
   });
 
+  test("expired codes are rejected by both browser activation and device polling", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/activate?tenant_id=device-tests&user_code=BCDF-GHJK");
+    await expect(page.locator('input[name="user_code"]')).toHaveValue(
+      "BCDF-GHJK",
+    );
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(
+      page.getByText("The code you entered is invalid", { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('input[name="username"]')).toHaveCount(0);
+    const response = await request.post("/oauth/token", {
+      form: {
+        grant_type: grantType,
+        client_id: "device-client",
+        device_code: "expired-device-code",
+      },
+    });
+    expect(response.status()).toBe(400);
+    expect((await response.json()).error).toBe("expired_token");
+  });
+
   test("another client cannot redeem the device code or alter the pending request", async ({
     request,
   }) => {

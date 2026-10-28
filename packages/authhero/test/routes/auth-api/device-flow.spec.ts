@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GrantType } from "@authhero/adapter-interfaces";
+import { GrantType, LogTypes } from "@authhero/adapter-interfaces";
 import { getTestServer, type TestServer } from "../../helpers/test-server";
 import { u2Screen } from "../../helpers/u2-screen";
 import {
@@ -9,8 +9,8 @@ import {
 import { parseJWT } from "../../../src/utils/jwt";
 
 const headers = { "tenant-id": "tenantId", "x-real-ip": "192.0.2.1" };
-async function setup() {
-  const server = await getTestServer({ mockEmail: true });
+async function setup(options: Parameters<typeof getTestServer>[0] = {}) {
+  const server = await getTestServer({ mockEmail: true, ...options });
   await server.env.data.clients.update("tenantId", "clientId", {
     token_endpoint_auth_method: "none",
     app_type: "native",
@@ -151,6 +151,94 @@ async function decide(
 afterEach(() => vi.useRealTimers());
 
 describe("OAuth device authorization (RFC 8628), u2", () => {
+  it("paginates past deleted and CIMD clients when selecting an activation client", async () => {
+    const list = vi.fn();
+    const s = await setup({
+      wrapDataAdapter: (data) => ({
+        ...data,
+        clients: {
+          ...data.clients,
+          list: list.mockImplementation(async (tenantId, params) => {
+            const client = (await data.clients.get(tenantId, "clientId"))!;
+            const clients =
+              params.page === 0
+                ? Array.from({ length: 100 }, (_, i) =>
+                    i % 2 === 0
+                      ? { ...client, client_metadata: { status: "deleted" } }
+                      : {
+                          ...client,
+                          client_id: `https://example.com/client-${i}.json`,
+                        },
+                  )
+                : [client];
+            return {
+              clients,
+              start: params.page * 100,
+              limit: 100,
+              length: clients.length,
+            };
+          }),
+        },
+      }),
+    });
+    const entry = await s.oauthApp.request("/activate", { headers }, s.env);
+    expect(entry.status).toBe(302);
+    expect(list.mock.calls.map(([, params]) => params.page)).toEqual([0, 1]);
+    const screen = await u2Screen(s.u2App, s.env, "device/code").$get({
+      query: { state: stateFrom(entry) },
+      header: { ...headers, cookie: cookieFrom(entry) },
+    });
+    expect(screen.status).toBe(200);
+  });
+
+  it.each(["valid", "missing", "deleted", "cimd"] as const)(
+    "handles a %s configured default activation client",
+    async (kind) => {
+      const s = await setup();
+      const defaultId =
+        kind === "cimd" ? "https://example.com/client.json" : "default-client";
+      if (kind !== "missing") {
+        await s.env.data.clients.create("tenantId", {
+          client_id: defaultId,
+          name: "Default client",
+          ...(kind === "deleted"
+            ? { client_metadata: { status: "deleted" } }
+            : {}),
+        });
+      }
+      await s.env.data.tenants.update("tenantId", {
+        default_client_id: defaultId,
+      });
+      const entry = await s.oauthApp.request("/activate", { headers }, s.env);
+      expect(entry.status).toBe(302);
+      const login = await s.env.data.loginSessions.get(
+        "tenantId",
+        stateFrom(entry),
+      );
+      expect(login?.authParams.client_id).toBe(
+        kind === "valid" ? defaultId : "clientId",
+      );
+    },
+  );
+
+  it("rejects activation when no eligible client exists", async () => {
+    const s = await setup();
+    const { clients } = await s.env.data.clients.list("tenantId", {
+      per_page: 100,
+    });
+    for (const client of clients) {
+      await s.env.data.clients.update("tenantId", client.client_id, {
+        client_metadata: { status: "deleted" },
+      });
+    }
+    const response = await s.oauthApp.request("/activate", { headers }, s.env);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "invalid_request",
+      error_description: "No clients configured",
+    });
+  });
+
   it("issues hashed codes and advertises the endpoint in discovery", async () => {
     const s = await setup();
     const grant = await issue(s, { scope: "openid email" });
@@ -249,6 +337,9 @@ describe("OAuth device authorization (RFC 8628), u2", () => {
     });
     expect(completed.status).toBe(200);
     const { logs } = await s.env.data.logs.list("tenantId", { per_page: 100 });
+    expect(
+      logs.filter((log) => log.type === LogTypes.SUCCESS_LOGIN),
+    ).toHaveLength(1);
     expect(logs.some((log) => log.type === "sede")).toBe(true);
     expect(JSON.stringify(logs)).not.toContain(grant.device_code);
     const refreshed = await s.oauthApp.request(
@@ -277,6 +368,15 @@ describe("OAuth device authorization (RFC 8628), u2", () => {
       error: "access_denied",
     });
     expect((await decide(s, browser, "approve")).status).toBe(409);
+    const { logs } = await s.env.data.logs.list("tenantId", { per_page: 100 });
+    expect(
+      logs.filter((log) => log.type === LogTypes.SUCCESS_LOGIN),
+    ).toHaveLength(1);
+    expect(
+      logs.filter(
+        (log) => log.type === LogTypes.USER_CANCELED_DEVICE_CONFIRMATION,
+      ),
+    ).toHaveLength(1);
   });
 
   it("requires completed authentication and the activation browser's cookie", async () => {

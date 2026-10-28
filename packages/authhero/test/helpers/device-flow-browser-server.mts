@@ -6,6 +6,7 @@ import SQLite from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import createAdapters, {
   migrateToLatest,
   type Database,
@@ -43,6 +44,20 @@ for (const client_id of ["device-client", "other-device-client"]) {
     },
   });
 }
+// Exercise expiry through both the browser and polling endpoints without
+// waiting for a freshly issued grant's ten-minute lifetime.
+await data.deviceCodes!.create("device-tests", {
+  device_code_hash: createHash("sha256")
+    .update("expired-device-code")
+    .digest("hex"),
+  user_code_hash: createHash("sha256").update("BCDFGHJK").digest("hex"),
+  client_id: "device-client",
+  status: "pending",
+  version: 0,
+  interval: 5,
+  created_at: "2000-01-01T00:00:00.000Z",
+  expires_at: "2000-01-01T00:10:00.000Z",
+});
 await data.connections.create("device-tests", {
   id: "database",
   name: "Username-Password-Authentication",

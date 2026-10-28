@@ -5,9 +5,11 @@ import {
   encodeBase64,
   encodeBase64Url,
   LogTypes,
+  type Client,
 } from "@authhero/adapter-interfaces";
 import { defineRoute } from "../../utils/define-route";
 import { getEnrichedClient } from "../../helpers/client";
+import { isCimdClientId } from "../../helpers/cimd";
 import { parseBasicAuthHeader } from "../../utils/auth-header";
 import { getAuthUrl } from "../../variables";
 import { setTenantId } from "../../helpers/set-tenant-id";
@@ -235,8 +237,24 @@ const getActivate = defineRoute({
       });
     await limitDeviceRequests(ctx, tenantId, "activate", 30);
     const tenant = await ctx.env.data.tenants.get(tenantId);
-    const clients = await ctx.env.data.clients.list(tenantId, { per_page: 1 });
-    const clientId = tenant?.default_client_id || clients.clients[0]?.client_id;
+    const isEligible = (client: Client) =>
+      client.client_metadata?.status !== "deleted" &&
+      !isCimdClientId(client.client_id);
+    const defaultClient = tenant?.default_client_id
+      ? await ctx.env.data.clients.get(tenantId, tenant.default_client_id)
+      : null;
+    let clientId =
+      defaultClient && isEligible(defaultClient)
+        ? defaultClient.client_id
+        : undefined;
+    for (let page = 0; !clientId; page++) {
+      const { clients } = await ctx.env.data.clients.list(tenantId, {
+        page,
+        per_page: 100,
+      });
+      clientId = clients.find(isEligible)?.client_id;
+      if (clients.length < 100) break;
+    }
     if (!clientId)
       throw new JSONHTTPException(400, {
         error: "invalid_request",

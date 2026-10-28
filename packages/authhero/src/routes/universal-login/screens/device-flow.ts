@@ -275,17 +275,13 @@ async function submitConfirmation(
     if (!latest) throw new JSONHTTPException(400, { error: "expired_token" });
     current = latest;
   }
-  await logMessage(c.ctx, c.tenant.id, {
-    type:
-      status === "approved"
-        ? LogTypes.SUCCESS_LOGIN
-        : LogTypes.USER_CANCELED_DEVICE_CONFIRMATION,
-    userId: login.user_id,
-    description:
-      status === "approved"
-        ? "User approved device authorization"
-        : "User denied device authorization",
-  });
+  if (status === "denied") {
+    await logMessage(c.ctx, c.tenant.id, {
+      type: LogTypes.USER_CANCELED_DEVICE_CONFIRMATION,
+      userId: login.user_id,
+      description: "User denied device authorization",
+    });
+  }
   return {
     redirect: `/u2/device/complete?state=${encodeURIComponent(c.state)}`,
   };

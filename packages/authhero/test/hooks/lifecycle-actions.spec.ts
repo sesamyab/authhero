@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import type {
   CodeExecutor,
@@ -93,6 +93,8 @@ async function setup(
   return { ...server, request, bind, executions };
 }
 
+afterEach(() => vi.useRealTimers());
+
 for (const trigger of ["pre-user-update", "pre-user-deletion"] as const) {
   describe(trigger, () => {
     const mutate = (s: Awaited<ReturnType<typeof setup>>) =>
@@ -120,7 +122,14 @@ for (const trigger of ["pre-user-update", "pre-user-deletion"] as const) {
         const response = mutate(s);
         // Authentication uses real async crypto. Wait for the executor itself
         // to start before advancing its deadline, independent of runner load.
-        await started;
+        await Promise.race([
+          started,
+          response.then((result) => {
+            throw new Error(
+              `Request completed before the Action executor started (${result.status})`,
+            );
+          }),
+        ]);
         await vi.advanceTimersByTimeAsync(5001);
         expect((await response).status).toBe(400);
         expect((await s.env.data.users.get(TENANT, USER))?.name).toBe("Before");
