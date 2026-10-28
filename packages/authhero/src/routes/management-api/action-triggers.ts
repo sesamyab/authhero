@@ -52,6 +52,7 @@ function toAuth0TriggerId(triggerId: string): string {
 type CodeHookTriggerId = Extract<HookInsert, { code_id: string }>["trigger_id"];
 
 const CODE_HOOK_TRIGGER_IDS = [
+  "validate-registration-username",
   "post-user-login",
   "credentials-exchange",
   "pre-user-registration",

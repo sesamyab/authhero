@@ -9,6 +9,8 @@ import type {
   ActionExecutionStatus,
 } from "@authhero/adapter-interfaces";
 
+import { getTriggerName } from "../hooks/hookConstants";
+
 interface ExecutionRecord {
   id?: string;
   trigger_id?: string;
@@ -80,7 +82,7 @@ function ExecutionDetails() {
             <span className="font-mono text-xs">{record.id}</span>
           </Row>
           <Row label="Trigger">
-            <PlainOrDash value={record.trigger_id} />
+            <PlainOrDash value={getTriggerName(record.trigger_id)} />
           </Row>
           <Row label="Status">
             {record.status ? (

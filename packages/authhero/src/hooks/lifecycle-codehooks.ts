@@ -12,13 +12,16 @@ import {
   persistActionExecution,
 } from "./codehooks";
 
-/** Blocking policies run before the transaction, and never silently skip errors. */
-export async function runPreUserActions(
+/** Blocking policies run before signup validation or a write, and fail closed. */
+export async function runBlockingActions(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   tenantId: string,
-  triggerId: "pre-user-update" | "pre-user-deletion",
+  triggerId:
+    | "validate-registration-username"
+    | "pre-user-update"
+    | "pre-user-deletion",
   event: CodeHookEventInput,
-): Promise<void> {
+): Promise<{ allowed: boolean; reason?: string }> {
   // This stack includes platform-scoped policies hidden from management reads.
   const data = getExecutorData(ctx);
   const hooks: Hook[] = [];
@@ -32,6 +35,10 @@ export async function runPreUserActions(
     .filter(isCodeHook)
     .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   const outcomes: HandleCodeHookOutcome[] = [];
+  const defaultDenialReason =
+    triggerId === "validate-registration-username"
+      ? "Signup not allowed by Action"
+      : "Operation denied by lifecycle Action";
 
   const persist = async () => {
     const id = await persistActionExecution(
@@ -60,7 +67,7 @@ export async function runPreUserActions(
         triggerId,
         api: {
           access: {
-            // Record the denial before throwing so execution logs are retained.
+            // Record the denial without throwing so execution logs are retained.
             deny: (reason?: string) => {
               denialReason = typeof reason === "string" ? reason : undefined;
             },
@@ -70,7 +77,7 @@ export async function runPreUserActions(
       if (outcome.denied) {
         outcome.result.error = {
           id: "access_denied",
-          msg: denialReason || "Operation denied by lifecycle Action",
+          msg: denialReason || defaultDenialReason,
         };
       }
     } catch (error) {
@@ -96,12 +103,27 @@ export async function runPreUserActions(
         description: `${triggerId} Action ${outcome.denied ? "denied the operation" : "failed"}`,
         userId: typeof event.user_id === "string" ? event.user_id : undefined,
       });
-      throw new JSONHTTPException(400, {
-        message: outcome.denied
-          ? denialReason || "Operation denied by lifecycle Action"
+      return {
+        allowed: false,
+        reason: outcome.denied
+          ? denialReason || defaultDenialReason
           : `${triggerId} Action failed`,
-      });
+      };
     }
   }
   await persist();
+  return { allowed: true };
+}
+
+/** Cancel lifecycle writes when a blocking Action denies or fails. */
+export async function runPreUserActions(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  tenantId: string,
+  triggerId: "pre-user-update" | "pre-user-deletion",
+  event: CodeHookEventInput,
+): Promise<void> {
+  const result = await runBlockingActions(ctx, tenantId, triggerId, event);
+  if (!result.allowed) {
+    throw new JSONHTTPException(400, { message: result.reason });
+  }
 }

@@ -65,6 +65,43 @@ beforeEach(() => {
 });
 
 describe("getList", () => {
+  it.each(["hooks", "forms"])(
+    "paginates %s for the unified Triggers page",
+    async (resource) => {
+      const record =
+        resource === "hooks"
+          ? {
+              hook_id: "h_201",
+              trigger_id: "post-user-login",
+              code_id: "act_1",
+            }
+          : { id: "form_201", name: "Profile" };
+      const { client, calls } = createHttpClient(() => ({
+        [resource]: [record],
+        total: 450,
+      }));
+      const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+      const result = await provider.getList(resource, {
+        pagination: { page: 2, perPage: 200 },
+        sort: { field: "priority", order: "DESC" },
+        filter: { q: "example" },
+      });
+      const url = new URL(calls[0].url);
+      expect(url.pathname).toBe(`/api/v2/${resource}`);
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        include_totals: "true",
+        page: "1",
+        per_page: "200",
+        sort: "priority:-1",
+        q: "example",
+      });
+      expect(result).toEqual({
+        data: [{ ...record, id: resource === "hooks" ? "h_201" : "form_201" }],
+        total: 450,
+      });
+    },
+  );
+
   it("maps pagination, sort and filters onto management-api query params", async () => {
     const { client, calls } = createHttpClient(() => ({
       proxy_routes: [{ id: "route-1" }, { id: "route-2" }],

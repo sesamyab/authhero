@@ -18,6 +18,7 @@
 export const TRIGGER_API_SHAPES: Readonly<
   Record<string, Readonly<Record<string, readonly string[]>>>
 > = {
+  "validate-registration-username": { access: ["deny"] },
   "post-user-login": {
     accessToken: ["setCustomClaim"],
     idToken: ["setCustomClaim"],
@@ -60,6 +61,7 @@ export const TRIGGER_API_SHAPES: Readonly<
  * executors for the same reason as {@link TRIGGER_API_SHAPES}.
  */
 export const TRIGGER_FUNCTION_NAMES: Readonly<Record<string, string>> = {
+  "validate-registration-username": "onExecuteValidateRegistrationUsername",
   "post-user-login": "onExecutePostLogin",
   "credentials-exchange": "onExecuteCredentialsExchange",
   "pre-user-registration": "onExecutePreUserRegistration",

@@ -3,14 +3,17 @@ import {
   SelectInput,
   BooleanInput,
   NumberInput,
+  ReferenceInput,
+  AutocompleteInput,
 } from "@/components/admin";
-import { useRecordContext } from "ra-core";
+import { required, useRecordContext } from "ra-core";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getTemplateChoicesForTrigger,
   getTriggerChoicesForType,
   pageChoices,
 } from "../hookConstants";
+import { ActionInput } from "../action-input";
 import { TryHookButton } from "../try-hook-button";
 
 interface HookRecord {
@@ -84,7 +87,15 @@ function TypeSpecificFields() {
     case "url":
       return <TextInput source="url" label="Webhook URL" />;
     case "form":
-      return <TextInput source="form_id" label="Form ID" />;
+      return (
+        <ReferenceInput source="form_id" reference="forms">
+          <AutocompleteInput
+            label="Form"
+            optionText="name"
+            validate={required()}
+          />
+        </ReferenceInput>
+      );
     case "template":
       return (
         <SelectInput
@@ -94,7 +105,7 @@ function TypeSpecificFields() {
         />
       );
     case "code":
-      return <TextInput source="code_id" label="Code ID" />;
+      return <ActionInput />;
     case "page":
       return (
         <>
@@ -112,6 +123,7 @@ function TypeSpecificFields() {
 }
 
 export function DetailsTab() {
+  const record = useRecordContext<HookRecord>();
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -121,14 +133,18 @@ export function DetailsTab() {
       <CardContent className="flex flex-col gap-3">
         <TypeSpecificFields />
         <TriggerField />
-        <BooleanInput source="enabled" />
-        <BooleanInput source="synchronous" />
-        <NumberInput source="priority" />
+        <BooleanInput source="enabled" label="Enabled" />
+        {hookTypeOf(record) === "url" && (
+          <BooleanInput source="synchronous" label="Synchronous" />
+        )}
+        <NumberInput source="priority" label="Priority" />
         <BooleanInput source="metadata.inheritable" label="Inheritable" />
-        <BooleanInput
-          source="metadata.copy_user_metadata"
-          label="Copy user metadata"
-        />
+        {record?.template_id === "account-linking" && (
+          <BooleanInput
+            source="metadata.copy_user_metadata"
+            label="Copy user metadata"
+          />
+        )}
       </CardContent>
     </Card>
   );

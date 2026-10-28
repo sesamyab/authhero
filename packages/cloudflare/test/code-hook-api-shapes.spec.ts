@@ -29,6 +29,12 @@ describe("code-hook API shapes parity", () => {
     expect(generateWorkerScript("// user code")).toContain(
       JSON.stringify(TRIGGER_FUNCTION_NAMES),
     );
+    expect(TRIGGER_FUNCTION_NAMES["validate-registration-username"]).toBe(
+      "onExecuteValidateRegistrationUsername",
+    );
+    expect(TRIGGER_API_SHAPES["validate-registration-username"]).toEqual({
+      access: ["deny"],
+    });
     expect(TRIGGER_API_SHAPES["pre-user-update"]).toEqual({ access: ["deny"] });
     expect(TRIGGER_API_SHAPES["pre-user-deletion"]).toEqual({
       access: ["deny"],

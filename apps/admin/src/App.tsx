@@ -280,7 +280,11 @@ export function App({ tenantId, initialDomain, onAuthComplete }: AppProps) {
           list={HookList}
           create={HooksCreate}
           edit={HookEdit}
-          options={{ menuGroup: "Developer" }}
+          options={{
+            label: "Trigger bindings",
+            menuGroup: "Developer",
+            hideFromMenu: true,
+          }}
         />
         <Resource
           name="logs"

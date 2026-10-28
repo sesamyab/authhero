@@ -8,7 +8,7 @@
 export interface HookTemplateMeta {
   name: string;
   description: string;
-  trigger_id: string;
+  trigger_ids: string[];
 }
 
 /**
@@ -20,31 +20,35 @@ export const hookTemplates: Record<string, HookTemplateMeta> = {
     name: "Ensure Username",
     description:
       "Automatically assigns a username to users who sign in without one",
-    trigger_id: "post-user-login",
+    trigger_ids: ["post-user-login"],
   },
   "set-preferred-username": {
     name: "Set Preferred Username",
     description:
       "Sets the preferred_username claim on tokens based on the username from the primary or linked user",
-    trigger_id: "credentials-exchange",
+    trigger_ids: ["credentials-exchange"],
   },
   "account-linking": {
     name: "Account Linking",
     description:
       "Links a user to an existing primary account with the same verified email. Idempotent — safe to run on every login.",
-    trigger_id: "post-user-login",
+    trigger_ids: [
+      "post-user-login",
+      "post-user-registration",
+      "post-user-update",
+    ],
   },
 };
 
 /** All trigger IDs that have at least one template. */
 export const triggerIdsWithTemplates = new Set(
-  Object.values(hookTemplates).map((t) => t.trigger_id),
+  Object.values(hookTemplates).flatMap((t) => t.trigger_ids),
 );
 
 /** Build template choices, optionally filtered by trigger_id. */
 export function getTemplateChoicesForTrigger(triggerId?: string) {
   return Object.entries(hookTemplates)
-    .filter(([, meta]) => !triggerId || meta.trigger_id === triggerId)
+    .filter(([, meta]) => !triggerId || meta.trigger_ids.includes(triggerId))
     .map(([id, meta]) => ({
       id,
       name: `${meta.name} — ${meta.description}`,
@@ -66,6 +70,18 @@ export const triggerChoices = [
   { id: "pre-user-deletion", name: "Pre User Deletion" },
   { id: "post-user-deletion", name: "Post User Deletion" },
 ];
+
+/** Display names shared by hooks and Actions, including Auth0's post-login alias. */
+export function getTriggerName(triggerId?: string): string {
+  if (!triggerId) return "—";
+  if (triggerId === "custom-token-exchange") return "Custom Token Exchange";
+  const hookTriggerId =
+    triggerId === "post-login" ? "post-user-login" : triggerId;
+  return (
+    triggerChoices.find((choice) => choice.id === hookTriggerId)?.name ??
+    triggerId
+  );
+}
 
 /** Trigger choices narrowed to only those that have templates. */
 export const triggerChoicesWithTemplatesOnly = triggerChoices.filter((c) =>
@@ -110,14 +126,42 @@ export function getTriggerChoicesForType(type?: string) {
       return pageHookTriggerChoices;
     case "code":
       return codeHookTriggerChoices;
+    case "url":
+      return webhookTriggerChoices;
+    case "template":
+      return triggerChoicesWithTemplatesOnly;
     default:
       return triggerChoices;
   }
 }
 
+/** Webhook triggers supported by the management API and runtime. */
+export const webhookTriggerChoices = triggerChoices.filter(
+  (c) => !["credentials-exchange", "pre-user-update"].includes(c.id),
+);
+
+export const bindingTypeChoices = [
+  { id: "code", name: "Action" },
+  { id: "url", name: "Webhook" },
+  { id: "form", name: "Form" },
+  { id: "template", name: "Template" },
+  { id: "page", name: "Page" },
+] as const;
+
+export type BindingType = (typeof bindingTypeChoices)[number]["id"];
+
+export function getBindingTypeChoices(triggerId?: string) {
+  return bindingTypeChoices.filter(
+    (type) =>
+      !triggerId ||
+      getTriggerChoicesForType(type.id).some((t) => t.id === triggerId),
+  );
+}
+
 /** Trigger IDs supported by code hooks. */
 export const codeHookTriggerChoices = triggerChoices.filter((c) =>
   [
+    "validate-registration-username",
     "post-user-login",
     "credentials-exchange",
     "pre-user-registration",
@@ -139,6 +183,7 @@ export const codeHookTriggerChoices = triggerChoices.filter((c) =>
  * to a trigger.
  */
 export const triggerHandlerNames: Record<string, string> = {
+  "validate-registration-username": "onExecuteValidateRegistrationUsername",
   "post-user-login": "onExecutePostLogin",
   "post-login": "onExecutePostLogin",
   "credentials-exchange": "onExecuteCredentialsExchange",
@@ -207,6 +252,13 @@ async function verifySubjectToken(event) {
 
 /** Returns the default code template for the given trigger ID. */
 export function getDefaultCodeTemplate(triggerId?: string): string {
+  if (triggerId === "validate-registration-username") {
+    return `exports.onExecuteValidateRegistrationUsername = async (event, api) => {
+  // Inspect event.user.email and event.user.connection before signup.
+  // Call api.access.deny("Reason") to reject registration.
+};
+`;
+  }
   if (triggerId === "pre-user-update" || triggerId === "pre-user-deletion") {
     return `exports.${triggerHandlerNames[triggerId]} = async (event, api) => {
   // Inspect event.user${triggerId === "pre-user-update" ? " and event.updates" : ""} before the write.

@@ -38,6 +38,7 @@ const templateHookAllowedTriggers = z.enum([
 ]);
 
 const codeHookAllowedTriggers = z.enum([
+  "validate-registration-username",
   "post-user-login",
   "credentials-exchange",
   "pre-user-registration",

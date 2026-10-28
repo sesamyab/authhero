@@ -7,6 +7,8 @@
  * action loads with its trigger selected instead of an empty one.
  */
 
+import { getTriggerName } from "../hooks/hookConstants";
+
 export type ActionSecret = { name: string; value?: string };
 export type ActionTrigger = { id?: string; version?: string };
 
@@ -24,6 +26,7 @@ export type ActionRecord = {
 
 /** The Auth0-facing trigger ids an action can be bound to. */
 export const ACTION_TRIGGER_IDS = [
+  "validate-registration-username",
   "post-login",
   "credentials-exchange",
   "pre-user-registration",
@@ -38,7 +41,7 @@ export const ACTION_TRIGGER_IDS = [
 
 export const ACTION_TRIGGER_CHOICES = ACTION_TRIGGER_IDS.map((id) => ({
   id,
-  name: id,
+  name: getTriggerName(id),
 }));
 
 /**
