@@ -9,13 +9,20 @@ import {
   RefreshCw,
   Rocket,
   RefreshCcw,
+  Eraser,
   Eye,
+  MoreHorizontal,
   Unlink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Toggle } from "@/components/ui/toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Confirm } from "@/components/admin/confirm";
 import {
   Card,
@@ -339,38 +346,14 @@ export function TenantOperations() {
       />
 
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div className="flex flex-col gap-1.5">
-            <CardTitle>Operations for {tenantId}</CardTitle>
-            <CardDescription>
-              Lifecycle operation history — every provision, seed, and upgrade
-              run with its step-by-step timeline. Retrying is safe: steps are
-              idempotent.
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            {canSync && (
-              <div
-                className="flex items-center gap-2"
-                title="Also remove synced copies the parent no longer shares. A preview always lists them."
-              >
-                <Checkbox
-                  id="sync-prune"
-                  checked={prune}
-                  onCheckedChange={(v) => setPrune(v === true)}
-                />
-                <Label htmlFor="sync-prune">Remove unshared</Label>
-              </div>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={refresh}
-              disabled={loadState.status === "loading"}
-            >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Refresh
-            </Button>
+        <CardHeader>
+          <CardTitle>Operations for {tenantId}</CardTitle>
+          <CardDescription>
+            Lifecycle operation history — every provision, seed, and upgrade run
+            with its step-by-step timeline. Retrying is safe: steps are
+            idempotent.
+          </CardDescription>
+          <div className="flex flex-wrap items-center gap-2 pt-2">
             {canSync && (
               <>
                 <Button
@@ -385,22 +368,17 @@ export function TenantOperations() {
                   <Eye className="h-4 w-4 mr-1" />
                   Preview sync
                 </Button>
-                <Button
+                <Toggle
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    enqueue(
-                      "sync-defaults",
-                      { force: true, ...(prune ? { prune: true } : {}) },
-                      "Forced sync",
-                    )
-                  }
-                  disabled={enqueuing || hasActive}
-                  title="Apply the config even when the tenant is already up to date"
+                  className="px-3"
+                  pressed={prune}
+                  onPressedChange={setPrune}
+                  title="Also remove synced copies the parent no longer shares. A preview always lists them."
                 >
-                  <RefreshCcw className="h-4 w-4 mr-1" />
-                  Force sync
-                </Button>
+                  <Eraser className="h-4 w-4" />
+                  Remove unshared
+                </Toggle>
                 <Button
                   variant="outline"
                   size="sm"
@@ -420,65 +398,101 @@ export function TenantOperations() {
               </>
             )}
             {canDetach && (
-              <div
-                className="flex items-center gap-2"
-                title="Remove the inherited rows instead of keeping them. Email provider, branding and prompt settings are kept either way. Applies to Preview detach and Detach."
-              >
-                <Checkbox
-                  id="detach-clean"
-                  checked={detachClean}
-                  onCheckedChange={(v) => setDetachClean(v === true)}
-                />
-                <Label htmlFor="detach-clean">Remove inherited</Label>
-              </div>
+              <>
+                <Toggle
+                  variant="outline"
+                  size="sm"
+                  className="px-3"
+                  pressed={detachClean}
+                  onPressedChange={setDetachClean}
+                  title="Remove the inherited rows instead of keeping them. Email provider, branding and prompt settings are kept either way. Applies to Preview detach and Detach."
+                >
+                  <Eraser className="h-4 w-4" />
+                  Remove inherited
+                </Toggle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-red-600/40 text-red-700 hover:bg-red-50 hover:text-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                  onClick={() => setDetachOpen(true)}
+                  disabled={enqueuing || hasActive}
+                  title="Make this tenant independent of its parent"
+                >
+                  <Unlink className="h-4 w-4 mr-1" />
+                  Detach
+                </Button>
+              </>
             )}
-            {canDetach && (
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" aria-label="More actions">
+                    <MoreHorizontal className="h-4 w-4 mr-1" />
+                    More
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onSelect={refresh}
+                    disabled={loadState.status === "loading"}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </DropdownMenuItem>
+                  {canDetach && (
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        enqueue(
+                          "detach",
+                          {
+                            dry_run: true,
+                            ...(detachClean ? { clean: true } : {}),
+                          },
+                          "Detach preview",
+                        )
+                      }
+                      disabled={enqueuing || hasActive}
+                    >
+                      <Eye className="h-4 w-4" />
+                      Preview detach
+                    </DropdownMenuItem>
+                  )}
+                  {canSync && (
+                    <DropdownMenuItem
+                      className="text-amber-700 focus:text-amber-800 dark:text-amber-400"
+                      onSelect={() =>
+                        enqueue(
+                          "sync-defaults",
+                          { force: true, ...(prune ? { prune: true } : {}) },
+                          "Forced sync",
+                        )
+                      }
+                      disabled={enqueuing || hasActive}
+                    >
+                      <RefreshCcw className="h-4 w-4" />
+                      Force sync
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
-                variant="outline"
                 size="sm"
-                onClick={() =>
-                  enqueue(
-                    "detach",
-                    { dry_run: true, ...(detachClean ? { clean: true } : {}) },
-                    "Detach preview",
-                  )
+                onClick={enqueueUpgrade}
+                disabled={enqueuing || hasActive}
+                title={
+                  hasActive
+                    ? "An operation is already in flight for this tenant"
+                    : undefined
                 }
-                disabled={enqueuing || hasActive}
-                title="Show what detaching this tenant from its parent would do, without writing anything"
               >
-                <Eye className="h-4 w-4 mr-1" />
-                Preview detach
+                {enqueuing ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Rocket className="h-4 w-4 mr-1" />
+                )}
+                Redeploy
               </Button>
-            )}
-            {canDetach && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDetachOpen(true)}
-                disabled={enqueuing || hasActive}
-                title="Make this tenant independent of its parent"
-              >
-                <Unlink className="h-4 w-4 mr-1" />
-                Detach
-              </Button>
-            )}
-            <Button
-              size="sm"
-              onClick={enqueueUpgrade}
-              disabled={enqueuing || hasActive}
-              title={
-                hasActive
-                  ? "An operation is already in flight for this tenant"
-                  : undefined
-              }
-            >
-              {enqueuing ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Rocket className="h-4 w-4 mr-1" />
-              )}
-              Redeploy
-            </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

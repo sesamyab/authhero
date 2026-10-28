@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { SyncChanges, parseSyncResult } from "./SyncChanges";
 
 afterEach(cleanup);
@@ -62,10 +62,13 @@ describe("SyncChanges", () => {
       />,
     );
 
-    expect(screen.getByText("Connections")).toBeTruthy();
-    expect(screen.getByText("Actions")).toBeTruthy();
+    expect(screen.getAllByText("Connections")).toHaveLength(2);
     expect(screen.getByText("would add")).toBeTruthy();
     expect(screen.getByText("stale")).toBeTruthy();
+    // Rows that stay as they are sit behind a toggle when there is more.
+    expect(screen.queryByText("kept: tenant's own")).toBeNull();
+    fireEvent.click(screen.getByText("Show 1 kept"));
+    expect(screen.getByText("Actions")).toBeTruthy();
     expect(screen.getByText("kept: tenant's own")).toBeTruthy();
     expect(screen.getByText(/1 to add, 1 kept, 1 stale/)).toBeTruthy();
   });
@@ -103,10 +106,41 @@ describe("SyncChanges", () => {
 
     expect(screen.getByText("would convert")).toBeTruthy();
     expect(screen.getByText("would remove")).toBeTruthy();
+    fireEvent.click(screen.getByText("Show 1 kept"));
     expect(screen.getByText("kept as copy")).toBeTruthy();
     expect(
       screen.getByText(/1 to convert, 1 to remove, 1 kept as copy/),
     ).toBeTruthy();
+  });
+
+  it("shows only the first rows of a long result until asked for all", () => {
+    const rows = Array.from({ length: 12 }, (_, i) => ({
+      entity: "connection",
+      key: `c${i}`,
+      action: "added",
+    }));
+    render(<SyncChanges result={{ status: "applied", rows }} />);
+
+    expect(screen.queryByText("c11")).toBeNull();
+    fireEvent.click(screen.getByText("Show all 12"));
+    expect(screen.getByText("c11")).toBeTruthy();
+    fireEvent.click(screen.getByText("Show fewer"));
+    expect(screen.queryByText("c11")).toBeNull();
+  });
+
+  it("shows every row when all of them are kept", () => {
+    render(
+      <SyncChanges
+        result={{
+          status: "dry-run",
+          dry_run: true,
+          rows: [{ entity: "action", key: "enrich", action: "skipped" }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("kept: tenant's own")).toBeTruthy();
+    expect(screen.queryByText(/Show \d+ kept/)).toBeNull();
   });
 
   it("lists the errors, and says so when there is nothing to change", () => {
