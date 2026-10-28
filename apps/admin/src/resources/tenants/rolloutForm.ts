@@ -1,18 +1,22 @@
 import type { CreateRolloutInput } from "@/auth0DataProvider";
 
+/** The root tenant select has no empty value, so "all" stands for it. */
+export const ALL_TENANTS = "__all__";
+
 export interface RolloutFormValues {
   rootTenantId: string;
   canary: string;
-  waves: string;
+  /** One percentage per wave, as typed. */
+  waves: string[];
   failureThreshold: string;
   dryRun: boolean;
   force: boolean;
 }
 
 export const DEFAULT_ROLLOUT_FORM: RolloutFormValues = {
-  rootTenantId: "",
+  rootTenantId: ALL_TENANTS,
   canary: "1",
-  waves: "10, 50, 100",
+  waves: ["10", "50", "100"],
   failureThreshold: "10",
   dryRun: false,
   force: false,
@@ -31,7 +35,6 @@ export function toCreateRolloutInput(
   }
 
   const waves = values.waves
-    .split(",")
     .map((part) => part.trim())
     .filter(Boolean)
     .map(Number);
@@ -48,7 +51,8 @@ export function toCreateRolloutInput(
     return { error: "Failure threshold must be a percentage from 0 to 100" };
   }
 
-  const root = values.rootTenantId.trim();
+  const root =
+    values.rootTenantId === ALL_TENANTS ? "" : values.rootTenantId.trim();
   return {
     input: {
       ...(root ? { root_tenant_id: root } : {}),

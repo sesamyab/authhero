@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDataProvider, useNotify } from "ra-core";
-import { ArrowLeft, Pause, Play, RefreshCw } from "lucide-react";
+import { ArrowLeft, Pause, Play, Plus, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,6 +35,7 @@ import type {
   RolloutSummary,
 } from "@/auth0DataProvider";
 import {
+  ALL_TENANTS,
   DEFAULT_ROLLOUT_FORM,
   toCreateRolloutInput,
   type RolloutFormValues,
@@ -77,6 +85,31 @@ export function Rollouts() {
   const [selected, setSelected] = useState<DetailState | null>(null);
   const [form, setForm] = useState<RolloutFormValues>(DEFAULT_ROLLOUT_FORM);
   const [busy, setBusy] = useState(false);
+  const [parentTenantIds, setParentTenantIds] = useState<string[]>([]);
+
+  // A rollout can start from any tenant that has children.
+  useEffect(() => {
+    dataProvider
+      .getList("tenants", {
+        pagination: { page: 1, perPage: 500 },
+        sort: { field: "id", order: "ASC" },
+        filter: {},
+      })
+      .then(({ data }) => {
+        const parents = new Set(
+          data.flatMap((t) =>
+            typeof t.parent_tenant_id === "string" ? [t.parent_tenant_id] : [],
+          ),
+        );
+        setParentTenantIds([...parents].sort());
+      })
+      .catch(() => {
+        // Without the list the select still offers "all tenants".
+      });
+  }, [dataProvider]);
+
+  const parsedForm = toCreateRolloutInput(form);
+  const validation = "error" in parsedForm ? parsedForm.error : null;
 
   const refresh = useCallback(async () => {
     try {
@@ -191,66 +224,164 @@ export function Rollouts() {
                 the waves, pausing if a wave fails.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="grid gap-4 md:grid-cols-4">
+            <CardContent className="flex flex-col gap-6">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="rollout-root">Root tenant</Label>
-                  <Input
-                    id="rollout-root"
-                    placeholder="control plane"
+                  <Select
                     value={form.rootTenantId}
-                    onChange={(e) => set("rootTenantId", e.target.value)}
-                  />
+                    onValueChange={(v) => set("rootTenantId", v)}
+                  >
+                    <SelectTrigger id="rollout-root" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_TENANTS}>
+                        Control plane (all tenants)
+                      </SelectItem>
+                      {parentTenantIds.map((id) => (
+                        <SelectItem key={id} value={id}>
+                          {id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Starts here and syncs the synced tenants below it.
+                  </p>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="rollout-canary">Canary tenants</Label>
                   <Input
                     id="rollout-canary"
+                    type="number"
+                    min={0}
+                    step={1}
                     value={form.canary}
                     onChange={(e) => set("canary", e.target.value)}
                   />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="rollout-waves">Waves (% of tenants)</Label>
-                  <Input
-                    id="rollout-waves"
-                    value={form.waves}
-                    onChange={(e) => set("waves", e.target.value)}
-                  />
+                  <p className="text-xs text-muted-foreground">
+                    How many tenants go first. A failure there stops the
+                    rollout.
+                  </p>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="rollout-threshold">
-                    Pause above failures (%)
+                    Pause above failures
                   </Label>
-                  <Input
-                    id="rollout-threshold"
-                    value={form.failureThreshold}
-                    onChange={(e) => set("failureThreshold", e.target.value)}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="rollout-threshold"
+                      type="number"
+                      min={0}
+                      max={100}
+                      className="pr-8"
+                      value={form.failureThreshold}
+                      onChange={(e) => set("failureThreshold", e.target.value)}
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Pauses when more than this share of a wave fails.
+                  </p>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <Checkbox
+
+              <div className="flex flex-col gap-2">
+                <Label>Waves</Label>
+                <p className="text-xs text-muted-foreground">
+                  After the canary, each wave takes the tenants up to this share
+                  of the fleet. The last wave takes whatever is left.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {form.waves.map((wave, index) => (
+                    <div key={index} className="flex items-center gap-1">
+                      <div className="relative">
+                        <Input
+                          aria-label={`Wave ${index + 1}`}
+                          type="number"
+                          min={1}
+                          max={100}
+                          className="w-24 pr-8"
+                          value={wave}
+                          onChange={(e) =>
+                            set(
+                              "waves",
+                              form.waves.map((w, i) =>
+                                i === index ? e.target.value : w,
+                              ),
+                            )
+                          }
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                          %
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Remove wave ${index + 1}`}
+                        disabled={form.waves.length <= 1}
+                        onClick={() =>
+                          set(
+                            "waves",
+                            form.waves.filter((_, i) => i !== index),
+                          )
+                        }
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => set("waves", [...form.waves, ""])}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add wave
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div className="flex items-start gap-3">
+                  <Switch
                     id="rollout-dry"
                     checked={form.dryRun}
-                    onCheckedChange={(v) => set("dryRun", v === true)}
+                    onCheckedChange={(v) => set("dryRun", v)}
                   />
-                  <Label htmlFor="rollout-dry">Dry run (write nothing)</Label>
+                  <div>
+                    <Label htmlFor="rollout-dry">Dry run</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Plans and records the rollout without writing anything.
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
+                <div className="flex items-start gap-3">
+                  <Switch
                     id="rollout-force"
                     checked={form.force}
-                    onCheckedChange={(v) => set("force", v === true)}
+                    onCheckedChange={(v) => set("force", v)}
                   />
-                  <Label htmlFor="rollout-force">
-                    Force (include tenants already up to date)
-                  </Label>
+                  <div>
+                    <Label htmlFor="rollout-force">Force</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Include tenants that are already up to date.
+                    </p>
+                  </div>
                 </div>
-                <Button onClick={start} disabled={busy}>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={start} disabled={busy || !!validation}>
                   Start rollout
                 </Button>
+                {validation && (
+                  <p className="text-sm text-destructive">{validation}</p>
+                )}
               </div>
             </CardContent>
           </Card>
