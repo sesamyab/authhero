@@ -1,5 +1,6 @@
 import { List, DataTable } from "@/components/admin";
 import { InheritedBadge } from "@/components/inheritance/InheritedBadge";
+import { useShowInheritance } from "@/hooks/useHasChildren";
 import { useRecordContext } from "ra-core";
 
 function HookType() {
@@ -20,6 +21,7 @@ function HookType() {
 }
 
 export function HookList() {
+  const showInheritance = useShowInheritance();
   return (
     <List>
       <DataTable rowClick="edit">
@@ -31,9 +33,11 @@ export function HookList() {
         <DataTable.Col source="enabled" />
         <DataTable.Col source="synchronous" />
         <DataTable.Col source="priority" />
-        <DataTable.Col label="Source">
-          <InheritedBadge />
-        </DataTable.Col>
+        {showInheritance && (
+          <DataTable.Col label="Source">
+            <InheritedBadge />
+          </DataTable.Col>
+        )}
       </DataTable>
     </List>
   );

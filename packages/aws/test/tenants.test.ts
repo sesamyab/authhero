@@ -111,4 +111,34 @@ describe("tenants", () => {
     const list = await data.tenants.list();
     expect(list.tenants.length).toBe(2);
   });
+  it("lists the children of a tenant for a parent_tenant_id query", async () => {
+    const { data } = await getTestServer();
+    const create = (id: string, parent?: string) =>
+      data.tenants.create({
+        id,
+        friendly_name: id,
+        audience: "https://example.com",
+        sender_email: "login@example.com",
+        sender_name: id,
+        ...(parent ? { parent_tenant_id: parent } : {}),
+      });
+    await create("partner");
+    await create("leaf", "partner");
+    await create("other");
+    await create("spaced parent");
+    await create("spaced leaf", "spaced parent");
+
+    const children = async (q: string) =>
+      (await data.tenants.list({ q, include_totals: true })).tenants.map(
+        (t) => t.id,
+      );
+
+    expect(await children("parent_tenant_id:partner")).toEqual(["leaf"]);
+    expect(await children('parent_tenant_id:"spaced parent"')).toEqual([
+      "spaced leaf",
+    ]);
+    expect(await children("parent_tenant_id:other")).toEqual([]);
+    // Free-text search still matches the id and the name.
+    expect(await children("partner")).toContain("partner");
+  });
 });

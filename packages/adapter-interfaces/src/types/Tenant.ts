@@ -346,6 +346,10 @@ export const tenantSchema = z
     // tenant id, or no multi-tenancy config is set — i.e. single-tenant
     // deployment). Not persisted; ignored on writes.
     is_control_plane: z.boolean().optional(),
+    // Computed server-side: true when at least one other tenant inherits from
+    // this one (the control plane has children as soon as it is not alone).
+    // Not persisted; ignored on writes.
+    has_children: z.boolean().optional(),
   });
 
 export type Tenant = z.infer<typeof tenantSchema>;

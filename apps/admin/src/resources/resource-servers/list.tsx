@@ -1,5 +1,6 @@
 import { List, DataTable } from "@/components/admin";
 import { InheritedBadge } from "@/components/inheritance/InheritedBadge";
+import { useShowInheritance } from "@/hooks/useHasChildren";
 import { useRecordContext } from "ra-core";
 
 function ScopesCount() {
@@ -20,14 +21,17 @@ function TokenLifetime() {
 }
 
 export function ResourceServerList() {
+  const showInheritance = useShowInheritance();
   return (
     <List>
       <DataTable rowClick="edit">
         <DataTable.Col source="name" />
         <DataTable.Col source="identifier" />
-        <DataTable.Col label="Source">
-          <InheritedBadge />
-        </DataTable.Col>
+        {showInheritance && (
+          <DataTable.Col label="Source">
+            <InheritedBadge />
+          </DataTable.Col>
+        )}
         <DataTable.Col label="Scopes">
           <ScopesCount />
         </DataTable.Col>

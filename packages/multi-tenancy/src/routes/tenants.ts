@@ -18,6 +18,7 @@ import {
   TenantHookContext,
 } from "../types";
 import { getRequestData } from "../middleware/request-data";
+import { computedTenantFields } from "../utils/tenant-settings";
 import { validateTenantParent } from "../utils/tenant-tree";
 
 /**
@@ -111,6 +112,17 @@ export function createTenantsOpenAPIRouter(
       Boolean(caller?.org_id ?? ctx.var.organization_id ?? ctx.var.org_name),
     );
   };
+
+  const computedFields = (
+    ctx: { env: { data: DataAdapters }; var: { data?: DataAdapters } },
+    tenantId: string,
+  ) =>
+    computedTenantFields(
+      getRequestData(ctx).tenants,
+      tenantId,
+      config.accessControl?.controlPlaneTenantId ??
+        getRequestData(ctx).multiTenancyConfig?.controlPlaneTenantId,
+    );
 
   // --------------------------------
   // GET / - List tenants the user has access to
@@ -635,7 +647,7 @@ export function createTenantsOpenAPIRouter(
         });
       }
 
-      return ctx.json(tenant);
+      return ctx.json({ ...tenant, ...(await computedFields(ctx, tenant.id)) });
     },
   );
 
@@ -783,7 +795,10 @@ export function createTenantsOpenAPIRouter(
         });
       }
 
-      return ctx.json(updatedTenant);
+      return ctx.json({
+        ...updatedTenant,
+        ...(await computedFields(ctx, updatedTenant.id)),
+      });
     },
   );
 
