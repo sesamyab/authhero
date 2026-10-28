@@ -35,7 +35,8 @@
     "conformance:run": "pnpm --filter @authhero/conformance-runner exec playwright test",
     "conformance:report": "pnpm --filter @authhero/conformance-runner conformance:report",
     "conformance:seed": "node apps/conformance-runner/scripts/seed.mjs",
-    "prepare": "husky"
+    "prepare": "husky",
+    "conformance:device": "pnpm --filter @authhero/conformance-runner conformance:device"
   },
   "keywords": [],
   "author": "",

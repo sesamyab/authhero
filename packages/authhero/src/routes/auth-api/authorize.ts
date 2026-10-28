@@ -25,6 +25,7 @@ import { resumeLoginSession } from "../../authentication-flows/resume";
 import { getEnrichedClient } from "../../helpers/client";
 import { prefetchClientBundle } from "../../helpers/prefetch-client-bundle";
 import { isCimdClientId } from "../../helpers/cimd";
+import { isDeviceLoginSession } from "../../helpers/device-flow";
 import { isConnectLoginSession } from "../../helpers/dcr/connect-state";
 import { isMcpResourceUrl } from "../mcp/resource";
 import { getIssuer, getSelfCallbackWildcards } from "../../variables";
@@ -482,7 +483,8 @@ const getRoot = defineRoute({
       existingSession.state !== LoginSessionState.FAILED &&
       existingSession.state !== LoginSessionState.EXPIRED &&
       Date.parse(existingSession.expires_at) > Date.now() &&
-      isConnectLoginSession(existingSession.state_data) &&
+      (isConnectLoginSession(existingSession.state_data) ||
+        isDeviceLoginSession(existingSession.state_data)) &&
       !existingSession.authParams.redirect_uri &&
       !existingSession.authParams.response_type &&
       !redirect_uri &&

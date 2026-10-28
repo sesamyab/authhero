@@ -247,6 +247,9 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @authhero/conformance-runner exec playwright install-deps chromium
 
+      - name: Run RFC 8628 device authorization browser checks
+        run: pnpm conformance:device
+
       # SKIP_SETUP=1 because the steps above already started the suite and
       # seeded the DB; ALLOW_WARNING is configurable from the workflow input.
       # On pull_request runs there are no inputs — allow warnings (the
@@ -287,6 +290,17 @@ jobs:
           name: playwright-report
           path: apps/conformance-runner/playwright-report/
           retention-days: 14
+
+      - name: Upload device authorization browser report and traces
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: device-flow-browser-tests
+          path: |
+            apps/conformance-runner/device-flow-report/
+            apps/conformance-runner/device-flow-results/
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Upload OIDF conformance plan reports
         if: always()

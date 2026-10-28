@@ -19,6 +19,7 @@ const GRANT_TYPE_CHOICES = [
   { id: "implicit", name: "Implicit" },
   { id: "authorization_code", name: "Authorization Code" },
   { id: "refresh_token", name: "Refresh Token" },
+  { id: "urn:ietf:params:oauth:grant-type:device_code", name: "Device Code" },
   { id: "client_credentials", name: "Client Credentials" },
   { id: "password", name: "Password" },
   { id: "mfa", name: "MFA" },
@@ -37,6 +38,7 @@ const GRANT_TYPE_CHOICES = [
 // wire form on read, so old records render checked and migrate on the next
 // save. The token endpoint accepts both, so nothing breaks in between.
 const LEGACY_GRANT_TYPE_IDS: Record<string, string> = {
+  device_code: "urn:ietf:params:oauth:grant-type:device_code",
   passwordless_otp: "http://auth0.com/oauth/grant-type/passwordless/otp",
 };
 

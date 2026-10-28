@@ -19,6 +19,10 @@ AuthHero implements a standard OAuth 2.0 / OpenID Connect authentication flow, w
 4. AuthHero validates credentials
 5. On success, AuthHero issues tokens and redirects back to the client application
 
+## Device Authorization
+
+For TVs, command-line tools, and other devices that use a separate browser to sign in, see [Device Authorization](./device-authorization.md).
+
 ## Token Types
 
 AuthHero issues several types of tokens:

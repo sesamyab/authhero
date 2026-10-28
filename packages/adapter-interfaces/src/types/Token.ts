@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 
 export enum GrantType {
+  DeviceCode = "urn:ietf:params:oauth:grant-type:device_code",
   RefreshToken = "refresh_token",
   AuthorizationCode = "authorization_code",
   ClientCredential = "client_credentials",

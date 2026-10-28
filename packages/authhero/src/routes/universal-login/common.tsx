@@ -1,3 +1,4 @@
+import { readLoginSessionData } from "../../state-machines/login-session-data";
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getEnrichedClient, EnrichedClient } from "../../helpers/client";
@@ -89,6 +90,12 @@ export async function initJSXRoute(
     ctx.var.tenant_id,
     ssrfFetchOptionsFromEnv(env),
   );
+  if (readLoginSessionData(loginSession.state_data).deviceFlow) {
+    client.client_metadata = {
+      ...client.client_metadata,
+      universal_login_version: "2",
+    };
+  }
   ctx.set("client_id", client.client_id);
   setTenantId(ctx, client.tenant.id);
   // Embedded (iframe) login is a property of the session, so every page and

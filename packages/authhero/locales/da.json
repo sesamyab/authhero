@@ -208,7 +208,21 @@
       "expired-code": "Koden er udløbet",
       "invalid-code": "Den indtastede kode er ugyldig",
       "pageTitle": "Enhedsaktivering | ${clientName}",
-      "title": "Aktivér din enhed"
+      "title": "Aktivér din enhed",
+      "codeLabel": "Enhedskode",
+      "confirmTitle": "Bekræft din enhed",
+      "confirmDescription": "Fortsæt kun, hvis denne kode stemmer overens med koden på din enhed.",
+      "requestDescription": "${clientName} anmoder om adgang til din konto.",
+      "scopesLabel": "Anmodede tilladelser",
+      "audienceLabel": "Mål-API",
+      "decisionLabel": "Vil du tillade, at denne enhed logger ind?",
+      "approveText": "Godkend",
+      "denyText": "Afvis",
+      "completeTitle": "Enhedsanmodning fuldført",
+      "approvedDescription": "Din enhed er tilsluttet. Du kan lukke denne side.",
+      "deniedDescription": "Enhedsanmodningen blev afvist. Du kan lukke denne side.",
+      "alreadyCompleted": "Denne enhedsanmodning er allerede fuldført.",
+      "sessionExpired": "Din aktiveringssession er udløbet. Start igen på din enhed."
     }
   },
   "email-otp-challenge": {

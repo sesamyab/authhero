@@ -8,6 +8,8 @@ import { ClientConnectionsAdapter } from "./ClientConnections";
 import { ClientGrantsAdapter } from "./ClientGrants";
 import { ClientRegistrationTokensAdapter } from "./ClientRegistrationTokens";
 import { CodesAdapter } from "./Codes";
+import { DeviceCodesAdapter } from "./DeviceCodes";
+export type { DeviceCodesAdapter } from "./DeviceCodes";
 import { PasswordsAdapter } from "./Passwords";
 import { SessionsAdapter } from "./Sessions";
 import { TenantsDataAdapter } from "./Tenants";
@@ -81,6 +83,8 @@ export interface DataAdapters {
   clientGrants: ClientGrantsAdapter;
   clientRegistrationTokens?: ClientRegistrationTokensAdapter;
   codes: CodesAdapter;
+  /** Optional RFC 8628 storage. Enables the device authorization grant. */
+  deviceCodes?: DeviceCodesAdapter;
   connections: ConnectionsAdapter;
   customDomains: CustomDomainsAdapter;
   emailProviders: EmailProvidersAdapter;

@@ -8,6 +8,7 @@ import {
 function makeDataAdapter(
   overrides: {
     codesCleanup?: ReturnType<typeof vi.fn>;
+    deviceCodesCleanup?: ReturnType<typeof vi.fn>;
     outboxCleanup?: ReturnType<typeof vi.fn> | null;
     actionExecutionsCleanup?: ReturnType<typeof vi.fn> | null;
     sessionCleanup?: ReturnType<typeof vi.fn> | null;
@@ -15,6 +16,7 @@ function makeDataAdapter(
 ): DataAdapters {
   const {
     codesCleanup = vi.fn().mockResolvedValue(5),
+    deviceCodesCleanup,
     outboxCleanup = vi.fn().mockResolvedValue(3),
     actionExecutionsCleanup = vi.fn().mockResolvedValue(4),
     sessionCleanup = vi.fn().mockResolvedValue(undefined),
@@ -22,6 +24,9 @@ function makeDataAdapter(
 
   return {
     codes: { cleanup: codesCleanup },
+    deviceCodes: deviceCodesCleanup
+      ? { cleanup: deviceCodesCleanup }
+      : undefined,
     outbox: outboxCleanup ? { cleanup: outboxCleanup } : undefined,
     actionExecutions: actionExecutionsCleanup
       ? { cleanup: actionExecutionsCleanup }
@@ -57,6 +62,11 @@ describe("runRetention", () => {
 
     expect(sweeps).toEqual([
       { table: "codes", status: "swept", deleted: 5 },
+      {
+        table: "device_codes, device_flow_limits",
+        status: "skipped",
+        reason: "not supported by this adapter",
+      },
       { table: "outbox_events", status: "swept", deleted: 3 },
       { table: "action_executions", status: "swept", deleted: 4 },
       {
@@ -74,6 +84,22 @@ describe("runRetention", () => {
     ]);
   });
 
+  it("sweeps expired device codes and limits using the codes retention window", async () => {
+    const deviceCodesCleanup = vi.fn().mockResolvedValue(2);
+    const { sweeps } = await runRetention({
+      dataAdapter: makeDataAdapter({ deviceCodesCleanup }),
+      codesRetentionDays: 2,
+    });
+    expect(deviceCodesCleanup).toHaveBeenCalledTimes(1);
+    expect(daysAgo(deviceCodesCleanup.mock.calls[0][0])).toBe(2);
+    expect(
+      sweeps.find((s) => s.table === "device_codes, device_flow_limits"),
+    ).toEqual({
+      table: "device_codes, device_flow_limits",
+      status: "swept",
+      deleted: 2,
+    });
+  });
   it("applies the documented default windows", async () => {
     const codesCleanup = vi.fn().mockResolvedValue(0);
     const outboxCleanup = vi.fn().mockResolvedValue(0);
@@ -220,7 +246,9 @@ describe("runRetention", () => {
       status: "swept",
       deleted: 5,
     });
-    expect(error.result.sweeps[1]).toMatchObject({
+    expect(
+      error.result.sweeps.find((s) => s.table === "outbox_events"),
+    ).toMatchObject({
       table: "outbox_events",
       status: "failed",
       error: boom,

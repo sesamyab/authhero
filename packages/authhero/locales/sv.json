@@ -208,7 +208,21 @@
       "expired-code": "Koden har gått ut",
       "invalid-code": "Koden du angav är ogiltig",
       "pageTitle": "Enhetsaktivering | ${clientName}",
-      "title": "Aktivera din enhet"
+      "title": "Aktivera din enhet",
+      "codeLabel": "Enhetskod",
+      "confirmTitle": "Bekräfta din enhet",
+      "confirmDescription": "Fortsätt bara om den här koden stämmer överens med koden på din enhet.",
+      "requestDescription": "${clientName} begär åtkomst till ditt konto.",
+      "scopesLabel": "Begärda behörigheter",
+      "audienceLabel": "Mål-API",
+      "decisionLabel": "Tillåta att den här enheten loggar in?",
+      "approveText": "Godkänn",
+      "denyText": "Neka",
+      "completeTitle": "Enhetsbegäran slutförd",
+      "approvedDescription": "Din enhet är ansluten. Du kan stänga den här sidan.",
+      "deniedDescription": "Enhetsbegäran nekades. Du kan stänga den här sidan.",
+      "alreadyCompleted": "Den här enhetsbegäran har redan slutförts.",
+      "sessionExpired": "Din aktiveringssession har gått ut. Börja om på din enhet."
     }
   },
   "email-otp-challenge": {

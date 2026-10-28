@@ -55,6 +55,7 @@ import {
   userCanAccessOrganization,
 } from "../helpers/scopes-permissions";
 import { getMissingConsentScopes } from "../helpers/consent";
+import { isDeviceLoginSession, deviceFlowData } from "../helpers/device-flow";
 import { isConnectLoginSession } from "../helpers/dcr/connect-state";
 import {
   buildScopeClaims,
@@ -149,6 +150,8 @@ export interface CreateAuthTokensParams {
  */
 function failedExchangeLogTypeForGrant(grantType?: GrantType): LogType {
   switch (grantType) {
+    case GrantType.DeviceCode:
+      return LogTypes.FAILED_EXCHANGE_DEVICE_CODE_FOR_ACCESS_TOKEN;
     case GrantType.AuthorizationCode:
       return LogTypes.FAILED_EXCHANGE_AUTHORIZATION_CODE_FOR_ACCESS_TOKEN;
     case GrantType.ClientCredential:
@@ -1867,6 +1870,46 @@ export async function createFrontChannelAuthResponse(
     // screen instead of issuing tokens — there is no redirect_uri to honor.
     // The auth cookie is set here so the consent screen resolves the session
     // we just authenticated.
+    if (session_id && isDeviceLoginSession(currentLoginSession.state_data)) {
+      // MFA has completed above. Run post-login hooks here, because device
+      // authorization returns before completeLogin (the usual hook boundary).
+      if (!deviceFlowData(currentLoginSession)?.ready && !params.skipHooks) {
+        const hookResult = await postUserLoginHook(
+          ctx,
+          ctx.env.data,
+          client.tenant.id,
+          user,
+          currentLoginSession,
+          {
+            client,
+            authParams: { ...authParams, grant_type: GrantType.DeviceCode },
+            authStrategy: params.authStrategy,
+            authConnection: params.authConnection,
+          },
+        );
+        if (hookResult instanceof Response) return hookResult;
+      }
+      await updateLoginSessionData(
+        ctx.env.data.loginSessions,
+        client.tenant.id,
+        currentLoginSession.id,
+        {
+          type: LoginSessionEventType.UPDATE_CONTEXT,
+          data: {
+            deviceFlow: { ...deviceFlowData(currentLoginSession), ready: true },
+          },
+        },
+      );
+      const headers = new Headers({
+        location: `/u2/device/confirmation?state=${encodeURIComponent(currentLoginSession.id)}`,
+      });
+      serializeAuthCookie(
+        client.tenant.id,
+        session_id,
+        ctx.var.host || "",
+      ).forEach((cookie) => headers.append("set-cookie", cookie));
+      return new Response(null, { status: 302, headers });
+    }
     if (session_id && isConnectLoginSession(currentLoginSession.state_data)) {
       const connectHeaders = new Headers();
       serializeAuthCookie(

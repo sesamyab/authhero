@@ -1,3 +1,4 @@
+import { isDeviceLoginSession } from "../helpers/device-flow";
 import { Context } from "hono";
 import {
   LoginSessionState,
@@ -132,6 +133,11 @@ export async function resumeLoginSession(
     resolvedTenantId,
   );
   setTenantId(ctx, client.tenant.id);
+  if (isDeviceLoginSession(loginSession.state_data))
+    client.client_metadata = {
+      ...client.client_metadata,
+      universal_login_version: "2",
+    };
   ctx.set("client_id", client.client_id);
 
   const currentState = loginSession.state || LoginSessionState.PENDING;

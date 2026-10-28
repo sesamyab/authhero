@@ -287,6 +287,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               link: "/features/authentication-flows",
             },
             {
+              text: "Device Authorization",
+              link: "/features/device-authorization",
+            },
+            {
               text: "SPA Authentication",
               link: "/features/spa-authentication",
             },

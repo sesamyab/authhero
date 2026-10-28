@@ -208,7 +208,21 @@
       "expired-code": "Koodi on vanhentunut",
       "invalid-code": "Syöttämäsi koodi on virheellinen",
       "pageTitle": "Laitteen aktivointi | ${clientName}",
-      "title": "Aktivoi laitteesi"
+      "title": "Aktivoi laitteesi",
+      "codeLabel": "Laitteen koodi",
+      "confirmTitle": "Vahvista laitteesi",
+      "confirmDescription": "Jatka vain, jos tämä koodi vastaa laitteessasi näkyvää koodia.",
+      "requestDescription": "${clientName} pyytää käyttöoikeutta tiliisi.",
+      "scopesLabel": "Pyydetyt käyttöoikeudet",
+      "audienceLabel": "Kohderajapinta",
+      "decisionLabel": "Sallitaanko tämän laitteen kirjautuminen?",
+      "approveText": "Hyväksy",
+      "denyText": "Hylkää",
+      "completeTitle": "Laitteen pyyntö käsitelty",
+      "approvedDescription": "Laitteesi on yhdistetty. Voit sulkea tämän sivun.",
+      "deniedDescription": "Laitteen pyyntö hylättiin. Voit sulkea tämän sivun.",
+      "alreadyCompleted": "Tämä laitteen pyyntö on jo käsitelty.",
+      "sessionExpired": "Aktivointi-istuntosi on vanhentunut. Aloita uudelleen laitteellasi."
     }
   },
   "email-otp-challenge": {

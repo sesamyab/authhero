@@ -28,6 +28,8 @@ const SENSITIVE_FIELDS = new Set([
   "client_secret",
   "client_assertion",
   "code_verifier",
+  "device_code",
+  "user_code",
   "otp",
   "signing_keys",
   "credentials",

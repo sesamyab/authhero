@@ -208,7 +208,21 @@
       "expired-code": "Platnost kódu vypršela",
       "invalid-code": "Zadaný kód je neplatný",
       "pageTitle": "Aktivace zařízení | ${clientName}",
-      "title": "Aktivujte své zařízení"
+      "title": "Aktivujte své zařízení",
+      "codeLabel": "Kód zařízení",
+      "confirmTitle": "Potvrďte své zařízení",
+      "confirmDescription": "Pokračujte pouze tehdy, pokud se tento kód shoduje s kódem na vašem zařízení.",
+      "requestDescription": "${clientName} žádá o přístup k vašemu účtu.",
+      "scopesLabel": "Požadovaná oprávnění",
+      "audienceLabel": "Cílové API",
+      "decisionLabel": "Povolit tomuto zařízení přihlášení?",
+      "approveText": "Schválit",
+      "denyText": "Odmítnout",
+      "completeTitle": "Požadavek zařízení dokončen",
+      "approvedDescription": "Vaše zařízení je připojeno. Tuto stránku můžete zavřít.",
+      "deniedDescription": "Požadavek zařízení byl zamítnut. Tuto stránku můžete zavřít.",
+      "alreadyCompleted": "Tento požadavek zařízení již byl dokončen.",
+      "sessionExpired": "Platnost vaší aktivační relace vypršela. Začněte znovu na svém zařízení."
     }
   },
   "email-otp-challenge": {

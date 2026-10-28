@@ -57,6 +57,7 @@ export {
 export * from "./AuthParams";
 export * from "./Branding";
 export * from "./Code";
+export * from "./DeviceCode";
 export * from "./Connection";
 export * from "./CustomDomain";
 // Forms.ts takes precedence for conflicting names (FieldComponent, FlowNode, StepNode, fieldComponentSchema)

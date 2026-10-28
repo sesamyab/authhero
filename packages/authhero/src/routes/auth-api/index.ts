@@ -9,6 +9,7 @@ import { oidcLogoutRoutes } from "./oidc-logout";
 import { userinfoRoutes } from "./userinfo";
 import { wellKnownRoutes } from "./well-known";
 import { tokenRoutes } from "./token";
+import { deviceCodeRoutes, activateRoutes } from "./device";
 import { revokeRoutes } from "./revoke";
 import { dbConnectionRoutes } from "./dbconnections";
 import { passwordlessRoutes } from "./passwordless";
@@ -131,6 +132,7 @@ export default function create(config: AuthHeroConfig) {
     maxAge: 600,
   });
   app.use("/oauth/token", oauthCors);
+  app.use("/oauth/device/code", oauthCors);
   app.use("/oauth/revoke", oauthCors);
 
   app
@@ -146,6 +148,8 @@ export default function create(config: AuthHeroConfig) {
     .route("/userinfo", userinfoRoutes)
     .route("/.well-known", wellKnownRoutes)
     .route("/oauth/token", tokenRoutes)
+    .route("/oauth/device/code", deviceCodeRoutes)
+    .route("/activate", activateRoutes)
     .route("/oauth/revoke", revokeRoutes)
     .route("/dbconnections", dbConnectionRoutes)
     .route("/passwordless", passwordlessRoutes)

@@ -68,6 +68,7 @@ export const openIDConfigurationSchema = z.object({
   issuer: z.string(),
   authorization_endpoint: z.string(),
   token_endpoint: z.string(),
+  device_authorization_endpoint: z.string().optional(),
   userinfo_endpoint: z.string(),
   jwks_uri: z.string(),
   registration_endpoint: z.string().optional(),

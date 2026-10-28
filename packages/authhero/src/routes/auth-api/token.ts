@@ -36,6 +36,10 @@ import {
   customTokenExchangeGrant,
   customTokenExchangeParamsSchema,
 } from "../../authentication-flows/custom-token-exchange";
+import {
+  deviceCodeGrant,
+  deviceCodeGrantParamsSchema,
+} from "../../authentication-flows/device-code";
 import { issueTokensForGrant } from "../../authentication-flows/grant-tokens";
 import { serializeAuthCookie } from "../../utils/cookies";
 import { GrantFlowResult } from "src/types/GrantFlowResult";
@@ -89,6 +93,7 @@ function peekAssertionClientId(jwt: string): string | undefined {
  * the token endpoint, so it has no wire value to map onto yet.
  */
 const LEGACY_GRANT_TYPE_IDS: Record<string, string> = {
+  device_code: GrantType.DeviceCode,
   passwordless_otp: GrantType.OTP,
 };
 
@@ -123,6 +128,7 @@ function assertGrantTypeAllowed(
 
 // We need to make the client_id and client_secret optional on each type as it can be passed in a auth-header
 const CreateRequestSchema = z.union([
+  deviceCodeGrantParamsSchema.extend(optionalClientCredentials.shape),
   // Client credentials
   clientCredentialGrantParamsSchema.extend(optionalClientCredentials.shape),
   // Authorization code (with optional PKCE). OAuth 2.1 / RFC 7636 allow client_secret + code_verifier together.
@@ -164,6 +170,8 @@ const CreateRequestSchema = z.union([
 
 function successLogTypeForGrant(grantType: string): LogType | undefined {
   switch (grantType) {
+    case GrantType.DeviceCode:
+      return LogTypes.SUCCESS_EXCHANGE_DEVICE_CODE_FOR_ACCESS_TOKEN;
     case GrantType.AuthorizationCode:
       return LogTypes.SUCCESS_EXCHANGE_AUTHORIZATION_CODE_FOR_ACCESS_TOKEN;
     case GrantType.ClientCredential:
@@ -252,6 +260,17 @@ const postRoot = defineRoute({
       : ctx.req.valid("form");
 
     const basicAuth = parseBasicAuthHeader(ctx.req.header("Authorization"));
+    if (
+      body.grant_type === GrantType.DeviceCode &&
+      basicAuth.client_id &&
+      (body.client_secret !== undefined ||
+        (body.client_id && body.client_id !== basicAuth.client_id))
+    ) {
+      throw new JSONHTTPException(400, {
+        error: "invalid_request",
+        error_description: "Use one client authentication method",
+      });
+    }
     const params: Record<string, unknown> = { ...body, ...basicAuth };
 
     // RFC 7523 client authentication: clients registered with
@@ -423,6 +442,13 @@ const postRoot = defineRoute({
     let isCustomTokenExchange = false;
 
     switch (body.grant_type) {
+      case GrantType.DeviceCode:
+        grantResult = await deviceCodeGrant(
+          ctx,
+          deviceCodeGrantParamsSchema.parse(params),
+          client,
+        );
+        break;
       case GrantType.AuthorizationCode:
         grantResult = await authorizationCodeGrantUser(
           ctx,

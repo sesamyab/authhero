@@ -9,6 +9,7 @@ import { createLogsAdapter } from "./logs";
 import { Database } from "./db";
 import { createSessionsAdapter } from "./sessions";
 import { createPasswordAdapter } from "./passwords";
+import { createDeviceCodesAdapter } from "./deviceCodes";
 import { createCodesAdapter } from "./codes";
 import { createConnectionsAdapter } from "./connections";
 import { createClientsAdapter } from "./clients";
@@ -87,6 +88,7 @@ export default function createAdapters(
     clientConnections: createClientConnectionsAdapter(db),
     clientGrants: createClientGrantsAdapter(db),
     clientRegistrationTokens: createClientRegistrationTokensAdapter(db),
+    deviceCodes: createDeviceCodesAdapter(db),
     codes: createCodesAdapter(db),
     connections: createConnectionsAdapter(db),
     emailProviders: createEmailProvidersAdapter(db),

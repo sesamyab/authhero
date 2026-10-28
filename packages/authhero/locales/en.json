@@ -208,7 +208,21 @@
       "expired-code": "The code has expired",
       "invalid-code": "The code you entered is invalid",
       "pageTitle": "Device Activation | ${clientName}",
-      "title": "Activate your device"
+      "title": "Activate your device",
+      "codeLabel": "Device code",
+      "confirmTitle": "Confirm your device",
+      "confirmDescription": "Only continue if this code matches the one on your device.",
+      "requestDescription": "${clientName} is requesting access to your account.",
+      "scopesLabel": "Requested permissions",
+      "audienceLabel": "API",
+      "decisionLabel": "Allow this device to sign in?",
+      "approveText": "Approve",
+      "denyText": "Deny",
+      "completeTitle": "Device request completed",
+      "approvedDescription": "Your device is connected. You can close this page.",
+      "deniedDescription": "The device request was denied. You can close this page.",
+      "alreadyCompleted": "This device request has already been completed.",
+      "sessionExpired": "Your activation session has expired. Start again on your device."
     }
   },
   "email-otp-challenge": {

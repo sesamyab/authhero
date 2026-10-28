@@ -26,6 +26,7 @@ interface ClientCredentialsScopesAndPermissionsParams extends BaseScopesAndPermi
 // User-based grants - userId is required
 interface UserBasedScopesAndPermissionsParams extends BaseScopesAndPermissionsParams {
   grantType?:
+    | GrantType.DeviceCode
     | GrantType.AuthorizationCode
     | GrantType.RefreshToken
     | GrantType.Password

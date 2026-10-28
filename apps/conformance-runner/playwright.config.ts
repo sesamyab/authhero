@@ -33,6 +33,7 @@ const workers = Math.min(
 
 export default defineConfig({
   testDir: "./tests",
+  testIgnore: "device-flow.spec.ts",
   fullyParallel: false,
   workers,
   // Without serial mode a systemic outage (auth-server down) would otherwise

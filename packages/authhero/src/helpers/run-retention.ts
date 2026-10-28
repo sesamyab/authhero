@@ -151,6 +151,15 @@ export async function runRetention(
         cleanupCodes(dataAdapter.codes, { retentionDays: codesRetentionDays }),
     },
     {
+      table: "device_codes, device_flow_limits",
+      run: async () =>
+        dataAdapter.deviceCodes
+          ? cleanupCodes(dataAdapter.deviceCodes, {
+              retentionDays: codesRetentionDays,
+            })
+          : null,
+    },
+    {
       table: "outbox_events",
       run: async () => {
         if (!dataAdapter.outbox) {

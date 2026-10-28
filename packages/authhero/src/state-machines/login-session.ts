@@ -32,6 +32,7 @@ export interface LoginSessionData {
   inviter_name?: string;
   roles?: string[];
   connect?: Record<string, unknown>;
+  deviceFlow?: { deviceCodeHash?: string; userCode?: string; ready?: boolean };
   try_connection_result?: unknown;
 }
 
