@@ -456,7 +456,14 @@ createWfpTenantApp({
 
 It runs after the response has been built, under `ctx.waitUntil`, so a Worker
 keeps it alive and the request never waits for it. Calls to `/internal/*` (the
-control plane's own pushes) are not compared. The `cfgdiff` logs are written to
+control plane's own pushes) are not compared.
+
+The worker only holds the tenant's own row and the control-plane rows projected
+into its database, so it compares against those. If the tenant's row names a
+parent that this database lacks, the comparison is skipped rather than reporting
+rows as missing that the full chain would supply. A tenant under an intermediate
+parent is checked in full by _Verify_ on the control plane, which resolves the
+whole chain. The `cfgdiff` logs are written to
 the tenant's own logs, which the control plane reads through the usual logs API
 for that tenant.
 
