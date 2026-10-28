@@ -247,13 +247,15 @@ const getActivate = defineRoute({
       defaultClient && isEligible(defaultClient)
         ? defaultClient.client_id
         : undefined;
-    for (let page = 0; !clientId; page++) {
-      const { clients } = await ctx.env.data.clients.list(tenantId, {
-        page,
-        per_page: 100,
+    let from: string | undefined;
+    while (!clientId) {
+      const { clients, totals } = await ctx.env.data.clients.list(tenantId, {
+        from,
+        take: 100,
       });
       clientId = clients.find(isEligible)?.client_id;
-      if (clients.length < 100) break;
+      from = totals?.next;
+      if (!from) break;
     }
     if (!clientId)
       throw new JSONHTTPException(400, {

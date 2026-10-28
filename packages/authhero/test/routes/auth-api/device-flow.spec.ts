@@ -151,7 +151,7 @@ async function decide(
 afterEach(() => vi.useRealTimers());
 
 describe("OAuth device authorization (RFC 8628), u2", () => {
-  it("paginates past deleted and CIMD clients when selecting an activation client", async () => {
+  it("follows opaque cursors past short and empty pages of ineligible activation clients", async () => {
     const list = vi.fn();
     const s = await setup({
       wrapDataAdapter: (data) => ({
@@ -160,22 +160,26 @@ describe("OAuth device authorization (RFC 8628), u2", () => {
           ...data.clients,
           list: list.mockImplementation(async (tenantId, params) => {
             const client = (await data.clients.get(tenantId, "clientId"))!;
-            const clients =
-              params.page === 0
-                ? Array.from({ length: 100 }, (_, i) =>
-                    i % 2 === 0
-                      ? { ...client, client_metadata: { status: "deleted" } }
-                      : {
-                          ...client,
-                          client_id: `https://example.com/client-${i}.json`,
-                        },
-                  )
+            const clients = !params.from
+              ? [
+                  { ...client, client_metadata: { status: "deleted" } },
+                  { ...client, client_id: "https://example.com/client.json" },
+                ]
+              : params.from === "opaque-cursor-1"
+                ? []
                 : [client];
             return {
               clients,
-              start: params.page * 100,
-              limit: 100,
-              length: clients.length,
+              totals: {
+                start: 0,
+                limit: 100,
+                length: clients.length,
+                next: !params.from
+                  ? "opaque-cursor-1"
+                  : params.from === "opaque-cursor-1"
+                    ? "opaque-cursor-2"
+                    : undefined,
+              },
             };
           }),
         },
@@ -183,7 +187,11 @@ describe("OAuth device authorization (RFC 8628), u2", () => {
     });
     const entry = await s.oauthApp.request("/activate", { headers }, s.env);
     expect(entry.status).toBe(302);
-    expect(list.mock.calls.map(([, params]) => params.page)).toEqual([0, 1]);
+    expect(list.mock.calls.map(([, params]) => params)).toEqual([
+      { from: undefined, take: 100 },
+      { from: "opaque-cursor-1", take: 100 },
+      { from: "opaque-cursor-2", take: 100 },
+    ]);
     const screen = await u2Screen(s.u2App, s.env, "device/code").$get({
       query: { state: stateFrom(entry) },
       header: { ...headers, cookie: cookieFrom(entry) },
