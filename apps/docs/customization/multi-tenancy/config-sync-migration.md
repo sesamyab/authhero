@@ -113,10 +113,11 @@ These are tracked as follow-up issues of the [config inheritance epic](https://g
 
 ## Detaching a tenant
 
-A synced tenant leaves its parent with a `detach` [tenant operation](./tenant-operations.md) (_Detach_ on the tenant's Operations page). Run _Preview detach_ first: it lists every row as `convert`, `remove` or `skip` and writes nothing.
+A synced tenant leaves its parent with a `detach` [tenant operation](./tenant-operations.md) (_Detach_ on the tenant's Operations page). The tenant has to be `config_sync: "synced"`: detaching keeps what the tenant holds, and a tenant that inherits on read holds none of it, so it would lose what it inherits. The operation refuses such a tenant, and the admin does not offer it. Run _Preview detach_ first, with the same options you will use (_Remove inherited_ for `clean`): it lists every row as `convert`, `remove` or `skip` and writes nothing.
 
 - **Keep (the default).** The copies a sync delivered become the tenant's own rows: the content is kept, the ids are normal, and `scope`, `override` and `enforce` are dropped, so nothing locks them. Hooks run the converted code, and the tenant's clients and organizations that used a copied connection use the new row.
-- **Clean (`clean: true`).** The copies are removed instead, platform rows included, and the clients' connection lists are cleaned up. The tenant keeps only its own rows.
+- **Clean (`clean: true`).** The copies are removed instead, platform rows included, and the clients' connection lists are cleaned up. Connections, resource servers, actions, hooks and hook code are covered; see the next point for what is not.
+- **Email provider, branding and prompt settings** have no id to mark a synced copy by, so detach cannot tell a copy from the tenant's own row. Neither mode touches them: a copy a sync delivered stays as it is, with its `scope`, `override` and `enforce`, and `clean` does not remove it. A platform email provider stays hidden from the tenant's admins.
 - **Platform rows** (`scope: "platform"`) run for the tenant but are hidden from its admins. Converting them would expose their code and secrets, so a plain detach keeps them as copies and reports `skip ... (platform: stays a copy)`. Only `clean` removes them.
 - **The tenant** gets `config_sync: "detached"`, no parent and no sync state. It no longer inherits, and `sync-defaults`, rollouts and the drift check leave it alone. To attach it again, set `config_sync` and `parent_tenant_id` back and run a sync.
 
