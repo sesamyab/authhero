@@ -50,6 +50,7 @@ type getEnvParams = {
     tenant_id: string;
   }) => "auth0" | "auth2";
   codeExecutor?: CodeExecutor;
+  actionCodeGenerator?: import("@authhero/adapter-interfaces").ActionCodeGenerator;
   // When true, wrap the data adapter with at-rest encryption so all fixtures
   // and request handling exercise the encrypted path.
   encryption?: boolean;
@@ -290,6 +291,9 @@ export async function getTestServer(
       ? { usernamePasswordProvider: args.usernamePasswordProvider }
       : {}),
     ...(args.codeExecutor ? { codeExecutor: args.codeExecutor } : {}),
+    ...(args.actionCodeGenerator
+      ? { actionCodeGenerator: args.actionCodeGenerator }
+      : {}),
     ...(args.tenantDispatch ? { tenantDispatch: args.tenantDispatch } : {}),
     ...(args.managementApiMiddleware
       ? { managementApiMiddleware: args.managementApiMiddleware }

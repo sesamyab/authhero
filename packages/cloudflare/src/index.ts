@@ -33,6 +33,9 @@ import {
 } from "./rate-limit";
 import { CloudflareConfig } from "./types/CloudflareConfig";
 
+export { CloudflareActionCodeGenerator } from "./action-code-generator";
+export type { CloudflareActionCodeGeneratorConfig } from "./action-code-generator";
+
 // Re-export R2 SQL config type for convenience
 export type { R2SQLLogsAdapterConfig };
 // Re-export Analytics Engine config types for convenience

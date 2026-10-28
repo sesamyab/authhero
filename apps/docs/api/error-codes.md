@@ -204,6 +204,7 @@ from Auth0.
 | Resource without a captured Auth0 equivalent (see below)             | 404    | `The <resource> does not exist.` | `inexistent_<resource>` |
 | Any other conflict, e.g. deleting an action still bound to a trigger | 409    | Describes the conflict           | `conflict`              |
 | Header validation failure                                            | 400    | `Header validation error: …`     | `invalid_headers`       |
+| Action source fails static verification when AI generation is configured | 400 | `Action verification failed: …` | `action_verification_failed` |
 
 The `inexistent_<resource>` codes are: `inexistent_invitation`,
 `inexistent_member`, `inexistent_session`, `inexistent_refresh_token`,

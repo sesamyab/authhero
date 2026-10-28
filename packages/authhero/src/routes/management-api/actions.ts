@@ -19,6 +19,8 @@ import { logMessage } from "../../helpers/logging";
 import { querySchema } from "../../types/auth0/Query";
 import { parseSort } from "../../utils/sort";
 import { HTTPException } from "hono/http-exception";
+import { requireVerifiedAction } from "../../helpers/action-verification";
+import { actionGenerationRoutes } from "./action-generation";
 
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId, withTotals, withNext, listResponse } from "./helpers";
@@ -172,12 +174,16 @@ const postRoot = defineRoute({
         },
         description: "The created action",
       },
+      400: { description: "Action source failed static verification" },
     },
   }),
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
     const body = ctx.req.valid("json");
 
+    if (ctx.env.actionCodeGenerator && !(body.inherit && !body.code.trim())) {
+      requireVerifiedAction(body.code, body.supported_triggers);
+    }
     const action = await ctx.env.data.actions.create(tenantId, body);
 
     // Deploy to execution environment if supported. Track success so the
@@ -298,6 +304,7 @@ const patchById = defineRoute({
         },
         description: "The updated action",
       },
+      400: { description: "Action source failed static verification" },
       404: {
         description: "Action not found",
       },
@@ -310,6 +317,22 @@ const patchById = defineRoute({
 
     const existing = await ctx.env.data.actions.get(tenantId, id);
 
+    if (!existing) throw notFound.action();
+    if (
+      ctx.env.actionCodeGenerator &&
+      !(
+        (body.inherit ?? existing.inherit) &&
+        !(body.code ?? existing.code).trim()
+      ) &&
+      (body.code !== undefined ||
+        body.supported_triggers !== undefined ||
+        body.inherit === false)
+    ) {
+      requireVerifiedAction(
+        body.code ?? existing.code,
+        body.supported_triggers ?? existing.supported_triggers,
+      );
+    }
     const updated = await ctx.env.data.actions.update(tenantId, id, body);
     if (!updated) {
       throw notFound.action();
@@ -467,6 +490,7 @@ const postByIdDeploy = defineRoute({
         },
         description: "The deployed action",
       },
+      400: { description: "Action source failed static verification" },
       404: {
         description: "Action not found",
       },
@@ -482,6 +506,12 @@ const postByIdDeploy = defineRoute({
     }
 
     // Deploy to execution environment
+    if (
+      ctx.env.actionCodeGenerator &&
+      !(action.inherit && !action.code.trim())
+    ) {
+      requireVerifiedAction(action.code, action.supported_triggers);
+    }
     if (ctx.env.codeExecutor?.deploy) {
       try {
         await ctx.env.codeExecutor.deploy(id, action.code);
@@ -670,6 +700,7 @@ const postByActionIdVersionsByIdDeploy = defineRoute({
         },
         description: "The action after rollback",
       },
+      400: { description: "Action source failed static verification" },
       404: {
         description: "Action version not found",
       },
@@ -688,6 +719,9 @@ const postByActionIdVersionsByIdDeploy = defineRoute({
       throw notFound.actionVersion();
     }
 
+    if (ctx.env.actionCodeGenerator) {
+      requireVerifiedAction(version.code, version.supported_triggers);
+    }
     if (ctx.env.codeExecutor?.deploy) {
       try {
         await ctx.env.codeExecutor.deploy(actionId, version.code);
@@ -842,6 +876,7 @@ export const actionsRoutes = new OpenAPIHono<{
 }>({ defaultHook: managementValidationHook }).openapiRoutes([
   getRoot,
   postRoot,
+  ...actionGenerationRoutes,
   getById,
   patchById,
   deleteById,

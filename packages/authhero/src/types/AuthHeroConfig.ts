@@ -1,5 +1,6 @@
 import {
   Action,
+  ActionCodeGenerator,
   ActionInsert,
   ActionUpdate,
   CodeExecutor,
@@ -723,6 +724,11 @@ export interface AuthHeroConfig {
    * If not provided, code hooks are silently skipped.
    */
   codeExecutor?: CodeExecutor;
+
+  /** Optional prompt-to-code adapter. When set, action writes must pass static
+   * verification before persistence or deployment. No AI provider is required
+   * by core; e.g. use CloudflareActionCodeGenerator from the Cloudflare package. */
+  actionCodeGenerator?: ActionCodeGenerator;
 
   /**
    * Custom webhook invoker function.

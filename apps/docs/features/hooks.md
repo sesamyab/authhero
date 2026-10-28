@@ -27,6 +27,80 @@ enable it and set its priority. Actions remain in the Actions library, where
 you edit, test, and deploy their code. Binding types run in separate phases;
 priority orders bindings within a type.
 
+## Generate Actions from a prompt
+
+The Actions create and edit screens can generate a draft with GLM, DeepSeek, or
+Qwen. Choose a trigger and model, describe the action, review the preview, and
+select **Use generated code**. Generation does not save or deploy the draft.
+
+Enable generation by passing an `ActionCodeGenerator` adapter to `init`. Core
+depends only on this small interface; Cloudflare integration lives in the
+optional `@authhero/cloudflare-adapter` package and uses `fetch` without a provider SDK:
+
+```typescript
+import { init } from "authhero";
+import { CloudflareActionCodeGenerator } from "@authhero/cloudflare-adapter";
+
+const { app } = init({
+  dataAdapter,
+  actionCodeGenerator: new CloudflareActionCodeGenerator({
+    accountId: env.CLOUDFLARE_ACCOUNT_ID,
+    gatewayId: env.CLOUDFLARE_AI_GATEWAY_ID,
+    apiToken: env.CLOUDFLARE_AI_API_TOKEN,
+    // Optional: override individual model IDs as your deployment needs change.
+    // models: { glm: "@cf/zai-org/glm-4.7-flash" },
+  }),
+});
+```
+
+Configure a Cloudflare API token with Workers AI access and access to the selected
+models. Credentials stay on the server. The adapter uses Cloudflare's
+[AI Gateway REST API](https://developers.cloudflare.com/ai-gateway/usage/rest-api/)
+with the configured gateway ID. Defaults are
+[`@cf/zai-org/glm-4.7-flash`](https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/),
+[`@cf/deepseek-ai/deepseek-v4-flash-0731`](https://developers.cloudflare.com/workers-ai/models/deepseek-v4-flash-0731/), and
+[`@cf/qwen/qwen3.8-27b`](https://developers.cloudflare.com/workers-ai/models/qwen3.8-27b/).
+It requests that gateway logging and caching be skipped. The generation request
+contains the user's prompt and trigger context; existing action code, events,
+and stored secret values are not sent to the model. Users should describe secret
+names in prompts and configure values in the Secrets section.
+
+Each request also includes TypeScript declarations for the selected trigger's
+`ActionAPI`, including parameter types, optional arguments, return types, and
+referenced types such as token-exchange user attributes and options. These are
+generated at build time from the shared sandbox API types. They describe only
+methods available to code Actions; server-side hook helpers are excluded. The
+model is instructed to use them as reference and still output plain JavaScript.
+
+**Verify code** checks JavaScript syntax, the exported handler for every selected
+trigger, and direct `api.namespace.method(...)` calls against the runtime's
+supported APIs. The editor repeats verification on the submitted code before
+saving. These static checks do not execute the script, check every possible
+dynamic API call, or prove runtime behavior. Use the Test tab with representative
+events for behavioral checks after saving.
+
+With `actionCodeGenerator` configured, the server also enforces verification
+before creating an action, changing its code or triggers, deploying it, or
+rolling back a version. Rejected writes do not persist or deploy source.
+Inherited stubs with empty local code are excluded; nonempty local fallback code
+still needs verification. Existing API integrations keep their previous write behavior when
+no generator is configured; the draft verification endpoint is always available.
+
+The endpoints below are relative to `/api/v2/actions/actions` and require
+`create:actions` or `update:actions`:
+
+| Method | Path | Request | Result |
+| --- | --- | --- | --- |
+| GET | `/generation` | — | Available model IDs and `verification_required` |
+| POST | `/generate` | `{ prompt, model, trigger_id }` | `{ code, verification: { valid, errors } }` |
+| POST | `/verify` | `{ code, supported_triggers: [{ id }] }` | `{ valid, errors }` |
+
+Custom adapters implement `models` (a subset of `glm`, `deepseek`, `qwen`) and
+`generate({ tenantId, prompt, triggerId, model, apiTypes }): Promise<{ code: string }>`. The
+tenant ID lets an adapter select credentials or apply tenant-specific policy.
+Core supplies `apiTypes` as trusted, trigger-specific TypeScript declarations;
+custom generator adapters should include them in their model's instructions.
+
 ## Hook Lifecycle
 
 ### User Registration Flow

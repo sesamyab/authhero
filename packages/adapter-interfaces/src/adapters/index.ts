@@ -312,3 +312,4 @@ export * from "./TenantOperations";
 export * from "./TenantOperationEvents";
 export * from "./TenantOperationRows";
 export * from "./Rollouts";
+export * from "./ActionCodeGenerator";
