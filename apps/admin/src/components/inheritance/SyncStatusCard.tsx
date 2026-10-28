@@ -1,3 +1,4 @@
+import { VerifyConfig } from "./VerifyConfig";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -80,6 +81,7 @@ export function SyncStatusCard({
             </>
           )}
         </dl>
+        {!detached && <VerifyConfig tenantId={status.tenant_id} />}
       </CardContent>
     </Card>
   );

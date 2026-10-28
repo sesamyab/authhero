@@ -556,6 +556,89 @@ export function createTenantsOpenAPIRouter(
   );
 
   // --------------------------------
+  // GET /{id}/config-sync/verify - Compare the tenant's config with its parents'
+  // --------------------------------
+  if (config.verifyConfigSync) {
+    const verify = config.verifyConfigSync;
+    app.openapi(
+      createRoute({
+        tags: ["tenants"],
+        method: "get",
+        path: "/{id}/config-sync/verify",
+        request: {
+          params: z.object({ id: z.string() }),
+        },
+        security: [{ Bearer: ["read:tenants"] }],
+        responses: {
+          200: {
+            content: {
+              "application/json": {
+                schema: z.object({
+                  tenant_id: z.string(),
+                  config_sync: z.enum([
+                    "inherit-on-read",
+                    "synced",
+                    "detached",
+                  ]),
+                  method: z.enum([
+                    "read-time",
+                    "sync-dry-run",
+                    "not-applicable",
+                  ]),
+                  ok: z.boolean(),
+                  differences: z.array(
+                    z.object({
+                      entity: z.string(),
+                      key: z.string(),
+                      kind: z.enum(["missing", "extra", "changed", "stale"]),
+                      fields: z.array(z.string()).optional(),
+                    }),
+                  ),
+                  errors: z.array(z.string()),
+                }),
+              },
+            },
+            description:
+              "The tenant's config compared with what its parents publish",
+          },
+          403: { description: "Not allowed to verify this tenant" },
+          404: { description: "Tenant not found" },
+          502: { description: "The tenant's database could not be reached" },
+        },
+      }),
+      async (ctx) => {
+        const { id } = ctx.req.valid("param");
+        // The control plane may verify any tenant, a tenant only its own.
+        if (id !== ctx.var.tenant_id && !isControlPlaneCaller(ctx)) {
+          throw new HTTPException(403, {
+            message: "Config can only be verified for your own tenant",
+          });
+        }
+        let result;
+        try {
+          result = await verify(id);
+        } catch (error) {
+          // A tenant with its own database that cannot be reached, or a host
+          // without a transport for it: nothing was compared. The cause stays
+          // in the log; a tenant may call this for itself.
+          console.error(
+            `[multi-tenancy] config verify failed for "${id}":`,
+            error,
+          );
+          throw new HTTPException(502, {
+            message:
+              "Could not verify: the tenant's config could not be checked",
+          });
+        }
+        if (!result) {
+          throw new HTTPException(404, { message: "Tenant not found" });
+        }
+        return ctx.json(result);
+      },
+    );
+  }
+
+  // --------------------------------
   // GET /{id}/config-sync - Sync status and where inherited rows come from
   // --------------------------------
   if (config.configSyncStatus) {

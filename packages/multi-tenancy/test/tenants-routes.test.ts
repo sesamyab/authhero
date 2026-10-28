@@ -761,6 +761,96 @@ describe("tenant settings: default_client_id validation", () => {
   });
 });
 
+describe("GET /tenants/{id}/config-sync/verify", () => {
+  const config = (
+    verifyConfigSync: NonNullable<MultiTenancyConfig["verifyConfigSync"]>,
+  ): MultiTenancyConfig => ({
+    accessControl: { controlPlaneTenantId, requireOrganizationMatch: true },
+    verifyConfigSync,
+  });
+
+  const passing = {
+    tenant_id: "child",
+    config_sync: "synced" as const,
+    method: "sync-dry-run" as const,
+    ok: true,
+    differences: [],
+    errors: [],
+  };
+
+  /** A request as the control plane, or as a tenant asking about itself. */
+  const call = async (
+    cfg: MultiTenancyConfig,
+    id: string,
+    caller: { tenant: string } = { tenant: controlPlaneTenantId },
+  ) => {
+    const { hooks } = setupMultiTenancy(cfg);
+    const app = createHostApp({
+      config: cfg,
+      hooks,
+      tenant_id: caller.tenant,
+      user: {
+        sub: "auth0|admin",
+        tenant_id: caller.tenant,
+        scope: "read:tenants",
+      },
+    });
+    return app.request(
+      `/management/tenants/${id}/config-sync/verify`,
+      { method: "GET" },
+      {},
+    );
+  };
+
+  it("answers the verification of a tenant for the control plane", async () => {
+    const verify = vi.fn(async () => passing);
+
+    const response = await call(config(verify), "child");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(passing);
+    expect(verify).toHaveBeenCalledWith("child");
+  });
+
+  it("lets a tenant verify itself but not another tenant", async () => {
+    const verify = vi.fn(async () => passing);
+
+    const own = await call(config(verify), "child", { tenant: "child" });
+    const other = await call(config(verify), "sibling", { tenant: "child" });
+
+    expect(own.status).toBe(200);
+    expect(other.status).toBe(403);
+    expect(verify).toHaveBeenCalledTimes(1);
+  });
+
+  it("is 404 for an unknown tenant", async () => {
+    const response = await call(
+      config(async () => null),
+      "nope",
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("is 502 when the tenant's database cannot be reached", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await call(
+      config(async () => {
+        throw new Error("tenant worker unreachable at 10.0.0.7");
+      }),
+      "child",
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      message: "Could not verify: the tenant's config could not be checked",
+    });
+    // The cause is logged for the operator, not sent to the caller.
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});
+
 describe("build: Hono is not bundled into the output", () => {
   it("treats hono and its subpath exports as external", () => {
     // Regression for the duplicate-Hono bug: the bare package was external but
