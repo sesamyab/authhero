@@ -95,6 +95,27 @@ describe("createConfigSyncResolver", () => {
     }
   });
 
+  it("notices a flip within 10 seconds when no ttl is given", async () => {
+    vi.useFakeTimers();
+    try {
+      let mode: string = "inherit-on-read";
+      const resolver = createConfigSyncResolver({
+        base,
+        getTenant: async () => ({ config_sync: mode }),
+      });
+      expect(await resolver.isSynced(CHILD)).toBe(false);
+      mode = "synced";
+
+      vi.advanceTimersByTime(9_000);
+      expect(await resolver.isSynced(CHILD)).toBe(false);
+
+      vi.advanceTimersByTime(1_001);
+      expect(await resolver.isSynced(CHILD)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps inheriting when the lookup fails, and does not cache the failure", async () => {
     let fail = true;
     const getTenant = vi.fn(async () => {
