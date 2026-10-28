@@ -3,6 +3,7 @@ import { useDataProvider, useNotify } from "ra-core";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CHANGE_TONE_CLASS } from "./changeTone";
 import type {
   AuthHeroDataProvider,
   ConfigSyncDifference,
@@ -65,6 +66,7 @@ export function VerifyConfig({ tenantId }: { tenantId: string }) {
         <Button
           variant="outline"
           size="sm"
+          className="border-green-600/40 text-green-700 hover:bg-green-50 hover:text-green-800 dark:text-green-400 dark:hover:bg-green-950"
           onClick={verify}
           disabled={running}
           title="Compare this tenant's config with what its parents publish. Nothing is written."
@@ -79,7 +81,9 @@ export function VerifyConfig({ tenantId }: { tenantId: string }) {
         {result && (
           <>
             {result.ok ? (
-              <Badge variant="outline">Matches</Badge>
+              <Badge variant="outline" className={CHANGE_TONE_CLASS.add}>
+                Matches
+              </Badge>
             ) : (
               <Badge variant="destructive">
                 {result.differences.length + result.errors.length} problem(s)

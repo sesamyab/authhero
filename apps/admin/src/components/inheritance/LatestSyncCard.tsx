@@ -85,7 +85,7 @@ export function LatestSyncCard({
           refresh the first.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-6 md:grid-cols-2">
+      <CardContent className="grid gap-6 xl:grid-cols-2">
         <Section
           title="Latest preview"
           operation={newest(operations, isPreview)}
