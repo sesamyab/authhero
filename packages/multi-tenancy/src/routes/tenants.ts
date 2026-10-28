@@ -619,11 +619,15 @@ export function createTenantsOpenAPIRouter(
           result = await verify(id);
         } catch (error) {
           // A tenant with its own database that cannot be reached, or a host
-          // without a transport for it: nothing was compared.
+          // without a transport for it: nothing was compared. The cause stays
+          // in the log; a tenant may call this for itself.
+          console.error(
+            `[multi-tenancy] config verify failed for "${id}":`,
+            error,
+          );
           throw new HTTPException(502, {
-            message: `Could not verify: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            message:
+              "Could not verify: the tenant's config could not be checked",
           });
         }
         if (!result) {

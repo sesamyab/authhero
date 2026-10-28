@@ -132,9 +132,15 @@ export async function verifyTenantConfig(
     prune: false,
   });
   const differences = differencesOfSync(result);
-  const errors = Object.entries(result.entities).flatMap(([entity, outcome]) =>
-    outcome.errors.map((message) => `${entity} ${message}`.slice(0, 300)),
-  );
+  // The adapters' own messages (database and validation errors) can echo row
+  // content, and a tenant may call this for itself: say which entity failed,
+  // not why. The reason is in the `sync-defaults` operation and the logs.
+  const errors = Object.entries(result.entities)
+    .filter(([, outcome]) => outcome.errors.length > 0)
+    .map(
+      ([entity, outcome]) =>
+        `${entity}: the sync dry run reported ${outcome.errors.length} error(s)`,
+    );
   return {
     ...base,
     method: "sync-dry-run",

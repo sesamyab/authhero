@@ -808,7 +808,7 @@ describe("GET /tenants/{id}/config-sync/verify", () => {
     const response = await call(config(verify), "child");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true });
+    expect(await response.json()).toEqual(passing);
     expect(verify).toHaveBeenCalledWith("child");
   });
 
@@ -833,15 +833,21 @@ describe("GET /tenants/{id}/config-sync/verify", () => {
   });
 
   it("is 502 when the tenant's database cannot be reached", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const response = await call(
       config(async () => {
-        throw new Error("tenant worker unreachable");
+        throw new Error("tenant worker unreachable at 10.0.0.7");
       }),
       "child",
     );
 
     expect(response.status).toBe(502);
-    expect(JSON.stringify(await response.json())).toContain("unreachable");
+    expect(await response.json()).toEqual({
+      message: "Could not verify: the tenant's config could not be checked",
+    });
+    // The cause is logged for the operator, not sent to the caller.
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 });
 

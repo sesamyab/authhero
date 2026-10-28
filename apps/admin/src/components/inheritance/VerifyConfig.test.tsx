@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { CoreAdminContext, TestMemoryRouter, testDataProvider } from "ra-core";
 import { VerifyConfig } from "./VerifyConfig";
 
@@ -66,5 +72,19 @@ describe("VerifyConfig", () => {
     expect(screen.getByText("enrich")).toBeTruthy();
     expect(screen.getByText("(options)")).toBeTruthy();
     expect(screen.getByText("hook h_1: boom")).toBeTruthy();
+  });
+
+  it("does not leave an earlier pass on screen when a later check fails", async () => {
+    const results = [
+      () => Promise.resolve({ ...verification, ok: true }),
+      () => Promise.reject(new Error("tenant worker unreachable")),
+    ];
+    renderWith(() => results.shift()!());
+
+    fireEvent.click(screen.getByText("Verify"));
+    expect(await screen.findByText("Matches")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Verify"));
+    await waitFor(() => expect(screen.queryByText("Matches")).toBeNull());
   });
 });

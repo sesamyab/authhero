@@ -177,7 +177,7 @@ describe("verifyTenantConfig", () => {
       expect((await verifyTenantConfig(deps(), CHILD))!.ok).toBe(true);
     });
 
-    it("fails when the dry run reports errors, and caps and names them", async () => {
+    it("fails when the dry run reports errors, naming the entity but not the cause", async () => {
       await syncedChild();
       const entity = {
         added: 0,
@@ -205,8 +205,11 @@ describe("verifyTenantConfig", () => {
 
       expect(await verifyTenantConfig(deps(syncConfig), CHILD)).toMatchObject({
         ok: false,
-        errors: ["connection google: boom"],
+        errors: ["connection: the sync dry run reported 1 error(s)"],
       });
+      expect(
+        JSON.stringify(await verifyTenantConfig(deps(syncConfig), CHILD)),
+      ).not.toContain("boom");
     });
 
     it("reads the changes of a sender that sends no rows", async () => {

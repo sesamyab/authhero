@@ -38,6 +38,9 @@ export function VerifyConfig({ tenantId }: { tenantId: string }) {
 
   const verify = async () => {
     setRunning(true);
+    // A failed check must not leave the last pass, or its time, on screen.
+    setResult(null);
+    setCheckedAt(null);
     try {
       setResult(await dataProvider.verifyConfigSync(tenantId));
       setCheckedAt(new Date());
