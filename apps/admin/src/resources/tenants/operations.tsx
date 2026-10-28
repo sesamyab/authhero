@@ -199,6 +199,8 @@ export function TenantOperations() {
     tenantId,
     operations.map((o) => `${o.id}:${o.status}`).join(","),
   );
+  // A detached tenant is not synced from anywhere: a sync would be refused.
+  const canSync = syncStatus?.config_sync !== "detached";
   const canDetach =
     !syncStatus ||
     (syncStatus.config_sync !== "detached" && syncStatus.chain.length > 0);
@@ -346,17 +348,19 @@ export function TenantOperations() {
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <div
-              className="flex items-center gap-2"
-              title="Also remove synced copies the parent no longer shares. A preview always lists them."
-            >
-              <Checkbox
-                id="sync-prune"
-                checked={prune}
-                onCheckedChange={(v) => setPrune(v === true)}
-              />
-              <Label htmlFor="sync-prune">Remove unshared</Label>
-            </div>
+            {canSync && (
+              <div
+                className="flex items-center gap-2"
+                title="Also remove synced copies the parent no longer shares. A preview always lists them."
+              >
+                <Checkbox
+                  id="sync-prune"
+                  checked={prune}
+                  onCheckedChange={(v) => setPrune(v === true)}
+                />
+                <Label htmlFor="sync-prune">Remove unshared</Label>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -366,50 +370,54 @@ export function TenantOperations() {
               <RefreshCw className="h-4 w-4 mr-1" />
               Refresh
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                enqueue("sync-defaults", { dry_run: true }, "Sync preview")
-              }
-              disabled={enqueuing || hasActive}
-              title="Show what a sync would change, without writing anything"
-            >
-              <Eye className="h-4 w-4 mr-1" />
-              Preview sync
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                enqueue(
-                  "sync-defaults",
-                  { force: true, ...(prune ? { prune: true } : {}) },
-                  "Forced sync",
-                )
-              }
-              disabled={enqueuing || hasActive}
-              title="Apply the config even when the tenant is already up to date"
-            >
-              <RefreshCcw className="h-4 w-4 mr-1" />
-              Force sync
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                enqueue(
-                  "sync-defaults",
-                  prune ? { prune: true } : undefined,
-                  "Sync",
-                )
-              }
-              disabled={enqueuing || hasActive}
-              title="Copy the config this tenant inherits into its own database"
-            >
-              <RefreshCcw className="h-4 w-4 mr-1" />
-              Sync config
-            </Button>
+            {canSync && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    enqueue("sync-defaults", { dry_run: true }, "Sync preview")
+                  }
+                  disabled={enqueuing || hasActive}
+                  title="Show what a sync would change, without writing anything"
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  Preview sync
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    enqueue(
+                      "sync-defaults",
+                      { force: true, ...(prune ? { prune: true } : {}) },
+                      "Forced sync",
+                    )
+                  }
+                  disabled={enqueuing || hasActive}
+                  title="Apply the config even when the tenant is already up to date"
+                >
+                  <RefreshCcw className="h-4 w-4 mr-1" />
+                  Force sync
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    enqueue(
+                      "sync-defaults",
+                      prune ? { prune: true } : undefined,
+                      "Sync",
+                    )
+                  }
+                  disabled={enqueuing || hasActive}
+                  title="Copy the config this tenant inherits into its own database"
+                >
+                  <RefreshCcw className="h-4 w-4 mr-1" />
+                  Sync config
+                </Button>
+              </>
+            )}
             {canDetach && (
               <Button
                 variant="outline"
