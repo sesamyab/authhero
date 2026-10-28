@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import type {
   ActionExecutionInsert,
@@ -114,6 +114,25 @@ describe("registration username validation Actions", () => {
     expect(executions[0]).toMatchObject({
       trigger_id: TRIGGER,
       status: "final",
+    });
+  });
+
+  it("filters hook pages by trigger before loading blocking Actions", async () => {
+    const s = await setup();
+    const action = await s.createAction(
+      "Validate",
+      'api.access.deny("Expected denial");',
+    );
+    await s.bind([action.id]);
+    const list = vi.spyOn(s.env.data.hooks, "list");
+    expect(await s.validate()).toEqual({
+      allowed: false,
+      reason: "Expected denial",
+    });
+    expect(list).toHaveBeenCalledWith("tenantId", {
+      page: 0,
+      per_page: 100,
+      q: `trigger_id:${TRIGGER}`,
     });
   });
 

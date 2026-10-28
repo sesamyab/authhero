@@ -62,7 +62,6 @@ type ResourceOptions = {
   label?: string;
   menuGroup?: string;
   hasSingle?: boolean;
-  hideFromMenu?: boolean;
 };
 
 export function AppSidebar() {
@@ -78,7 +77,6 @@ export function AppSidebar() {
   const listable = Object.keys(resources).filter((n) => resources[n].hasList);
   for (const name of listable) {
     const opts = resources[name].options as ResourceOptions | undefined;
-    if (opts?.hideFromMenu) continue;
     const group = opts?.menuGroup ?? FALLBACK_GROUP;
     if (!grouped.has(group)) grouped.set(group, []);
     grouped.get(group)!.push(name);

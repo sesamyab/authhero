@@ -26,7 +26,11 @@ export async function runBlockingActions(
   const data = getExecutorData(ctx);
   const hooks: Hook[] = [];
   for (let page = 0; ; page++) {
-    const result = await data.hooks.list(tenantId, { page, per_page: 100 });
+    const result = await data.hooks.list(tenantId, {
+      page,
+      per_page: 100,
+      q: `trigger_id:${triggerId}`,
+    });
     hooks.push(...result.hooks);
     if (result.hooks.length < 100) break;
   }
