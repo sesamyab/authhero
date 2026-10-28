@@ -1,4 +1,15 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { CHANGE_TONE_CLASS, type ChangeTone } from "./changeTone";
 
 /**
  * `added`, `changed`, `skipped` and `delete` come from a sync; `converted`,
@@ -97,59 +108,54 @@ export function parseSyncResult(
   };
 }
 
+function toneBadge(tone: ChangeTone, label: string, title?: string) {
+  return (
+    <Badge variant="outline" className={CHANGE_TONE_CLASS[tone]} title={title}>
+      {label}
+    </Badge>
+  );
+}
+
 function actionBadge(row: SyncChangeRow, parsed: ParsedSyncResult) {
+  const would = (now: string, preview: string) =>
+    parsed.dryRun ? preview : now;
   switch (row.action) {
     case "added":
-      return <Badge>{parsed.dryRun ? "would add" : "added"}</Badge>;
+      return toneBadge("add", would("added", "would add"));
     case "changed":
-      return (
-        <Badge variant="secondary">
-          {parsed.dryRun ? "would change" : "changed"}
-        </Badge>
-      );
+      return toneBadge("change", would("changed", "would change"));
     case "skipped":
-      return (
-        <Badge
-          variant="outline"
-          title="The tenant has its own row with this key, so the parent's is not copied"
-        >
-          kept: tenant&apos;s own
-        </Badge>
+      return toneBadge(
+        "keep",
+        "kept: tenant's own",
+        "The tenant has its own row with this key, so the parent's is not copied",
       );
     case "converted":
-      return (
-        <Badge variant="secondary">
-          {parsed.dryRun ? "would convert" : "converted"}
-        </Badge>
-      );
+      return toneBadge("convert", would("converted", "would convert"));
     case "removed":
-      return (
-        <Badge variant="destructive">
-          {parsed.dryRun ? "would remove" : "removed"}
-        </Badge>
-      );
+      return toneBadge("remove", would("removed", "would remove"));
     case "kept":
-      return (
-        <Badge
-          variant="outline"
-          title="A platform row runs for the tenant but is hidden from its admins, so it stays as a copy"
-        >
-          kept as copy
-        </Badge>
+      return toneBadge(
+        "keep",
+        "kept as copy",
+        "A platform row runs for the tenant but is hidden from its admins, so it stays as a copy",
       );
     case "delete":
-      return parsed.dryRun ? (
-        <Badge
-          variant="destructive"
-          title="A copy the parent no longer shares. A sync with Remove unshared removes it."
-        >
-          stale
-        </Badge>
-      ) : (
-        <Badge variant="destructive">removed</Badge>
-      );
+      return parsed.dryRun
+        ? toneBadge(
+            "remove",
+            "stale",
+            "A copy the parent no longer shares. A sync with Remove unshared removes it.",
+          )
+        : toneBadge("remove", "removed");
   }
 }
+
+const isKept = (row: SyncChangeRow) =>
+  row.action === "skipped" || row.action === "kept";
+
+/** Rows shown before "Show all". */
+const COLLAPSED_ROWS = 10;
 
 function summary(parsed: ParsedSyncResult): string {
   const count = (action: SyncChangeAction) =>
@@ -182,15 +188,25 @@ export function SyncChanges({
 }: {
   result: Record<string, unknown> | null | undefined;
 }) {
+  const [showKept, setShowKept] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const parsed = parseSyncResult(result);
   if (!parsed) return null;
 
-  const entities = [
-    ...ENTITY_ORDER,
-    ...[...new Set(parsed.rows.map((r) => r.entity))].filter(
-      (e) => !ENTITY_ORDER.includes(e),
-    ),
-  ].filter((entity) => parsed.rows.some((r) => r.entity === entity));
+  const entityRank = (entity: string) => {
+    const rank = ENTITY_ORDER.indexOf(entity);
+    return rank === -1 ? ENTITY_ORDER.length : rank;
+  };
+  const ordered = [...parsed.rows].sort(
+    (a, b) => entityRank(a.entity) - entityRank(b.entity),
+  );
+  // Rows that stay as they are are the ones least looked for: behind a toggle
+  // when there is something else to read.
+  const keptCount = ordered.filter(isKept).length;
+  const collapseKept = keptCount > 0 && keptCount < ordered.length;
+  const visible =
+    collapseKept && !showKept ? ordered.filter((r) => !isKept(r)) : ordered;
+  const shown = showAll ? visible : visible.slice(0, COLLAPSED_ROWS);
 
   return (
     <div className="flex flex-col gap-3 text-sm" data-testid="sync-changes">
@@ -202,24 +218,51 @@ export function SyncChanges({
         </span>
       </div>
 
-      {entities.map((entity) => (
-        <div key={entity} className="flex flex-col gap-1">
-          <div className="font-medium">{ENTITY_LABELS[entity] ?? entity}</div>
-          <ul className="flex flex-col gap-1">
-            {parsed.rows
-              .filter((r) => r.entity === entity)
-              .map((row) => (
-                <li
-                  key={`${row.action}:${row.key}`}
-                  className="flex items-center gap-2"
-                >
-                  {actionBadge(row, parsed)}
-                  <span className="font-mono text-xs">{row.key}</span>
-                </li>
-              ))}
-          </ul>
-        </div>
-      ))}
+      {visible.length > 0 && (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Entity</TableHead>
+              <TableHead>Key</TableHead>
+              <TableHead>Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {shown.map((row) => (
+              <TableRow key={`${row.entity}:${row.action}:${row.key}`}>
+                <TableCell className="text-muted-foreground">
+                  {ENTITY_LABELS[row.entity] ?? row.entity}
+                </TableCell>
+                <TableCell className="font-mono text-xs break-all">
+                  {row.key}
+                </TableCell>
+                <TableCell>{actionBadge(row, parsed)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {visible.length > COLLAPSED_ROWS && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAll((v) => !v)}
+          >
+            {showAll ? "Show fewer" : `Show all ${visible.length}`}
+          </Button>
+        )}
+        {collapseKept && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowKept((v) => !v)}
+          >
+            {showKept ? "Hide kept rows" : `Show ${keptCount} kept`}
+          </Button>
+        )}
+      </div>
 
       {parsed.errors.length > 0 && (
         <div className="rounded-md border border-destructive/40 p-3">

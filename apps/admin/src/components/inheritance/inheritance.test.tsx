@@ -229,7 +229,12 @@ describe("SyncStatusCard", () => {
   it("shows drift for a synced tenant", async () => {
     renderWith({}, <SyncStatusCard tenantId="acme" />);
     await waitFor(() => expect(screen.getByText("Out of date")).toBeTruthy());
-    expect(screen.getByText("partner → control_plane")).toBeTruthy();
+    // The parent and the chain link to those tenants' own admins.
+    const partner = screen.getAllByRole("link", { name: "partner" });
+    expect(partner[0]!.getAttribute("href")).toBe("/partner");
+    expect(
+      screen.getByRole("link", { name: "control_plane" }).getAttribute("href"),
+    ).toBe("/control_plane");
     expect(screen.getByText("aaaaaaaaaaaa")).toBeTruthy();
   });
 

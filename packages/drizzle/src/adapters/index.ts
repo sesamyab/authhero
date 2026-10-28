@@ -9,6 +9,7 @@ import { createClientConnectionsAdapter } from "./clientConnections";
 import { createClientGrantsAdapter } from "./clientGrants";
 import { createClientRegistrationTokensAdapter } from "./clientRegistrationTokens";
 import { createDeviceCodesAdapter } from "./deviceCodes";
+import { createTenantMemberRequestsAdapter } from "./tenantMemberRequests";
 import { createCodesAdapter } from "./codes";
 import { createConnectionsAdapter } from "./connections";
 import { createCustomDomainsAdapter } from "./customDomains";
@@ -92,6 +93,7 @@ export default function createAdapters(
     clientGrants: createClientGrantsAdapter(db),
     clientRegistrationTokens: createClientRegistrationTokensAdapter(db),
     deviceCodes: createDeviceCodesAdapter(db),
+    tenantMemberRequests: createTenantMemberRequestsAdapter(db),
     codes: createCodesAdapter(db),
     connections: createConnectionsAdapter(db),
     customDomains: createCustomDomainsAdapter(db),

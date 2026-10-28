@@ -547,6 +547,20 @@ export interface Database {
   device_codes: import("@authhero/adapter-interfaces").DeviceCode & {
     tenant_id: string;
   };
+  tenant_member_requests: {
+    tenant_id: string;
+    id: string;
+    kind: string;
+    status: string;
+    requested_by: string;
+    payload: string;
+    result: string | null;
+    error: string | null;
+    notified_at: string | null;
+    created_at: string;
+    updated_at: string;
+    finished_at: string | null;
+  };
   device_flow_limits: {
     tenant_id: string;
     key: string;

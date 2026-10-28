@@ -61,6 +61,7 @@ import { TenantOperationsAdapter } from "./TenantOperations";
 import { TenantOperationEventsAdapter } from "./TenantOperationEvents";
 import { TenantOperationRowsAdapter } from "./TenantOperationRows";
 import { RolloutsAdapter } from "./Rollouts";
+import { TenantMemberRequestsAdapter } from "./TenantMemberRequests";
 
 /**
  * Parameters for cleaning up expired sessions
@@ -190,6 +191,12 @@ export interface DataAdapters {
    * and CRUD only; the wave/canary coordinator and routes come later.
    */
   rollouts?: RolloutsAdapter;
+  /**
+   * Optional team-change requests of a tenant, kept in the tenant's own
+   * database (issue #1550). A shard registers a request here and the control
+   * plane writes the outcome back.
+   */
+  tenantMemberRequests?: TenantMemberRequestsAdapter;
   themes: ThemesAdapter;
   universalLoginTemplates: UniversalLoginTemplatesAdapter;
   customText: CustomTextAdapter;
@@ -313,3 +320,4 @@ export * from "./TenantOperationEvents";
 export * from "./TenantOperationRows";
 export * from "./Rollouts";
 export * from "./ActionCodeGenerator";
+export * from "./TenantMemberRequests";

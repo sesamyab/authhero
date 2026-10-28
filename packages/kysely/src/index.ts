@@ -10,6 +10,7 @@ import { Database } from "./db";
 import { createSessionsAdapter } from "./sessions";
 import { createPasswordAdapter } from "./passwords";
 import { createDeviceCodesAdapter } from "./deviceCodes";
+import { createTenantMemberRequestsAdapter } from "./tenantMemberRequests";
 import { createCodesAdapter } from "./codes";
 import { createConnectionsAdapter } from "./connections";
 import { createClientsAdapter } from "./clients";
@@ -89,6 +90,7 @@ export default function createAdapters(
     clientGrants: createClientGrantsAdapter(db),
     clientRegistrationTokens: createClientRegistrationTokensAdapter(db),
     deviceCodes: createDeviceCodesAdapter(db),
+    tenantMemberRequests: createTenantMemberRequestsAdapter(db),
     codes: createCodesAdapter(db),
     connections: createConnectionsAdapter(db),
     emailProviders: createEmailProvidersAdapter(db),

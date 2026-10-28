@@ -8,11 +8,28 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useConfigSyncStatus } from "@/hooks/useConfigSyncStatus";
+import { getBasePath } from "@/utils/runtimeConfig";
 
 function formatTimestamp(value?: string | null): string {
   if (!value) return "never";
   const date = new Date(value);
   return isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+/**
+ * Opens the tenant's own admin, which is where its rollouts and operations
+ * are. Each tenant has a router of its own, so this is a page load, as in the
+ * tenants list, not a navigation inside the current router.
+ */
+function TenantLink({ id }: { id: string }) {
+  return (
+    <a
+      href={`${getBasePath()}/${encodeURIComponent(id)}`}
+      className="underline-offset-4 hover:underline"
+    >
+      {id}
+    </a>
+  );
 }
 
 const short = (hash?: string | null) => (hash ? hash.slice(0, 12) : "none");
@@ -63,11 +80,24 @@ export function SyncStatusCard({
       <CardContent>
         <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
           <dt className="text-muted-foreground">Parent</dt>
-          <dd>{status.parent_tenant_id ?? status.chain[0] ?? "none"}</dd>
+          <dd>
+            {(status.parent_tenant_id ?? status.chain[0]) ? (
+              <TenantLink id={(status.parent_tenant_id ?? status.chain[0])!} />
+            ) : (
+              "none"
+            )}
+          </dd>
           {status.chain.length > 1 && (
             <>
               <dt className="text-muted-foreground">Inherits from</dt>
-              <dd>{status.chain.join(" \u2192 ")}</dd>
+              <dd className="flex flex-wrap gap-x-1">
+                {status.chain.map((id, i) => (
+                  <span key={id}>
+                    {i > 0 && "\u2192 "}
+                    <TenantLink id={id} />
+                  </span>
+                ))}
+              </dd>
             </>
           )}
           {synced && (
