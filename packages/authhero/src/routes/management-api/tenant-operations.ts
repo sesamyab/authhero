@@ -175,6 +175,7 @@ const createTenantOperation = defineRoute({
                 .object({
                   dry_run: z.boolean().optional(),
                   force: z.boolean().optional(),
+                  prune: z.boolean().optional(),
                   clean: z.boolean().optional(),
                 })
                 .optional(),

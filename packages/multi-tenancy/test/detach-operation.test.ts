@@ -143,6 +143,16 @@ describe("detach operation", () => {
     expect(result.changes).toContain(
       "skip action:platform-action (platform: stays a copy)",
     );
+    expect(result.rows).toEqual(
+      expect.arrayContaining([
+        { entity: "action", key: "platform-action", action: "kept" },
+        {
+          entity: "connection",
+          key: "google-oauth2:google",
+          action: "converted",
+        },
+      ]),
+    );
 
     // Nothing locks or syncs the tenant any more.
     const tenant = (await raw.tenants.get(CHILD))!;

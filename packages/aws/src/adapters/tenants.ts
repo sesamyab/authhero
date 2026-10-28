@@ -5,6 +5,8 @@ import {
   CreateTenantParams,
   Totals,
   tenantSchema,
+  tokenizeLuceneQuery,
+  unquoteLuceneValue,
 } from "@authhero/adapter-interfaces";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
 import { tenantKeys } from "../keys";
@@ -79,10 +81,17 @@ export function createTenantsAdapter(ctx: DynamoDBContext): TenantsDataAdapter {
       const { include_totals = false, q } = params;
 
       // Free-text `q` matches the slug (id) and friendly_name,
-      // case-insensitively and on partial matches. DynamoDB can't filter this
-      // server-side, and tenants are few, so filter in memory (offset mode only).
+      // case-insensitively and on partial matches. A single
+      // `parent_tenant_id:<id>` clause selects the children of a tenant
+      // exactly. DynamoDB can't filter either server-side, and tenants are few,
+      // so filter in memory (offset mode only).
       if (q && !isKeysetRequest(params)) {
         const needle = q.toLowerCase();
+        const tokens = tokenizeLuceneQuery(q);
+        const parentId =
+          tokens.length === 1 && tokens[0]!.startsWith("parent_tenant_id:")
+            ? unquoteLuceneValue(tokens[0]!.slice("parent_tenant_id:".length))
+            : undefined;
         const all = await queryWithPagination<TenantItem>(
           ctx,
           tenantKeys.gsi1pk(),
@@ -91,10 +100,11 @@ export function createTenantsAdapter(ctx: DynamoDBContext): TenantsDataAdapter {
         );
         const matches = all.items
           .map(toTenant)
-          .filter(
-            (t) =>
-              t.id.toLowerCase().includes(needle) ||
-              (t.friendly_name ?? "").toLowerCase().includes(needle),
+          .filter((t) =>
+            parentId !== undefined
+              ? t.parent_tenant_id === parentId
+              : t.id.toLowerCase().includes(needle) ||
+                (t.friendly_name ?? "").toLowerCase().includes(needle),
           );
         const { page = 0, per_page = 50 } = params;
         const tenants = matches.slice(page * per_page, (page + 1) * per_page);

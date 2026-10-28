@@ -47,10 +47,19 @@ export interface DetachEntityOutcome {
   errors: string[];
 }
 
+export interface DetachRow {
+  entity: DetachEntity;
+  key: string;
+  /** `kept`: a platform row that stays as a copy (or code it runs). */
+  action: "converted" | "removed" | "kept";
+}
+
 export interface DetachResult {
   status: "detached" | "dry-run" | "already-detached" | "partial";
   /** `convert|remove|skip <entity>:<key>` for every row looked at. */
   changes: string[];
+  /** The same rows, structured. */
+  rows: DetachRow[];
   entities: Record<DetachEntity, DetachEntityOutcome>;
 }
 
@@ -87,6 +96,7 @@ export function summarizeDetachResult(
     clean: options.clean,
     status: result.status,
     changes: result.changes,
+    rows: result.rows ?? [],
     error_messages: detachErrors(result)
       .slice(0, MAX_ERROR_MESSAGES)
       .map((message) => message.slice(0, MAX_ERROR_MESSAGE_LENGTH)),
@@ -176,6 +186,7 @@ export function createInProcessDetach(adapters: DataAdapters): DetachConfigFn {
     const result: DetachResult = {
       status: options.dryRun ? "dry-run" : "detached",
       changes: [],
+      rows: [],
       entities: {
         connection: emptyOutcome(),
         resourceServer: emptyOutcome(),
@@ -214,7 +225,19 @@ export function createInProcessDetach(adapters: DataAdapters): DetachConfigFn {
       verb: "convert" | "remove" | "skip",
       key: string,
       why = "",
-    ) => result.changes.push(`${verb} ${entity}:${key}${why}`);
+    ) => {
+      result.changes.push(`${verb} ${entity}:${key}${why}`);
+      result.rows.push({
+        entity,
+        key,
+        action:
+          verb === "convert"
+            ? "converted"
+            : verb === "remove"
+              ? "removed"
+              : "kept",
+      });
+    };
 
     const attempt = async (
       entity: DetachEntity,

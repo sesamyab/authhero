@@ -31,6 +31,8 @@ type AppOptions = {
   user?: TestUser;
   org_name?: string;
   organization_id?: string;
+  /** The tenant the request is for. @default the control plane */
+  tenant_id?: string;
 };
 
 /**
@@ -48,7 +50,7 @@ function createHostApp(options: AppOptions) {
   }>();
 
   app.use("*", async (c, next) => {
-    c.set("tenant_id", controlPlaneTenantId);
+    c.set("tenant_id", options.tenant_id ?? controlPlaneTenantId);
     if (options.user) c.set("user", options.user);
     if (options.org_name) c.set("org_name", options.org_name);
     if (options.organization_id) {
@@ -462,6 +464,102 @@ describe("tenant settings: default_client_id validation", () => {
 
     await patchSettings(app, { config_sync: "synced" });
     expect(forget).toHaveBeenCalledWith(controlPlaneTenantId);
+  });
+
+  describe("computed fields on the settings", () => {
+    const getSettings = async (app: ReturnType<typeof settingsApp>) =>
+      (
+        await app.request(
+          "/management/tenants/settings",
+          { method: "GET" },
+          env,
+        )
+      ).json();
+
+    const createTenant = (id: string, parent?: string) =>
+      adapters.tenants.create({
+        id,
+        friendly_name: id,
+        audience: "https://example.com",
+        sender_email: "admin@example.com",
+        sender_name: id,
+        ...(parent ? { parent_tenant_id: parent } : {}),
+      });
+
+    const as = (tenantId: string) => {
+      const { hooks } = setupMultiTenancy(config);
+      return createHostApp({
+        config,
+        hooks,
+        tenant_id: tenantId,
+        user: {
+          sub: "auth0|admin",
+          tenant_id: controlPlaneTenantId,
+          scope: "read:tenants",
+        },
+      });
+    };
+
+    it("marks the control plane, which has no children while it is alone", async () => {
+      expect(await getSettings(as(controlPlaneTenantId))).toMatchObject({
+        is_control_plane: true,
+        has_children: false,
+      });
+    });
+
+    it("gives the control plane children as soon as another tenant exists", async () => {
+      await createTenant("solo");
+
+      expect(await getSettings(as(controlPlaneTenantId))).toMatchObject({
+        has_children: true,
+      });
+      expect(await getSettings(as("solo"))).toMatchObject({
+        is_control_plane: false,
+        has_children: false,
+      });
+    });
+
+    it("gives a tenant children only when another tenant names it as parent", async () => {
+      await createTenant("partner");
+      await createTenant("leaf", "partner");
+      await createTenant("other");
+
+      expect(await getSettings(as("partner"))).toMatchObject({
+        has_children: true,
+      });
+      expect(await getSettings(as("leaf"))).toMatchObject({
+        has_children: false,
+      });
+      expect(await getSettings(as("other"))).toMatchObject({
+        has_children: false,
+      });
+    });
+
+    it("matches a parent id with spaces or query syntax literally", async () => {
+      await createTenant("odd partner OR other");
+      await createTenant("leaf", "odd partner OR other");
+      await createTenant("other");
+
+      expect(await getSettings(as("odd partner OR other"))).toMatchObject({
+        has_children: true,
+      });
+      expect(await getSettings(as("other"))).toMatchObject({
+        has_children: false,
+      });
+    });
+
+    it("carries them on the updated settings too", async () => {
+      await createTenant("solo");
+
+      const response = await patchSettings(settingsApp(), {
+        friendly_name: "Renamed",
+      });
+
+      expect(await response.json()).toMatchObject({
+        is_control_plane: true,
+        has_children: true,
+      });
+    });
   });
 
   it("rejects a mode change from a token that is not the control plane's", async () => {

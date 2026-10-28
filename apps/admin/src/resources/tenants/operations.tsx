@@ -32,6 +32,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { LatestSyncCard } from "@/components/inheritance/LatestSyncCard";
+import { SyncChanges } from "@/components/inheritance/SyncChanges";
 import { SyncStatusCard } from "@/components/inheritance/SyncStatusCard";
 import type {
   AuthHeroDataProvider,
@@ -282,6 +284,8 @@ export function TenantOperations() {
         refreshToken={operations.map((o) => `${o.id}:${o.status}`).join(",")}
       />
 
+      <LatestSyncCard operations={operations} />
+
       <Confirm
         isOpen={detachOpen}
         title={`Detach "${tenantId}" from its parent?`}
@@ -525,7 +529,9 @@ export function TenantOperations() {
                           ) : null}
                           {operation.kind === "sync-defaults" ||
                           operation.kind === "detach" ? (
-                            <SyncResult operation={operation} />
+                            <div className="py-2">
+                              <SyncChanges result={operation.result} />
+                            </div>
                           ) : null}
                           {events[operation.id] ? (
                             <EventsTimeline events={events[operation.id]!} />
@@ -545,37 +551,6 @@ export function TenantOperations() {
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-/** What a `sync-defaults` run did, or (for a preview) would do. */
-function SyncResult({ operation }: { operation: TenantOperationRecord }) {
-  const result = operation.result;
-  if (!result) return null;
-  const changes = Array.isArray(result.changes)
-    ? (result.changes as string[])
-    : [];
-  const dryRun = result.dry_run === true;
-  return (
-    <div className="py-2 text-sm">
-      <div className="flex items-center gap-2">
-        <Badge variant="outline">{String(result.status ?? "unknown")}</Badge>
-        <span className="text-muted-foreground">
-          {dryRun
-            ? "Preview: nothing was written."
-            : changes.length === 0
-              ? "Nothing to change."
-              : `${changes.length} change(s) applied.`}
-        </span>
-      </div>
-      {changes.length > 0 ? (
-        <ul className="mt-2 font-mono text-xs">
-          {changes.map((change) => (
-            <li key={change}>{change}</li>
-          ))}
-        </ul>
-      ) : null}
     </div>
   );
 }

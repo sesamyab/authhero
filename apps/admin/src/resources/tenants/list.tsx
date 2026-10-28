@@ -6,10 +6,13 @@ import { BadgeField, DataTable, List, TextInput } from "@/components/admin";
 import { CreateButton } from "@/components/admin/create-button";
 import { ExportButton } from "@/components/admin/export-button";
 import { Button } from "@/components/ui/button";
+import { useHasChildren } from "@/hooks/useHasChildren";
 import { getBasePath } from "@/utils/runtimeConfig";
 
 type TenantRecord = {
   id: string;
+  parent_tenant_id?: string | null;
+  config_sync?: string | null;
   deployment_type?: "shared" | "wfp";
   provisioning_state?: "pending" | "ready" | "failed";
   provisioning_error?: string;
@@ -84,17 +87,64 @@ function OperationsLinkCell() {
 }
 
 function TenantListActions() {
+  // Rollouts sync the tenants below the control plane. Asked of the settings
+  // rather than counted from the list, which only holds the tenants this admin
+  // can see.
+  const hasChildren = useHasChildren();
+
   return (
     <div className="flex items-center gap-2">
-      <Button asChild variant="outline" size="sm">
-        <Link to="/tenants/rollouts">
-          <Rocket className="h-4 w-4 mr-1" />
-          Rollouts
-        </Link>
-      </Button>
+      {hasChildren && (
+        <Button asChild variant="outline" size="sm">
+          <Link to="/tenants/rollouts">
+            <Rocket className="h-4 w-4 mr-1" />
+            Rollouts
+          </Link>
+        </Button>
+      )}
       <CreateButton />
       <ExportButton />
     </div>
+  );
+}
+
+/**
+ * The table. The Parent and Config sync columns are left out only while the
+ * control plane has no other tenant. They do not depend on the rows of the
+ * current page, so they stay put across pages and filters and while a child
+ * tenant is being set up.
+ */
+function TenantsTable() {
+  const showInheritance = useHasChildren();
+
+  return (
+    <DataTable
+      rowClick={(_id, _resource, record) => {
+        window.location.href = `${getBasePath()}/${String(record.id)}`;
+        return false;
+      }}
+    >
+      <DataTable.Col source="friendly_name" label="Name" />
+      <DataTable.Col source="id" />
+      <DataTable.Col source="deployment_type" label="Deployment" />
+      <DataTable.Col label="Status">
+        <ProvisioningStateField />
+      </DataTable.Col>
+      {showInheritance && (
+        <DataTable.Col source="parent_tenant_id" label="Parent" />
+      )}
+      {showInheritance && (
+        <DataTable.Col source="config_sync" label="Config sync" />
+      )}
+      <DataTable.Col source="audience" />
+      <DataTable.Col source="support_url" label="Support URL" />
+      <DataTable.Col label="">
+        <MembersLinkCell />
+      </DataTable.Col>
+      <DataTable.Col label="">
+        <OperationsLinkCell />
+      </DataTable.Col>
+    </DataTable>
   );
 }
 
@@ -110,29 +160,7 @@ export function TenantsList() {
       filters={filters}
       sort={{ field: "friendly_name", order: "ASC" }}
     >
-      <DataTable
-        rowClick={(_id, _resource, record) => {
-          window.location.href = `${getBasePath()}/${String(record.id)}`;
-          return false;
-        }}
-      >
-        <DataTable.Col source="friendly_name" label="Name" />
-        <DataTable.Col source="id" />
-        <DataTable.Col source="deployment_type" label="Deployment" />
-        <DataTable.Col label="Status">
-          <ProvisioningStateField />
-        </DataTable.Col>
-        <DataTable.Col source="parent_tenant_id" label="Parent" />
-        <DataTable.Col source="config_sync" label="Config sync" />
-        <DataTable.Col source="audience" />
-        <DataTable.Col source="support_url" label="Support URL" />
-        <DataTable.Col label="">
-          <MembersLinkCell />
-        </DataTable.Col>
-        <DataTable.Col label="">
-          <OperationsLinkCell />
-        </DataTable.Col>
-      </DataTable>
+      <TenantsTable />
     </List>
   );
 }
