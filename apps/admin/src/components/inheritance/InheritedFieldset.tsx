@@ -45,9 +45,9 @@ export function InheritedFieldset({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Alert>
+      <Alert className="border-sky-600/30 bg-sky-50 text-sky-950 dark:border-sky-500/30 dark:bg-sky-950/40 dark:text-sky-100">
         <Lock className="h-4 w-4" />
-        <AlertDescription>
+        <AlertDescription className="block text-sky-900 dark:text-sky-200">
           Inherited from <strong>{row.from ?? "a parent tenant"}</strong>.{" "}
           {row.locked
             ? "The parent allows no changes here."
