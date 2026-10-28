@@ -60,3 +60,4 @@ export * from "./logStreams";
 export * from "./migrationSources";
 
 export * from "./deviceCodes";
+export * from "./tenantMemberRequests";
