@@ -30,7 +30,11 @@ export {
 } from "./sync-defaults";
 export type { SyncConfigFn, SyncConfigOptions } from "./sync-defaults";
 export {
+  assertDetachEligible,
   createInProcessDetach,
+  detachTenantRows,
+  emptyDetachResult,
+  markTenantDetached,
   detachErrors,
   detachOptionsOf,
   runDetachStep,

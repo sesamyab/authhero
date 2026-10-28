@@ -15,6 +15,11 @@ export {
 } from "./dispatch-sync-config";
 
 export {
+  createDispatchDetach,
+  type DispatchDetachOptions,
+} from "./dispatch-detach";
+
+export {
   createDispatchRenewSigningCertificates,
   type DispatchRenewSigningCertificatesOptions,
   type DispatchRenewSigningCertificatesResult,

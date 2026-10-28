@@ -93,6 +93,25 @@ describe("createCloudflareWorkflowsExecutor", () => {
     });
   });
 
+  it("starts detach operations with the same params shape", async () => {
+    const binding = fakeBinding();
+    const executor = createCloudflareWorkflowsExecutor({ binding });
+
+    await executor.start(
+      operation({
+        kind: "detach",
+        engine_instance_id: "op-detach-kvartal-op_abc123",
+        input: { dry_run: true, clean: true },
+      }),
+    );
+
+    expect(JSON.parse(JSON.stringify(binding.created[0]!.params))).toEqual({
+      operation_id: "op_abc123",
+      tenant_id: "kvartal",
+      kind: "detach",
+    });
+  });
+
   it("rejects unsupported kinds and fleet operations", async () => {
     const binding = fakeBinding();
     const executor = createCloudflareWorkflowsExecutor({ binding });

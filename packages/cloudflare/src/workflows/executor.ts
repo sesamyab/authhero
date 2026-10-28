@@ -34,10 +34,11 @@ export function createCloudflareWorkflowsExecutor(
     async start(operation: TenantOperation): Promise<void> {
       if (
         operation.kind !== "provision" &&
-        operation.kind !== "sync-defaults"
+        operation.kind !== "sync-defaults" &&
+        operation.kind !== "detach"
       ) {
         throw new Error(
-          `The Cloudflare Workflows executor does not support "${operation.kind}" operations yet (it runs provision and sync-defaults)`,
+          `The Cloudflare Workflows executor does not support "${operation.kind}" operations yet (it runs provision, sync-defaults and detach)`,
         );
       }
       if (!operation.tenant_id) {

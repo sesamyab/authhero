@@ -106,7 +106,6 @@ The pilot is migrated when: the sync ended `succeeded`, `drifted` is `false`, th
 ## Not supported yet
 
 - **Re-parenting.** Changing `parent_tenant_id` of a synced tenant changes the hash, and the next sync adds the new parent's rows and updates shared ones. Rows only the old parent published stay behind until you run a sync with `prune` (preview it first). To leave a parent for good, [detach](#detaching-a-tenant) the tenant instead.
-- **Detaching a tenant with its own database.** The `detach` operation works on tenants that share the control plane's database. A tenant with its own worker and database (`deployment_type: "wfp"`) has no transport for it yet.
 - **Automatic delete propagation.** A row removed or unshared on the parent is removed from a synced tenant by a sync with `prune` (_Remove unshared_ on the tenant's Operations page), never by a plain sync. A preview always lists what would go.
 
 These are tracked as follow-up issues of the [config inheritance epic](https://github.com/sesamyab/authhero/issues/1524).
@@ -122,3 +121,9 @@ A synced tenant leaves its parent with a `detach` [tenant operation](./tenant-op
 - **The tenant** gets `config_sync: "detached"`, no parent and no sync state. It no longer inherits, and `sync-defaults`, rollouts and the drift check leave it alone. To attach it again, set `config_sync` and `parent_tenant_id` back and run a sync.
 
 Rows are created before the copies they replace are removed, but the operation is not atomic: if it fails part-way the tenant is not marked detached, and a retry can leave a duplicate of a row that was already converted, so review the list afterwards. SCIM configurations that point at a copied connection are not moved. Connection order on a client's login page is not kept for converted connections.
+
+### Tenants with their own database
+
+For a tenant with its own worker and database (`deployment_type: "wfp"`), pass `detachTenant: createDispatchDetach({ dispatcher, internalSecret, controlPlaneAdapters })` (from `@authhero/cloudflare-adapter/wfp`) to `initMultiTenant`, or use it in a Workflows `detach` operation (`runDetachOperation`). The control plane checks that the tenant can be detached from its own tenant row, pushes to the tenant worker's `/internal/detach` (the same `WFP_INTERNAL_SYNC_SECRET` and `TENANT_ID` checks as `/internal/sync-config`), and marks its own row detached only when the worker reports that every row went through. A preview or a partial result leaves the control-plane row as it was, so a retry can finish the job. The worker converts the rows in its own database and marks its own copy of the tenant row.
+
+Route by `deployment_type` in the host, as for `syncDefaults`: a custom `detachTenant` replaces the in-process detach for every tenant, so shared-database tenants must still go through `createInProcessDetach`. The worker needs a `detach` route as well when it is not built with `createWfpTenantApp`.
