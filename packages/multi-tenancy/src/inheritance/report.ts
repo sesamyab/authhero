@@ -19,8 +19,15 @@ const DEDUPE_TTL_MS = 60 * 60 * 1000;
 const DEDUPE_MAX = 10_000;
 
 export interface ShadowReporter {
-  /** Starts a comparison for `tenantId` in the background, if due. */
-  schedule(tenantId: string, legacyControlPlane: string | undefined): void;
+  /**
+   * Starts a comparison for `tenantId` in the background, if due, and returns
+   * it (never rejecting) so a host that must keep the work alive, such as a
+   * Worker with `ctx.waitUntil`, can wait for it. Undefined when none started.
+   */
+  schedule(
+    tenantId: string,
+    legacyControlPlane: string | undefined,
+  ): Promise<void> | undefined;
 }
 
 export function createShadowReporter(
@@ -70,7 +77,7 @@ export function createShadowReporter(
       lastRun.set(tenantId, now);
       running.add(tenantId);
       // Shadow mode must never affect the request: swallow every failure.
-      run(tenantId, legacyControlPlane)
+      return run(tenantId, legacyControlPlane)
         .catch(() => {})
         .finally(() => running.delete(tenantId));
     },
