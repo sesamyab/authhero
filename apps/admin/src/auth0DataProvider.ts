@@ -468,6 +468,11 @@ export interface AuthHeroDataProvider extends DataProvider {
    * can read its own; the control plane any tenant.
    */
   getConfigSyncStatus: (tenantId: string) => Promise<ConfigSyncStatus>;
+  /**
+   * Compares a tenant's config with what its parents publish, read-only and on
+   * demand. `ok` is the pass criterion.
+   */
+  verifyConfigSync: (tenantId: string) => Promise<ConfigSyncVerification>;
 
   /**
    * Fleet rollouts of synced config (issue #1499). Control-plane routes,
@@ -542,6 +547,22 @@ export interface TeamInvitationRecord {
 }
 
 // Wire shapes of config inheritance (issues #1495, #1499, #1500).
+export interface ConfigSyncDifference {
+  entity: string;
+  key: string;
+  kind: "missing" | "extra" | "changed" | "stale";
+  fields?: string[];
+}
+
+export interface ConfigSyncVerification {
+  tenant_id: string;
+  config_sync: "inherit-on-read" | "synced" | "detached";
+  method: "read-time" | "sync-dry-run" | "not-applicable";
+  ok: boolean;
+  differences: ConfigSyncDifference[];
+  errors: string[];
+}
+
 export interface ConfigSyncStatus {
   tenant_id: string;
   parent_tenant_id: string | null;
@@ -3033,6 +3054,14 @@ export default (
           headers: createHeaders(tenantId),
           body: JSON.stringify(input ? { kind, input } : { kind }),
         },
+      );
+      return res.json;
+    },
+
+    verifyConfigSync: async (targetTenantId) => {
+      const res = await httpClient(
+        `${apiUrl}/api/v2/tenants/${encodeURIComponent(targetTenantId)}/config-sync/verify`,
+        { headers: createHeaders(tenantId) },
       );
       return res.json;
     },

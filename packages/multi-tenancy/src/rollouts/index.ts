@@ -21,6 +21,12 @@ export type {
   RolloutTickOutcome,
   RolloutTickResult,
 } from "./advance";
+export { verifyTenantConfig } from "./verify";
+export type {
+  ConfigSyncDifference,
+  ConfigSyncVerification,
+  VerifyConfigSyncDeps,
+} from "./verify";
 export { getConfigSyncStatus } from "./status";
 export type { ConfigSyncStatus, ConfigSyncStatusDeps } from "./status";
 export { reconcileConfigDrift } from "./reconcile";

@@ -26,6 +26,7 @@ import {
   createRolloutController,
   createRolloutWriteHooks,
   getConfigSyncStatus,
+  verifyTenantConfig,
   type RolloutDeps,
 } from "./rollouts";
 import { createTenantsOpenAPIRouter } from "./routes";
@@ -573,6 +574,24 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
             adapters: rawDataAdapter,
             controlPlaneTenantId,
             resolveControlPlane,
+          },
+          tenantId,
+        ),
+      // A synced tenant is checked with a sync dry run: the host's
+      // `syncDefaults` reaches tenants with their own database, the in-process
+      // sync the rest.
+      verifyConfigSync: (tenantId) =>
+        verifyTenantConfig(
+          {
+            adapters: rawDataAdapter,
+            controlPlaneTenantId,
+            resolveControlPlane,
+            syncConfig:
+              syncDefaults ??
+              createInProcessSyncConfig(rawDataAdapter, {
+                controlPlaneTenantId,
+                resolveControlPlane,
+              }),
           },
           tenantId,
         ),

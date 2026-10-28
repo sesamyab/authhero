@@ -2,6 +2,7 @@ import { CreateTenantParams, DataAdapters, Tenant } from "authhero";
 import { Context } from "hono";
 import type { StepReporter } from "./operations/types";
 import type { ConfigSyncStatus } from "./rollouts/status";
+import type { ConfigSyncVerification } from "./rollouts/verify";
 
 /**
  * Bindings type from authhero core - simplified version for this package
@@ -233,6 +234,15 @@ export interface MultiTenancyConfig {
    * Supplied by `initMultiTenant`; the route is not mounted without it.
    */
   configSyncStatus?: (tenantId: string) => Promise<ConfigSyncStatus | null>;
+
+  /**
+   * Compares a tenant's config with what its parents publish, for
+   * `GET /tenants/{id}/config-sync/verify`. Supplied by `initMultiTenant`; the
+   * route is not mounted without it.
+   */
+  verifyConfigSync?: (
+    tenantId: string,
+  ) => Promise<ConfigSyncVerification | null>;
 
   /**
    * Called after a tenant is created or its `config_sync` mode is changed, so
