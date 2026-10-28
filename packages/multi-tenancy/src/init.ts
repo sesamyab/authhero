@@ -113,9 +113,10 @@ export interface MultiTenantConfig extends Omit<
   syncDefaults?: SyncConfigFn;
 
   /**
-   * How long each isolate remembers a tenant's `config_sync` mode. A flip
-   * reaches the isolates that did not handle the `PATCH` within this time, so
-   * it is how long to wait after one. Lower it for a faster flip at the cost of
+   * How long each isolate remembers a tenant's `config_sync` mode. The
+   * isolates that did not handle the `PATCH` notice a flip within this time.
+   * It does not cover a cached client bundle, which can keep serving what was
+   * read under the old mode for up to 15 minutes. Lower it for a faster flip at the cost of
    * one more `tenants.get` per isolate and tenant per period.
    * @default 10000
    */
