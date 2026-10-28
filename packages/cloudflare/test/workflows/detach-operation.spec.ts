@@ -102,6 +102,39 @@ describe("runDetachOperation", () => {
     });
   });
 
+  it("does not retry the detach step, but retries the bookkeeping steps, unless a host overrides it", async () => {
+    const stores = fakeStores();
+    const params = await seed(stores);
+    const step = fakeStepRunner();
+
+    await runDetachOperation(
+      { stores, detachTenant: async () => detachResult() },
+      params,
+      step,
+    );
+
+    expect(
+      step.calls.find((c) => c.name === "detach")?.config?.retries,
+    ).toEqual({ limit: 0, delay: "5 seconds" });
+    expect(
+      step.calls.find((c) => c.name === "mark-running")?.config?.retries,
+    ).toEqual({ limit: 3, delay: "5 seconds", backoff: "exponential" });
+
+    const overridden = fakeStepRunner();
+    await runDetachOperation(
+      {
+        stores,
+        detachTenant: async () => detachResult(),
+        stepConfig: { detach: { retries: { limit: 1, delay: 1 } } },
+      },
+      await seed(stores),
+      overridden,
+    );
+    expect(
+      overridden.calls.find((c) => c.name === "detach")?.config?.retries,
+    ).toEqual({ limit: 1, delay: 1 });
+  });
+
   it("fails the operation when rows report errors, and still records the result", async () => {
     const stores = fakeStores();
     const params = await seed(stores);

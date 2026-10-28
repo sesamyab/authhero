@@ -22,17 +22,25 @@ export interface DetachOperationDeps {
    * `createDispatchDetach(...)`.
    */
   detachTenant: DetachConfigFn;
-  /** Per-step overrides of the retry/timeout defaults. */
+  /**
+   * Per-step overrides of the retry/timeout defaults. The `detach` step has no
+   * automatic retries unless a host sets them.
+   */
   stepConfig?: Partial<Record<DetachStepName, StepConfig>>;
 }
 
-// Retrying is safe: the control plane marks the tenant detached only after the
-// rows went through, and a tenant that already is answers `already-detached`.
-// A refused detach (a tenant that is not synced) does not get better with time,
-// so the budget is small. The timeout is longer than a sync's: every row is
-// converted one by one.
+// The bookkeeping steps are safe to retry. The detach step is not retried
+// automatically: it is not atomic, so a retry after a partial run would create
+// a second copy of every row the first run already converted. A failed detach
+// is reported (the row is `failed`, with the per-row errors in its result) and
+// an operator runs it again after reading what happened. The timeout is long:
+// every row is converted one by one.
 const DEFAULT_STEP_CONFIG: StepConfig = {
   retries: { limit: 3, delay: "5 seconds", backoff: "exponential" },
+  timeout: "2 minutes",
+};
+const DETACH_STEP_CONFIG: StepConfig = {
+  retries: { limit: 0, delay: "5 seconds" },
   timeout: "5 minutes",
 };
 
@@ -60,7 +68,8 @@ export async function runDetachOperation(
 ): Promise<void> {
   const recorder = createOperationRecorder(deps.stores);
   const config = (name: DetachStepName): StepConfig =>
-    deps.stepConfig?.[name] ?? DEFAULT_STEP_CONFIG;
+    deps.stepConfig?.[name] ??
+    (name === "detach" ? DETACH_STEP_CONFIG : DEFAULT_STEP_CONFIG);
 
   const operationId = params.operation_id;
 
