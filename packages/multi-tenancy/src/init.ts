@@ -382,7 +382,13 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
           {
             name: "detach",
             run: () =>
-              runDetachStep({ operation, detachTenant: detach, recorder }),
+              runDetachStep({
+                operation,
+                detachTenant: detach,
+                recorder,
+                // Another isolate notices within the mode cache time.
+                onDetached: (id) => forgetConfigSyncMode?.(id),
+              }),
           },
         ],
         ...(tenantUpgrade

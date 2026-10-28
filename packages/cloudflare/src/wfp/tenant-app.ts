@@ -17,6 +17,8 @@ import {
   withRuntimeFallback,
   applyControlPlaneDefaultsPayload,
   applyResolvedConfigBlock,
+  detachTenantRows,
+  markTenantDetached,
   type ControlPlaneDefaultsApplyResult,
   type ResolvedConfigBlock,
   type ControlPlaneDefaultsPayload,
@@ -25,6 +27,7 @@ import {
 const CONTROL_PLANE_KEY_ID = "cp";
 const SYNC_PATH = "/internal/sync-defaults";
 const SYNC_CONFIG_PATH = "/internal/sync-config";
+const DETACH_PATH = "/internal/detach";
 const RENEW_CERTIFICATES_PATH = "/internal/renew-signing-certificates";
 
 /**
@@ -375,6 +378,49 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
         );
       }
       return errorResponse(c, "sync_config_apply_failed", err);
+    }
+  });
+
+  // Receive a `detach` operation: turn (or with `clean`, remove) the copies a
+  // sync delivered into this tenant's own database. Only the rows are handled
+  // here. Whether the tenant may be detached is decided on the control plane,
+  // which holds the tenant row; this worker's own row is only marked afterwards.
+  app.post(DETACH_PATH, async (c) => {
+    const secret = env.WFP_INTERNAL_SYNC_SECRET;
+    const authorization = c.req.header("authorization");
+    if (!secret || authorization !== `Bearer ${secret}`) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+
+    let body: { tenantId?: string; dryRun?: boolean; clean?: boolean };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON" }, 400);
+    }
+    if (!body.tenantId) {
+      return c.json({ error: "tenantId is required" }, 400);
+    }
+    if (env.TENANT_ID && body.tenantId !== env.TENANT_ID) {
+      console.error(
+        `[wfp-tenant] detach_tenant_mismatch: detach for "${body.tenantId}" reached the worker of "${env.TENANT_ID}"`,
+      );
+      c.header("X-Authhero-Error", "detach_tenant_mismatch");
+      return c.json({ error: "detach_tenant_mismatch" }, 403);
+    }
+
+    try {
+      // The raw layer, so secrets are copied as stored.
+      const result = await detachTenantRows(rawAdapter, body.tenantId, {
+        dryRun: body.dryRun === true,
+        clean: body.clean === true,
+      });
+      if (result.status === "detached") {
+        await markTenantDetached(rawAdapter, body.tenantId);
+      }
+      return c.json(result);
+    } catch (err) {
+      return errorResponse(c, "detach_failed", err);
     }
   });
 

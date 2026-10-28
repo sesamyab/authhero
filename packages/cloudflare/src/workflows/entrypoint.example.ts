@@ -32,6 +32,7 @@
  *   reconcileTenantOperations,
  *   runProvisionOperation,
  *   runSyncDefaultsOperation,
+ *   runDetachOperation,
  *   type ProvisionOperationDeps,
  *   type TenantOperationWorkflowParams,
  * } from "@authhero/cloudflare-adapter/workflows";
@@ -43,6 +44,7 @@
  * } from "@authhero/cloudflare-adapter";
  * import {
  *   createDispatchSyncConfig,
+ *   createDispatchDetach,
  *   createDispatchSyncDefaults,
  * } from "@authhero/cloudflare-adapter/wfp";
  *
@@ -76,6 +78,27 @@
  *     // CF's WorkflowStep satisfies StepRunner structurally. One class runs
  *     // every kind; params carry the kind, never secrets.
  *     switch (event.payload.kind) {
+ *       case "detach": {
+ *         const adapters = createControlPlaneAdapters(this.env);
+ *         return runDetachOperation(
+ *           {
+ *             stores: {
+ *               tenantOperations: adapters.tenantOperations!,
+ *               tenantOperationEvents: adapters.tenantOperationEvents!,
+ *             },
+ *             // Checks the tenant row on the control plane, asks the tenant
+ *             // worker's /internal/detach to convert its rows, then marks the
+ *             // control-plane row detached.
+ *             detachTenant: createDispatchDetach({
+ *               dispatcher: this.env.DISPATCHER,
+ *               internalSecret: this.env.WFP_INTERNAL_SYNC_SECRET,
+ *               controlPlaneAdapters: adapters,
+ *             }),
+ *           },
+ *           event.payload,
+ *           step,
+ *         );
+ *       }
  *       case "sync-defaults": {
  *         const adapters = createControlPlaneAdapters(this.env);
  *         return runSyncDefaultsOperation(

@@ -23,6 +23,11 @@ export {
   type SyncDefaultsStepName,
 } from "./sync-defaults-operation";
 export {
+  runDetachOperation,
+  type DetachOperationDeps,
+  type DetachStepName,
+} from "./detach-operation";
+export {
   createProvisionVerifier,
   TenantProvisionVerificationError,
   type ProvisionVerifierOptions,

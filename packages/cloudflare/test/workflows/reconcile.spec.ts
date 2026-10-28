@@ -135,6 +135,28 @@ describe("reconcileTenantOperations", () => {
     expect(stores.events.some((e) => e.outcome === "reconciled")).toBe(true);
   });
 
+  it("marks a completed but unfinalized detach operation succeeded", async () => {
+    const stores = fakeStores();
+    const tenants = fakeTenants([{ id: "kvartal", deployment_type: "wfp" }]);
+    const binding = fakeBinding();
+    const id = await seedStuckOperation(stores, { id: "op_detach" });
+    stores.operations.set(id, {
+      ...stores.operations.get(id)!,
+      kind: "detach",
+      current_step: "detach",
+    });
+    binding.statuses.set(`wf-${id}`, { status: "complete" });
+
+    const result = await reconcileTenantOperations({
+      stores,
+      tenants,
+      binding,
+    });
+
+    expect(result.markedSucceeded).toBe(1);
+    expect(stores.operations.get(id)?.status).toBe("succeeded");
+  });
+
   it("marks an errored sync-defaults instance failed with the engine error", async () => {
     const stores = fakeStores();
     const tenants = fakeTenants([{ id: "kvartal", deployment_type: "wfp" }]);
