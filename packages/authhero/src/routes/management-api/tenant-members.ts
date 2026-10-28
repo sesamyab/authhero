@@ -5,7 +5,14 @@ import {
 } from "../../errors/management-api-error";
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { inviteSchema, roleSchema } from "@authhero/adapter-interfaces";
+import {
+  inviteSchema,
+  roleSchema,
+  tenantMemberRequestKindSchema,
+  tenantMemberRequestSchema,
+  tenantMemberRequestStatusSchema,
+  type TenantMemberRequestKind,
+} from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
@@ -17,6 +24,7 @@ import {
   tenantMemberSchema,
   tenantMembersListSchema,
 } from "../../tenant-members/types";
+import type { TenantMemberRequestsConfig } from "../../tenant-members/requests";
 
 type Ctx = Context<{ Bindings: Bindings; Variables: Variables }>;
 
@@ -76,6 +84,64 @@ const rolesBodySchema = z.object({
   roles: z.array(z.string()).min(1),
 });
 
+/** What a write answers when the shard registers a request instead of acting. */
+const requestAcceptedSchema = z.object({
+  id: z.string(),
+  status: tenantMemberRequestStatusSchema,
+});
+
+const requestAcceptedResponse = {
+  202: {
+    content: { "application/json": { schema: requestAcceptedSchema } },
+    description:
+      "The change was registered as a request and is carried out by the control plane",
+  },
+};
+
+/**
+ * Stores the change as a request on this shard and lets the deployment act on
+ * it (tell the control plane, or run it inline). The 202 tells the admin it was
+ * accepted, not that it happened: the request row carries the outcome.
+ */
+async function registerRequest(
+  ctx: Ctx,
+  requests: TenantMemberRequestsConfig,
+  tenantId: string,
+  kind: TenantMemberRequestKind,
+  payload: Record<string, unknown>,
+) {
+  const store = ctx.env.data.tenantMemberRequests;
+  if (!store) {
+    throw new HTTPException(501, {
+      message: "Team change requests are not available on this deployment.",
+    });
+  }
+  const requestedBy = ctx.var.user?.sub;
+  if (!requestedBy) {
+    throw new HTTPException(403, {
+      message: "A team change must be requested by a signed-in administrator.",
+    });
+  }
+
+  const created = await store.create(tenantId, {
+    kind,
+    requested_by: requestedBy,
+    payload,
+  });
+  try {
+    await requests.afterRegister?.(ctx, created);
+  } catch (err) {
+    // The request is stored; it is picked up later.
+    console.warn(
+      `[tenant-members] request ${created.id} was stored but not handed over:`,
+      err,
+    );
+  }
+  // An inline deployment may have finished it already.
+  const current = (await store.get(tenantId, created.id)) ?? created;
+  return ctx.json({ id: current.id, status: current.status }, 202);
+}
+
 /**
  * `GET/POST/DELETE /api/v2/tenant-members` — lets a tenant admin manage who
  * administers their tenant, from the per-tenant admin UI, without a
@@ -84,7 +150,10 @@ const rolesBodySchema = z.object({
  * {@link TenantMembersBackend}; this layer only pins the tenant to the token's
  * org claim and shapes responses.
  */
-export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
+export function createTenantMembersRoutes(
+  getBackend: GetTenantMembersBackend,
+  requests?: TenantMemberRequestsConfig,
+) {
   const listMembers = defineRoute({
     route: createRoute({
       tags: ["tenant-members"],
@@ -125,11 +194,19 @@ export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
         },
       },
       security: [{ Bearer: ["update:organizations"] }],
-      responses: { 204: { description: "Members added" } },
+      responses: {
+        204: { description: "Members added" },
+        ...requestAcceptedResponse,
+      },
     }),
     handler: async (ctx) => {
       const tenantId = pinnedTenantId(ctx);
       const { user_ids } = ctx.req.valid("json");
+      if (requests) {
+        return registerRequest(ctx, requests, tenantId, "add_members", {
+          user_ids,
+        });
+      }
       const backend = await getBackend(ctx);
       await orNotFound(() => backend.addMembers(tenantId, user_ids));
       return ctx.body(null, 204);
@@ -148,11 +225,19 @@ export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
         },
       },
       security: [{ Bearer: ["update:organizations"] }],
-      responses: { 204: { description: "Members removed" } },
+      responses: {
+        204: { description: "Members removed" },
+        ...requestAcceptedResponse,
+      },
     }),
     handler: async (ctx) => {
       const tenantId = pinnedTenantId(ctx);
       const { user_ids } = ctx.req.valid("json");
+      if (requests) {
+        return registerRequest(ctx, requests, tenantId, "remove_members", {
+          user_ids,
+        });
+      }
       const backend = await getBackend(ctx);
       await orNotFound(() => backend.removeMembers(tenantId, user_ids));
       return ctx.body(null, 204);
@@ -198,12 +283,21 @@ export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
         body: { content: { "application/json": { schema: rolesBodySchema } } },
       },
       security: [{ Bearer: ["create:organization_member_roles"] }],
-      responses: { 204: { description: "Roles assigned" } },
+      responses: {
+        204: { description: "Roles assigned" },
+        ...requestAcceptedResponse,
+      },
     }),
     handler: async (ctx) => {
       const tenantId = pinnedTenantId(ctx);
       const { user_id } = ctx.req.valid("param");
       const { roles } = ctx.req.valid("json");
+      if (requests) {
+        return registerRequest(ctx, requests, tenantId, "assign_roles", {
+          user_id,
+          roles,
+        });
+      }
       const backend = await getBackend(ctx);
       await orNotFound(() =>
         backend.assignMemberRoles(tenantId, user_id, roles),
@@ -223,12 +317,21 @@ export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
         body: { content: { "application/json": { schema: rolesBodySchema } } },
       },
       security: [{ Bearer: ["delete:organization_member_roles"] }],
-      responses: { 204: { description: "Roles removed" } },
+      responses: {
+        204: { description: "Roles removed" },
+        ...requestAcceptedResponse,
+      },
     }),
     handler: async (ctx) => {
       const tenantId = pinnedTenantId(ctx);
       const { user_id } = ctx.req.valid("param");
       const { roles } = ctx.req.valid("json");
+      if (requests) {
+        return registerRequest(ctx, requests, tenantId, "remove_roles", {
+          user_id,
+          roles,
+        });
+      }
       const backend = await getBackend(ctx);
       await orNotFound(() =>
         backend.removeMemberRoles(tenantId, user_id, roles),
@@ -312,11 +415,15 @@ export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
           content: { "application/json": { schema: inviteSchema } },
           description: "The created invitation",
         },
+        ...requestAcceptedResponse,
       },
     }),
     handler: async (ctx) => {
       const tenantId = pinnedTenantId(ctx);
       const input = ctx.req.valid("json");
+      if (requests) {
+        return registerRequest(ctx, requests, tenantId, "invite", input);
+      }
       const backend = await getBackend(ctx);
       const invite = await orNotFound(() =>
         backend.createInvitation(tenantId, input),
@@ -335,14 +442,69 @@ export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
         headers: z.object({ "tenant-id": z.string().optional() }),
       },
       security: [{ Bearer: ["update:organizations"] }],
-      responses: { 204: { description: "Invitation revoked" } },
+      responses: {
+        204: { description: "Invitation revoked" },
+        ...requestAcceptedResponse,
+      },
     }),
     handler: async (ctx) => {
       const tenantId = pinnedTenantId(ctx);
       const { invitation_id } = ctx.req.valid("param");
+      if (requests) {
+        return registerRequest(ctx, requests, tenantId, "revoke_invitation", {
+          invitation_id,
+        });
+      }
       const backend = await getBackend(ctx);
       await orNotFound(() => backend.revokeInvitation(tenantId, invitation_id));
       return ctx.body(null, 204);
+    },
+  });
+
+  const listRequests = defineRoute({
+    route: createRoute({
+      tags: ["tenant-members"],
+      method: "get",
+      path: "/requests",
+      request: {
+        query: z.object({
+          status: tenantMemberRequestStatusSchema.optional(),
+          kind: tenantMemberRequestKindSchema.optional(),
+          page: z.coerce.number().int().min(0).optional(),
+          per_page: z.coerce.number().int().min(1).max(100).optional(),
+        }),
+        headers: z.object({ "tenant-id": z.string().optional() }),
+      },
+      security: [{ Bearer: ["read:organizations"] }],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                requests: z.array(tenantMemberRequestSchema),
+              }),
+            },
+          },
+          description:
+            "The team changes requested for this tenant, newest first",
+        },
+      },
+    }),
+    handler: async (ctx) => {
+      const tenantId = pinnedTenantId(ctx);
+      const store = ctx.env.data.tenantMemberRequests;
+      if (!requests || !store) {
+        throw new HTTPException(501, {
+          message: "Team change requests are not available on this deployment.",
+        });
+      }
+      const { status, kind, page, per_page } = ctx.req.valid("query");
+      const result = await store.list(tenantId, { status, page, per_page });
+      return ctx.json({
+        requests: kind
+          ? result.requests.filter((r) => r.kind === kind)
+          : result.requests,
+      });
     },
   });
 
@@ -352,6 +514,7 @@ export function createTenantMembersRoutes(getBackend: GetTenantMembersBackend) {
   }>({ defaultHook: managementValidationHook }).openapiRoutes([
     // More specific literal paths before the `/{user_id}` param routes so
     // `/roles` and `/invitations` are not swallowed by `/{user_id}/roles`.
+    listRequests,
     listRoles,
     listInvitations,
     createInvitation,

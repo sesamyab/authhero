@@ -140,7 +140,20 @@ export {
   createControlPlaneTenantMembersAdapter,
   type ControlPlaneTenantMembersOptions,
 } from "./tenant-members/remote-backend";
-export { CONTROL_PLANE_TENANT_MEMBERS_PATH } from "./tenant-members/wire";
+export {
+  CONTROL_PLANE_TENANT_MEMBERS_PATH,
+  CONTROL_PLANE_TENANT_MEMBER_REQUESTS_NOTIFY_PATH,
+} from "./tenant-members/wire";
+// Team-change requests (#1550): what a shard registers and the control plane runs.
+export {
+  executeTenantMemberRequest,
+  tenantMemberRequestPayloadSchemas,
+  TenantMemberRequestRejected,
+  type AfterTenantMemberRequestRegistered,
+  type ExecuteTenantMemberRequestOptions,
+  type TenantMemberRequestsConfig,
+} from "./tenant-members/requests";
+export { createControlPlaneRequestNotifier } from "./tenant-members/request-notifier";
 export {
   type TenantMembersBackend,
   type TenantMember,

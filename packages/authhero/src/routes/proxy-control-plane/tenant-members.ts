@@ -8,6 +8,7 @@ import {
   createInvitationBodySchema,
   memberRolesBodySchema,
   membersMutationBodySchema,
+  notifyMemberRequestBodySchema,
 } from "../../tenant-members/wire";
 import type { AuthenticateControlPlane } from "./custom-domains";
 import { CONTROL_PLANE_TENANT_MEMBERS_SCOPE } from "./scopes";
@@ -29,6 +30,17 @@ export interface TenantMembersControlPlaneOptions {
   getBackend: (
     c: CpCtx,
   ) => TenantMembersBackend | Promise<TenantMembersBackend>;
+  /**
+   * Team-change requests (issue #1550). A shard registers a request in its own
+   * database and calls `POST /requests/notify` with its id; `onNotify` takes
+   * it from there, typically by enqueueing a tenant operation that reads the
+   * request from the shard and carries it out. `tenantId` is the verified
+   * token's, never the body's. Unset, the endpoint answers 501 and the shard
+   * keeps the request until a control plane that has it is in place.
+   */
+  requests?: {
+    onNotify: (c: CpCtx, tenantId: string, requestId: string) => Promise<void>;
+  };
   /**
    * Defaults to verifying a `controlplane:tenant_members` bearer token issued
    * by `env.ISSUER` or the inbound host. Ignored under
@@ -271,6 +283,25 @@ export function createTenantMembersControlPlaneApp(
     const backend = await getBackend(c);
     const r = await run(c, () => backend.createInvitation(tenantId, input));
     return r instanceof Response ? r : c.json(r, 201);
+  });
+
+  app.post("/requests/notify", async (c) => {
+    const tenantId = c.get("tenantId");
+    if (!options.requests) {
+      return c.json({ error: "not_implemented" }, 501);
+    }
+    const parsed = notifyMemberRequestBodySchema.safeParse(await readJson(c));
+    if (!parsed.success) {
+      return c.json(
+        { error: "invalid_request", details: parsed.error.issues },
+        400,
+      );
+    }
+    if (claimedMismatch(tenantId, parsed.data.tenant_id)) {
+      return c.text("Forbidden", 403);
+    }
+    await options.requests.onNotify(c, tenantId, parsed.data.request_id);
+    return c.json({ request_id: parsed.data.request_id }, 202);
   });
 
   app.delete("/invitations/:id", async (c) => {

@@ -199,6 +199,7 @@ export function createProxyControlPlaneApp(
       "/tenant-members",
       createTenantMembersControlPlaneApp({
         getBackend: options.tenantMembers.getBackend,
+        requests: options.tenantMembers.requests,
         authenticate: authenticateWithScope(CONTROL_PLANE_TENANT_MEMBERS_SCOPE),
       }),
     );

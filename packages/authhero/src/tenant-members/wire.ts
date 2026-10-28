@@ -30,3 +30,15 @@ export const memberRolesBodySchema = z.object({
 
 export const createInvitationBodySchema =
   tenantInvitationInputSchema.extend(tenantIdField);
+
+/**
+ * A shard tells the control plane that a team-change request is waiting
+ * (issue #1550). Only the id travels: the control plane reads the request from
+ * the shard, so what was asked never rests on what the notification claims.
+ */
+export const CONTROL_PLANE_TENANT_MEMBER_REQUESTS_NOTIFY_PATH = `${CONTROL_PLANE_TENANT_MEMBERS_PATH}/requests/notify`;
+
+export const notifyMemberRequestBodySchema = z.object({
+  ...tenantIdField,
+  request_id: z.string().min(1),
+});
