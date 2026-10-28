@@ -58,16 +58,24 @@ The operation must end `succeeded`. If it ends `failed`, read `error` and the `f
 
 Do all of these before flipping.
 
-1. **Status.** `GET /api/v2/tenants/{id}/config-sync` shows `drifted: false` and equal `config_sync_hash` and `expected_hash` (the admin UI shows this as _In sync_).
-2. **Shadow.** Let the pilot take normal traffic, then look for differences between what read-time inheritance would give and what the synced config gives:
+1. **Status.** `GET /api/v2/tenants/{id}/config-sync` shows `drifted: false` and equal `config_sync_hash` and `expected_hash` (the admin UI shows this as _In sync_). The hash only says the parents have not moved since the last sync, not that the tenant's own rows still match.
+2. **Verify.** The hard check, on demand and read-only:
+
+   ```http
+   GET /api/v2/tenants/{id}/config-sync/verify
+   ```
+
+   `ok: true` (no `differences` and no `errors`) is the pass criterion (_Verify_ on the tenant's sync status card in the admin UI). A tenant that inherits on read is compared the way shadow mode does, without the rows only the sync model copies. A synced tenant is checked with a sync dry run against its own rows, so a copy someone deleted (`missing`), edited (`changed`) or that the parents no longer publish (`stale`) shows up although the hash matches. For a tenant with its own database the dry run goes through the same transport as `sync-defaults` (`syncDefaults`), and the call answers `502` if the worker cannot be reached. A row the tenant owns that wins over the parent's is not a difference. Only ids and field names are returned, never content or secrets.
+
+3. **Shadow.** Let the pilot take normal traffic, then look for differences between what read-time inheritance would give and what the synced config gives:
 
    ```http
    GET /api/v2/logs?q=type:cfgdiff
    ```
 
-   with the pilot's `tenant-id`. An empty result after a representative period is the pass criterion. Each entry names the `kind` (`missing`, `extra`, `changed`), entity and key, never content. Shadow is sampled and rate-limited, so absence is evidence over time rather than proof, and `extra` entries for hooks can be noise from the synced copies: confirm them against the hook list.
+   with the pilot's `tenant-id`. An empty result after a representative period is supporting evidence. Each entry names the `kind` (`missing`, `extra`, `changed`), entity and key, never content. Shadow is sampled and rate-limited, so absence is evidence over time rather than proof (use _Verify_ above for that), and `extra` entries for hooks can be noise from the synced copies: confirm them against the hook list.
 
-3. **Smoke tests.** Log in with each connection the tenant uses, request a token for each resource server, trigger each inherited hook, and confirm each hook runs **once**.
+4. **Smoke tests.** Log in with each connection the tenant uses, request a token for each resource server, trigger each inherited hook, and confirm each hook runs **once**.
 
 ## 4. Flip
 
@@ -101,7 +109,7 @@ Do not delete the synced rows by hand during the window; it makes a later re-syn
 
 ## Success criteria
 
-The pilot is migrated when: the sync ended `succeeded`, `drifted` is `false`, the shadow comparison showed no unexplained difference, the smoke tests pass in `synced` mode, and the watch period ended with no regression. Record the date, the operation id and what you found, then move on to [a rollout](./tenant-operations.md#fleet-rollouts-of-synced-config) for the next tenants, starting with a canary.
+The pilot is migrated when: the sync ended `succeeded`, `drifted` is `false`, verify answers `ok`, the shadow comparison showed no unexplained difference, the smoke tests pass in `synced` mode, and the watch period ended with no regression. Record the date, the operation id and what you found, then move on to [a rollout](./tenant-operations.md#fleet-rollouts-of-synced-config) for the next tenants, starting with a canary.
 
 ## Not supported yet
 
