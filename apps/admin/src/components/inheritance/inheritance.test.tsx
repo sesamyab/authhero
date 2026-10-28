@@ -11,6 +11,7 @@ import { ResourceContextProvider } from "ra-core";
 import { TenantProvider } from "@/TenantContext";
 import { InheritedFieldset } from "./InheritedFieldset";
 import { InheritedBadge } from "./InheritedBadge";
+import { InheritedDeleteButton } from "./InheritedDeleteButton";
 import { PublishingFields } from "./PublishingFields";
 import { useShowInheritance } from "@/hooks/useHasChildren";
 import { SyncStatusCard } from "./SyncStatusCard";
@@ -117,6 +118,28 @@ describe("InheritedFieldset", () => {
     );
     expect(screen.getByText(/Only secrets/)).toBeTruthy();
     expect(screen.getByText(/cannot be disabled/)).toBeTruthy();
+  });
+});
+
+describe("InheritedDeleteButton", () => {
+  const deleteButton = () => screen.queryByRole("button", { name: /delete/i });
+
+  it("offers Delete on a local row", () => {
+    renderWith({ id: "con_local" }, <InheritedDeleteButton />);
+    expect(deleteButton()).toBeTruthy();
+  });
+
+  it("offers Delete on a copy the parent does not enforce, even when locked", async () => {
+    renderWith({ id: SYNCED_ID, override: "none" }, <InheritedDeleteButton />);
+    await waitFor(() => expect(deleteButton()).toBeTruthy());
+  });
+
+  it("leaves Delete out on an enforced copy", () => {
+    renderWith(
+      { id: SYNCED_ID, override: "none", enforce: true },
+      <InheritedDeleteButton />,
+    );
+    expect(deleteButton()).toBeNull();
   });
 });
 
