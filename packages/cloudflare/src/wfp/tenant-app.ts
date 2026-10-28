@@ -159,6 +159,11 @@ export interface WfpTenantAppOptions<Env extends WfpTenantEnv = WfpTenantEnv> {
    * response. The comparison runs under `ctx.waitUntil`, so the Worker keeps
    * it alive after the response; it is sampled and rate-limited like the
    * colocated shadow mode. `true` uses the defaults.
+   *
+   * The worker only knows the control plane's rows (the ones projected into its
+   * database) and the tenant's own, so it compares against those. If the
+   * tenant's row names a parent this database lacks, the comparison is skipped;
+   * a deeper chain is checked by _Verify_ on the control plane.
    */
   inheritanceShadow?: boolean | InheritanceShadowOptions;
 }
@@ -491,12 +496,35 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
     );
     const tenantId =
       env.TENANT_ID || new URL(env.ISSUER).hostname.split(".")[0]!;
-    shadows.set(app, (request, ctx) => {
+
+    // The worker only holds the tenant's own row and the projected control-plane
+    // rows. A parent the row names but this database lacks would cut the chain
+    // short and make the comparison report rows as missing that the full chain
+    // supplies, so the comparison is skipped until the whole chain is here. (A
+    // tenant whose row names no parent is compared with the control plane, the
+    // only ancestor the worker can know; for a deeper chain use _Verify_ on the
+    // control plane, which resolves it in full.)
+    let chainComplete: Promise<boolean> | undefined;
+    const hasWholeChain = async (): Promise<boolean> => {
+      let current = await encrypted.tenants.get(tenantId);
+      for (let depth = 0; depth < 5; depth++) {
+        const parent = current?.parent_tenant_id;
+        if (!parent || parent === controlPlaneTenantId) return true;
+        current = await encrypted.tenants.get(parent);
+        if (!current) return false;
+      }
+      return false;
+    };
+
+    shadows.set(app, (request) => {
       // The internal routes are the control plane's own calls, not traffic.
       if (new URL(request.url).pathname.startsWith("/internal/")) return;
       if (tenantId === controlPlaneTenantId) return;
-      const comparison = reporter.schedule(tenantId, controlPlaneTenantId);
-      if (comparison) ctx.waitUntil(comparison);
+      return (async () => {
+        if (!(await (chainComplete ??= hasWholeChain()))) return;
+        const comparison = reporter.schedule(tenantId, controlPlaneTenantId);
+        if (comparison) await comparison;
+      })();
     });
   }
 
@@ -506,7 +534,7 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
 /** Runs after a response, per app, when shadow mode is on. */
 const shadows = new WeakMap<
   Hono,
-  (request: Request, ctx: ExecutionContext) => void
+  (request: Request) => Promise<void> | undefined
 >();
 
 /**
@@ -541,7 +569,9 @@ export function createWfpTenantApp<Env extends WfpTenantEnv = WfpTenantEnv>(
       return appPromise.then(async (app) => {
         const response = await app.fetch(request, env, ctx);
         // After the response is built, so it never waits for the comparison.
-        shadows.get(app)?.(request, ctx);
+        const shadow = shadows.get(app)?.(request);
+        // Kept alive after the response, so it never delays it.
+        if (shadow) ctx.waitUntil(shadow);
         return response;
       });
     },

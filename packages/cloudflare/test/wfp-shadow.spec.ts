@@ -119,11 +119,10 @@ describe("config inheritance shadow mode in the tenant worker", () => {
   });
 
   it("is rate-limited per tenant", async () => {
-    const options = {
+    const app = createWfpTenantApp({
       createDataAdapter: () => tenant,
       inheritanceShadow: true,
-    };
-    const app = createWfpTenantApp(options);
+    });
     const go = () =>
       app.fetch(
         new Request(
@@ -134,9 +133,38 @@ describe("config inheritance shadow mode in the tenant worker", () => {
       );
 
     await go();
-    await go();
-    await go();
+    await Promise.all(waited);
+    const afterFirst = (await cfgdiffs()).length;
+    expect(afterFirst).toBeGreaterThan(0);
 
-    expect(waited).toHaveLength(1);
+    // Dropping what was logged makes a second comparison visible.
+    await go();
+    await go();
+    await Promise.all(waited);
+    expect((await cfgdiffs()).length).toBe(afterFirst);
+  });
+
+  describe("a tenant whose row names a parent", () => {
+    const compare = async () => {
+      await request("/.well-known/openid-configuration")({
+        createDataAdapter: () => tenant,
+        inheritanceShadow: true,
+      });
+      await Promise.all(waited);
+      return (await cfgdiffs()).length;
+    };
+
+    it("is not compared while this database lacks that parent", async () => {
+      await tenant.tenants.update("acme", { parent_tenant_id: "partner" });
+
+      expect(await compare()).toBe(0);
+    });
+
+    it("is compared once the whole chain is here", async () => {
+      await tenant.tenants.create(tenantRow("partner"));
+      await tenant.tenants.update("acme", { parent_tenant_id: "partner" });
+
+      expect(await compare()).toBeGreaterThan(0);
+    });
   });
 });
