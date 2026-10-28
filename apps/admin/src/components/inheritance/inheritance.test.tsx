@@ -90,6 +90,10 @@ describe("InheritedFieldset", () => {
     );
     await waitFor(() => expect(screen.getByText("control_plane")).toBeTruthy());
     expect(screen.getByText(/allows no changes/)).toBeTruthy();
+    // One sentence in one block, not a line for the name and one for the rest.
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Inherited from control_plane. The parent allows no changes here.",
+    );
     expect(screen.getByLabelText("name").matches(":disabled")).toBe(true);
   });
 
