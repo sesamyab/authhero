@@ -40,7 +40,7 @@ export function list(db: Kysely<Database>) {
 
     // Apply any filters from the params
     if (q) {
-      query = luceneFilter(db, query, q, []);
+      query = luceneFilter(db, query, q, ["name"]);
     }
 
     // Keyset (checkpoint) pagination: from/take. Fixed created_at desc order with

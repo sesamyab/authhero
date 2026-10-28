@@ -71,34 +71,68 @@ function TriggerSection({
     }
   };
 
-  const swapPriority = (
-    a: TriggerBinding,
-    b: TriggerBinding,
+  const priorityChanges = (
+    binding: TriggerBinding,
     direction: "up" | "down",
-  ) =>
+  ) => {
+    const group = sortedHooks.filter(
+      (hook) => bindingType(hook) === bindingType(binding),
+    );
+    const index = group.findIndex((hook) => hookId(hook) === hookId(binding));
+    const target = index + (direction === "up" ? -1 : 1);
+    if (index < 0 || target < 0 || target >= group.length) return [];
+    [group[index], group[target]] = [group[target], group[index]];
+    const base = Math.min(...group.map((hook) => hook.priority ?? 0));
+    return group
+      .map((hook, index) => ({
+        hook,
+        priority: base + group.length - 1 - index,
+      }))
+      .filter(({ hook, priority }) => (hook.priority ?? 0) !== priority);
+  };
+
+  const canMove = (binding: TriggerBinding, direction: "up" | "down") => {
+    const changes = priorityChanges(binding, direction);
+    return (
+      !locked(binding) &&
+      changes.length > 0 &&
+      changes.every(({ hook }) => !locked(hook))
+    );
+  };
+
+  const swapPriority = (binding: TriggerBinding, direction: "up" | "down") =>
     mutate(async () => {
-      const aPrio = a.priority ?? 0;
-      const bPrio = b.priority ?? 0;
-      await update("hooks", {
-        id: hookId(a),
-        data: {
-          priority:
-            aPrio === bPrio ? aPrio + (direction === "up" ? 1 : -1) : bPrio,
-        },
-        previousData: a,
-      });
+      if (!canMove(binding, direction)) return;
+      const changes = priorityChanges(binding, direction);
+      const applied: TriggerBinding[] = [];
       try {
-        await update("hooks", {
-          id: hookId(b),
-          data: { priority: aPrio },
-          previousData: b,
-        });
+        for (const { hook, priority } of changes) {
+          await update(
+            "hooks",
+            {
+              id: hookId(hook),
+              data: { priority },
+              previousData: hook,
+            },
+            { returnPromise: true },
+          );
+          applied.push(hook);
+        }
       } catch (error) {
-        await update("hooks", {
-          id: hookId(a),
-          data: { priority: aPrio },
-          previousData: a,
-        });
+        // Attempt every rollback even if one restoration fails.
+        await Promise.allSettled(
+          applied.reverse().map((hook) =>
+            update(
+              "hooks",
+              {
+                id: hookId(hook),
+                data: { priority: hook.priority ?? 0 },
+                previousData: hook,
+              },
+              { returnPromise: true },
+            ),
+          ),
+        );
         throw error;
       }
     });
@@ -142,15 +176,13 @@ function TriggerSection({
                 >
                   <h3 className="text-sm font-medium mb-1">{group.plural}</h3>
                   <div className="divide-y">
-                    {bindings.map((hook, index) => {
+                    {bindings.map((hook) => {
                       const name = bindingLabel(hook, actions, forms);
                       const editPath = createPath({
                         resource: "hooks",
                         type: "edit",
                         id: hookId(hook),
                       });
-                      const previous = bindings[index - 1];
-                      const next = bindings[index + 1];
                       return (
                         <div
                           key={hookId(hook)}
@@ -206,29 +238,18 @@ function TriggerSection({
                             <Button
                               variant="ghost"
                               size="icon"
-                              disabled={
-                                busy ||
-                                locked(hook) ||
-                                !previous ||
-                                locked(previous)
-                              }
+                              disabled={busy || !canMove(hook, "up")}
                               aria-label={`Move ${name} up`}
-                              onClick={() =>
-                                previous && swapPriority(hook, previous, "up")
-                              }
+                              onClick={() => swapPriority(hook, "up")}
                             >
                               <ArrowUp className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              disabled={
-                                busy || locked(hook) || !next || locked(next)
-                              }
+                              disabled={busy || !canMove(hook, "down")}
                               aria-label={`Move ${name} down`}
-                              onClick={() =>
-                                next && swapPriority(hook, next, "down")
-                              }
+                              onClick={() => swapPriority(hook, "down")}
                             >
                               <ArrowDown className="h-4 w-4" />
                             </Button>

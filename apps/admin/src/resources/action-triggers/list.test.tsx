@@ -70,7 +70,10 @@ const bindings: TriggerBinding[] = [
   },
 ];
 
-function setup(overrides: Record<string, unknown> = {}) {
+function setup(
+  overrides: Record<string, unknown> = {},
+  hookRecords: TriggerBinding[] = bindings,
+) {
   const update = vi.fn(async (_resource, { id, data }) => ({
     data: { id, ...data },
   }));
@@ -78,7 +81,7 @@ function setup(overrides: Record<string, unknown> = {}) {
   const getList = vi.fn(async (resource: string) => {
     const data =
       resource === "hooks"
-        ? bindings
+        ? hookRecords
         : resource === "actions"
           ? [
               {
@@ -91,6 +94,8 @@ function setup(overrides: Record<string, unknown> = {}) {
                 name: "Add claims",
                 supported_triggers: [{ id: "post-login" }],
               },
+              { id: "act_3", name: "Third action" },
+              { id: "act_4", name: "Fourth action" },
             ]
           : [{ id: "form_1", name: "Complete profile" }];
     return { data, total: data.length };
@@ -175,20 +180,86 @@ describe("unified Triggers", () => {
     fireEvent.click(
       within(section).getByRole("button", { name: "Move Check access down" }),
     );
-    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update.mock.calls[0]).toEqual([
       "hooks",
-      expect.objectContaining({ id: "h_action", data: { priority: 0 } }),
-    ]);
-    expect(update.mock.calls[1]).toEqual([
-      "hooks",
-      expect.objectContaining({ id: "h_second", data: { priority: 1 } }),
+      expect.objectContaining({ id: "h_second", data: { priority: 2 } }),
     ]);
     expect(
       screen
         .getByRole("button", { name: "Move https://example.com/hook up" })
         .hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  const tiedBindings: TriggerBinding[] = [
+    ...bindings.slice(0, 2),
+    { ...bindings[0], id: "h_third", hook_id: "h_third", code_id: "act_3" },
+    { ...bindings[0], id: "h_fourth", hook_id: "h_fourth", code_id: "act_4" },
+  ];
+
+  it.each([
+    ["Third action up", ["h_action", "h_third", "h_second"]],
+    ["Check access down", ["h_second", "h_action", "h_third"]],
+  ])(
+    "moves only one place with three tied bindings: %s",
+    async (label, order) => {
+      const records = tiedBindings.slice(0, 3);
+      const { update } = setup({}, records);
+      const button = await screen.findByRole("button", {
+        name: `Move ${label}`,
+      });
+      fireEvent.click(button);
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+      const priorities = new Map(
+        records.map((hook) => [hook.id, hook.priority]),
+      );
+      for (const [, { id, data }] of update.mock.calls)
+        priorities.set(id, data.priority);
+      expect(
+        [...records]
+          .sort((a, b) => priorities.get(b.id)! - priorities.get(a.id)!)
+          .map((hook) => hook.id),
+      ).toEqual(order);
+      expect(new Set(priorities.values()).size).toBe(3);
+    },
+  );
+
+  it("disables a move when renumbering would change a locked third binding", async () => {
+    const records = tiedBindings
+      .slice(0, 3)
+      .map((hook, index) => (index === 0 ? { ...hook, enforce: true } : hook));
+    const { update } = setup({}, records);
+    const button = await screen.findByRole("button", {
+      name: "Move Third action up",
+    });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rolls back every applied priority when a later update fails", async () => {
+    const update = vi
+      .fn()
+      .mockResolvedValueOnce({ data: {} })
+      .mockResolvedValueOnce({ data: {} })
+      .mockRejectedValueOnce(new Error("Save failed"))
+      .mockResolvedValue({ data: {} });
+    setup({ update }, tiedBindings);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Move Check access down" }),
+    );
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(5));
+    expect(update.mock.calls.slice(3)).toEqual([
+      [
+        "hooks",
+        expect.objectContaining({ id: "h_action", data: { priority: 1 } }),
+      ],
+      [
+        "hooks",
+        expect.objectContaining({ id: "h_second", data: { priority: 1 } }),
+      ],
+    ]);
   });
 
   it("keeps inherited locked bindings visible while disabling mutations", async () => {
