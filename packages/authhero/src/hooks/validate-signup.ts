@@ -12,6 +12,7 @@ import {
   getValidateRegistrationUsernameWebhook,
 } from "./webhooks";
 import { createTokenAPI } from "./helpers/token-api";
+import { runBlockingActions } from "./lifecycle-codehooks";
 
 // Matches WebhookDestination's default delivery timeout.
 const VALIDATE_SIGNUP_WEBHOOK_TIMEOUT_MS = 10_000;
@@ -141,6 +142,26 @@ export async function validateSignupEmail(
       };
     }
   }
+
+  // Stored Actions run synchronously, including when the binding has no
+  // synchronous flag: validation must finish before signup can proceed.
+  const actionValidation = await runBlockingActions(
+    ctx,
+    client.tenant.id,
+    "validate-registration-username",
+    {
+      client,
+      tenant: { id: client.tenant.id },
+      user: { email, connection },
+      request: {
+        method: ctx.req.method,
+        ip: ctx.var.ip || "",
+        user_agent: ctx.var.useragent || "",
+        url: ctx.req.url,
+      },
+    },
+  );
+  if (!actionValidation.allowed) return actionValidation;
 
   // Call webhook if configured
   const validateSignupEmailWebhook =

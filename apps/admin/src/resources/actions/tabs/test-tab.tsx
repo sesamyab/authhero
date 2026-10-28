@@ -26,7 +26,15 @@ import {
 } from "@/utils/domainUtils";
 import { getConfigValue } from "@/utils/runtimeConfig";
 
+import { getTriggerName } from "../../hooks/hookConstants";
+
 const EXAMPLE_EVENTS: Record<string, Record<string, unknown>> = {
+  "validate-registration-username": {
+    user: { email: "newuser@example.com", connection: "email" },
+    client: { client_id: "test-client", name: "Test Client" },
+    tenant: { id: "test-tenant" },
+    request: { ip: "127.0.0.1", method: "POST", url: "/dbconnections/signup" },
+  },
   "post-login": {
     user: {
       user_id: "auth0|example",
@@ -236,7 +244,7 @@ export function TestTab() {
               <SelectContent>
                 {Object.keys(EXAMPLE_EVENTS).map((t) => (
                   <SelectItem key={t} value={t}>
-                    {t}
+                    {getTriggerName(t)}
                   </SelectItem>
                 ))}
               </SelectContent>

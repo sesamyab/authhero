@@ -69,7 +69,7 @@ export function ActionCreate() {
                 label="Trigger"
                 choices={ACTION_TRIGGER_CHOICES}
                 defaultValue="post-login"
-                helperText="The event this action runs on. custom-token-exchange actions are used by a Custom Token Exchange profile instead of a trigger binding."
+                helperText="Choose the event this action supports, then attach it on the Triggers page. Custom Token Exchange actions are selected in a token exchange profile."
               />
               <TextInput source="runtime" defaultValue="webworker" />
             </CardContent>

@@ -162,7 +162,7 @@ export function DetailsTab() {
             source="trigger_id"
             label="Trigger"
             choices={ACTION_TRIGGER_CHOICES}
-            helperText="The event this action runs on."
+            helperText="Choose the event this action supports, then attach it on the Triggers page. Custom Token Exchange actions are selected in a token exchange profile."
           />
           <TextInput source="runtime" />
           {isControlPlane && (

@@ -20,6 +20,13 @@ AuthHero provides a flexible hooks system that allows you to execute custom logi
 - **Form hooks**: Redirect users to custom forms
 - **Page hooks**: Redirect users to custom pages with permission checks
 
+Actions store reusable JavaScript code. A hook connects an Action, webhook, form,
+template, or page to a trigger. The admin Triggers page groups every binding type by
+event. Add a binding to select an Action, webhook, form, template, or page, then
+enable it and set its priority. Actions remain in the Actions library, where
+you edit, test, and deploy their code. Binding types run in separate phases;
+priority orders bindings within a type.
+
 ## Hook Lifecycle
 
 ### User Registration Flow
@@ -65,6 +72,28 @@ When a user signs up, the following hooks are triggered in order:
    - **Idempotent by contract**: each POST carries `Idempotency-Key: {event.id}` so retries dedupe on the receiving side
    - **Self-heals**: if delivery dead-letters, the user's next login re-enqueues the event until it succeeds
    - **Can modify**: Cannot modify user (already created)
+
+### Registration validation Actions
+
+Attach an Action to **Validate Registration Username** on the **Triggers** page,
+or bind it through `PATCH /api/v2/actions/triggers/validate-registration-username/bindings`.
+Select `validate-registration-username` when creating the Action and export:
+
+```javascript
+exports.onExecuteValidateRegistrationUsername = async (event, api) => {
+  if (!event.user.email.endsWith("@example.com")) {
+    api.access.deny("Registration requires an example.com email");
+  }
+};
+```
+
+The event includes `user.email`, `user.connection`, `client`, `tenant`, `request`,
+and `secrets`. There is no user ID yet. Actions run synchronously in priority
+order after the application-configured validation hook and before the validation
+webhook. A denial or execution failure blocks registration and stops later
+Actions. Results appear in Action executions. Disabled bindings are skipped.
+Validation can run on the identifier page and again before user creation, so
+Actions should tolerate repeated calls.
 
 ### User Login Flow
 

@@ -755,16 +755,6 @@ export default (
           resourceKey: "client_grants",
           idKey: "id",
         },
-        forms: {
-          fetch: (client) => client.forms.list(),
-          resourceKey: "forms",
-          idKey: "id",
-        },
-        hooks: {
-          fetch: (client) => client.hooks.list(),
-          resourceKey: "hooks",
-          idKey: "hook_id",
-        },
       };
 
       // Virtual scopes-as-list under resource servers
@@ -789,6 +779,40 @@ export default (
           searchQuery: params.filter?.q,
           searchFields: ["value", "description"],
         });
+      }
+
+      // The unified Triggers view needs every binding, not the SDK's default
+      // first page. Forward paging, sort and search for bindings and forms.
+      if (
+        (resource === "hooks" || resource === "forms") &&
+        !resourcePath.includes("/")
+      ) {
+        const query = {
+          include_totals: true,
+          page: page - 1,
+          per_page: perPage,
+          sort:
+            field && order
+              ? `${field}:${order === "DESC" ? "-1" : "1"}`
+              : undefined,
+          ...params.filter,
+        };
+        const response = await httpClient(
+          `${apiUrl}/api/v2/${resource}?${stringify(query)}`,
+          {
+            headers: createHeaders(tenantId),
+          },
+        );
+        const rows = Array.isArray(response.json)
+          ? response.json
+          : (response.json[resource] ?? []);
+        return {
+          data: rows.map((item: ApiRecord) => ({
+            ...item,
+            id: resource === "hooks" ? (item.hook_id ?? item.id) : item.id,
+          })),
+          total: response.json.total ?? rows.length,
+        };
       }
 
       // Handle SDK resources (only for top-level resources, not nested paths like users/{id}/roles)

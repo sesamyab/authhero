@@ -2,12 +2,16 @@ import { List, DataTable } from "@/components/admin";
 import { useRecordContext } from "ra-core";
 import { InheritedBadge } from "@/components/inheritance/InheritedBadge";
 
+import { getTriggerName } from "../hooks/hookConstants";
+
 function TriggersCell() {
   const record = useRecordContext<{
     supported_triggers?: Array<{ id?: string }>;
   }>();
   if (!record?.supported_triggers?.length) return <>-</>;
-  return <>{record.supported_triggers.map((t) => t.id).join(", ")}</>;
+  return (
+    <>{record.supported_triggers.map((t) => getTriggerName(t.id)).join(", ")}</>
+  );
 }
 
 function SourceCell() {

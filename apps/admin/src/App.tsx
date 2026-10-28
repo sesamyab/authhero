@@ -197,6 +197,7 @@ export function App({ tenantId, initialDomain, onAuthComplete }: AppProps) {
         requireAuth={!!selectedDomain}
       >
         <CustomRoutes>
+          <Route path="/hooks" element={<HookList />} />
           <Route path="/activity" element={<Dashboard />} />
           <Route
             path="/resource-servers/:id/scopes/create"
@@ -277,10 +278,12 @@ export function App({ tenantId, initialDomain, onAuthComplete }: AppProps) {
         <Resource
           name="hooks"
           icon={Webhook}
-          list={HookList}
           create={HooksCreate}
           edit={HookEdit}
-          options={{ menuGroup: "Developer" }}
+          options={{
+            label: "Trigger bindings",
+            menuGroup: "Developer",
+          }}
         />
         <Resource
           name="logs"

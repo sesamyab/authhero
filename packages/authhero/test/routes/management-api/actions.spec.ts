@@ -401,11 +401,10 @@ describe("action-trigger bindings invoke the deployed action code", () => {
     );
     const { id: actionId } = (await createRes.json()) as { id: string };
 
-    // Username validation is a real webhook trigger, but code hooks cannot bind
-    // to it. Reject the request rather than persist an undispatchable binding.
+    // Custom token exchange Actions run through a profile, never a binding.
     const bindRes = await client.actions.triggers[":triggerId"].bindings.$patch(
       {
-        param: { triggerId: "validate-registration-username" },
+        param: { triggerId: "custom-token-exchange" },
         json: {
           bindings: [{ ref: { type: "action_id", value: actionId } }],
         },
@@ -415,11 +414,11 @@ describe("action-trigger bindings invoke the deployed action code", () => {
     );
     expect(bindRes.status).toBe(400);
     expect(await bindRes.text()).toContain(
-      "Trigger validate-registration-username does not support action bindings",
+      "Trigger custom-token-exchange does not support action bindings",
     );
 
     const hooks = await env.data.hooks.list(TENANT, {
-      q: 'trigger_id:"validate-registration-username"',
+      q: 'trigger_id:"custom-token-exchange"',
     });
     expect(
       hooks.hooks.find((h) => "code_id" in h && h.code_id === actionId),
