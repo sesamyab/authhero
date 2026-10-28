@@ -269,6 +269,22 @@ export interface ApplyResolvedBlockResult {
   >;
   /** `<entity>:<key>` of rows that would be/were added, changed or deleted. */
   changes: string[];
+  /**
+   * The same changes as structured rows, so a reader can tell an added row from
+   * a changed one, and a kept one from a removed one. Older senders omit it.
+   */
+  rows: SyncChangeRow[];
+}
+
+export interface SyncChangeRow {
+  entity: keyof ApplyResolvedBlockResult["entities"];
+  /** The row's key (`strategy:name`, identifier, name, `singleton`, ...). */
+  key: string;
+  /**
+   * `skipped`: the tenant has its own row with this key. `delete`: a copy that
+   * is or would be removed (removed only when the apply asked for it).
+   */
+  action: "added" | "changed" | "skipped" | "delete";
 }
 
 const emptyOutcome = (): SyncEntityOutcome => ({
@@ -310,6 +326,7 @@ export async function applyResolvedConfigBlock(
       promptSettings: emptyOutcome(),
     },
     changes: [],
+    rows: [],
   };
 
   const tenant = await target.tenants.get(tenantId);
@@ -378,7 +395,10 @@ export async function applyResolvedConfigBlock(
     try {
       const kind = await fn();
       outcome[kind] += 1;
-      if (kind !== "unchanged") result.changes.push(`${entity}:${label}`);
+      if (kind !== "unchanged") {
+        result.changes.push(`${entity}:${label}`);
+        result.rows.push({ entity, key: label, action: kind });
+      }
     } catch (error) {
       const message = `${entity} ${label}: ${
         error instanceof Error ? error.message : String(error)
@@ -461,6 +481,7 @@ export async function applyResolvedConfigBlock(
   const collides = (entity: keyof typeof ownKeys, key: string) => {
     if (!ownKeys[entity].has(key)) return false;
     result.changes.push(`skip ${entity}:${key} (the tenant has its own)`);
+    result.rows.push({ entity, key, action: "skipped" });
     return true;
   };
 
@@ -659,6 +680,11 @@ export async function applyResolvedConfigBlock(
       const exists = await rowExists(target, tenantId, entry.entity, rowId);
       if (!exists) continue;
       result.changes.push(`delete ${label}`);
+      result.rows.push({
+        entity: entry.entity,
+        key: entry.key,
+        action: "delete",
+      });
       if (options.deletes && !dryRun) {
         await removeRow(target, tenantId, entry.entity, rowId);
         result.entities[entry.entity].deleted += 1;
@@ -699,6 +725,11 @@ export async function applyResolvedConfigBlock(
       const label = `${stale.entity}:${stale.label}`;
       try {
         result.changes.push(`delete ${label}`);
+        result.rows.push({
+          entity: stale.entity,
+          key: stale.label,
+          action: "delete",
+        });
         if (options.prune && !dryRun) {
           await removeRow(target, tenantId, stale.entity, stale.id);
           result.entities[stale.entity].deleted += 1;

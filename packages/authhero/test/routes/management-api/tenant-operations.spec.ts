@@ -216,12 +216,12 @@ describe("management-api tenant operations", () => {
       return { post, seen };
     }
 
-    it("passes dry_run and force on as the operation input", async () => {
+    it("passes dry_run, force and prune on as the operation input", async () => {
       const { post, seen } = await setupSync();
 
       const response = await post({
         kind: "sync-defaults",
-        input: { dry_run: true, force: true },
+        input: { dry_run: true, force: true, prune: true },
       });
 
       expect(response.status).toBe(201);
@@ -230,7 +230,7 @@ describe("management-api tenant operations", () => {
         expect.objectContaining({
           kind: "sync-defaults",
           tenant_id: "tenantId",
-          input: { dry_run: true, force: true },
+          input: { dry_run: true, force: true, prune: true },
         }),
       ]);
     });
