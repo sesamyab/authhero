@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { VerifyConfig } from "./VerifyConfig";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useConfigSyncStatus } from "@/hooks/useConfigSyncStatus";
+import { getBasePath } from "@/utils/runtimeConfig";
 
 function formatTimestamp(value?: string | null): string {
   if (!value) return "never";
@@ -16,15 +16,19 @@ function formatTimestamp(value?: string | null): string {
   return isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-/** Opens the tenant's own admin, which is where its rollouts and operations are. */
+/**
+ * Opens the tenant's own admin, which is where its rollouts and operations
+ * are. Each tenant has a router of its own, so this is a page load, as in the
+ * tenants list, not a navigation inside the current router.
+ */
 function TenantLink({ id }: { id: string }) {
   return (
-    <Link
-      to={`/${encodeURIComponent(id)}`}
+    <a
+      href={`${getBasePath()}/${encodeURIComponent(id)}`}
       className="underline-offset-4 hover:underline"
     >
       {id}
-    </Link>
+    </a>
   );
 }
 
