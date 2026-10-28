@@ -193,8 +193,10 @@ export function TenantOperations() {
     ACTIVE_STATUSES.includes(op.status),
   );
 
-  // Detaching means leaving a parent: not for the control plane (nothing above
-  // it) or a tenant that has already left. Shown while the status is unknown.
+  // Detaching keeps what the tenant holds, so it needs a synced copy of the
+  // inherited config and a parent to leave: not the control plane, not a tenant
+  // that inherits on read (it would lose what it inherits), not one that has
+  // already left. Hidden until the status is known.
   const { status: syncStatus } = useConfigSyncStatus(
     tenantId,
     operations.map((o) => `${o.id}:${o.status}`).join(","),
@@ -202,8 +204,9 @@ export function TenantOperations() {
   // A detached tenant is not synced from anywhere: a sync would be refused.
   const canSync = syncStatus?.config_sync !== "detached";
   const canDetach =
-    !syncStatus ||
-    (syncStatus.config_sync !== "detached" && syncStatus.chain.length > 0);
+    !!syncStatus &&
+    syncStatus.config_sync === "synced" &&
+    syncStatus.chain.length > 0;
   useEffect(() => {
     if (!hasActive) return;
     const interval = setInterval(refresh, POLL_INTERVAL_MS);
@@ -303,24 +306,22 @@ export function TenantOperations() {
         isOpen={detachOpen && canDetach}
         title={`Detach "${tenantId}" from its parent?`}
         content={
-          <div className="flex flex-col gap-3">
+          detachClean ? (
+            <p>
+              The inherited rows are removed from the tenant, platform rows
+              included, and nothing is inherited or synced into it again. Email
+              provider, branding and prompt settings that a sync copied are kept
+              as they are. Run <em>Preview detach</em> with the same option
+              first to see what changes.
+            </p>
+          ) : (
             <p>
               The tenant keeps the config it inherited as its own rows, and
               nothing is inherited or synced into it again. Rows a platform owns
-              stay as copies. Run <em>Preview detach</em> first to see what
-              changes.
+              stay as copies, and so do email provider, branding and prompt
+              settings. Run <em>Preview detach</em> first to see what changes.
             </p>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="detach-clean"
-                checked={detachClean}
-                onCheckedChange={(v) => setDetachClean(v === true)}
-              />
-              <Label htmlFor="detach-clean">
-                Remove the inherited rows instead of keeping them
-              </Label>
-            </div>
-          </div>
+          )
         }
         confirm="Detach"
         confirmColor="warning"
@@ -419,11 +420,28 @@ export function TenantOperations() {
               </>
             )}
             {canDetach && (
+              <div
+                className="flex items-center gap-2"
+                title="Remove the inherited rows instead of keeping them. Email provider, branding and prompt settings are kept either way. Applies to Preview detach and Detach."
+              >
+                <Checkbox
+                  id="detach-clean"
+                  checked={detachClean}
+                  onCheckedChange={(v) => setDetachClean(v === true)}
+                />
+                <Label htmlFor="detach-clean">Remove inherited</Label>
+              </div>
+            )}
+            {canDetach && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  enqueue("detach", { dry_run: true }, "Detach preview")
+                  enqueue(
+                    "detach",
+                    { dry_run: true, ...(detachClean ? { clean: true } : {}) },
+                    "Detach preview",
+                  )
                 }
                 disabled={enqueuing || hasActive}
                 title="Show what detaching this tenant from its parent would do, without writing anything"

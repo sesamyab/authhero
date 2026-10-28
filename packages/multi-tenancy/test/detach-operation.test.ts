@@ -210,6 +210,45 @@ describe("detach operation", () => {
     expect(again.changes).toEqual([]);
   });
 
+  it("refuses a tenant that is not synced, since it would lose what it inherits", async () => {
+    await syncedChild();
+    await raw.tenants.update(CHILD, { config_sync: "inherit-on-read" });
+
+    await expect(
+      createInProcessDetach(raw)(CHILD, { dryRun: true, clean: false }),
+    ).rejects.toThrow(/not synced/);
+    expect((await syRows()).connections).toHaveLength(1);
+  });
+
+  it("previews a hook whose code is kept the same way as the real run", async () => {
+    const code = await raw.hookCode.create(CP, { code: CODE });
+    for (const scope of ["platform", "shared"]) {
+      await raw.hooks.create(CP, {
+        trigger_id: "post-user-login",
+        code_id: code.id,
+        enabled: true,
+        scope,
+      } as never);
+    }
+    const block = await buildResolvedConfigBlock(raw, CHILD, {
+      legacyControlPlane: CP,
+    });
+    await applyResolvedConfigBlock(block, raw, CHILD);
+    const detach = createInProcessDetach(raw);
+
+    const preview = await detach(CHILD, { dryRun: true, clean: false });
+    const real = await detach(CHILD, { dryRun: false, clean: false });
+
+    expect(preview.rows).toEqual(real.rows);
+    expect(real.changes).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^skip hook:h_sy.* \(its code is not converted\)$/,
+        ),
+      ]),
+    );
+  });
+
   it("refuses a tenant with its own database", async () => {
     await raw.tenants.update(CHILD, { deployment_type: "wfp" } as never);
 

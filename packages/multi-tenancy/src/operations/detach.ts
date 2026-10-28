@@ -198,6 +198,14 @@ export function createInProcessDetach(adapters: DataAdapters): DetachConfigFn {
     if (tenant.config_sync === "detached") {
       return { ...result, status: "already-detached" };
     }
+    // Detaching keeps what the tenant holds, so the inherited config has to be
+    // in its database. A tenant that inherits on read has none of it there, and
+    // would lose it silently.
+    if (tenant.config_sync !== "synced") {
+      throw new Error(
+        `Tenant "${tenantId}" is not synced: sync its parent's config into it (config_sync "synced") before detaching, otherwise it would lose what it inherits`,
+      );
+    }
 
     const { dryRun, clean } = options;
     const rows = await readConfigRows(adapters, tenantId);
@@ -324,6 +332,9 @@ export function createInProcessDetach(adapters: DataAdapters): DetachConfigFn {
       }
     } else {
       const newCodeIds = new Map<string, string>();
+      // Code that is, or in a dry run would be, converted: what a hook needs
+      // to be converted too. Platform code is never in it.
+      const plannedCode = new Set<string>();
 
       for (const row of copies.hookCode) {
         if (platformCode.has(row.id)) {
@@ -331,6 +342,7 @@ export function createInProcessDetach(adapters: DataAdapters): DetachConfigFn {
           continue;
         }
         note("hookCode", "convert", row.id);
+        plannedCode.add(row.id);
         await attempt("hookCode", row.id, async () => {
           if (!dryRun) {
             const created = await adapters.hookCode.create(
@@ -352,6 +364,7 @@ export function createInProcessDetach(adapters: DataAdapters): DetachConfigFn {
           continue;
         }
         note("action", "convert", row.name);
+        plannedCode.add(row.id);
         await attempt("action", row.name, async () => {
           if (!dryRun) {
             const created = await adapters.actions.create(
@@ -471,7 +484,10 @@ export function createInProcessDetach(adapters: DataAdapters): DetachConfigFn {
           skipPlatform("hook", key);
           continue;
         }
-        if (codeId && !dryRun && !newCodeIds.has(codeId)) {
+        if (
+          codeId &&
+          !(dryRun ? plannedCode.has(codeId) : newCodeIds.has(codeId))
+        ) {
           result.entities.hook.skipped += 1;
           note("hook", "skip", key, " (its code is not converted)");
           continue;
