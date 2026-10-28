@@ -1,5 +1,5 @@
 import { Edit, SimpleForm } from "@/components/admin";
-import { DeleteButton } from "@/components/admin/delete-button";
+import { InheritedDeleteButton } from "@/components/inheritance/InheritedDeleteButton";
 import { useRecordContext } from "ra-core";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
@@ -87,7 +87,7 @@ export function ConnectionEdit() {
       actions={
         <div className="flex justify-end items-center gap-2">
           <TryConnectionButton />
-          <DeleteButton />
+          <InheritedDeleteButton />
         </div>
       }
     >

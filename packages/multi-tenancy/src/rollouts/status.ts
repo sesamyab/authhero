@@ -80,14 +80,17 @@ export async function getConfigSyncStatus(
 
     const add = async (entity: SyncEntity, list: object[], scoped: string) => {
       for (const row of list) {
+        if (!published(scoped as never, row)) continue;
+        const target = await syncedRowId(entity, tenantId, keyOf(entity, row));
         // A copy an ancestor itself received is credited to where it came from.
+        // When the origin is not in the chain (a parent-less middle tenant that
+        // got its rows from the control plane), the ancestor holding the copy
+        // is the nearest publisher the tenant can see.
         const id =
           (row as { id?: string; hook_id?: string }).id ??
           (row as { hook_id?: string }).hook_id;
-        if (id && isSyncedRowId(id)) continue;
-        if (!published(scoped as never, row)) continue;
-        inherited[await syncedRowId(entity, tenantId, keyOf(entity, row))] =
-          ancestor;
+        if (id && isSyncedRowId(id) && inherited[target]) continue;
+        inherited[target] = ancestor;
       }
     };
     await add("connection", rows.connections, "connection");

@@ -3,6 +3,7 @@ import type { RaRecord } from "ra-core";
 import { Edit, SimpleForm } from "@/components/admin";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
+import { InheritedDeleteButton } from "@/components/inheritance/InheritedDeleteButton";
 import { InheritedFieldset } from "@/components/inheritance/InheritedFieldset";
 import { PublishingFields } from "@/components/inheritance/PublishingFields";
 import { DetailsTab } from "./tabs/details-tab";
@@ -28,6 +29,11 @@ export function ActionEdit() {
   return (
     <Edit
       mutationMode="pessimistic"
+      actions={
+        <div className="flex justify-end items-center gap-2">
+          <InheritedDeleteButton />
+        </div>
+      }
       queryOptions={{
         // `select` has to hand back a record with an id, and `ActionRecord`
         // models the looser form-values shape where every field is optional,
