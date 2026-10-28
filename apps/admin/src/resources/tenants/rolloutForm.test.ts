@@ -1,10 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ROLLOUT_FORM, toCreateRolloutInput } from "./rolloutForm";
+import {
+  ALL_TENANTS,
+  DEFAULT_ROLLOUT_FORM,
+  toCreateRolloutInput,
+} from "./rolloutForm";
 
 describe("toCreateRolloutInput", () => {
   it("turns the defaults into a request", () => {
     expect(toCreateRolloutInput(DEFAULT_ROLLOUT_FORM)).toEqual({
       input: { canary: 1, waves: [10, 50, 100], failure_threshold: 0.1 },
+    });
+  });
+
+  it("leaves the root out for all tenants", () => {
+    const result = toCreateRolloutInput({
+      ...DEFAULT_ROLLOUT_FORM,
+      rootTenantId: ALL_TENANTS,
+    });
+    expect(result).toEqual({
+      input: expect.not.objectContaining({ root_tenant_id: expect.anything() }),
+    });
+  });
+
+  it("ignores a wave left empty", () => {
+    expect(
+      toCreateRolloutInput({
+        ...DEFAULT_ROLLOUT_FORM,
+        waves: ["10", "", "100"],
+      }),
+    ).toEqual({
+      input: { canary: 1, waves: [10, 100], failure_threshold: 0.1 },
     });
   });
 
@@ -31,9 +56,9 @@ describe("toCreateRolloutInput", () => {
   it.each([
     [{ canary: "-1" }, /Canary/],
     [{ canary: "1.5" }, /Canary/],
-    [{ waves: "50, 10" }, /Waves/],
-    [{ waves: "10, 150" }, /Waves/],
-    [{ waves: "" }, /Waves/],
+    [{ waves: ["50", "10"] }, /Waves/],
+    [{ waves: ["10", "150"] }, /Waves/],
+    [{ waves: [""] }, /Waves/],
     [{ failureThreshold: "120" }, /threshold/],
   ])("rejects %j", (patch, message) => {
     const result = toCreateRolloutInput({ ...DEFAULT_ROLLOUT_FORM, ...patch });
