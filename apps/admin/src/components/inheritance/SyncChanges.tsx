@@ -102,7 +102,7 @@ function actionBadge(row: SyncChangeRow, parsed: ParsedSyncResult) {
           variant="outline"
           title="The tenant has its own row with this key, so the parent's is not copied"
         >
-          kept: tenant's own
+          kept: tenant&apos;s own
         </Badge>
       );
     case "delete":
