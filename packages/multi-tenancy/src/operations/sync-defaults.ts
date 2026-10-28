@@ -49,9 +49,15 @@ export function syncErrors(result: ApplyResolvedBlockResult): string[] {
   return Object.values(result.entities).flatMap((outcome) => outcome.errors);
 }
 
+// Per-row error messages kept on the operation: capped, because they come from
+// the database and zod and can be long.
+const MAX_ERROR_MESSAGES = 20;
+const MAX_ERROR_MESSAGE_LENGTH = 300;
+
 /**
  * The JSON-serialisable outcome stored in the operation's `result`: the status,
- * hash, per-entity counts and the changed `entity:key` list. Never row content
+ * hash, per-entity counts, the changed `entity:key` list, the same changes as
+ * structured `rows`, and a capped list of the error messages. Never row content
  * or secrets.
  */
 export function summarizeSyncResult(
@@ -64,6 +70,10 @@ export function summarizeSyncResult(
     status: result.status,
     hash: result.hash,
     changes: result.changes,
+    rows: result.rows ?? [],
+    error_messages: syncErrors(result)
+      .slice(0, MAX_ERROR_MESSAGES)
+      .map((message) => message.slice(0, MAX_ERROR_MESSAGE_LENGTH)),
     entities: Object.fromEntries(
       Object.entries(result.entities).map(([entity, o]) => [
         entity,
