@@ -14,7 +14,7 @@ export type ConfigSyncStatusDeps = Pick<
 export interface ConfigSyncStatus {
   tenant_id: string;
   parent_tenant_id: string | null;
-  config_sync: "inherit-on-read" | "synced";
+  config_sync: "inherit-on-read" | "synced" | "detached";
   config_sync_hash: string | null;
   config_synced_at: string | null;
   /** The hash a sync would store now; null for a tenant that is not synced. */
@@ -42,6 +42,20 @@ export async function getConfigSyncStatus(
 ): Promise<ConfigSyncStatus | null> {
   const tenant = await deps.adapters.tenants.get(tenantId);
   if (!tenant) return null;
+
+  if (tenant.config_sync === "detached") {
+    return {
+      tenant_id: tenantId,
+      parent_tenant_id: null,
+      config_sync: "detached",
+      config_sync_hash: null,
+      config_synced_at: null,
+      expected_hash: null,
+      drifted: false,
+      chain: [],
+      inherited: {},
+    };
+  }
 
   const synced = tenant.config_sync === "synced";
   const legacyControlPlane = await resolveLegacyParent(deps, tenantId);

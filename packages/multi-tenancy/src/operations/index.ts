@@ -29,4 +29,12 @@ export {
   syncOptionsOf,
 } from "./sync-defaults";
 export type { SyncConfigFn, SyncConfigOptions } from "./sync-defaults";
+export {
+  createInProcessDetach,
+  detachErrors,
+  detachOptionsOf,
+  runDetachStep,
+  summarizeDetachResult,
+} from "./detach";
+export type { DetachConfigFn, DetachOptions, DetachResult } from "./detach";
 export { runRecordedTenantOperation } from "./record-provision";

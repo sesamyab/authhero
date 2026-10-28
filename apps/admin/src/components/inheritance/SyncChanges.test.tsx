@@ -86,6 +86,29 @@ describe("SyncChanges", () => {
     expect(screen.queryByText("stale")).toBeNull();
   });
 
+  it("shows the rows of a detach", () => {
+    render(
+      <SyncChanges
+        result={{
+          status: "dry-run",
+          dry_run: true,
+          rows: [
+            { entity: "connection", key: "google", action: "converted" },
+            { entity: "action", key: "platform", action: "kept" },
+            { entity: "hook", key: "h_1", action: "removed" },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("would convert")).toBeTruthy();
+    expect(screen.getByText("would remove")).toBeTruthy();
+    expect(screen.getByText("kept as copy")).toBeTruthy();
+    expect(
+      screen.getByText(/1 to convert, 1 to remove, 1 kept as copy/),
+    ).toBeTruthy();
+  });
+
   it("lists the errors, and says so when there is nothing to change", () => {
     const { rerender } = render(
       <SyncChanges

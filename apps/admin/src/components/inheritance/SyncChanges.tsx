@@ -1,6 +1,17 @@
 import { Badge } from "@/components/ui/badge";
 
-export type SyncChangeAction = "added" | "changed" | "skipped" | "delete";
+/**
+ * `added`, `changed`, `skipped` and `delete` come from a sync; `converted`,
+ * `removed` and `kept` from a detach.
+ */
+export type SyncChangeAction =
+  | "added"
+  | "changed"
+  | "skipped"
+  | "delete"
+  | "converted"
+  | "removed"
+  | "kept";
 
 export interface SyncChangeRow {
   entity: string;
@@ -105,6 +116,27 @@ function actionBadge(row: SyncChangeRow, parsed: ParsedSyncResult) {
           kept: tenant&apos;s own
         </Badge>
       );
+    case "converted":
+      return (
+        <Badge variant="secondary">
+          {parsed.dryRun ? "would convert" : "converted"}
+        </Badge>
+      );
+    case "removed":
+      return (
+        <Badge variant="destructive">
+          {parsed.dryRun ? "would remove" : "removed"}
+        </Badge>
+      );
+    case "kept":
+      return (
+        <Badge
+          variant="outline"
+          title="A platform row runs for the tenant but is hidden from its admins, so it stays as a copy"
+        >
+          kept as copy
+        </Badge>
+      );
     case "delete":
       return parsed.dryRun ? (
         <Badge
@@ -132,6 +164,9 @@ function summary(parsed: ParsedSyncResult): string {
     [count("changed"), parsed.dryRun ? "to change" : "changed"],
     [count("skipped"), "kept"],
     [count("delete"), parsed.dryRun ? "stale" : "removed"],
+    [count("converted"), parsed.dryRun ? "to convert" : "converted"],
+    [count("removed"), parsed.dryRun ? "to remove" : "removed"],
+    [count("kept"), "kept as copy"],
   ]
     .filter(([n]) => n)
     .map(([n, label]) => `${n} ${label}`);

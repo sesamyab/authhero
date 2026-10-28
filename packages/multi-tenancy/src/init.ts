@@ -9,13 +9,19 @@ import {
 import { createSyncHooks, EntitySyncConfig } from "./hooks/sync";
 import { createProvisioningHooks } from "./hooks";
 import {
+  createInProcessDetach,
   createInProcessSyncConfig,
   createInlineExecutor,
   createOperationRecorder,
   enqueueTenantOperation,
+  runDetachStep,
   runSyncDefaultsStep,
 } from "./operations";
-import type { SyncConfigFn, TenantOperationExecutor } from "./operations";
+import type {
+  DetachConfigFn,
+  SyncConfigFn,
+  TenantOperationExecutor,
+} from "./operations";
 import {
   createRolloutController,
   createRolloutWriteHooks,
@@ -111,6 +117,13 @@ export interface MultiTenantConfig extends Omit<
    * (for example a dispatch push to the tenant worker) to reach those.
    */
   syncDefaults?: SyncConfigFn;
+
+  /**
+   * How the `detach` tenant operation reaches a tenant's database. The default
+   * works on tenants that share the control plane's database, in-process, and
+   * refuses tenants with their own worker and database.
+   */
+  detachTenant?: DetachConfigFn;
 
   /**
    * How long each isolate remembers a tenant's `config_sync` mode. The
@@ -272,6 +285,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     resolveControlPlane,
     inheritanceShadow,
     syncDefaults,
+    detachTenant,
     rolloutExecutor,
     sync = { resourceServers: true, roles: true },
     defaultPermissions = ["tenant:admin"],
@@ -360,9 +374,17 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         controlPlaneTenantId,
         resolveControlPlane,
       });
+    const detach = detachTenant ?? createInProcessDetach(rawDataAdapter);
     const inlineExecutor = createInlineExecutor({
       stores,
       definitions: {
+        detach: (operation) => [
+          {
+            name: "detach",
+            run: () =>
+              runDetachStep({ operation, detachTenant: detach, recorder }),
+          },
+        ],
         ...(tenantUpgrade
           ? {
               upgrade: (operation) => [
@@ -389,7 +411,9 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     inlineSyncExecutor = inlineExecutor;
     tenantOperationExecutor ??= {
       engine: inlineExecutor.engine,
-      kinds: tenantUpgrade ? ["upgrade", "sync-defaults"] : ["sync-defaults"],
+      kinds: tenantUpgrade
+        ? ["upgrade", "sync-defaults", "detach"]
+        : ["sync-defaults", "detach"],
       enqueue: (params) =>
         enqueueTenantOperation(
           stores,
@@ -397,7 +421,10 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
           { ...params, tenant_id: params.tenant_id },
           // A sync reports its outcome in the operation row, so a failed run
           // is returned (status "failed") rather than thrown.
-          { returnFailed: params.kind === "sync-defaults" },
+          {
+            returnFailed:
+              params.kind === "sync-defaults" || params.kind === "detach",
+          },
         ),
     };
   }

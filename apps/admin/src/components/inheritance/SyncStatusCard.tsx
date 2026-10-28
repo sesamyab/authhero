@@ -32,6 +32,7 @@ export function SyncStatusCard({
   if (loading || !status) return null;
 
   const synced = status.config_sync === "synced";
+  const detached = status.config_sync === "detached";
 
   return (
     <Card data-testid="sync-status-card">
@@ -44,6 +45,8 @@ export function SyncStatusCard({
             ) : (
               <Badge variant="outline">In sync</Badge>
             )
+          ) : detached ? (
+            <Badge variant="secondary">Detached</Badge>
           ) : (
             <Badge variant="secondary">Inherit on read</Badge>
           )}
@@ -51,7 +54,9 @@ export function SyncStatusCard({
         <CardDescription>
           {synced
             ? "This tenant keeps its own copy of the config it inherits."
-            : "Inherited config is merged in at request time; nothing is copied."}
+            : detached
+              ? "This tenant has left its parent: it reads only its own config and nothing is synced into it."
+              : "Inherited config is merged in at request time; nothing is copied."}
         </CardDescription>
       </CardHeader>
       <CardContent>

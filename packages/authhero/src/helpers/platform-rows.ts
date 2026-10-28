@@ -327,14 +327,19 @@ export function withPlatformRowsHidden(
 
   // The email provider is a singleton without an id, so a synced copy cannot be
   // told from the tenant's own row by id. It is hidden only for tenants that
-  // receive config (they have a parent or are in `synced` mode).
+  // receive config (they have a parent or are in `synced` mode), or that
+  // received it and then left (`detached`), where the copy stays.
   const emailProviderHidden = async (tid: string): Promise<boolean> => {
     const provider = await data.emailProviders.get(tid);
     if ((provider as { scope?: string } | null)?.scope !== "platform") {
       return false;
     }
     const tenant = await data.tenants.get(tid);
-    return !!tenant?.parent_tenant_id || tenant?.config_sync === "synced";
+    return (
+      !!tenant?.parent_tenant_id ||
+      tenant?.config_sync === "synced" ||
+      tenant?.config_sync === "detached"
+    );
   };
   const emailProviders: EmailProvidersAdapter = {
     ...data.emailProviders,

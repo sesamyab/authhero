@@ -10,11 +10,13 @@ import {
   Rocket,
   RefreshCcw,
   Eye,
+  Unlink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Confirm } from "@/components/admin/confirm";
 import {
   Card,
   CardContent,
@@ -33,6 +35,7 @@ import {
 import { LatestSyncCard } from "@/components/inheritance/LatestSyncCard";
 import { SyncChanges } from "@/components/inheritance/SyncChanges";
 import { SyncStatusCard } from "@/components/inheritance/SyncStatusCard";
+import { useConfigSyncStatus } from "@/hooks/useConfigSyncStatus";
 import type {
   AuthHeroDataProvider,
   TenantOperationRecord,
@@ -148,6 +151,8 @@ export function TenantOperations() {
   >({});
   const [enqueuing, setEnqueuing] = useState(false);
   const [prune, setPrune] = useState(false);
+  const [detachOpen, setDetachOpen] = useState(false);
+  const [detachClean, setDetachClean] = useState(false);
   const mounted = useRef(true);
 
   const refresh = useCallback(async () => {
@@ -187,6 +192,21 @@ export function TenantOperations() {
   const hasActive = operations.some((op) =>
     ACTIVE_STATUSES.includes(op.status),
   );
+
+  // Detaching keeps what the tenant holds, so it needs a synced copy of the
+  // inherited config and a parent to leave: not the control plane, not a tenant
+  // that inherits on read (it would lose what it inherits), not one that has
+  // already left. Hidden until the status is known.
+  const { status: syncStatus } = useConfigSyncStatus(
+    tenantId,
+    operations.map((o) => `${o.id}:${o.status}`).join(","),
+  );
+  // A detached tenant is not synced from anywhere: a sync would be refused.
+  const canSync = syncStatus?.config_sync !== "detached";
+  const canDetach =
+    !!syncStatus &&
+    syncStatus.config_sync === "synced" &&
+    syncStatus.chain.length > 0;
   useEffect(() => {
     if (!hasActive) return;
     const interval = setInterval(refresh, POLL_INTERVAL_MS);
@@ -225,8 +245,15 @@ export function TenantOperations() {
   }, [expandedId, operations, loadEvents]);
 
   const enqueue = async (
-    kind: "upgrade" | "sync-defaults",
-    input: { dry_run?: boolean; force?: boolean; prune?: boolean } | undefined,
+    kind: "upgrade" | "sync-defaults" | "detach",
+    input:
+      | {
+          dry_run?: boolean;
+          force?: boolean;
+          prune?: boolean;
+          clean?: boolean;
+        }
+      | undefined,
     label: string,
   ) => {
     if (!tenantId) return;
@@ -275,6 +302,42 @@ export function TenantOperations() {
 
       <LatestSyncCard operations={operations} />
 
+      <Confirm
+        isOpen={detachOpen && canDetach}
+        title={`Detach "${tenantId}" from its parent?`}
+        content={
+          detachClean ? (
+            <p>
+              The inherited rows are removed from the tenant, platform rows
+              included, and nothing is inherited or synced into it again. Email
+              provider, branding and prompt settings that a sync copied are kept
+              as they are. Run <em>Preview detach</em> with the same option
+              first to see what changes.
+            </p>
+          ) : (
+            <p>
+              The tenant keeps the config it inherited as its own rows, and
+              nothing is inherited or synced into it again. Rows a platform owns
+              stay as copies, and so do email provider, branding and prompt
+              settings. Run <em>Preview detach</em> first to see what changes.
+            </p>
+          )
+        }
+        confirm="Detach"
+        confirmColor="warning"
+        ConfirmIcon={Unlink}
+        onConfirm={() => {
+          setDetachOpen(false);
+          void enqueue(
+            "detach",
+            detachClean ? { clean: true } : undefined,
+            "Detach",
+          );
+        }}
+        onClose={() => setDetachOpen(false)}
+        loading={enqueuing}
+      />
+
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="flex flex-col gap-1.5">
@@ -286,17 +349,19 @@ export function TenantOperations() {
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <div
-              className="flex items-center gap-2"
-              title="Also remove synced copies the parent no longer shares. A preview always lists them."
-            >
-              <Checkbox
-                id="sync-prune"
-                checked={prune}
-                onCheckedChange={(v) => setPrune(v === true)}
-              />
-              <Label htmlFor="sync-prune">Remove unshared</Label>
-            </div>
+            {canSync && (
+              <div
+                className="flex items-center gap-2"
+                title="Also remove synced copies the parent no longer shares. A preview always lists them."
+              >
+                <Checkbox
+                  id="sync-prune"
+                  checked={prune}
+                  onCheckedChange={(v) => setPrune(v === true)}
+                />
+                <Label htmlFor="sync-prune">Remove unshared</Label>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -306,50 +371,97 @@ export function TenantOperations() {
               <RefreshCw className="h-4 w-4 mr-1" />
               Refresh
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                enqueue("sync-defaults", { dry_run: true }, "Sync preview")
-              }
-              disabled={enqueuing || hasActive}
-              title="Show what a sync would change, without writing anything"
-            >
-              <Eye className="h-4 w-4 mr-1" />
-              Preview sync
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                enqueue(
-                  "sync-defaults",
-                  { force: true, ...(prune ? { prune: true } : {}) },
-                  "Forced sync",
-                )
-              }
-              disabled={enqueuing || hasActive}
-              title="Apply the config even when the tenant is already up to date"
-            >
-              <RefreshCcw className="h-4 w-4 mr-1" />
-              Force sync
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                enqueue(
-                  "sync-defaults",
-                  prune ? { prune: true } : undefined,
-                  "Sync",
-                )
-              }
-              disabled={enqueuing || hasActive}
-              title="Copy the config this tenant inherits into its own database"
-            >
-              <RefreshCcw className="h-4 w-4 mr-1" />
-              Sync config
-            </Button>
+            {canSync && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    enqueue("sync-defaults", { dry_run: true }, "Sync preview")
+                  }
+                  disabled={enqueuing || hasActive}
+                  title="Show what a sync would change, without writing anything"
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  Preview sync
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    enqueue(
+                      "sync-defaults",
+                      { force: true, ...(prune ? { prune: true } : {}) },
+                      "Forced sync",
+                    )
+                  }
+                  disabled={enqueuing || hasActive}
+                  title="Apply the config even when the tenant is already up to date"
+                >
+                  <RefreshCcw className="h-4 w-4 mr-1" />
+                  Force sync
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    enqueue(
+                      "sync-defaults",
+                      prune ? { prune: true } : undefined,
+                      "Sync",
+                    )
+                  }
+                  disabled={enqueuing || hasActive}
+                  title="Copy the config this tenant inherits into its own database"
+                >
+                  <RefreshCcw className="h-4 w-4 mr-1" />
+                  Sync config
+                </Button>
+              </>
+            )}
+            {canDetach && (
+              <div
+                className="flex items-center gap-2"
+                title="Remove the inherited rows instead of keeping them. Email provider, branding and prompt settings are kept either way. Applies to Preview detach and Detach."
+              >
+                <Checkbox
+                  id="detach-clean"
+                  checked={detachClean}
+                  onCheckedChange={(v) => setDetachClean(v === true)}
+                />
+                <Label htmlFor="detach-clean">Remove inherited</Label>
+              </div>
+            )}
+            {canDetach && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  enqueue(
+                    "detach",
+                    { dry_run: true, ...(detachClean ? { clean: true } : {}) },
+                    "Detach preview",
+                  )
+                }
+                disabled={enqueuing || hasActive}
+                title="Show what detaching this tenant from its parent would do, without writing anything"
+              >
+                <Eye className="h-4 w-4 mr-1" />
+                Preview detach
+              </Button>
+            )}
+            {canDetach && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDetachOpen(true)}
+                disabled={enqueuing || hasActive}
+                title="Make this tenant independent of its parent"
+              >
+                <Unlink className="h-4 w-4 mr-1" />
+                Detach
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={enqueueUpgrade}
@@ -456,7 +568,8 @@ export function TenantOperations() {
                               {operation.error}
                             </p>
                           ) : null}
-                          {operation.kind === "sync-defaults" ? (
+                          {operation.kind === "sync-defaults" ||
+                          operation.kind === "detach" ? (
                             <div className="py-2">
                               <SyncChanges result={operation.result} />
                             </div>
