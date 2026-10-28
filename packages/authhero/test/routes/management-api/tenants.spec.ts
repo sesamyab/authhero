@@ -95,6 +95,22 @@ describe("management-api tenants", () => {
         expect(await get(ctx, "leaf")).toMatchObject({ has_children: false });
         expect(await get(ctx, "other")).toMatchObject({ has_children: false });
       });
+
+      it("matches a parent id with spaces or query syntax literally", async () => {
+        const ctx = await setup();
+        ctx.env.data.multiTenancyConfig = { controlPlaneTenantId: "tenantId" };
+        await seedTenant(ctx.env.data, "odd partner OR other");
+        await seedTenant(ctx.env.data, "leaf");
+        await seedTenant(ctx.env.data, "other");
+        await ctx.env.data.tenants.update("leaf", {
+          parent_tenant_id: "odd partner OR other",
+        });
+
+        expect(await get(ctx, "odd partner OR other")).toMatchObject({
+          has_children: true,
+        });
+        expect(await get(ctx, "other")).toMatchObject({ has_children: false });
+      });
     });
 
     it("returns the settings of the tenant named by the header, not another tenant's", async () => {

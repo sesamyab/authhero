@@ -1,4 +1,7 @@
-import { TenantsDataAdapter } from "@authhero/adapter-interfaces";
+import {
+  TenantsDataAdapter,
+  escapeLuceneValue,
+} from "@authhero/adapter-interfaces";
 
 /**
  * The computed fields the settings routes add to the tenant (not persisted):
@@ -17,7 +20,9 @@ export async function computedTenantFields(
   const { totals } = await tenants.list({
     per_page: 1,
     include_totals: true,
-    ...(isControlPlane ? {} : { q: `parent_tenant_id:${tenantId}` }),
+    ...(isControlPlane
+      ? {}
+      : { q: `parent_tenant_id:${escapeLuceneValue(tenantId)}` }),
   });
   return {
     is_control_plane: isControlPlane,

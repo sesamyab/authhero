@@ -11,6 +11,7 @@ import {
   tenantSchema,
   TenantsDataAdapter,
   LogTypes,
+  escapeLuceneValue,
 } from "@authhero/adapter-interfaces";
 import { deepMergePatch } from "../../utils/deep-merge";
 import { logMessage } from "../../helpers/logging";
@@ -333,7 +334,9 @@ export async function hasChildTenants(
   const { totals } = await ctx.env.data.tenants.list({
     per_page: 1,
     include_totals: true,
-    ...(controlPlane ? {} : { q: `parent_tenant_id:${tenantId}` }),
+    ...(controlPlane
+      ? {}
+      : { q: `parent_tenant_id:${escapeLuceneValue(tenantId)}` }),
   });
   return (totals?.length ?? 0) > (controlPlane ? 1 : 0);
 }

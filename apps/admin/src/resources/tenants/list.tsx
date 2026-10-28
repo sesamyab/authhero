@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { Link } from "react-router-dom";
-import { useListContext, useRecordContext } from "ra-core";
+import { useRecordContext } from "ra-core";
 import { History, Rocket, Users } from "lucide-react";
 import { BadgeField, DataTable, List, TextInput } from "@/components/admin";
 import { CreateButton } from "@/components/admin/create-button";
@@ -109,13 +109,13 @@ function TenantListActions() {
 }
 
 /**
- * The table. The Parent and Config sync columns only say something once a
- * tenant has a parent or is synced, so they are left out until then.
+ * The table. The Parent and Config sync columns are left out only while the
+ * control plane has no other tenant. They do not depend on the rows of the
+ * current page, so they stay put across pages and filters and while a child
+ * tenant is being set up.
  */
 function TenantsTable() {
-  const { data } = useListContext<TenantRecord>();
-  const showInheritance =
-    !data || data.some((t) => t.parent_tenant_id || t.config_sync === "synced");
+  const showInheritance = useHasChildren();
 
   return (
     <DataTable

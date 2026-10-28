@@ -535,6 +535,19 @@ describe("tenant settings: default_client_id validation", () => {
       });
     });
 
+    it("matches a parent id with spaces or query syntax literally", async () => {
+      await createTenant("odd partner OR other");
+      await createTenant("leaf", "odd partner OR other");
+      await createTenant("other");
+
+      expect(await getSettings(as("odd partner OR other"))).toMatchObject({
+        has_children: true,
+      });
+      expect(await getSettings(as("other"))).toMatchObject({
+        has_children: false,
+      });
+    });
+
     it("carries them on the updated settings too", async () => {
       await createTenant("solo");
 
