@@ -126,6 +126,16 @@ export interface MultiTenantConfig extends Omit<
   detachTenant?: DetachConfigFn;
 
   /**
+   * How long each isolate remembers a tenant's `config_sync` mode. The
+   * isolates that did not handle the `PATCH` notice a flip within this time.
+   * It does not cover a cached client bundle, which can keep serving what was
+   * read under the old mode for up to 15 minutes. Lower it for a faster flip at the cost of
+   * one more `tenants.get` per isolate and tenant per period.
+   * @default 10000
+   */
+  configSyncCacheTtlMs?: number;
+
+  /**
    * Starts the per-tenant operations of a fleet rollout. Defaults to the same
    * inline executor as `sync-defaults` requests; Workflows deployments pass
    * `createCloudflareWorkflowsExecutor(...)` so waves run durably.
@@ -315,6 +325,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       }),
       getTenant: async (id) => (await rawDataAdapter.tenants.get(id)) ?? null,
       controlPlaneTenantId,
+      ttlMs: config.configSyncCacheTtlMs,
     });
 
     forgetConfigSyncMode = (tenantId) => configSync.invalidate(tenantId);

@@ -27,18 +27,22 @@ export interface ConfigSyncResolverOptions {
   controlPlaneTenantId?: string;
   /**
    * How long a tenant's mode is remembered, per isolate. A mode change reaches
-   * other isolates within this time. @default 30000
+   * other isolates within this time, so it is also how long to wait after a flip
+   * before judging the result. @default 10000
    */
   ttlMs?: number;
   /** Upper bound on remembered tenants. @default 1000 */
   maxEntries?: number;
 }
 
+/** How long an isolate remembers a tenant's `config_sync` mode. */
+export const DEFAULT_CONFIG_SYNC_TTL_MS = 10_000;
+
 export function createConfigSyncResolver(
   options: ConfigSyncResolverOptions,
 ): ConfigSyncResolver {
   const { base, getTenant, controlPlaneTenantId } = options;
-  const ttlMs = options.ttlMs ?? 30_000;
+  const ttlMs = options.ttlMs ?? DEFAULT_CONFIG_SYNC_TTL_MS;
   const maxEntries = options.maxEntries ?? 1000;
   const cache = new Map<string, { synced: boolean; expires: number }>();
 

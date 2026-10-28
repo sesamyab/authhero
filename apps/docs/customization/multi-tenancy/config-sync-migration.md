@@ -78,7 +78,7 @@ curl -X PATCH https://auth.example.com/api/v2/tenants/settings \
   -d '{"config_sync": "synced"}'
 ```
 
-Or **Settings → Advanced** in the admin UI. The instance that handles the request drops its remembered mode at once; every other instance within 30 seconds. Wait at least a minute before judging the result.
+Or **Settings → Advanced** in the admin UI. The instance that handles the request drops its remembered mode at once; every other instance notices within the mode cache time: 10 seconds by default, or the `configSyncCacheTtlMs` you set in `initMultiTenant`. Wait that time plus a margin before judging the result. If the auth server runs with a cache, logins can take longer: the client bundle (the tenant's client, connections and settings) is kept for 5 minutes and may be served up to 10 minutes more while it refreshes, and purging it on a tenant update is best effort. On such a deployment give the flip up to 15 minutes, or purge the cache, before the smoke tests.
 
 Then repeat the smoke tests from step 3. The tenant now reads only its own database.
 
