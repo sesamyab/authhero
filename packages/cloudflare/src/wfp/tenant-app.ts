@@ -17,9 +17,11 @@ import {
   withRuntimeFallback,
   applyControlPlaneDefaultsPayload,
   applyResolvedConfigBlock,
+  createShadowReporter,
   detachTenantRows,
   markTenantDetached,
   type ControlPlaneDefaultsApplyResult,
+  type InheritanceShadowOptions,
   type ResolvedConfigBlock,
   type ControlPlaneDefaultsPayload,
 } from "@authhero/multi-tenancy";
@@ -148,6 +150,22 @@ export interface WfpTenantAppOptions<Env extends WfpTenantEnv = WfpTenantEnv> {
   signingCertificateAuthority?: (
     env: Env,
   ) => WfpSigningCertificateAuthority | undefined;
+  /**
+   * Shadow mode for config inheritance, run in this worker: after a request is
+   * answered, compare what the projected control-plane rows give this tenant
+   * (the runtime fallback) with what its parent chain resolves to, and log the
+   * differences as `cfgdiff` in this tenant's own logs
+   * (`GET /api/v2/logs?q=type:cfgdiff`, forwarded here). Never changes a
+   * response. The comparison runs under `ctx.waitUntil`, so the Worker keeps
+   * it alive after the response; it is sampled and rate-limited like the
+   * colocated shadow mode. `true` uses the defaults.
+   *
+   * The worker only knows the control plane's rows (the ones projected into its
+   * database) and the tenant's own, so it compares against those. If the
+   * tenant's row names a parent this database lacks, the comparison is skipped;
+   * a deeper chain is checked by _Verify_ on the control plane.
+   */
+  inheritanceShadow?: boolean | InheritanceShadowOptions;
 }
 
 export interface WfpSigningCertificateAuthority {
@@ -469,8 +487,55 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
 
   app.route("/", authheroApp);
 
+  if (options.inheritanceShadow) {
+    // Compare the tenant's own config with what its chain resolves to. Reads
+    // the encrypted layer without the fallback, like the colocated reporter.
+    const reporter = createShadowReporter(
+      encrypted,
+      options.inheritanceShadow === true ? {} : options.inheritanceShadow,
+    );
+    const tenantId =
+      env.TENANT_ID || new URL(env.ISSUER).hostname.split(".")[0]!;
+
+    // The worker only holds the tenant's own row and the projected control-plane
+    // rows. A parent the row names but this database lacks would cut the chain
+    // short and make the comparison report rows as missing that the full chain
+    // supplies, so the comparison is skipped until the whole chain is here. (A
+    // tenant whose row names no parent is compared with the control plane, the
+    // only ancestor the worker can know; for a deeper chain use _Verify_ on the
+    // control plane, which resolves it in full.)
+    let chainComplete: Promise<boolean> | undefined;
+    const hasWholeChain = async (): Promise<boolean> => {
+      let current = await encrypted.tenants.get(tenantId);
+      for (let depth = 0; depth < 5; depth++) {
+        const parent = current?.parent_tenant_id;
+        if (!parent || parent === controlPlaneTenantId) return true;
+        current = await encrypted.tenants.get(parent);
+        if (!current) return false;
+      }
+      return false;
+    };
+
+    shadows.set(app, (request) => {
+      // The internal routes are the control plane's own calls, not traffic.
+      if (new URL(request.url).pathname.startsWith("/internal/")) return;
+      if (tenantId === controlPlaneTenantId) return;
+      return (async () => {
+        if (!(await (chainComplete ??= hasWholeChain()))) return;
+        const comparison = reporter.schedule(tenantId, controlPlaneTenantId);
+        if (comparison) await comparison;
+      })();
+    });
+  }
+
   return app;
 }
+
+/** Runs after a response, per app, when shadow mode is on. */
+const shadows = new WeakMap<
+  Hono,
+  (request: Request) => Promise<void> | undefined
+>();
 
 /**
  * Builds a WFP tenant worker `{ fetch }` handler: key-ring encryption over the
@@ -501,7 +566,14 @@ export function createWfpTenantApp<Env extends WfpTenantEnv = WfpTenantEnv>(
         appPromise = buildTenantApp(env, options);
         cache.set(env, appPromise);
       }
-      return appPromise.then((app) => app.fetch(request, env, ctx));
+      return appPromise.then(async (app) => {
+        const response = await app.fetch(request, env, ctx);
+        // After the response is built, so it never waits for the comparison.
+        const shadow = shadows.get(app)?.(request);
+        // Kept alive after the response, so it never delays it.
+        if (shadow) ctx.waitUntil(shadow);
+        return response;
+      });
     },
   };
 }
