@@ -19,7 +19,7 @@ Background: [per-tenant sync mode](./runtime-fallback.md#per-tenant-sync-mode-co
 - `WFP_INTERNAL_SYNC_SECRET` is set to the same value on the control plane and the tenant worker. A mismatch answers `401`.
 - The tenant worker has `TENANT_ID` set (a push for another tenant is refused with `403 sync_config_tenant_mismatch`).
 - The tenant worker has `CONTROL_PLANE_ENCRYPTION_KEY`, so it can decrypt secrets the control plane encrypted. Without it the push stops with `422 sync_config_key_ring` and nothing is written.
-- [Shadow mode](./runtime-fallback.md#shadow-mode-for-config-inheritance) (`inheritanceShadow`) is on for the host that serves the pilot's traffic. It runs where the fallback adapter runs; it is **not** active in a tenant worker, so a pilot that is served only by its own worker cannot be compared that way. In that case rely on the dry run and the smoke tests below.
+- [Shadow mode](./runtime-fallback.md#shadow-mode-for-config-inheritance) (`inheritanceShadow`) is on for the host that serves the pilot's traffic. It runs where the fallback adapter runs. A pilot served only by its own worker needs it in the worker: `createWfpTenantApp({ inheritanceShadow: true, ... })`, whose `cfgdiff` logs land in the tenant's own logs and are read through the same API. Either way, _Verify_ in step 3 is the check that does not depend on traffic.
 - The tenant is on the parent you intend: check `parent_tenant_id` (empty means the control plane).
 - You hold a **control-plane token**. Only the control plane can change `config_sync`.
 

@@ -441,6 +441,25 @@ GET /api/v2/logs?q=type:cfgdiff
 - Comparisons are limited to one per tenant per `intervalMs` (default 60 s) and
   repeated differences are logged once per hour.
 
+#### In a tenant worker
+
+A tenant with its own worker and database reads the control-plane rows that were
+projected into its own database, so the comparison can run there too. Pass
+`inheritanceShadow` to `createWfpTenantApp`:
+
+```typescript
+createWfpTenantApp({
+  createDataAdapter: (env) => createAdapters(drizzle(env.AUTH_DB)),
+  inheritanceShadow: true, // or { sample: 0.1, intervalMs: 60_000 }
+});
+```
+
+It runs after the response has been built, under `ctx.waitUntil`, so a Worker
+keeps it alive and the request never waits for it. Calls to `/internal/*` (the
+control plane's own pushes) are not compared. The `cfgdiff` logs are written to
+the tenant's own logs, which the control plane reads through the usual logs API
+for that tenant.
+
 ## Migration from @authhero/authhero
 
 If you were using the deprecated `withMainTenantFallback` from `@authhero/authhero`:
