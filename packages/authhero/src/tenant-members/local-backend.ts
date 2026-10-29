@@ -148,7 +148,8 @@ export function createLocalTenantMembersBackend(
             const member: TenantMember = {
               user_id: user.user_id,
               email: user.email || undefined,
-              name: user.name || undefined,
+              // A user who signed up without a name still has something to show.
+              name: user.name || user.nickname || user.username || undefined,
               picture: user.picture || getDefaultUserPicture(issuer, user),
               roles,
             };

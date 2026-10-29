@@ -10,6 +10,7 @@ import type {
   TeamRoleRecord,
 } from "../../auth0DataProvider";
 import { TeamRequestsCard } from "./TeamRequestsCard";
+import { memberInitials, memberLabel } from "./memberDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -204,14 +205,12 @@ export function TeamPage() {
                             <AvatarImage src={member.picture} alt="" />
                           ) : null}
                           <AvatarFallback>
-                            {(member.email || member.name || "?")
-                              .charAt(0)
-                              .toUpperCase()}
+                            {memberInitials(member)}
                           </AvatarFallback>
                         </Avatar>
                         <div>
                           <div className="text-sm font-medium">
-                            {member.name || member.email || member.user_id}
+                            {memberLabel(member)}
                           </div>
                           {member.email && member.name ? (
                             <div className="text-xs text-muted-foreground">

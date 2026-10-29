@@ -11,6 +11,7 @@ import { CoreAdminContext, TestMemoryRouter, testDataProvider } from "ra-core";
 import type { TeamRequestRecord } from "../../auth0DataProvider";
 import { describeTeamRequest, visibleTeamRequests } from "./TeamRequestsCard";
 import { TeamPage } from "./TeamPage";
+import { memberInitials, memberLabel } from "./memberDisplay";
 
 afterEach(() => {
   cleanup();
@@ -60,6 +61,28 @@ describe("describeTeamRequest", () => {
     ],
   ])("describes %j", (patch, text) => {
     expect(describeTeamRequest(request({ id: "x", ...patch }))).toBe(text);
+  });
+});
+
+describe("memberInitials and memberLabel", () => {
+  const member = (patch: Record<string, unknown>) =>
+    ({ user_id: "auth0|77c0", roles: [], ...patch }) as never;
+
+  it.each([
+    [{ name: "Ada Lovelace" }, "AL"],
+    [{ name: "Ada King Lovelace" }, "AL"],
+    [{ name: "admin" }, "A"],
+    [{ email: "new.colleague@example.com" }, "N"],
+    [{ name: "  ", email: "sam@example.com" }, "S"],
+    [{}, "?"],
+  ])("takes the initials of %j", (patch, initials) => {
+    expect(memberInitials(member(patch))).toBe(initials);
+  });
+
+  it("labels by name, then address, then id", () => {
+    expect(memberLabel(member({ name: "Ada", email: "a@x.com" }))).toBe("Ada");
+    expect(memberLabel(member({ email: "a@x.com" }))).toBe("a@x.com");
+    expect(memberLabel(member({}))).toBe("auth0|77c0");
   });
 });
 
