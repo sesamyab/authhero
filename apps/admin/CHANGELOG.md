@@ -1,5 +1,40 @@
 # @authhero/admin
 
+## 0.25.0
+
+### Minor Changes
+
+- e8bf02b: The Team page handles team changes that the server registers as requests (issue #1550): a write that is answered with `202` says the change was requested, a "Requested changes" card lists what is waiting, failed or just done (a failure with its reason), and the page looks again every few seconds while a request is waiting. Against a server that acts at once nothing changes. Team members are shown with their initials and name, falling back to the address and the id.
+- 02d3f45: Support stored Actions for pre/post user update and deletion, including trigger bindings and admin starter code. Pre Actions can deny writes and fail closed on execution errors. Post Actions use the transactional outbox with idempotency keys and sanitized previous-user/update snapshots, or best-effort delivery without an outbox. Preserve accounts and sessions when SCIM or self-service deletion is denied, and support existing control-plane publishing for lifecycle Actions and bindings.
+
+  Protect enforced synced policies from removal through trigger binding replacement, enforce a five-second host deadline for Action execution, and keep deletion cleanup retryable by approving policies before cleanup and committing deletion afterward.
+
+- 5e85ab2: Allow Actions to bind to Validate Registration Username. Run enabled Actions synchronously with the email, connection, client, tenant, request, and secrets; block signup on denial or execution failure and record the execution.
+
+  Combine Hooks and Triggers into one Triggers page for Action, webhook, form, template, and page bindings. Keep the Actions library separate for code, use readable trigger and resource names, and provide one add/edit workflow with compatible binding types. Preserve old hook links and inherited binding protections.
+
+  Search form names in the binding selector and keep priority moves adjacent when bindings share a priority, restoring applied updates if a later save fails. Load blocking Actions with a trigger filter.
+
+### Patch Changes
+
+- 4abef3c: The notice on an inherited row reads as one sentence and has its own tint
+- 1be1b1e: Operations page: the buttons sit on their own wrapping row, coloured by risk, with Refresh, Preview detach and Force sync in a More menu and the remove options as toggle buttons. Config sync changes are shown as a table with coloured actions, and the parent and chain in the Config sync card link to those tenants.
+- fabd8dd: Rollout form without free text: the root tenant is chosen from the tenants that have children, the canary and the failure threshold are number fields, the waves are a list of percentages to add to and remove from, and dry run and force are switches. The form says what is wrong before a rollout is started.
+- c88aa0e: Show what a sync changes. The `sync-defaults` result now also carries `rows` (each change as `{entity, key, action}` with `added`, `changed`, `skipped` or `delete`) and a capped `error_messages`, and the tenant Operations page gets a _Config sync changes_ card with the latest preview and sync grouped by entity, plus the same view in an expanded operation. The operations API now accepts `prune` in a sync's input: it was dropped before, so _Remove unshared_ had no effect.
+- c0344ca: Verify a tenant's config on demand. `GET /api/v2/tenants/{id}/config-sync/verify` compares a tenant's config with what its parents publish, read-only, and answers `ok` with the differences (`missing`, `extra`, `changed`, `stale`, by entity and key, never content) and errors. A tenant that inherits on read is compared the way shadow mode does; a synced tenant is checked with a sync dry run against its own rows, so a deleted or edited copy shows up although the stored hash matches, and a tenant with its own database goes through the `syncDefaults` transport. The tenant's sync status card gets a _Verify_ button.
+- 1485753: Add a `detach` tenant operation: a synced tenant leaves its parent. The copies a sync delivered become the tenant's own rows (or are removed with `clean`), platform rows stay as copies, and the tenant gets the new `config_sync` mode `detached`, no parent and no sync state, so it neither inherits nor is synced again. The tenant Operations page gets _Preview detach_ and _Detach_. `tenants.update` in the kysely and drizzle adapters now clears `parent_tenant_id`, `config_sync_hash` and `config_synced_at` when given an explicit `null`. The tenant has to be `synced` (a tenant that inherits on read would lose what it inherits), email provider, branding and prompt settings are not touched, and a platform email provider stays hidden after a detach. The operation works on tenants in the control plane's database; a transport for tenants with their own database is a follow-up.
+- cf6d9bf: Hide the inheritance controls on tenants that have nothing below them. The tenant settings (`GET`/`PATCH /api/v2/tenants/settings`) carry a computed `has_children` (and, from the multi-tenancy router, `is_control_plane`). The admin hides the _Publishing_ card on a tenant without child tenants, the _Rollouts_ button when the control plane has none, the _Source_ column of connections, hooks and resource servers on a tenant that has no children, no parent and is not synced, and the _Parent_ and _Config sync_ columns of the tenants list while the control plane is the only tenant. It keeps showing them while the answer is loading or when the server does not send it. The count of child tenants quotes the tenant id in its query, and the AWS adapter now filters a `parent_tenant_id:<id>` query by the parent instead of treating it as free text.
+- a780679: Name the tenant an inherited row comes from when the origin is not in the tenant's chain, and leave out the Delete button on an enforced inherited row
+- 2c2b0f2: Remove synced copies a parent stopped sharing: `sync-defaults` takes `input.prune`, the sync detects stale `sy` rows in the tenant's own database (also over the dispatch transport and `/internal/sync-config`), and a dry run lists them. The tenant Operations page gets a _Remove unshared_ option.
+- Updated dependencies [1485753]
+- Updated dependencies [820d44f]
+- Updated dependencies [cf6d9bf]
+- Updated dependencies [02d3f45]
+- Updated dependencies [5e85ab2]
+- Updated dependencies [3bcd1d4]
+- Updated dependencies [1a9d2a9]
+  - @authhero/adapter-interfaces@4.24.0
+
 ## 0.24.1
 
 ### Patch Changes

@@ -1,5 +1,31 @@
 # @authhero/adapter-interfaces
 
+## 4.24.0
+
+### Minor Changes
+
+- 1485753: Add a `detach` tenant operation: a synced tenant leaves its parent. The copies a sync delivered become the tenant's own rows (or are removed with `clean`), platform rows stay as copies, and the tenant gets the new `config_sync` mode `detached`, no parent and no sync state, so it neither inherits nor is synced again. The tenant Operations page gets _Preview detach_ and _Detach_. `tenants.update` in the kysely and drizzle adapters now clears `parent_tenant_id`, `config_sync_hash` and `config_synced_at` when given an explicit `null`. The tenant has to be `synced` (a tenant that inherits on read would lose what it inherits), email provider, branding and prompt settings are not touched, and a platform email provider stays hidden after a detach. The operation works on tenants in the control plane's database; a transport for tenants with their own database is a follow-up.
+- 820d44f: Support OAuth 2.0 Device Authorization Grant (RFC 8628) with u2 code entry, normal login and MFA, explicit approval or denial, and single-use token exchange. Add hashed device-code storage, atomic polling backoff, activation attempt limits, SQL migrations and DynamoDB TTL support, discovery metadata, and the Device Code grant option in the admin UI.
+
+  Optionally return an SVG QR-code image for the complete verification URL, and add independent QR decoding plus browser-level RFC 8628 checks to the conformance runner.
+
+- cf6d9bf: Hide the inheritance controls on tenants that have nothing below them. The tenant settings (`GET`/`PATCH /api/v2/tenants/settings`) carry a computed `has_children` (and, from the multi-tenancy router, `is_control_plane`). The admin hides the _Publishing_ card on a tenant without child tenants, the _Rollouts_ button when the control plane has none, the _Source_ column of connections, hooks and resource servers on a tenant that has no children, no parent and is not synced, and the _Parent_ and _Config sync_ columns of the tenants list while the control plane is the only tenant. It keeps showing them while the answer is loading or when the server does not send it. The count of child tenants quotes the tenant id in its query, and the AWS adapter now filters a `parent_tenant_id:<id>` query by the parent instead of treating it as free text.
+- 02d3f45: Support stored Actions for pre/post user update and deletion, including trigger bindings and admin starter code. Pre Actions can deny writes and fail closed on execution errors. Post Actions use the transactional outbox with idempotency keys and sanitized previous-user/update snapshots, or best-effort delivery without an outbox. Preserve accounts and sessions when SCIM or self-service deletion is denied, and support existing control-plane publishing for lifecycle Actions and bindings.
+
+  Protect enforced synced policies from removal through trigger binding replacement, enforce a five-second host deadline for Action execution, and keep deletion cleanup retryable by approving policies before cleanup and committing deletion afterward.
+
+- 5e85ab2: Allow Actions to bind to Validate Registration Username. Run enabled Actions synchronously with the email, connection, client, tenant, request, and secrets; block signup on denial or execution failure and record the execution.
+
+  Combine Hooks and Triggers into one Triggers page for Action, webhook, form, template, and page bindings. Keep the Actions library separate for code, use readable trigger and resource names, and provide one add/edit workflow with compatible binding types. Preserve old hook links and inherited binding protections.
+
+  Search form names in the binding selector and keep priority moves adjacent when bindings share a priority, restoring applied updates if a later save fails. Load blocking Actions with a trigger filter.
+
+- 3bcd1d4: Add the `tenantMemberRequests` adapter: team-change requests that a shard registers in its own database and the control plane writes the outcome back to (issue #1550). Adds the `tenant_member_requests` table to the drizzle core migrations (`0016`) and a kysely migration, a DynamoDB implementation, and the `tenant-members-request` tenant operation kind. The shard database migration has to be applied before code that writes requests is deployed.
+
+### Patch Changes
+
+- 1a9d2a9: Team changes can be registered as requests (issue #1550). With `tenantMembers.requests` set, the write routes of `/api/v2/tenant-members` store the change as a request on the shard and answer `202`, `GET /api/v2/tenant-members/requests` lists them, and `createControlPlaneRequestNotifier` tells the control plane that one is waiting. The control-plane `tenant-members` resource gets `POST /requests/notify` (`requests.onNotify`), and `executeTenantMemberRequest` carries a request out against the tenant's team after checking the tenant and that the requester is still an administrator. Without the option the routes behave as before. Adds the `add_members` request kind.
+
 ## 4.23.0
 
 ### Minor Changes
