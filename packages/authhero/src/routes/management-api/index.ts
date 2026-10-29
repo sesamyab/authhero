@@ -660,7 +660,10 @@ export default function create(config: AuthHeroConfig) {
   if (config.tenantMembers && !extensionPaths.has("/tenant-members")) {
     managementApp.route(
       "/tenant-members",
-      createTenantMembersRoutes(config.tenantMembers.getBackend),
+      createTenantMembersRoutes(
+        config.tenantMembers.getBackend,
+        config.tenantMembers.requests,
+      ),
     );
   }
 

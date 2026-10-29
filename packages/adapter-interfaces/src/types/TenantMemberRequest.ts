@@ -8,6 +8,7 @@ import { z } from "@hono/zod-openapi";
  */
 export const tenantMemberRequestKindSchema = z.enum([
   "invite",
+  "add_members",
   "remove_members",
   "assign_roles",
   "remove_roles",

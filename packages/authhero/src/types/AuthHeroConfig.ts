@@ -545,6 +545,16 @@ export interface AuthHeroConfig {
    */
   tenantMembers?: {
     getBackend: import("../routes/management-api/tenant-members").GetTenantMembersBackend;
+    /**
+     * Register team changes as requests instead of making them in the request
+     * (issue #1550). Needs `tenantMemberRequests` on the data adapter. A write
+     * then answers `202` with the request id, `GET /tenant-members/requests`
+     * lists them, and `afterRegister` decides what happens next: a shard tells
+     * the control plane (`createControlPlaneRequestNotifier`), a
+     * single-instance deployment runs the request right away. Unset keeps the
+     * synchronous writes.
+     */
+    requests?: import("../tenant-members/requests").TenantMemberRequestsConfig;
   };
 
   /**
