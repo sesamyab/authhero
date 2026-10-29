@@ -40,7 +40,10 @@ function errorMessage(data: unknown, fallback: string): string {
  * team, and reading it as "no team" would hide the real failure.
  */
 function isTeamNotFound(response: ControlPlaneResponse): boolean {
-  return response.status === 404 && response.text?.trim() === "Not found";
+  if (response.status !== 404) return false;
+  // A client that does not report the raw body (`text` is optional) cannot tell
+  // the two apart; keep reading its 404 as a missing team, as before.
+  return response.text === undefined || response.text.trim() === "Not found";
 }
 
 /**

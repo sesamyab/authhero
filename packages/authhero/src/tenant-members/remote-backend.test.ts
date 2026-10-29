@@ -26,6 +26,13 @@ describe("control-plane tenant-members adapter: 404", () => {
     ).rejects.toBeInstanceOf(TenantOrganizationNotFoundError);
   });
 
+  it("keeps reading a 404 as a missing team when the client reports no body", async () => {
+    const adapter = adapterAnswering({ status: 404, data: null });
+    await expect(adapter.listMembers("acme")).rejects.toBeInstanceOf(
+      TenantOrganizationNotFoundError,
+    );
+  });
+
   it.each([
     ["an unmounted route", "404 Not Found"],
     ["an origin page", "<html>Not Found</html>"],
