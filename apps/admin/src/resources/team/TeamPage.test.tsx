@@ -187,12 +187,11 @@ describe("TeamPage", () => {
     expect(screen.getByText("Invite new@example.com")).toBeTruthy();
     expect(screen.getByText("Waiting")).toBeTruthy();
     expect(screen.getByText("Failed")).toBeTruthy();
-    // The reason sits behind an error icon, readable by its label and on hover.
-    const icon = screen.getByLabelText(
-      /Why it failed: .*no longer an administrator/,
-    );
+    // The reason sits behind the Failed badge, readable by its label and on hover.
+    const badge = screen.getByLabelText(/Failed: .*no longer an administrator/);
+    expect(badge.textContent).toBe("Failed");
     expect(screen.queryByText(/no longer an administrator/)).toBeNull();
-    fireEvent.focus(icon);
+    fireEvent.focus(badge);
     expect(
       (await screen.findAllByText(/no longer an administrator/)).length,
     ).toBeGreaterThan(0);

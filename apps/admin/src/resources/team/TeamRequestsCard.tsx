@@ -63,24 +63,6 @@ export function describeTeamRequest(request: TeamRequestRecord): string {
   }
 }
 
-/** Why a request failed: an error icon, with the reason on hover or focus. */
-function FailureReason({ reason }: { reason: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Why it failed: ${reason}`}
-          className="ml-2 inline-flex align-middle text-destructive"
-        >
-          <CircleAlert className="h-4 w-4" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs">{reason}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 function StatusBadge({ request }: { request: TeamRequestRecord }) {
   switch (request.status) {
     case "pending":
@@ -93,8 +75,26 @@ function StatusBadge({ request }: { request: TeamRequestRecord }) {
           Waiting
         </Badge>
       );
-    case "failed":
-      return <Badge variant="destructive">Failed</Badge>;
+    case "failed": {
+      const badge = (
+        <Badge
+          variant="destructive"
+          // Focusable, so the reason is reachable without a mouse.
+          tabIndex={request.error ? 0 : undefined}
+          aria-label={request.error ? `Failed: ${request.error}` : undefined}
+        >
+          <CircleAlert className="mr-1 h-3 w-3" />
+          Failed
+        </Badge>
+      );
+      if (!request.error) return badge;
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>{badge}</TooltipTrigger>
+          <TooltipContent className="max-w-xs">{request.error}</TooltipContent>
+        </Tooltip>
+      );
+    }
     default:
       return (
         <Badge variant="outline" className={CHANGE_TONE_CLASS.add}>
@@ -139,9 +139,6 @@ export function TeamRequestsCard({
                 <span className="ml-2 text-xs text-muted-foreground">
                   {new Date(request.created_at).toLocaleString()}
                 </span>
-                {request.status === "failed" && request.error ? (
-                  <FailureReason reason={request.error} />
-                ) : null}
               </div>
               <StatusBadge request={request} />
             </li>
