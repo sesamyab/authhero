@@ -39,6 +39,8 @@ export interface ControlPlaneResponse {
   status: number;
   /** Parsed JSON body, or null for empty/non-JSON responses. */
   data: unknown;
+  /** The raw response body, for callers that tell plain-text answers apart. */
+  text?: string;
 }
 
 export interface ControlPlaneClient {
@@ -180,7 +182,7 @@ export function createControlPlaneClient(
         }
       }
 
-      return { status: response.status, data };
+      return { status: response.status, data, text };
     },
   };
 }

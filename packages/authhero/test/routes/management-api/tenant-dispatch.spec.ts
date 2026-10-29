@@ -126,4 +126,65 @@ describe("management-api tenantDispatch", () => {
     expect(response.status).toBe(401);
     expect(await response.text()).not.toContain("forwarded:");
   });
+  it("keeps /tenant-members on the control plane when it serves the team itself", async () => {
+    const backend = {
+      listInvitations: async () => [],
+    } as unknown as import("../../../src/tenant-members/types").TenantMembersBackend;
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+      tenantMembers: { getBackend: () => backend },
+    });
+
+    const team = await managementApp.request(
+      "/tenant-members/invitations",
+      { headers: { "tenant-id": "acme" } },
+      env,
+    );
+    // Not forwarded: the local route answered (auth fails, but it is not the
+    // forwarded body).
+    expect(await team.text()).not.toBe("forwarded:acme");
+
+    const other = await managementApp.request(
+      "/clients",
+      { headers: { "tenant-id": "acme" } },
+      env,
+    );
+    expect(await other.text()).toBe("forwarded:acme");
+  });
+
+  it("still forwards /tenant-members when no team backend is mounted", async () => {
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+    });
+
+    const response = await managementApp.request(
+      "/tenant-members/invitations",
+      { headers: { "tenant-id": "acme" } },
+      env,
+    );
+    expect(await response.text()).toBe("forwarded:acme");
+  });
+
+  it("keeps operations and rollouts on the control plane, but not /tenants/settings", async () => {
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+    });
+    const ask = async (path: string) =>
+      (
+        await managementApp.request(
+          path,
+          { headers: { "tenant-id": "acme" } },
+          env,
+        )
+      ).text();
+
+    // The test server mounts the operations and rollouts adapters, so those
+    // routes answer here instead of being forwarded.
+    expect(await ask("/operations/op_1")).not.toBe("forwarded:acme");
+    expect(await ask("/tenants/acme/operations")).not.toBe("forwarded:acme");
+    expect(await ask("/rollouts")).not.toBe("forwarded:acme");
+    // The tenant's own settings, and anything else, still go to its worker.
+    expect(await ask("/tenants/settings")).toBe("forwarded:acme");
+    expect(await ask("/tenants/acme/clients")).toBe("forwarded:acme");
+  });
 });

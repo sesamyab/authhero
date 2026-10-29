@@ -17,7 +17,7 @@ const DEFAULT_SCRIPT_NAME_TEMPLATE = "tenant-{tenant_id}-auth";
  * inert. Serving them from the control plane — where the assets live — keeps
  * zero per-tenant weight.
  */
-const DEFAULT_LOCAL_PATHS = ["/u/widget/"];
+export const DEFAULT_LOCAL_PATHS: readonly string[] = ["/u/widget/"];
 
 export interface WfpForwardOptions {
   /** Tenants adapter, used to look up the resolved tenant's `deployment_type`. */
@@ -50,11 +50,16 @@ export interface WfpForwardOptions {
    * handlers.
    *
    * Use this for shared static assets that only the control plane can serve —
-   * a per-tenant dispatch worker has no static-assets binding. Defaults to
-   * `["/u/widget/"]` (the universal-login widget bundle); pass `[]` to disable
-   * the carve-out entirely, or extend the list for other shared assets.
+   * a per-tenant dispatch worker has no static-assets binding. These are added
+   * to `DEFAULT_LOCAL_PATHS` (the universal-login widget bundle), so a default
+   * added later is not lost by anyone who passes their own list.
    */
   localPaths?: string[];
+  /**
+   * Whether `DEFAULT_LOCAL_PATHS` apply. Defaults to `true`; pass `false` to
+   * dispatch even the default paths and carve out only `localPaths`.
+   */
+  includeDefaultLocalPaths?: boolean;
 }
 
 function isDispatchNamespace(value: unknown): value is DispatchNamespace {
@@ -84,9 +89,9 @@ function fillTemplate(template: string, tenantId: string): string {
  * The tenant worker receives the original request verbatim and owns the full
  * response.
  *
- * Requests whose path matches `localPaths` (default `["/u/widget/"]`) are also
- * never dispatched — they are shared static assets that only the control plane
- * can serve, so a per-tenant worker would 404 them. See `DEFAULT_LOCAL_PATHS`.
+ * Requests whose path matches `DEFAULT_LOCAL_PATHS` (`["/u/widget/"]`) or the
+ * extra `localPaths` are also never dispatched — they are shared static assets
+ * that only the control plane can serve, so a per-tenant worker would 404 them.
  */
 export function createWfpForwardMiddleware(
   options: WfpForwardOptions,
@@ -97,8 +102,13 @@ export function createWfpForwardMiddleware(
     dispatcherBinding = DEFAULT_DISPATCHER_BINDING,
     scriptNameTemplate = DEFAULT_SCRIPT_NAME_TEMPLATE,
     resolveTenantId = (c) => c.req.header("tenant-id"),
-    localPaths = DEFAULT_LOCAL_PATHS,
+    localPaths: extraLocalPaths = [],
+    includeDefaultLocalPaths = true,
   } = options;
+  const localPaths = [
+    ...(includeDefaultLocalPaths ? DEFAULT_LOCAL_PATHS : []),
+    ...extraLocalPaths,
+  ];
 
   return async (c, next) => {
     // Shared static assets (byte-identical across tenants, served only by the
