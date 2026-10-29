@@ -84,28 +84,38 @@ export function TeamPage() {
   const [editing, setEditing] = useState<TeamMemberRecord | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
 
+  // Each load takes a number, and only the newest may write: the poll and a
+  // refresh after a write can overlap, and an older answer arriving last must
+  // not put old data back.
+  const latestLoad = useRef(0);
+
   // `quiet` refreshes without the spinner, for the poll.
   const load = useCallback(
     async (quiet = false) => {
+      const mine = ++latestLoad.current;
       if (!quiet) setLoading(true);
       try {
         const [memberResult, invites, roles, asked] = await Promise.all([
           dataProvider.listTeamMembers({ page: 0, perPage: 100 }),
           dataProvider.listTeamInvitations().catch(() => []),
           dataProvider.listAssignableTeamRoles().catch(() => []),
-          // A server that does not register changes as requests has none.
-          dataProvider.listTeamRequests({ perPage: 20 }).catch(() => []),
+          // A server that does not register changes as requests has none. A
+          // failed read is `null`, so a poll that fails keeps what it showed.
+          dataProvider.listTeamRequests({ perPage: 20 }).catch(() => null),
         ]);
+        if (mine !== latestLoad.current) return;
         setMembers(memberResult.members);
         setInvitations(invites);
         setAssignableRoles(roles);
-        setRequests(asked);
+        if (asked) setRequests(asked);
+        else if (!quiet) setRequests([]);
       } catch {
-        if (!quiet) {
+        if (!quiet && mine === latestLoad.current) {
           notify("Unable to load the team for this tenant", { type: "error" });
         }
       } finally {
-        if (!quiet) setLoading(false);
+        // A newer load ends the spinner itself; an older one must not.
+        if (mine === latestLoad.current) setLoading(false);
       }
     },
     [dataProvider, notify],

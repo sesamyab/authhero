@@ -1,8 +1,14 @@
 import type { TeamMemberRecord } from "../../auth0DataProvider";
 
+/** The text, trimmed, or undefined when there is none worth showing. */
+const text = (value?: string | null) => value?.trim() || undefined;
+
+/** The first character, as a whole code point so an emoji is not cut in two. */
+const firstCharacter = (value: string) => [...value][0] ?? "";
+
 /** The name shown for a member: the name, else the address, else the id. */
 export function memberLabel(member: TeamMemberRecord): string {
-  return member.name || member.email || member.user_id;
+  return text(member.name) ?? text(member.email) ?? member.user_id;
 }
 
 /**
@@ -13,9 +19,10 @@ export function memberLabel(member: TeamMemberRecord): string {
 export function memberInitials(member: TeamMemberRecord): string {
   const words = (member.name ?? "").split(/\s+/).filter(Boolean);
   if (words.length > 1) {
-    return (words[0]![0]! + words[words.length - 1]![0]!).toUpperCase();
+    return (
+      firstCharacter(words[0]!) + firstCharacter(words[words.length - 1]!)
+    ).toUpperCase();
   }
-  const single = words[0] ?? member.email ?? "";
-  const first = single.trim().charAt(0);
+  const first = firstCharacter(words[0] ?? text(member.email) ?? "");
   return first ? first.toUpperCase() : "?";
 }

@@ -92,8 +92,18 @@ describe("memberInitials and memberLabel", () => {
     [{ email: "new.colleague@example.com" }, "N"],
     [{ name: "  ", email: "sam@example.com" }, "S"],
     [{}, "?"],
+    // Whole code points, so an emoji or a rare letter is not cut in two.
+    [{ name: "\u{1D4D0}da \u{1D4DB}ovelace" }, "\u{1D4D0}\u{1D4DB}"],
+    [{ name: "\u{1F600}" }, "\u{1F600}"],
   ])("takes the initials of %j", (patch, initials) => {
     expect(memberInitials(member(patch))).toBe(initials);
+  });
+
+  it("does not take whitespace for a name or an address", () => {
+    expect(memberLabel(member({ name: "  ", email: "a@x.com" }))).toBe(
+      "a@x.com",
+    );
+    expect(memberLabel(member({ name: " ", email: "\t" }))).toBe("auth0|77c0");
   });
 
   it("labels by name, then address, then id", () => {
@@ -256,6 +266,85 @@ describe("TeamPage", () => {
       await vi.advanceTimersByTimeAsync(20000);
     });
     expect(listTeamMembers.mock.calls.length).toBe(settled);
+  });
+
+  it("keeps what it showed, and keeps polling, when a poll cannot read the requests", async () => {
+    vi.useFakeTimers();
+    requests = [request({ id: "a" })];
+    const listTeamRequests = vi
+      .fn()
+      .mockImplementationOnce(async () => requests)
+      .mockImplementation(async () => {
+        throw new Error("network");
+      });
+    renderPage({ listTeamRequests });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText("Invite new@example.com")).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(listTeamRequests.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText("Invite new@example.com")).toBeTruthy();
+  });
+
+  it("does not let an older answer put old data back", async () => {
+    vi.useFakeTimers();
+    requests = [request({ id: "a" })];
+    const member = (id: string) => ({
+      user_id: id,
+      email: `${id}@example.com`,
+      roles: [],
+    });
+    let releaseSlow: (value: unknown) => void = () => {};
+    listTeamMembers
+      .mockImplementationOnce(async () => ({
+        members: [member("first")],
+        start: 0,
+        limit: 100,
+        total: 1,
+      }))
+      // The first poll is slow...
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (releaseSlow = resolve)),
+      )
+      // ...and the second is quick, and newer.
+      .mockImplementation(async () => ({
+        members: [member("newest")],
+        start: 0,
+        limit: 100,
+        total: 1,
+      }));
+    renderPage();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.getByText("newest@example.com")).toBeTruthy();
+
+    await act(async () => {
+      releaseSlow({
+        members: [member("stale")],
+        start: 0,
+        limit: 100,
+        total: 1,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.queryByText("stale@example.com")).toBeNull();
+    expect(screen.getByText("newest@example.com")).toBeTruthy();
   });
 
   it("sends an invitation as a request and says so", async () => {
