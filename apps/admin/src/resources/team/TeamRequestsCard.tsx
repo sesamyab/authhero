@@ -1,6 +1,7 @@
-import { CircleAlert, Loader2 } from "lucide-react";
+import { Check, CircleAlert, Loader2 } from "lucide-react";
 import type { TeamRequestRecord } from "../../auth0DataProvider";
 import { Badge } from "@/components/ui/badge";
+import { CHANGE_TONE_CLASS } from "@/components/inheritance/changeTone";
 import {
   Tooltip,
   TooltipContent,
@@ -95,7 +96,12 @@ function StatusBadge({ request }: { request: TeamRequestRecord }) {
     case "failed":
       return <Badge variant="destructive">Failed</Badge>;
     default:
-      return <Badge variant="outline">Done</Badge>;
+      return (
+        <Badge variant="outline" className={CHANGE_TONE_CLASS.add}>
+          <Check className="mr-1 h-3 w-3" />
+          Done
+        </Badge>
+      );
   }
 }
 

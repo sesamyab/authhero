@@ -198,6 +198,21 @@ describe("TeamPage", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("marks a request that went through as done, in green", async () => {
+    requests = [
+      request({
+        id: "a",
+        status: "succeeded",
+        finished_at: new Date().toISOString(),
+      }),
+    ];
+
+    renderPage();
+
+    const done = await screen.findByText("Done");
+    expect(done.closest("[data-slot=badge]")?.className).toContain("green");
+  });
+
   it("shows nothing extra against a server without requests", async () => {
     renderPage({
       listTeamRequests: vi.fn(async () => {
