@@ -22,7 +22,7 @@ export function createControlPlaneRequestNotifier(
         body: { request_id: request.id },
       });
       if (res.status >= 200 && res.status < 300) {
-        await ctx.env.data.tenantMemberRequests?.update(
+        await ctx.var.data.tenantMemberRequests?.update(
           request.tenant_id,
           request.id,
           { notified_at: new Date().toISOString() },

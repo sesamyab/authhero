@@ -77,6 +77,7 @@ function makeApp(options: {
   app.use(async (c, next) => {
     c.set("tenant_id" as never, "acme" as never);
     c.set("org_name" as never, "acme" as never);
+    c.set("data" as never, { tenantMemberRequests: options.store } as never);
     if (options.sub !== null) {
       c.set(
         "user" as never,
@@ -90,11 +91,9 @@ function makeApp(options: {
     "/tenant-members",
     createTenantMembersRoutes(() => b, options.requests),
   );
-  const env = { data: { tenantMemberRequests: options.store } };
   const call = (path: string, init?: RequestInit) =>
     app.fetch(
       new Request(`http://x/tenant-members${path === "/" ? "" : path}`, init),
-      env as never,
     );
   return { call, backend: b };
 }
@@ -207,6 +206,7 @@ describe("tenant-members writes as requests", () => {
     app.use(async (c, next) => {
       c.set("tenant_id" as never, "acme" as never);
       c.set("org_name" as never, "evil" as never);
+      c.set("data" as never, { tenantMemberRequests: store } as never);
       c.set("user" as never, { sub: "auth0|admin" } as never);
       await next();
     });
@@ -220,7 +220,6 @@ describe("tenant-members writes as requests", () => {
         "http://x/tenant-members",
         json("POST", { user_ids: ["u1"] }),
       ),
-      { data: { tenantMemberRequests: store } } as never,
     );
 
     expect(res.status).toBe(403);
@@ -259,6 +258,7 @@ describe("GET /tenant-members/requests", () => {
 
     const all = await (await call("/requests")).json();
     expect(all.requests).toHaveLength(2);
+    expect(all).toMatchObject({ start: 0, limit: 50, length: 2 });
     const failed = await (await call("/requests?status=failed")).json();
     expect(failed.requests.map((r: { id: string }) => r.id)).toEqual(["tmr_1"]);
   });

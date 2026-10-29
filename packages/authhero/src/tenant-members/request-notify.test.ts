@@ -17,7 +17,7 @@ const request: TenantMemberRequest = {
 
 function ctxWith(update = vi.fn(async () => true)) {
   return {
-    ctx: { env: { data: { tenantMemberRequests: { update } } } } as never,
+    ctx: { var: { data: { tenantMemberRequests: { update } } } } as never,
     update,
   };
 }

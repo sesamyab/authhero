@@ -8,7 +8,6 @@ import { HTTPException } from "hono/http-exception";
 import {
   inviteSchema,
   roleSchema,
-  tenantMemberRequestKindSchema,
   tenantMemberRequestSchema,
   tenantMemberRequestStatusSchema,
   type TenantMemberRequestKind,
@@ -110,7 +109,7 @@ async function registerRequest(
   kind: TenantMemberRequestKind,
   payload: Record<string, unknown>,
 ) {
-  const store = ctx.env.data.tenantMemberRequests;
+  const store = ctx.var.data.tenantMemberRequests;
   if (!store) {
     throw new HTTPException(501, {
       message: "Team change requests are not available on this deployment.",
@@ -469,7 +468,6 @@ export function createTenantMembersRoutes(
       request: {
         query: z.object({
           status: tenantMemberRequestStatusSchema.optional(),
-          kind: tenantMemberRequestKindSchema.optional(),
           page: z.coerce.number().int().min(0).optional(),
           per_page: z.coerce.number().int().min(1).max(100).optional(),
         }),
@@ -482,6 +480,9 @@ export function createTenantMembersRoutes(
             "application/json": {
               schema: z.object({
                 requests: z.array(tenantMemberRequestSchema),
+                start: z.number(),
+                limit: z.number(),
+                length: z.number(),
               }),
             },
           },
@@ -492,19 +493,20 @@ export function createTenantMembersRoutes(
     }),
     handler: async (ctx) => {
       const tenantId = pinnedTenantId(ctx);
-      const store = ctx.env.data.tenantMemberRequests;
+      const store = ctx.var.data.tenantMemberRequests;
       if (!requests || !store) {
         throw new HTTPException(501, {
           message: "Team change requests are not available on this deployment.",
         });
       }
-      const { status, kind, page, per_page } = ctx.req.valid("query");
-      const result = await store.list(tenantId, { status, page, per_page });
-      return ctx.json({
-        requests: kind
-          ? result.requests.filter((r) => r.kind === kind)
-          : result.requests,
-      });
+      const { status, page, per_page } = ctx.req.valid("query");
+      const {
+        requests: rows,
+        start,
+        limit,
+        length,
+      } = await store.list(tenantId, { status, page, per_page });
+      return ctx.json({ requests: rows, start, limit, length });
     },
   });
 
