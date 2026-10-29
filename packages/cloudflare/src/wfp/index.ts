@@ -18,6 +18,11 @@ export {
   createDispatchDetach,
   type DispatchDetachOptions,
 } from "./dispatch-detach";
+export {
+  createDispatchTenantMemberRequestStore,
+  TENANT_MEMBER_REQUESTS_PATH,
+  type DispatchTenantMemberRequestStoreOptions,
+} from "./dispatch-tenant-member-requests";
 
 export {
   createDispatchRenewSigningCertificates,

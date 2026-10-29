@@ -69,6 +69,16 @@ POST /api/v2/tenants/acme/operations
 - **Executors:** the inline executor runs it in the request. On Cloudflare Workflows the same `TenantOperationWorkflow` class handles it (`runSyncDefaultsOperation`, branching on the params' `kind`); the instance retries the step a few times, since a sync is idempotent.
 - Whether a deployment offers a kind depends on its executor: a request for a kind the executor does not run answers `501`. A deployment without an upgrade handler therefore offers `sync-defaults` only.
 
+## Team-change requests (`tenant-members-request`)
+
+`tenant-members-request` carries out a team change that a tenant registered as a request in its own database (see [team changes as requests](./control-plane.md#team-changes-as-requests)). It is started by the shard's notification or by `memberRequests.reconcile`, never through `POST /tenants/{id}/operations`.
+
+- **`input.request_id`** is all the operation holds. What was asked (invitee addresses, user ids) stays on the request row, because anyone who can read operations can read `input`.
+- The step reads the request through a store (in-process for tenants that share the control plane's database, `createDispatchTenantMemberRequestStore` for tenants with their own), runs it against the tenant's team and writes the outcome back to the request.
+- **A request that must not run** (the requester left the team, the payload is wrong) is reported on the request as `failed` with a reason, and the operation itself **succeeds**: the control plane did its job, and nothing retries it. The operation `result` says `outcome: "failed"`.
+- **Any other error** (the database, the team backend, the write-back) fails the operation and leaves the request `pending`, so the sweep tries again. It gives up after five failed runs.
+- It runs once per request: an operation already pending, running or succeeded for the request is returned instead of a new one.
+
 ## Durable provisioning on Cloudflare Workflows
 
 `@authhero/cloudflare-adapter/workflows` runs the full provision sequence as one durable engine instance per tenant:

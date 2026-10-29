@@ -30,6 +30,7 @@ const CONTROL_PLANE_KEY_ID = "cp";
 const SYNC_PATH = "/internal/sync-defaults";
 const SYNC_CONFIG_PATH = "/internal/sync-config";
 const DETACH_PATH = "/internal/detach";
+const TENANT_MEMBER_REQUESTS_PATH = "/internal/tenant-member-requests";
 const RENEW_CERTIFICATES_PATH = "/internal/renew-signing-certificates";
 
 /**
@@ -439,6 +440,93 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
       return c.json(result);
     } catch (err) {
       return errorResponse(c, "detach_failed", err);
+    }
+  });
+
+  // The control plane's access to this tenant's team-change requests (issue
+  // #1550): read one, answer it with the outcome, or list the pending ones.
+  // The requests live only in this database, so the control plane asks for
+  // them here instead of trusting what a notification says.
+  app.post(TENANT_MEMBER_REQUESTS_PATH, async (c) => {
+    const secret = env.WFP_INTERNAL_SYNC_SECRET;
+    const authorization = c.req.header("authorization");
+    if (!secret || authorization !== `Bearer ${secret}`) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+
+    let body: {
+      tenantId?: string;
+      action?: string;
+      id?: string;
+      olderThan?: string;
+      outcome?: {
+        status?: string;
+        result?: Record<string, unknown> | null;
+        error?: string | null;
+      };
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON" }, 400);
+    }
+    if (!body.tenantId) {
+      return c.json({ error: "tenantId is required" }, 400);
+    }
+    if (env.TENANT_ID && body.tenantId !== env.TENANT_ID) {
+      console.error(
+        `[wfp-tenant] member_requests_tenant_mismatch: a request for "${body.tenantId}" reached the worker of "${env.TENANT_ID}"`,
+      );
+      c.header("X-Authhero-Error", "member_requests_tenant_mismatch");
+      return c.json({ error: "member_requests_tenant_mismatch" }, 403);
+    }
+
+    const requests = rawAdapter.tenantMemberRequests;
+    if (!requests) {
+      return c.json({ error: "tenant member requests are not available" }, 501);
+    }
+
+    try {
+      switch (body.action) {
+        case "get": {
+          if (!body.id) return c.json({ error: "id is required" }, 400);
+          const request = await requests.get(body.tenantId, body.id);
+          return request
+            ? c.json(request)
+            : c.json({ error: "not_found" }, 404);
+        }
+        case "report": {
+          const { status, result, error } = body.outcome ?? {};
+          if (!body.id || (status !== "succeeded" && status !== "failed")) {
+            return c.json({ error: "id and a final status are required" }, 400);
+          }
+          // Only a pending request is finished, so a repeat changes nothing.
+          const updated = await requests.update(
+            body.tenantId,
+            body.id,
+            {
+              status,
+              result: result ?? null,
+              error: error ?? null,
+              finished_at: new Date().toISOString(),
+            },
+            "pending",
+          );
+          return c.json({ updated });
+        }
+        case "list_pending": {
+          const list = await requests.list(body.tenantId, {
+            status: "pending",
+            created_before: body.olderThan,
+            per_page: 100,
+          });
+          return c.json({ requests: list.requests });
+        }
+        default:
+          return c.json({ error: "unknown action" }, 400);
+      }
+    } catch (err) {
+      return errorResponse(c, "member_requests_failed", err);
     }
   });
 

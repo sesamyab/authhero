@@ -42,3 +42,17 @@ export {
 } from "./detach";
 export type { DetachConfigFn, DetachOptions, DetachResult } from "./detach";
 export { runRecordedTenantOperation } from "./record-provision";
+export {
+  MAX_MEMBER_REQUEST_ATTEMPTS,
+  createInProcessMemberRequestStore,
+  enqueueTenantMemberRequest,
+  memberRequestIdOf,
+  reconcileTenantMemberRequests,
+  runTenantMembersRequestStep,
+} from "./tenant-members-request";
+export type {
+  ReconcileTenantMemberRequestsDeps,
+  ReconcileTenantMemberRequestsResult,
+  RunTenantMembersRequestParams,
+  TenantMemberRequestStore,
+} from "./tenant-members-request";
