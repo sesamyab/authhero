@@ -33,20 +33,35 @@ function errorMessage(data: unknown, fallback: string): string {
 }
 
 /**
+ * Whether a 404 is the tenant-members resource saying the team (or invitation)
+ * is not there. The resource answers that with the plain-text body `Not found`
+ * (`routes/proxy-control-plane/tenant-members.ts`). Any other 404 — a route
+ * that is not mounted, the zone's origin, a proxy — says nothing about the
+ * team, and reading it as "no team" would hide the real failure.
+ */
+function isTeamNotFound(response: ControlPlaneResponse): boolean {
+  return response.status === 404 && response.text?.trim() === "Not found";
+}
+
+/**
  * Map a non-2xx control-plane response onto an exception. A 4xx passes through
  * with its status; anything else is a 502 — the shard is fine, its upstream is
- * not. 404 is handled by callers (it means "no team / not found"), so it never
- * reaches here.
+ * not. That includes a 404 that is not the resource's own "not found" (see
+ * `isTeamNotFound`): it is an upstream error, not a missing team.
  */
 function toHttpException(
   response: ControlPlaneResponse,
   action: string,
 ): HTTPException {
-  const message = errorMessage(
-    response.data,
-    `Control plane failed to ${action} (status ${response.status})`,
-  );
-  if (response.status >= 400 && response.status < 500) {
+  const failure = `Control plane failed to ${action} (status ${response.status})`;
+  // The body of a stray 404 is whatever answered, so name the status ourselves.
+  const message =
+    response.status === 404 ? failure : errorMessage(response.data, failure);
+  if (
+    response.status >= 400 &&
+    response.status < 500 &&
+    response.status !== 404
+  ) {
     return new HTTPException(response.status as 400, { message });
   }
   return new HTTPException(502, { message });
@@ -92,7 +107,7 @@ export function createControlPlaneTenantMembersAdapter(
           q: params.q,
         })}`,
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 200) {
@@ -115,7 +130,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/members`,
         body: { tenant_id: tenantId, user_ids: userIds },
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 204 && response.status !== 200) {
@@ -131,7 +146,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/members`,
         body: { tenant_id: tenantId, user_ids: userIds },
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 204 && response.status !== 200) {
@@ -149,7 +164,7 @@ export function createControlPlaneTenantMembersAdapter(
         method: "GET",
         path: `${basePath}/members/${encodeURIComponent(userId)}/roles${query({ tenant_id: tenantId })}`,
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 200) {
@@ -170,7 +185,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/members/${encodeURIComponent(userId)}/roles`,
         body: { tenant_id: tenantId, roles: roleIds },
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 204 && response.status !== 200) {
@@ -190,7 +205,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/members/${encodeURIComponent(userId)}/roles`,
         body: { tenant_id: tenantId, roles: roleIds },
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 204 && response.status !== 200) {
@@ -213,7 +228,7 @@ export function createControlPlaneTenantMembersAdapter(
           q: params.q,
         })}`,
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 200) {
@@ -236,7 +251,7 @@ export function createControlPlaneTenantMembersAdapter(
           per_page: params.per_page,
         })}`,
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 200) {
@@ -256,7 +271,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/invitations`,
         body: { tenant_id: tenantId, ...input },
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 201 && response.status !== 200) {
@@ -275,7 +290,7 @@ export function createControlPlaneTenantMembersAdapter(
         method: "DELETE",
         path: `${basePath}/invitations/${encodeURIComponent(invitationId)}${query({ tenant_id: tenantId })}`,
       });
-      if (response.status === 404) {
+      if (isTeamNotFound(response)) {
         throw new TenantOrganizationNotFoundError(tenantId);
       }
       if (response.status !== 204 && response.status !== 200) {

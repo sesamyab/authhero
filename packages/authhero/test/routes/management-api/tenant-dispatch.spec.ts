@@ -164,4 +164,27 @@ describe("management-api tenantDispatch", () => {
     );
     expect(await response.text()).toBe("forwarded:acme");
   });
+
+  it("keeps operations and rollouts on the control plane, but not /tenants/settings", async () => {
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+    });
+    const ask = async (path: string) =>
+      (
+        await managementApp.request(
+          path,
+          { headers: { "tenant-id": "acme" } },
+          env,
+        )
+      ).text();
+
+    // The test server mounts the operations and rollouts adapters, so those
+    // routes answer here instead of being forwarded.
+    expect(await ask("/operations/op_1")).not.toBe("forwarded:acme");
+    expect(await ask("/tenants/acme/operations")).not.toBe("forwarded:acme");
+    expect(await ask("/rollouts")).not.toBe("forwarded:acme");
+    // The tenant's own settings, and anything else, still go to its worker.
+    expect(await ask("/tenants/settings")).toBe("forwarded:acme");
+    expect(await ask("/tenants/acme/clients")).toBe("forwarded:acme");
+  });
 });

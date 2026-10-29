@@ -92,6 +92,7 @@ export {
   createWfpProvisionerSteps,
   createWfpTenantProvisioningHook,
   createWfpForwardMiddleware,
+  DEFAULT_LOCAL_PATHS,
   CloudflareApiClient,
   CloudflareApiError,
 } from "./wfp-provisioner";

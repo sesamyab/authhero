@@ -95,8 +95,31 @@ import { createServiceToken } from "../../helpers/service-token";
 // apart. `Vary: Origin` is deliberately not set here — the call sites append
 // it even when the origin isn't allowed, so caches never serve one origin's
 // allow/deny decision to another.
-/** `/tenant-members` and anything below it, with or without an `/api/v2` prefix. */
-const TENANT_MEMBERS_PATH = /\/tenant-members(\/|$)/;
+/**
+ * The paths below that this app mounts and serves from the control plane's own
+ * database, matched with or without an `/api/v2` prefix. A request for one of
+ * them must not be forwarded to a tenant's worker: the worker does not hold
+ * that data (and does not mount the routes), so a forwarded request either
+ * calls back up to the control plane or answers 404 (#1632).
+ *
+ * Only paths whose route is actually mounted are listed, in step with the
+ * checks that mount them further down. `/tenants/settings` is not among them:
+ * that one is the tenant's own and stays with its worker.
+ */
+function controlPlanePaths(
+  config: AuthHeroConfig,
+  data: DataAdapters,
+): RegExp | undefined {
+  const paths: string[] = [];
+  if (config.tenantMembers) paths.push("tenant-members");
+  if (data.tenantOperations && data.tenantOperationEvents) {
+    paths.push("operations", "tenants/[^/]+/operations");
+    if (data.rollouts) paths.push("rollouts");
+  }
+  return paths.length
+    ? new RegExp(`/(?:${paths.join("|")})(?:/|$)`)
+    : undefined;
+}
 
 function setCorsHeaders(headers: Headers, allowedOrigin: string) {
   headers.set("Access-Control-Allow-Origin", allowedOrigin);
@@ -251,14 +274,15 @@ export default function create(config: AuthHeroConfig) {
   // next() for the control-plane tenant, non-wfp tenants, etc.).
   if (config.tenantDispatch) {
     const dispatch = config.tenantDispatch;
-    // A team is a control-plane organization the tenant's own database does not
-    // hold. When `tenantMembers` is mounted here it reads that organization
-    // directly, so these requests stay on this app. Forwarded, the tenant worker
-    // would have to call back up to the control plane, an extra hop that fails
-    // wherever the worker cannot reach the control plane's own hostname (#1632).
-    const servesTeamLocally = config.tenantMembers !== undefined;
+    // A team is a control-plane organization, and operations and rollouts are
+    // control-plane records; the tenant's own database holds none of them.
+    // Where this app mounts those routes it reads them directly, so the
+    // requests stay here. Forwarded, the tenant worker would have to call back
+    // up to the control plane, an extra hop that fails wherever the worker
+    // cannot reach the control plane's own hostname (#1632).
+    const controlPlanePath = controlPlanePaths(config, managementAdapter);
     app.use(async (ctx, next) => {
-      if (servesTeamLocally && TENANT_MEMBERS_PATH.test(ctx.req.path)) {
+      if (controlPlanePath?.test(ctx.req.path)) {
         return next();
       }
       return dispatch(ctx, next);

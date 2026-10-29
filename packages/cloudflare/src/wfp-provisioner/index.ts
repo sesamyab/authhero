@@ -21,7 +21,7 @@ export type {
   WfpTenantProvisioningHook,
   WfpTenantProvisioningHookOptions,
 } from "./tenant-hook";
-export { createWfpForwardMiddleware } from "./wfp-forward";
+export { createWfpForwardMiddleware, DEFAULT_LOCAL_PATHS } from "./wfp-forward";
 export type { WfpForwardOptions } from "./wfp-forward";
 export { CloudflareApiClient, CloudflareApiError } from "./cf-api";
 export type {

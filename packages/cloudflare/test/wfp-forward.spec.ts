@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import type { Tenant, TenantsDataAdapter } from "@authhero/adapter-interfaces";
-import { createWfpForwardMiddleware } from "../src";
+import { createWfpForwardMiddleware, DEFAULT_LOCAL_PATHS } from "../src";
 
 const CONTROL_PLANE = "main";
 
@@ -102,13 +102,13 @@ describe("createWfpForwardMiddleware localPaths carve-out", () => {
     ]);
   });
 
-  it("honours a custom localPaths list", async () => {
+  it("adds localPaths to the defaults instead of replacing them", async () => {
     const { namespace, dispatched } = dispatcher();
     const app = buildApp(
       createWfpForwardMiddleware({
         tenants: tenantsAdapter(async () => tenant()),
         controlPlaneTenantId: CONTROL_PLANE,
-        localPaths: ["/u/widget/", "/shared-assets/"],
+        localPaths: ["/shared-assets/"],
       }),
       { DISPATCHER: namespace },
     );
@@ -125,13 +125,17 @@ describe("createWfpForwardMiddleware localPaths carve-out", () => {
     expect(dispatched).toHaveLength(0);
   });
 
-  it("dispatches /u/widget/* when the carve-out is disabled with []", async () => {
+  it("exports the default list so callers can read it", () => {
+    expect(DEFAULT_LOCAL_PATHS).toEqual(["/u/widget/"]);
+  });
+
+  it("dispatches /u/widget/* when the defaults are switched off", async () => {
     const { namespace, dispatched } = dispatcher();
     const app = buildApp(
       createWfpForwardMiddleware({
         tenants: tenantsAdapter(async () => tenant()),
         controlPlaneTenantId: CONTROL_PLANE,
-        localPaths: [],
+        includeDefaultLocalPaths: false,
       }),
       { DISPATCHER: namespace },
     );

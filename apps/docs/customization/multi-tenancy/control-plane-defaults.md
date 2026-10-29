@@ -689,15 +689,18 @@ is on the main entry; the sync helpers are on the `@authhero/cloudflare-adapter/
 subpath, whose `authhero` + `@authhero/multi-tenancy` peers are **optional** —
 install them only if you import `/wfp`.
 
-- **`createWfpForwardMiddleware({ tenants, controlPlaneTenantId, dispatcherBinding?, scriptNameTemplate?, resolveTenantId?, localPaths? })`**
+- **`createWfpForwardMiddleware({ tenants, controlPlaneTenantId, dispatcherBinding?, scriptNameTemplate?, resolveTenantId?, localPaths?, includeDefaultLocalPaths? })`**
   → Hono `MiddlewareHandler` — forwards a resolved tenant's request to its WFP
   worker over the dispatch namespace. Control-plane / shared / unknown tenants,
   and `wfp` tenants not yet `provisioning_state === "ready"`, fall through to the
-  local app. Requests matching `localPaths` (default `["/u/widget/"]`) are never
-  dispatched either — they are shared static assets (the universal-login widget
+  local app. Requests matching `DEFAULT_LOCAL_PATHS` (`["/u/widget/"]`, exported) or the
+  extra `localPaths` you pass are never dispatched either — they are shared static assets (the universal-login widget
   bundle) that only the control plane can serve, so a per-tenant dispatch worker
-  would 404 them; they fall through so the control-plane app serves them. Pass
-  `localPaths: []` to disable the carve-out. Pass it as `init`'s `tenantDispatch`
+  would 404 them; they fall through so the control-plane app serves them. `localPaths` are added to the defaults; pass
+  `includeDefaultLocalPaths: false` to carve out only your own. Control-plane
+  routes that authhero itself mounts (`/tenant-members`, `/operations`,
+  `/tenants/:id/operations`, `/rollouts`) are never dispatched when
+  `tenantDispatch` is set, so they need no entry here. Pass it as `init`'s `tenantDispatch`
   config so it is mounted inside
   authhero's management API **after** the CORS middleware — then the central CORS
   middleware applies the `Access-Control-Allow-*` headers to the dispatched
