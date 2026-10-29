@@ -29,6 +29,12 @@ Each endpoint requires a specific Auth0-style scope (e.g. `read:users`, `create:
 
 ## Auth API Endpoints
 
+### GET /authorize
+
+Starts an OAuth 2.0 / OpenID Connect login flow. See the
+[Authorize endpoint reference](/api/authorize) for request parameters and examples,
+including selecting a language with `ui_locales`.
+
 ### POST /oauth/token
 
 Exchanges credentials for access tokens. Supports multiple grant types.
