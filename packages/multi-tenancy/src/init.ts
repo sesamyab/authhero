@@ -5,6 +5,8 @@ import {
   DataAdapters,
   Tenant,
   CreateTenantParams,
+  type ExecuteTenantMemberRequestOptions,
+  type TenantMembersBackend,
 } from "authhero";
 import { createSyncHooks, EntitySyncConfig } from "./hooks/sync";
 import { createProvisioningHooks } from "./hooks";
@@ -12,14 +14,21 @@ import {
   createInProcessDetach,
   createInProcessSyncConfig,
   createInlineExecutor,
+  createInProcessMemberRequestStore,
   createOperationRecorder,
+  enqueueTenantMemberRequest,
   enqueueTenantOperation,
+  reconcileTenantMemberRequests,
   runDetachStep,
   runSyncDefaultsStep,
+  runTenantMembersRequestStep,
 } from "./operations";
 import type {
   DetachConfigFn,
+  ReconcileTenantMemberRequestsDeps,
+  ReconcileTenantMemberRequestsResult,
   SyncConfigFn,
+  TenantMemberRequestStore,
   TenantOperationExecutor,
 } from "./operations";
 import {
@@ -127,6 +136,28 @@ export interface MultiTenantConfig extends Omit<
   detachTenant?: DetachConfigFn;
 
   /**
+   * Carries out the team changes that tenants register as requests (issue
+   * #1550) as `tenant-members-request` tenant operations, and answers the
+   * request with the outcome. Needs the tenant operations adapters, and
+   * returns `memberRequests` for the notify endpoint and the scheduled sweep.
+   */
+  tenantMemberRequests?: {
+    /**
+     * The control-plane team backend, built without a request in hand
+     * (`createLocalTenantMembersBackend` bound to the control-plane database).
+     */
+    getBackend: () => TenantMembersBackend | Promise<TenantMembersBackend>;
+    /**
+     * How the requests are read and answered. The default reaches tenants that
+     * share the control plane's database; pass a transport (for example a
+     * dispatch push to the tenant worker) for tenants with their own database.
+     */
+    store?: TenantMemberRequestStore;
+    /** Who may still ask. See `executeTenantMemberRequest`. */
+    isRequesterAllowed?: ExecuteTenantMemberRequestOptions["isRequesterAllowed"];
+  };
+
+  /**
    * How long each isolate remembers a tenant's `config_sync` mode. The
    * isolates that did not handle the `PATCH` notice a flip within this time.
    * It does not cover a cached client bundle, which can keep serving what was
@@ -214,6 +245,34 @@ export interface MultiTenantResult {
    * ```
    */
   rollouts?: RolloutDeps;
+  /**
+   * Present when `tenantMemberRequests` is configured and the control plane
+   * carries the tenant operations adapters.
+   *
+   * ```typescript
+   * // proxyControlPlane.tenantMembers.requests
+   * onNotify: (_c, tenantId, requestId) =>
+   *   memberRequests.enqueue(tenantId, requestId).then(() => {}),
+   * // and in a scheduled handler, because a tenant worker cannot run a cron
+   * await memberRequests.reconcile();
+   * ```
+   */
+  memberRequests?: {
+    /** Runs the request for a tenant, once however often it is called. */
+    enqueue(
+      tenantId: string,
+      requestId: string,
+    ): ReturnType<typeof enqueueTenantMemberRequest>;
+    /** Finds requests that were never run, or whose run failed, and runs them. */
+    reconcile(
+      options?: Partial<
+        Pick<
+          ReconcileTenantMemberRequestsDeps,
+          "tenantIds" | "graceMs" | "maxAttempts"
+        >
+      >,
+    ): Promise<ReconcileTenantMemberRequestsResult>;
+  };
 }
 
 /**
@@ -287,6 +346,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     inheritanceShadow,
     syncDefaults,
     detachTenant,
+    tenantMemberRequests,
     rolloutExecutor,
     sync = { resourceServers: true, roles: true },
     defaultPermissions = ["tenant:admin"],
@@ -360,6 +420,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
   // `tenantOperationExecutor` (e.g. Cloudflare Workflows) to override.
   let tenantOperationExecutor = restConfig.tenantOperationExecutor;
   let inlineSyncExecutor: TenantOperationExecutor | undefined;
+  let memberRequests: MultiTenantResult["memberRequests"];
   if (rawDataAdapter.tenantOperations && rawDataAdapter.tenantOperationEvents) {
     const stores = {
       tenantOperations: rawDataAdapter.tenantOperations,
@@ -376,6 +437,11 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         resolveControlPlane,
       });
     const detach = detachTenant ?? createInProcessDetach(rawDataAdapter);
+    const memberRequestStore: TenantMemberRequestStore | undefined =
+      tenantMemberRequests
+        ? (tenantMemberRequests.store ??
+          createInProcessMemberRequestStore(rawDataAdapter))
+        : undefined;
     const inlineExecutor = createInlineExecutor({
       stores,
       definitions: {
@@ -413,9 +479,55 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
             run: () => runSyncDefaultsStep({ operation, syncConfig, recorder }),
           },
         ],
+        ...(memberRequestStore && tenantMemberRequests
+          ? {
+              "tenant-members-request": (operation) => [
+                {
+                  name: "tenant-members-request",
+                  run: () =>
+                    runTenantMembersRequestStep({
+                      operation,
+                      store: memberRequestStore,
+                      getBackend: tenantMemberRequests.getBackend,
+                      recorder,
+                      executeOptions: {
+                        isRequesterAllowed:
+                          tenantMemberRequests.isRequesterAllowed,
+                      },
+                    }),
+                },
+              ],
+            }
+          : {}),
       },
     });
     inlineSyncExecutor = inlineExecutor;
+    if (memberRequestStore) {
+      const deps = { stores, executor: inlineExecutor };
+      memberRequests = {
+        enqueue: (tenantId, requestId) =>
+          enqueueTenantMemberRequest(deps, tenantId, requestId),
+        reconcile: (options = {}) =>
+          reconcileTenantMemberRequests({
+            ...deps,
+            store: memberRequestStore,
+            tenantIds:
+              options.tenantIds ??
+              (async () =>
+                (
+                  await fetchAll<Tenant>(
+                    (params) => rawDataAdapter.tenants.list(params),
+                    "tenants",
+                    { cursorField: "id", pageSize: 100 },
+                  )
+                )
+                  .map((tenant) => tenant.id)
+                  .filter((id) => id !== controlPlaneTenantId)),
+            graceMs: options.graceMs,
+            maxAttempts: options.maxAttempts,
+          }),
+      };
+    }
     tenantOperationExecutor ??= {
       engine: inlineExecutor.engine,
       kinds: tenantUpgrade
@@ -621,5 +733,10 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     ],
   });
 
-  return { app, controlPlaneTenantId, rollouts: rolloutDeps };
+  return {
+    app,
+    controlPlaneTenantId,
+    rollouts: rolloutDeps,
+    memberRequests,
+  };
 }
