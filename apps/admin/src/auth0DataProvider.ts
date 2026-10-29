@@ -508,10 +508,16 @@ export interface AuthHeroDataProvider extends DataProvider {
     limit: number;
     total: number;
   }>;
-  addTeamMembers: (userIds: string[]) => Promise<void>;
-  removeTeamMembers: (userIds: string[]) => Promise<void>;
-  assignTeamMemberRoles: (userId: string, roleIds: string[]) => Promise<void>;
-  removeTeamMemberRoles: (userId: string, roleIds: string[]) => Promise<void>;
+  addTeamMembers: (userIds: string[]) => Promise<TeamChangeResult>;
+  removeTeamMembers: (userIds: string[]) => Promise<TeamChangeResult>;
+  assignTeamMemberRoles: (
+    userId: string,
+    roleIds: string[],
+  ) => Promise<TeamChangeResult>;
+  removeTeamMemberRoles: (
+    userId: string,
+    roleIds: string[],
+  ) => Promise<TeamChangeResult>;
   listAssignableTeamRoles: (q?: string) => Promise<TeamRoleRecord[]>;
   listTeamInvitations: () => Promise<TeamInvitationRecord[]>;
   createTeamInvitation: (input: {
@@ -519,8 +525,52 @@ export interface AuthHeroDataProvider extends DataProvider {
     inviterName?: string;
     roles?: string[];
     sendInvitationEmail?: boolean;
-  }) => Promise<TeamInvitationRecord>;
-  revokeTeamInvitation: (invitationId: string) => Promise<void>;
+  }) => Promise<TeamChangeResult & { invitation?: TeamInvitationRecord }>;
+  revokeTeamInvitation: (invitationId: string) => Promise<TeamChangeResult>;
+  /**
+   * The team changes this tenant asked for, newest first (issue #1550). Only
+   * a server that registers changes as requests has them: 501 / 404 / 403
+   * otherwise.
+   */
+  listTeamRequests: (params?: {
+    status?: TeamRequestStatus;
+    perPage?: number;
+  }) => Promise<TeamRequestRecord[]>;
+}
+
+/**
+ * What a team write came back with. A server that registers changes as
+ * requests answers `202`: the change was accepted and the control plane
+ * carries it out, which the request's `status` then tells. A server that acts
+ * at once answers 2xx with `requested: false`.
+ */
+export type TeamChangeResult =
+  | { requested: false }
+  | { requested: true; id: string; status: TeamRequestStatus };
+
+export type TeamRequestStatus = "pending" | "succeeded" | "failed";
+
+export type TeamRequestKind =
+  | "invite"
+  | "add_members"
+  | "remove_members"
+  | "assign_roles"
+  | "remove_roles"
+  | "revoke_invitation";
+
+export interface TeamRequestRecord {
+  id: string;
+  kind: TeamRequestKind;
+  status: TeamRequestStatus;
+  requested_by: string;
+  payload: Record<string, unknown>;
+  /** What the request produced, for example `{ invitation_id }`. */
+  result?: Record<string, unknown> | null;
+  /** Why a `failed` request failed. */
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string | null;
 }
 
 export interface TeamRoleRecord {
@@ -544,6 +594,20 @@ export interface TeamInvitationRecord {
   inviter?: { name?: string };
   created_at?: string;
   expires_at?: string;
+}
+
+/** A team write: `202` means the change was registered, not made. */
+function teamChangeResult(res: {
+  status: number;
+  json: unknown;
+}): TeamChangeResult {
+  if (res.status !== 202) return { requested: false };
+  const body = (res.json ?? {}) as { id?: string; status?: TeamRequestStatus };
+  return {
+    requested: true,
+    id: body.id ?? "",
+    status: body.status ?? "pending",
+  };
 }
 
 // Wire shapes of config inheritance (issues #1495, #1499, #1500).
@@ -3164,35 +3228,47 @@ export default (
     addTeamMembers: async (userIds) => {
       const headers = createHeaders(tenantId);
       headers.set("content-type", "application/json");
-      await httpClient(`${apiUrl}/api/v2/tenant-members`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ user_ids: userIds }),
-      });
+      return teamChangeResult(
+        await httpClient(`${apiUrl}/api/v2/tenant-members`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ user_ids: userIds }),
+        }),
+      );
     },
     removeTeamMembers: async (userIds) => {
       const headers = createHeaders(tenantId);
       headers.set("content-type", "application/json");
-      await httpClient(`${apiUrl}/api/v2/tenant-members`, {
-        method: "DELETE",
-        headers,
-        body: JSON.stringify({ user_ids: userIds }),
-      });
+      return teamChangeResult(
+        await httpClient(`${apiUrl}/api/v2/tenant-members`, {
+          method: "DELETE",
+          headers,
+          body: JSON.stringify({ user_ids: userIds }),
+        }),
+      );
     },
     assignTeamMemberRoles: async (userId, roleIds) => {
       const headers = createHeaders(tenantId);
       headers.set("content-type", "application/json");
-      await httpClient(
-        `${apiUrl}/api/v2/tenant-members/${encodeURIComponent(userId)}/roles`,
-        { method: "POST", headers, body: JSON.stringify({ roles: roleIds }) },
+      return teamChangeResult(
+        await httpClient(
+          `${apiUrl}/api/v2/tenant-members/${encodeURIComponent(userId)}/roles`,
+          { method: "POST", headers, body: JSON.stringify({ roles: roleIds }) },
+        ),
       );
     },
     removeTeamMemberRoles: async (userId, roleIds) => {
       const headers = createHeaders(tenantId);
       headers.set("content-type", "application/json");
-      await httpClient(
-        `${apiUrl}/api/v2/tenant-members/${encodeURIComponent(userId)}/roles`,
-        { method: "DELETE", headers, body: JSON.stringify({ roles: roleIds }) },
+      return teamChangeResult(
+        await httpClient(
+          `${apiUrl}/api/v2/tenant-members/${encodeURIComponent(userId)}/roles`,
+          {
+            method: "DELETE",
+            headers,
+            body: JSON.stringify({ roles: roleIds }),
+          },
+        ),
       );
     },
     listAssignableTeamRoles: async (q) => {
@@ -3226,13 +3302,26 @@ export default (
           }),
         },
       );
-      return res.json;
+      const change = teamChangeResult(res);
+      return change.requested ? change : { ...change, invitation: res.json };
     },
-    revokeTeamInvitation: async (invitationId) => {
-      await httpClient(
-        `${apiUrl}/api/v2/tenant-members/invitations/${encodeURIComponent(invitationId)}`,
-        { method: "DELETE", headers: createHeaders(tenantId) },
+    revokeTeamInvitation: async (invitationId) =>
+      teamChangeResult(
+        await httpClient(
+          `${apiUrl}/api/v2/tenant-members/invitations/${encodeURIComponent(invitationId)}`,
+          { method: "DELETE", headers: createHeaders(tenantId) },
+        ),
+      ),
+    listTeamRequests: async (params) => {
+      const query = stringify({
+        status: params?.status,
+        per_page: params?.perPage,
+      });
+      const res = await httpClient(
+        `${apiUrl}/api/v2/tenant-members/requests${query ? `?${query}` : ""}`,
+        { headers: createHeaders(tenantId) },
       );
+      return res.json.requests;
     },
 
     revokeUserRefreshTokens: async (userId: string) => {

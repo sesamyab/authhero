@@ -33,12 +33,12 @@ interface HttpCall {
  * Minimal stand-in for `fetchUtils.fetchJson`: records every call and returns
  * whatever the handler produces as the parsed `json` body.
  */
-function createHttpClient(handler: (call: HttpCall) => unknown) {
+function createHttpClient(handler: (call: HttpCall) => unknown, status = 200) {
   const calls: HttpCall[] = [];
   const client = async (url: string, options?: RequestInit) => {
     calls.push({ url, options });
     return {
-      status: 200,
+      status,
       headers: new Headers(),
       body: "",
       json: handler({ url, options }),
@@ -795,5 +795,86 @@ describe("partials", () => {
     ).rejects.toMatchObject({
       body: { message: expect.stringContaining("signup.form-content-end") },
     });
+  });
+});
+
+describe("team writes (issue #1550)", () => {
+  const accepted = { id: "tmr_1", status: "pending" };
+
+  it("says a change was registered when the server answers 202", async () => {
+    const { client, calls } = createHttpClient(() => accepted, 202);
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    expect(await provider.addTeamMembers(["u1"])).toEqual({
+      requested: true,
+      id: "tmr_1",
+      status: "pending",
+    });
+    expect(await provider.removeTeamMembers(["u1"])).toMatchObject({
+      requested: true,
+    });
+    expect(await provider.assignTeamMemberRoles("u1", ["r1"])).toMatchObject({
+      requested: true,
+    });
+    expect(await provider.removeTeamMemberRoles("u1", ["r1"])).toMatchObject({
+      requested: true,
+    });
+    expect(await provider.revokeTeamInvitation("inv_1")).toMatchObject({
+      requested: true,
+    });
+    expect(calls).toHaveLength(5);
+  });
+
+  it("keeps the old behaviour when the server acts at once", async () => {
+    const { client } = createHttpClient(() => ({}), 204);
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    expect(await provider.addTeamMembers(["u1"])).toEqual({
+      requested: false,
+    });
+    expect(await provider.revokeTeamInvitation("inv_1")).toEqual({
+      requested: false,
+    });
+  });
+
+  it("returns the invitation when it was created at once, and the request when it was not", async () => {
+    const created = createHttpClient(() => ({ id: "inv_1" }), 201);
+    const now = await auth0DataProvider(
+      API_URL,
+      created.client,
+      TENANT_ID,
+    ).createTeamInvitation({ email: " new@example.com " });
+    expect(now).toEqual({ requested: false, invitation: { id: "inv_1" } });
+    expect(bodyOf(created.calls[0])).toMatchObject({
+      invitee: { email: "new@example.com" },
+    });
+
+    const later = await auth0DataProvider(
+      API_URL,
+      createHttpClient(() => accepted, 202).client,
+      TENANT_ID,
+    ).createTeamInvitation({ email: "new@example.com" });
+    expect(later).toEqual({
+      requested: true,
+      id: "tmr_1",
+      status: "pending",
+    });
+  });
+
+  it("lists the requests, newest first as the server sends them", async () => {
+    const { client, calls } = createHttpClient(() => ({
+      requests: [{ id: "tmr_2" }, { id: "tmr_1" }],
+    }));
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    const result = await provider.listTeamRequests({
+      status: "pending",
+      perPage: 20,
+    });
+
+    expect(result.map((r) => r.id)).toEqual(["tmr_2", "tmr_1"]);
+    expect(calls[0]!.url).toBe(
+      `${API_URL}/api/v2/tenant-members/requests?status=pending&per_page=20`,
+    );
   });
 });
