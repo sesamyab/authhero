@@ -1,5 +1,34 @@
 # @authhero/kysely-adapter
 
+## 12.18.0
+
+### Minor Changes
+
+- 820d44f: Support OAuth 2.0 Device Authorization Grant (RFC 8628) with u2 code entry, normal login and MFA, explicit approval or denial, and single-use token exchange. Add hashed device-code storage, atomic polling backoff, activation attempt limits, SQL migrations and DynamoDB TTL support, discovery metadata, and the Device Code grant option in the admin UI.
+
+  Optionally return an SVG QR-code image for the complete verification URL, and add independent QR decoding plus browser-level RFC 8628 checks to the conformance runner.
+
+- 3bcd1d4: Add the `tenantMemberRequests` adapter: team-change requests that a shard registers in its own database and the control plane writes the outcome back to (issue #1550). Adds the `tenant_member_requests` table to the drizzle core migrations (`0016`) and a kysely migration, a DynamoDB implementation, and the `tenant-members-request` tenant operation kind. The shard database migration has to be applied before code that writes requests is deployed.
+
+### Patch Changes
+
+- 1485753: Add a `detach` tenant operation: a synced tenant leaves its parent. The copies a sync delivered become the tenant's own rows (or are removed with `clean`), platform rows stay as copies, and the tenant gets the new `config_sync` mode `detached`, no parent and no sync state, so it neither inherits nor is synced again. The tenant Operations page gets _Preview detach_ and _Detach_. `tenants.update` in the kysely and drizzle adapters now clears `parent_tenant_id`, `config_sync_hash` and `config_synced_at` when given an explicit `null`. The tenant has to be `synced` (a tenant that inherits on read would lose what it inherits), email provider, branding and prompt settings are not touched, and a platform email provider stays hidden after a detach. The operation works on tenants in the control plane's database; a transport for tenants with their own database is a follow-up.
+- 5e85ab2: Allow Actions to bind to Validate Registration Username. Run enabled Actions synchronously with the email, connection, client, tenant, request, and secrets; block signup on denial or execution failure and record the execution.
+
+  Combine Hooks and Triggers into one Triggers page for Action, webhook, form, template, and page bindings. Keep the Actions library separate for code, use readable trigger and resource names, and provide one add/edit workflow with compatible binding types. Preserve old hook links and inherited binding protections.
+
+  Search form names in the binding selector and keep priority moves adjacent when bindings share a priority, restoring applied updates if a later save fails. Load blocking Actions with a trigger filter.
+
+- Updated dependencies [1485753]
+- Updated dependencies [820d44f]
+- Updated dependencies [cf6d9bf]
+- Updated dependencies [02d3f45]
+- Updated dependencies [5e85ab2]
+- Updated dependencies [3bcd1d4]
+- Updated dependencies [1a9d2a9]
+  - @authhero/adapter-interfaces@4.24.0
+  - @authhero/proxy@0.11.10
+
 ## 12.17.0
 
 ### Minor Changes

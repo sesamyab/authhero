@@ -1,5 +1,28 @@
 # @authhero/aws-adapter
 
+## 1.9.0
+
+### Minor Changes
+
+- 820d44f: Support OAuth 2.0 Device Authorization Grant (RFC 8628) with u2 code entry, normal login and MFA, explicit approval or denial, and single-use token exchange. Add hashed device-code storage, atomic polling backoff, activation attempt limits, SQL migrations and DynamoDB TTL support, discovery metadata, and the Device Code grant option in the admin UI.
+
+  Optionally return an SVG QR-code image for the complete verification URL, and add independent QR decoding plus browser-level RFC 8628 checks to the conformance runner.
+
+- 3bcd1d4: Add the `tenantMemberRequests` adapter: team-change requests that a shard registers in its own database and the control plane writes the outcome back to (issue #1550). Adds the `tenant_member_requests` table to the drizzle core migrations (`0016`) and a kysely migration, a DynamoDB implementation, and the `tenant-members-request` tenant operation kind. The shard database migration has to be applied before code that writes requests is deployed.
+
+### Patch Changes
+
+- cf6d9bf: Hide the inheritance controls on tenants that have nothing below them. The tenant settings (`GET`/`PATCH /api/v2/tenants/settings`) carry a computed `has_children` (and, from the multi-tenancy router, `is_control_plane`). The admin hides the _Publishing_ card on a tenant without child tenants, the _Rollouts_ button when the control plane has none, the _Source_ column of connections, hooks and resource servers on a tenant that has no children, no parent and is not synced, and the _Parent_ and _Config sync_ columns of the tenants list while the control plane is the only tenant. It keeps showing them while the answer is loading or when the server does not send it. The count of child tenants quotes the tenant id in its query, and the AWS adapter now filters a `parent_tenant_id:<id>` query by the parent instead of treating it as free text.
+- Updated dependencies [1485753]
+- Updated dependencies [820d44f]
+- Updated dependencies [cf6d9bf]
+- Updated dependencies [02d3f45]
+- Updated dependencies [5e85ab2]
+- Updated dependencies [3bcd1d4]
+- Updated dependencies [1a9d2a9]
+  - @authhero/adapter-interfaces@4.24.0
+  - @authhero/proxy@0.11.10
+
 ## 1.8.0
 
 ### Minor Changes

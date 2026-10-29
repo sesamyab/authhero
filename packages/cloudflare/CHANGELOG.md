@@ -1,5 +1,40 @@
 # @authhero/cloudflare-adapter
 
+## 3.4.0
+
+### Minor Changes
+
+- 734eb8e: Detach for tenants with their own database. `createDispatchDetach` (`@authhero/cloudflare-adapter/wfp`) pushes a `detach` to the tenant worker's new `/internal/detach` route, which converts (or with `clean` removes) the synced copies in the tenant's own database. The control plane checks that the tenant can be detached from its own row and marks it detached only when the worker reports a full success. The Workflows executor runs `detach` (`runDetachOperation`), and `detachTenantRows`, `assertDetachEligible`, `markTenantDetached` and `emptyDetachResult` are exported from `@authhero/multi-tenancy`. A `detach` run also drops the remembered sync mode of the instance that ran it.
+- 461932f: The control plane carries out the team changes that tenants register as requests (issue #1550). `initMultiTenant({ tenantMemberRequests: { getBackend } })` adds the `tenant-members-request` tenant operation, which reads the request from the tenant, runs it against the tenant's team (checking the tenant and that the requester still belongs to it) and answers the request with the outcome. `memberRequests.enqueue` is what the notify endpoint calls, once per request however often it is told, and `memberRequests.reconcile` is the sweep for requests that were never run or whose run failed, which a tenant worker cannot do itself. `createDispatchTenantMemberRequestStore` and `POST /internal/tenant-member-requests` on the tenant worker reach requests in a tenant's own database.
+- 95df4a5: Run config inheritance shadow mode in a tenant worker. `createWfpTenantApp` takes `inheritanceShadow` (`true` or the usual options): after a request is answered, it compares what the projected control-plane rows give the tenant with what its parent chain resolves to, under `ctx.waitUntil` so the Worker keeps it alive, and logs the differences as `cfgdiff` in the tenant's own logs. The shadow reporter now returns the comparison it starts so a host can wait for it.
+
+### Patch Changes
+
+- 1485753: Add a `detach` tenant operation: a synced tenant leaves its parent. The copies a sync delivered become the tenant's own rows (or are removed with `clean`), platform rows stay as copies, and the tenant gets the new `config_sync` mode `detached`, no parent and no sync state, so it neither inherits nor is synced again. The tenant Operations page gets _Preview detach_ and _Detach_. `tenants.update` in the kysely and drizzle adapters now clears `parent_tenant_id`, `config_sync_hash` and `config_synced_at` when given an explicit `null`. The tenant has to be `synced` (a tenant that inherits on read would lose what it inherits), email provider, branding and prompt settings are not touched, and a platform email provider stays hidden after a detach. The operation works on tenants in the control plane's database; a transport for tenants with their own database is a follow-up.
+- 2c2b0f2: Remove synced copies a parent stopped sharing: `sync-defaults` takes `input.prune`, the sync detects stale `sy` rows in the tenant's own database (also over the dispatch transport and `/internal/sync-config`), and a dry run lists them. The tenant Operations page gets a _Remove unshared_ option.
+- Updated dependencies [c88aa0e]
+- Updated dependencies [2278144]
+- Updated dependencies [c0344ca]
+- Updated dependencies [1485753]
+- Updated dependencies [734eb8e]
+- Updated dependencies [820d44f]
+- Updated dependencies [cf6d9bf]
+- Updated dependencies [a780679]
+- Updated dependencies [02d3f45]
+- Updated dependencies [b0b6c22]
+- Updated dependencies [5e85ab2]
+- Updated dependencies [fe7f43e]
+- Updated dependencies [2c2b0f2]
+- Updated dependencies [e8bf02b]
+- Updated dependencies [3bcd1d4]
+- Updated dependencies [461932f]
+- Updated dependencies [1a9d2a9]
+- Updated dependencies [95df4a5]
+  - @authhero/multi-tenancy@15.4.0
+  - authhero@9.27.0
+  - @authhero/adapter-interfaces@4.24.0
+  - @authhero/kysely-adapter@12.18.0
+
 ## 3.3.0
 
 ### Minor Changes
