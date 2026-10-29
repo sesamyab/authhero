@@ -72,6 +72,8 @@ type getEnvParams = {
   // Optional middleware mounted inside the management API after the CORS
   // middleware (the `config.tenantDispatch` integration point).
   tenantDispatch?: import("hono").MiddlewareHandler;
+  // Mounts `/tenant-members`; see `AuthHeroConfig.tenantMembers`.
+  tenantMembers?: import("../../src/types/AuthHeroConfig").AuthHeroConfig["tenantMembers"];
   // Optional handler driving POST /tenants/{id}/redeploy (the
   // `config.tenantUpgrade` integration point).
   tenantUpgrade?: (tenantId: string) => Promise<void>;
@@ -291,6 +293,7 @@ export async function getTestServer(
       : {}),
     ...(args.codeExecutor ? { codeExecutor: args.codeExecutor } : {}),
     ...(args.tenantDispatch ? { tenantDispatch: args.tenantDispatch } : {}),
+    ...(args.tenantMembers ? { tenantMembers: args.tenantMembers } : {}),
     ...(args.managementApiMiddleware
       ? { managementApiMiddleware: args.managementApiMiddleware }
       : {}),

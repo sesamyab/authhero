@@ -95,6 +95,9 @@ import { createServiceToken } from "../../helpers/service-token";
 // apart. `Vary: Origin` is deliberately not set here — the call sites append
 // it even when the origin isn't allowed, so caches never serve one origin's
 // allow/deny decision to another.
+/** `/tenant-members` and anything below it, with or without an `/api/v2` prefix. */
+const TENANT_MEMBERS_PATH = /\/tenant-members(\/|$)/;
+
 function setCorsHeaders(headers: Headers, allowedOrigin: string) {
   headers.set("Access-Control-Allow-Origin", allowedOrigin);
   headers.set(
@@ -247,7 +250,19 @@ export default function create(config: AuthHeroConfig) {
   // to forward (returns the tenant worker's Response) or fall through (calls
   // next() for the control-plane tenant, non-wfp tenants, etc.).
   if (config.tenantDispatch) {
-    app.use(config.tenantDispatch);
+    const dispatch = config.tenantDispatch;
+    // A team is a control-plane organization the tenant's own database does not
+    // hold. When `tenantMembers` is mounted here it reads that organization
+    // directly, so these requests stay on this app. Forwarded, the tenant worker
+    // would have to call back up to the control plane, an extra hop that fails
+    // wherever the worker cannot reach the control plane's own hostname (#1632).
+    const servesTeamLocally = config.tenantMembers !== undefined;
+    app.use(async (ctx, next) => {
+      if (servesTeamLocally && TENANT_MEMBERS_PATH.test(ctx.req.path)) {
+        return next();
+      }
+      return dispatch(ctx, next);
+    });
   }
 
   // Auth0 SDKs (e.g. terraform-provider-auth0 via go-auth0) parse error bodies

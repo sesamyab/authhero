@@ -126,4 +126,42 @@ describe("management-api tenantDispatch", () => {
     expect(response.status).toBe(401);
     expect(await response.text()).not.toContain("forwarded:");
   });
+  it("keeps /tenant-members on the control plane when it serves the team itself", async () => {
+    const backend = {
+      listInvitations: async () => [],
+    } as unknown as import("../../../src/tenant-members/types").TenantMembersBackend;
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+      tenantMembers: { getBackend: () => backend },
+    });
+
+    const team = await managementApp.request(
+      "/tenant-members/invitations",
+      { headers: { "tenant-id": "acme" } },
+      env,
+    );
+    // Not forwarded: the local route answered (auth fails, but it is not the
+    // forwarded body).
+    expect(await team.text()).not.toBe("forwarded:acme");
+
+    const other = await managementApp.request(
+      "/clients",
+      { headers: { "tenant-id": "acme" } },
+      env,
+    );
+    expect(await other.text()).toBe("forwarded:acme");
+  });
+
+  it("still forwards /tenant-members when no team backend is mounted", async () => {
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+    });
+
+    const response = await managementApp.request(
+      "/tenant-members/invitations",
+      { headers: { "tenant-id": "acme" } },
+      env,
+    );
+    expect(await response.text()).toBe("forwarded:acme");
+  });
 });
