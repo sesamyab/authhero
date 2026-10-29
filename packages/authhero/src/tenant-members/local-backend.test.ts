@@ -199,6 +199,33 @@ describe("local tenant-members backend", () => {
     expect(result.members[0]?.roles.map((r) => r.id)).toEqual(["role_admin"]);
   });
 
+  it("names a member by nickname or username when there is no name", async () => {
+    fx.seed.addUser({ user_id: "u3", nickname: "Sam", email: undefined });
+    fx.seed.addUser({ user_id: "u4", username: "admin" });
+    await fx.backend.addMembers(TENANT, ["u3", "u4"]);
+
+    const { members } = await fx.backend.listMembers(TENANT);
+
+    expect(members.find((m) => m.user_id === "u3")?.name).toBe("Sam");
+    expect(members.find((m) => m.user_id === "u4")?.name).toBe("admin");
+  });
+
+  it("does not take a blank name, nickname or username for a name", async () => {
+    fx.seed.addUser({
+      user_id: "u5",
+      name: "   ",
+      nickname: " ",
+      username: "ada",
+    });
+    fx.seed.addUser({ user_id: "u6", name: " ", nickname: "", username: "" });
+    await fx.backend.addMembers(TENANT, ["u5", "u6"]);
+
+    const { members } = await fx.backend.listMembers(TENANT);
+
+    expect(members.find((m) => m.user_id === "u5")?.name).toBe("ada");
+    expect(members.find((m) => m.user_id === "u6")?.name).toBeUndefined();
+  });
+
   it("does not add the same member twice, and skips unknown users", async () => {
     await fx.backend.addMembers(TENANT, ["u1", "u1", "ghost"]);
     expect(fx.peek.userOrgs).toHaveLength(1);

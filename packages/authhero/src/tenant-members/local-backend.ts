@@ -19,6 +19,9 @@ import {
   TenantRole,
 } from "./types";
 
+/** The text, trimmed, or undefined when it is empty or only whitespace. */
+const text = (value?: string | null) => value?.trim() || undefined;
+
 /** The control-plane adapters the team lives in. */
 type TeamAdapters = Pick<
   DataAdapters,
@@ -148,7 +151,9 @@ export function createLocalTenantMembersBackend(
             const member: TenantMember = {
               user_id: user.user_id,
               email: user.email || undefined,
-              name: user.name || undefined,
+              // A user who signed up without a name still has something to show.
+              name:
+                text(user.name) ?? text(user.nickname) ?? text(user.username),
               picture: user.picture || getDefaultUserPicture(issuer, user),
               roles,
             };

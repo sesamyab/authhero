@@ -3,10 +3,14 @@ import { useDataProvider, useGetIdentity, useNotify } from "ra-core";
 import { Loader2, Mail, Pencil, Plus, Trash2 } from "lucide-react";
 import type {
   AuthHeroDataProvider,
+  TeamChangeResult,
   TeamInvitationRecord,
   TeamMemberRecord,
+  TeamRequestRecord,
   TeamRoleRecord,
 } from "../../auth0DataProvider";
+import { TeamRequestsCard } from "./TeamRequestsCard";
+import { memberInitials, memberLabel } from "./memberDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,6 +41,25 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
+/** How often the page looks again while a team change is waiting. */
+const REQUEST_POLL_MS = 5000;
+
+/**
+ * Says what a team write did: made at once, or registered for the control
+ * plane to carry out (issue #1550). `done` is the message for the first.
+ */
+function notifyChange(
+  notify: ReturnType<typeof useNotify>,
+  result: TeamChangeResult | TeamChangeResult[],
+  done: string,
+  requested: string,
+) {
+  const asked = (Array.isArray(result) ? result : [result]).some(
+    (r) => r.requested,
+  );
+  notify(asked ? requested : done, { type: asked ? "info" : "success" });
+}
+
 /**
  * Per-tenant "Team" page (#1137). Lets a tenant admin manage who administers
  * this tenant — invite colleagues by email, remove admins, and edit each
@@ -56,31 +79,60 @@ export function TeamPage() {
   const [members, setMembers] = useState<TeamMemberRecord[]>([]);
   const [invitations, setInvitations] = useState<TeamInvitationRecord[]>([]);
   const [assignableRoles, setAssignableRoles] = useState<TeamRoleRecord[]>([]);
+  const [requests, setRequests] = useState<TeamRequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TeamMemberRecord | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [memberResult, invites, roles] = await Promise.all([
-        dataProvider.listTeamMembers({ page: 0, perPage: 100 }),
-        dataProvider.listTeamInvitations().catch(() => []),
-        dataProvider.listAssignableTeamRoles().catch(() => []),
-      ]);
-      setMembers(memberResult.members);
-      setInvitations(invites);
-      setAssignableRoles(roles);
-    } catch {
-      notify("Unable to load the team for this tenant", { type: "error" });
-    } finally {
-      setLoading(false);
-    }
-  }, [dataProvider, notify]);
+  // Each load takes a number, and only the newest may write: the poll and a
+  // refresh after a write can overlap, and an older answer arriving last must
+  // not put old data back.
+  const latestLoad = useRef(0);
+
+  // `quiet` refreshes without the spinner, for the poll.
+  const load = useCallback(
+    async (quiet = false) => {
+      const mine = ++latestLoad.current;
+      if (!quiet) setLoading(true);
+      try {
+        const [memberResult, invites, roles, asked] = await Promise.all([
+          dataProvider.listTeamMembers({ page: 0, perPage: 100 }),
+          dataProvider.listTeamInvitations().catch(() => []),
+          dataProvider.listAssignableTeamRoles().catch(() => []),
+          // A server that does not register changes as requests has none. A
+          // failed read is `null`, so a poll that fails keeps what it showed.
+          dataProvider.listTeamRequests({ perPage: 20 }).catch(() => null),
+        ]);
+        if (mine !== latestLoad.current) return;
+        setMembers(memberResult.members);
+        setInvitations(invites);
+        setAssignableRoles(roles);
+        if (asked) setRequests(asked);
+        else if (!quiet) setRequests([]);
+      } catch {
+        if (!quiet && mine === latestLoad.current) {
+          notify("Unable to load the team for this tenant", { type: "error" });
+        }
+      } finally {
+        // A newer load ends the spinner itself; an older one must not.
+        if (mine === latestLoad.current) setLoading(false);
+      }
+    },
+    [dataProvider, notify],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The control plane carries a request out later: keep looking while one is
+  // waiting, so the lists catch up without a reload.
+  const anyPending = requests.some((r) => r.status === "pending");
+  useEffect(() => {
+    if (!anyPending) return;
+    const timer = setInterval(() => void load(true), REQUEST_POLL_MS);
+    return () => clearInterval(timer);
+  }, [anyPending, load]);
 
   const handleRemove = async (member: TeamMemberRecord) => {
     if (
@@ -91,8 +143,13 @@ export function TeamPage() {
       return;
     }
     try {
-      await dataProvider.removeTeamMembers([member.user_id]);
-      notify("Member removed", { type: "success" });
+      const result = await dataProvider.removeTeamMembers([member.user_id]);
+      notifyChange(
+        notify,
+        result,
+        "Member removed",
+        "Removal requested. It is done once the control plane has carried it out.",
+      );
       void load();
     } catch {
       notify("Error removing member", { type: "error" });
@@ -101,8 +158,13 @@ export function TeamPage() {
 
   const handleRevoke = async (invitation: TeamInvitationRecord) => {
     try {
-      await dataProvider.revokeTeamInvitation(invitation.id);
-      notify("Invitation revoked", { type: "success" });
+      const result = await dataProvider.revokeTeamInvitation(invitation.id);
+      notifyChange(
+        notify,
+        result,
+        "Invitation revoked",
+        "Revocation requested. It is done once the control plane has carried it out.",
+      );
       void load();
     } catch {
       notify("Error revoking invitation", { type: "error" });
@@ -153,14 +215,12 @@ export function TeamPage() {
                             <AvatarImage src={member.picture} alt="" />
                           ) : null}
                           <AvatarFallback>
-                            {(member.email || member.name || "?")
-                              .charAt(0)
-                              .toUpperCase()}
+                            {memberInitials(member)}
                           </AvatarFallback>
                         </Avatar>
                         <div>
                           <div className="text-sm font-medium">
-                            {member.name || member.email || member.user_id}
+                            {memberLabel(member)}
                           </div>
                           {member.email && member.name ? (
                             <div className="text-xs text-muted-foreground">
@@ -212,6 +272,8 @@ export function TeamPage() {
           )}
         </CardContent>
       </Card>
+
+      <TeamRequestsCard requests={requests} />
 
       {invitations.length > 0 ? (
         <Card>
@@ -307,13 +369,23 @@ function EditRolesDialog({
     const toAdd = [...selected].filter((id) => !before.has(id));
     const toRemove = [...before].filter((id) => !selected.has(id));
     try {
+      const results: TeamChangeResult[] = [];
       if (toAdd.length) {
-        await dataProvider.assignTeamMemberRoles(member.user_id, toAdd);
+        results.push(
+          await dataProvider.assignTeamMemberRoles(member.user_id, toAdd),
+        );
       }
       if (toRemove.length) {
-        await dataProvider.removeTeamMemberRoles(member.user_id, toRemove);
+        results.push(
+          await dataProvider.removeTeamMemberRoles(member.user_id, toRemove),
+        );
       }
-      notify("Roles updated", { type: "success" });
+      notifyChange(
+        notify,
+        results,
+        "Roles updated",
+        "Role change requested. It is done once the control plane has carried it out.",
+      );
       onSaved();
     } catch {
       notify("Error updating roles", { type: "error" });
@@ -403,12 +475,17 @@ function InviteDialog({
     inFlight.current = true;
     setBusy(true);
     try {
-      await dataProvider.createTeamInvitation({
+      const result = await dataProvider.createTeamInvitation({
         email,
         inviterName: identity?.fullName,
         sendInvitationEmail: sendEmail,
       });
-      notify(`Invitation sent to ${email.trim()}`, { type: "success" });
+      notifyChange(
+        notify,
+        result,
+        `Invitation sent to ${email.trim()}`,
+        `Invitation requested for ${email.trim()}. It is sent once the control plane has carried it out.`,
+      );
       reset();
       onInvited();
     } catch {
