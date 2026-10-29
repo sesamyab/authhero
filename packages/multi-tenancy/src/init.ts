@@ -548,6 +548,16 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     };
   }
 
+  // A configured feature that quietly does nothing is worse than a refusal to
+  // start: the notify endpoint would then have nothing to hand requests to.
+  if (tenantMemberRequests && !memberRequests) {
+    throw new Error(
+      "initMultiTenant: `tenantMemberRequests` requires the `tenantOperations` and " +
+        "`tenantOperationEvents` adapters on the data adapter, which run the " +
+        "`tenant-members-request` operation.",
+    );
+  }
+
   // Fleet rollouts of synced config (issue #1499): the controller behind
   // POST /rollouts, the deps a scheduled handler ticks, and the write trigger.
   const rolloutRunner = rolloutExecutor ?? inlineSyncExecutor;

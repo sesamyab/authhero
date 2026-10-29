@@ -292,11 +292,20 @@ export async function reconcileTenantMemberRequests(
         continue;
       }
       if (own.filter((op) => op.status === "failed").length >= maxAttempts) {
-        await deps.store.report(tenantId, request.id, {
-          status: "failed",
-          error: "The control plane could not carry out this request",
-        });
-        result.gaveUp += 1;
+        try {
+          const reported = await deps.store.report(tenantId, request.id, {
+            status: "failed",
+            error: "The control plane could not carry out this request",
+          });
+          // False: someone finished the request first, so there is nothing to give up on.
+          if (reported) result.gaveUp += 1;
+        } catch (error) {
+          // The next sweep tries again; the others still need their turn.
+          console.warn(
+            `[tenant-members] could not report request ${request.id} as failed:`,
+            error,
+          );
+        }
         continue;
       }
       try {

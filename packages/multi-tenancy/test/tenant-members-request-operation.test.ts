@@ -267,6 +267,36 @@ describe("tenant-members-request operation", () => {
       expect(row).toMatchObject({ status: "failed" });
     });
 
+    it("keeps sweeping when answering a request it gave up on fails", async () => {
+      b = backend({
+        addMembers: vi.fn(async () => {
+          throw new Error("database is down");
+        }),
+      });
+      const stuck = await register();
+      for (let i = 0; i < 2; i++) await sweep({ maxAttempts: 2 });
+      const healthy = await register("beta");
+      b = backend();
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const flaky: TenantMemberRequestStore = {
+        ...store,
+        report: async (tenantId, id, outcome) => {
+          if (id === stuck.id) throw new Error("shard unreachable");
+          return store.report(tenantId, id, outcome);
+        },
+      };
+
+      const result = await sweep({ store: flaky, maxAttempts: 2 });
+
+      expect(result.gaveUp).toBe(0);
+      expect(
+        (await adapters.tenantMemberRequests!.get("beta", healthy.id))!.status,
+      ).toBe("succeeded");
+      expect(
+        (await adapters.tenantMemberRequests!.get(TENANT, stuck.id))!.status,
+      ).toBe("pending");
+    });
+
     it("names a tenant it could not read and carries on with the others", async () => {
       await register("beta");
       vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -283,6 +313,20 @@ describe("tenant-members-request operation", () => {
       expect(result.unreachable).toEqual([TENANT]);
       expect(result.enqueued).toBe(1);
     });
+  });
+
+  it("refuses to start with member requests but no operations adapters", () => {
+    expect(() =>
+      initMultiTenant({
+        dataAdapter: {
+          ...adapters,
+          tenantOperations: undefined,
+          tenantOperationEvents: undefined,
+        },
+        controlPlane: { tenantId: CP, clientId: "control-plane-client" },
+        tenantMemberRequests: { getBackend: () => b },
+      }),
+    ).toThrow(/tenantOperations/);
   });
 
   it("is wired by initMultiTenant", async () => {
