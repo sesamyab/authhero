@@ -255,6 +255,12 @@ introduce a second access system.
   control plane. Checks for "may publish" therefore happen on the control plane, where the
   sync is initiated. The shard only applies a payload it has accepted from a trusted
   control plane issuer, with the same issuer binding as the tenant-members routes.
+- **Team changes from a shard are requests.** A WFP shard's tenant admin does not change the
+  team in the request: the shard stores a request row, notifies the control plane, and the
+  control plane carries it out as a tenant operation after re-checking the tenant (from the
+  verified service token) and that the requester is still on the team. The shard asserts
+  `requested_by`; it is already trusted for its own tenant's team, so this adds a check
+  without opening anything. See `apps/docs/customization/multi-tenancy/control-plane.md`.
 - **Nested customer trees (platform → Sesamy → customer).** A customer's parent tenant
   lives under Sesamy's tree but is administered by the customer's organization. Which
   organization may attach a tenant under a given parent (a "may adopt children" permission

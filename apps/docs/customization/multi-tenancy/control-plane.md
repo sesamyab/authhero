@@ -761,6 +761,74 @@ export default init({
 
 The resource authenticates shards itself (a `controlplane:tenant_members` token), so `tenantMembers` needs no `authenticate`. With `ctx: c`, invitations created by a shard are emailed the same way as on a single instance (below). Without `ctx` or `sendInvitationEmail`, the invitation is still created and returned; only email delivery is skipped (like Auth0).
 
+### Team changes as requests
+
+By default a write on the shard (invite, add or remove a member, assign or remove roles, revoke an invitation) is forwarded to the control plane in the same call, so the Team page fails when the control plane is slow or down and the shard keeps no record of what was asked. With `tenantMembers.requests` the shard **registers the change as a request** in its own database, tells the control plane, and the control plane carries it out later:
+
+```
+tenant admin → POST /api/v2/tenant-members/invitations         (on the shard)
+  → pin: token org_name must equal the request tenant ── else 403
+  → store a `tenant_member_requests` row: pending, requested_by = the admin's sub
+  → 202 { id, status: "pending" }
+  → tell the control plane (request id only, best effort)
+      → POST …/proxy-control-plane/tenant-members/requests/notify
+          → enqueue a `tenant-members-request` tenant operation (once per request)
+              → read the request from the shard, check it, run it, write the outcome back
+```
+
+An invitation made while the control plane is unreachable is accepted, stays `pending`, and is run when the control plane is back. `GET /api/v2/tenant-members/requests` lists a tenant's requests with their status (`pending`, `succeeded` or `failed` with a reason); a `succeeded` invitation carries `result.invitation_id`. The older synchronous routes keep working for shards that do not set `requests`.
+
+**On the shard,** set `requests` next to `getBackend` and give the shard the `tenantMemberRequests` adapter (it ships in the core migrations of `@authhero/drizzle`, `@authhero/kysely-adapter` and `@authhero/aws-adapter`, so apply them before enabling this):
+
+```typescript
+import {
+  createControlPlaneRequestNotifier,
+  createControlPlaneTenantMembersAdapter,
+} from "authhero";
+
+export default init({
+  dataAdapter,
+  tenantMembers: {
+    getBackend: () => createControlPlaneTenantMembersAdapter({ client }),
+    requests: { afterRegister: createControlPlaneRequestNotifier(client) },
+  },
+});
+```
+
+**On the control plane,** give `initMultiTenant` the team backend and hand the notification to it:
+
+```typescript
+const { app, memberRequests } = initMultiTenant({
+  dataAdapter,
+  controlPlane: { tenantId: CONTROL_PLANE_TENANT_ID, clientId },
+  tenantMemberRequests: {
+    getBackend: () =>
+      createLocalTenantMembersBackend({
+        /* as above, without ctx */
+      }),
+    // Tenants with their own worker and database are reached over dispatch:
+    store: createDispatchTenantMemberRequestStore({
+      dispatcher,
+      internalSecret,
+    }),
+  },
+  proxyControlPlane: {
+    tenantMembers: {
+      getBackend,
+      requests: {
+        onNotify: async (_c, tenantId, requestId) => {
+          await memberRequests!.enqueue(tenantId, requestId);
+        },
+      },
+    },
+  },
+});
+```
+
+A tenant worker cannot run a cron, so a lost notification is found by the control plane: call `memberRequests.reconcile({ tenantIds })` from a scheduled handler. It runs pending requests older than five minutes that have no run in flight, retries a run that failed, and after five failed runs reports the request `failed`.
+
+**What the control plane checks.** It acts on the tenant of the verified service token, never on a tenant the request names. The shard asserts who asked (`requested_by`, the admin's `sub`, verified on the shard); the control plane checks, when it runs the request, that this person **still holds a role in the tenant's organization**, so a request from someone who has since left the team fails with that reason. Replace the rule with `tenantMemberRequests.isRequesterAllowed`. The shard remains trusted for its own tenant's team, as before: this adds a check and does not remove one. Running a request twice is safe (an invitation for an address that already has one pending is reused, revoking an invitation that is gone counts as done).
+
 ### Single-instance deployments
 
 When the control plane and the tenants share one database, there is no hop: wire the **local** backend straight into `tenantMembers.getBackend` (the same `createLocalTenantMembersBackend`) and omit `proxyControlPlane.tenantMembers`. The shard's `/api/v2/tenant-members` resource then resolves the org against the same database it already holds.
