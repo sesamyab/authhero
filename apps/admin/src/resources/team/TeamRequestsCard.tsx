@@ -1,6 +1,11 @@
-import { Loader2 } from "lucide-react";
+import { CircleAlert, Loader2 } from "lucide-react";
 import type { TeamRequestRecord } from "../../auth0DataProvider";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Card,
   CardContent,
@@ -57,6 +62,24 @@ export function describeTeamRequest(request: TeamRequestRecord): string {
   }
 }
 
+/** Why a request failed: an error icon, with the reason on hover or focus. */
+function FailureReason({ reason }: { reason: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Why it failed: ${reason}`}
+          className="ml-2 inline-flex align-middle text-destructive"
+        >
+          <CircleAlert className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{reason}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function StatusBadge({ request }: { request: TeamRequestRecord }) {
   switch (request.status) {
     case "pending":
@@ -111,9 +134,7 @@ export function TeamRequestsCard({
                   {new Date(request.created_at).toLocaleString()}
                 </span>
                 {request.status === "failed" && request.error ? (
-                  <div className="text-xs text-destructive">
-                    {request.error}
-                  </div>
+                  <FailureReason reason={request.error} />
                 ) : null}
               </div>
               <StatusBadge request={request} />

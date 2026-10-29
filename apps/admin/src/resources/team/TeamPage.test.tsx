@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   act,
   cleanup,
@@ -12,6 +20,15 @@ import type { TeamRequestRecord } from "../../auth0DataProvider";
 import { describeTeamRequest, visibleTeamRequests } from "./TeamRequestsCard";
 import { TeamPage } from "./TeamPage";
 import { memberInitials, memberLabel } from "./memberDisplay";
+
+beforeAll(() => {
+  // Radix (the tooltip) measures with these; jsdom has neither.
+  globalThis.ResizeObserver ||= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
 
 afterEach(() => {
   cleanup();
@@ -170,7 +187,15 @@ describe("TeamPage", () => {
     expect(screen.getByText("Invite new@example.com")).toBeTruthy();
     expect(screen.getByText("Waiting")).toBeTruthy();
     expect(screen.getByText("Failed")).toBeTruthy();
-    expect(screen.getByText(/no longer an administrator/)).toBeTruthy();
+    // The reason sits behind an error icon, readable by its label and on hover.
+    const icon = screen.getByLabelText(
+      /Why it failed: .*no longer an administrator/,
+    );
+    expect(screen.queryByText(/no longer an administrator/)).toBeNull();
+    fireEvent.focus(icon);
+    expect(
+      (await screen.findAllByText(/no longer an administrator/)).length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows nothing extra against a server without requests", async () => {
