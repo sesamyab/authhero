@@ -40,6 +40,26 @@ describe("static action verification", () => {
     expect(verifyActionCode(code, [{ id: "toString" }]).valid).toBe(false);
     expect(verifyActionCode(code, []).valid).toBe(false);
   });
+  it.each([
+    ["const arrow", "const onExecute = async (event, api) => {};"],
+    ["let function expression", "let onExecute = async function () {};"],
+    ["function declaration", "async function onExecute() {}"],
+  ])("accepts an export bound to a %s", (_, declaration) => {
+    expect(
+      verifyActionCode(
+        `${declaration} exports.onExecutePostLogin = onExecute;`,
+        triggers,
+      ),
+    ).toEqual({ valid: true, errors: [] });
+  });
+  it("rejects an export bound to a non-function variable", () => {
+    expect(
+      verifyActionCode(
+        "const onExecute = 123; exports.onExecutePostLogin = onExecute;",
+        triggers,
+      ).valid,
+    ).toBe(false);
+  });
   it("never executes top-level code", () => {
     expect(
       verifyActionCode(

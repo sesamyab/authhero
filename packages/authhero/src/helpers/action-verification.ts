@@ -56,7 +56,16 @@ export function verifyActionCode(
       (right.type === "Identifier" &&
         program.body.some(
           (node) =>
-            node.type === "FunctionDeclaration" && node.id?.name === right.name,
+            (node.type === "FunctionDeclaration" &&
+              node.id?.name === right.name) ||
+            (node.type === "VariableDeclaration" &&
+              node.declarations.some(
+                (declaration) =>
+                  declaration.id.type === "Identifier" &&
+                  declaration.id.name === right.name &&
+                  (declaration.init?.type === "ArrowFunctionExpression" ||
+                    declaration.init?.type === "FunctionExpression"),
+              )),
         ));
     if (name && callable) exportedFunctions.add(name);
   }

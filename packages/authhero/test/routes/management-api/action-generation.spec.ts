@@ -153,6 +153,20 @@ describe("action generation and verification", () => {
     expect(rollback.status).toBe(400);
     expect(deploy).not.toHaveBeenCalled();
     expect((await env.data.actions.get(TENANT, id))?.code).toBe(code);
+
+    // Imported versions may omit supported_triggers; fall back to the action's.
+    const triggerlessVersion = await env.data.actionVersions.create(TENANT, {
+      action_id: id,
+      code,
+    });
+    const triggerlessRollback = await client.actions.actions[
+      ":actionId"
+    ].versions[":id"].deploy.$post(
+      { header: headers, param: { actionId: id, id: triggerlessVersion.id } },
+      options,
+    );
+    expect(triggerlessRollback.status).toBe(200);
+    expect(deploy).toHaveBeenCalledWith(id, code);
   });
 
   it("verifies drafts without a generator or executor and reports failures", async () => {

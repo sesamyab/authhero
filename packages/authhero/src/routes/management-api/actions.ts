@@ -719,8 +719,13 @@ const postByActionIdVersionsByIdDeploy = defineRoute({
       throw notFound.actionVersion();
     }
 
+    const existing = await ctx.env.data.actions.get(tenantId, actionId);
+
     if (ctx.env.actionCodeGenerator) {
-      requireVerifiedAction(version.code, version.supported_triggers);
+      requireVerifiedAction(
+        version.code,
+        version.supported_triggers ?? existing?.supported_triggers,
+      );
     }
     if (ctx.env.codeExecutor?.deploy) {
       try {
@@ -735,8 +740,6 @@ const postByActionIdVersionsByIdDeploy = defineRoute({
         });
       }
     }
-
-    const existing = await ctx.env.data.actions.get(tenantId, actionId);
 
     await ctx.env.data.actions.update(tenantId, actionId, {
       code: version.code,
