@@ -16,7 +16,11 @@ import {
 } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
-import { getAllAuthCookies } from "../../utils/cookies";
+import {
+  getAllAuthCookies,
+  getSessionCookieDiagnostics,
+  type SessionCookieDiagnostics,
+} from "../../utils/cookies";
 import { universalAuth } from "../../authentication-flows/universal";
 import { ticketAuth } from "../../authentication-flows/ticket";
 import { silentAuth } from "../../authentication-flows/silent";
@@ -707,6 +711,9 @@ const getRoot = defineRoute({
       ctx.req.header("cookie"),
     );
 
+    let sessionLookup: SessionCookieDiagnostics["result"] = authCookies.length
+      ? "not_found"
+      : "none";
     for (const cookieValue of authCookies) {
       const session = await env.data.sessions.get(
         client.tenant.id,
@@ -714,13 +721,18 @@ const getRoot = defineRoute({
       );
       if (session && !session.revoked_at) {
         validSession = session;
+        sessionLookup = "valid";
         break;
+      }
+      if (session) {
+        sessionLookup = "revoked";
       }
     }
 
     // If SSO is disabled for this client, ignore any existing session
     if (client.sso_disabled) {
       validSession = undefined;
+      sessionLookup = "sso_disabled";
     }
 
     // Silent authentication with iframe
@@ -803,6 +815,12 @@ const getRoot = defineRoute({
       connection,
       login_hint,
       screen_hint,
+      sessionCookie: getSessionCookieDiagnostics(
+        client.tenant.id,
+        ctx.req,
+        authCookies.length,
+        sessionLookup,
+      ),
     });
 
     if (universalAuthResult instanceof Response) {

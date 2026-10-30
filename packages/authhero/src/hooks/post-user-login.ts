@@ -35,6 +35,8 @@ import {
   resolveConnectionName,
 } from "../helpers/connection";
 import { waitUntil } from "../helpers/wait-until";
+import { readLoginSessionData } from "../state-machines/login-session";
+import { getPrivateBrowsingCookie } from "../utils/cookies";
 
 // Type guard for webhook hooks
 function isWebHook(hook: any): hook is { url: string; enabled: boolean } {
@@ -627,6 +629,19 @@ export async function postUserLoginHook(
       }
     }
 
+    // What the browser sent on /authorize, plus the login page's private
+    // browsing probe, so a "login every time" report can be traced to a
+    // dropped session cookie (see docs: architecture/session-cookies).
+    const sessionCookie = readLoginSessionData(
+      loginSession?.state_data,
+    ).session_cookie;
+    const privateBrowsing = getPrivateBrowsingCookie(ctx.req.header("cookie"));
+    const diagnostics = {
+      ...(sessionCookie ? { session_cookie: sessionCookie } : {}),
+      ...(privateBrowsing !== undefined
+        ? { private_browsing: privateBrowsing }
+        : {}),
+    };
     logMessage(ctx, tenant_id, {
       type: LogTypes.SUCCESS_LOGIN,
       description: `Successful login for ${user.user_id}`,
@@ -642,6 +657,7 @@ export async function postUserLoginHook(
       authorization_url: loginSession?.authorization_url,
       login_session_id: loginSession?.id,
       ...(executionId ? { execution_id: executionId } : {}),
+      ...(Object.keys(diagnostics).length ? { diagnostics } : {}),
     });
   }
 }

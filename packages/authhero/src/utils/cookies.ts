@@ -120,11 +120,8 @@ export function getAuthCookie(
 }
 
 /**
- * TEMPORARY: Double-Clear mechanism for cookie migration
- * This can be removed after February 28th, 2026
- *
- * Clears both non-partitioned and partitioned cookies to ensure clean migration.
- * Returns an array of Set-Cookie headers.
+ * Clears both the non-partitioned and the partitioned session cookie (see
+ * serializeAuthCookie). Returns an array of Set-Cookie headers.
  */
 export function clearAuthCookie(tenant_id: string, hostname?: string) {
   const cookieName = getCookieName(tenant_id);
@@ -138,8 +135,8 @@ export function clearAuthCookie(tenant_id: string, hostname?: string) {
     domain: hostname ? getWildcardDomain(hostname) : undefined,
   };
 
-  // Double-Clear: First clear non-partitioned cookie, then partitioned
-  // (skip the partitioned variant on insecure hosts where it would be rejected).
+  // Clear the non-partitioned cookie, then the partitioned one (skip the
+  // partitioned variant on insecure hosts where it would be rejected).
   if (insecure) {
     return [serialize(cookieName, "", baseOptions)];
   }
@@ -150,11 +147,22 @@ export function clearAuthCookie(tenant_id: string, hostname?: string) {
 }
 
 /**
- * TEMPORARY: Double-Clear mechanism for cookie migration
- * This can be removed after February 28th, 2026
+ * Sets the session cookie twice, with the same name and value: once
+ * non-partitioned and once partitioned (CHIPS). Browsers store them as two
+ * separate cookies. Returns an array of Set-Cookie headers.
  *
- * First clears any non-partitioned cookie, then sets the new partitioned cookie.
- * Returns an array of Set-Cookie headers.
+ * - The non-partitioned cookie covers top-level navigations to /authorize
+ *   (redirect login, cross-site links/302s into login) and same-site iframes.
+ *   Some Safari configurations do not send a partitioned cookie on a
+ *   top-level /authorize reached through a cross-site redirect (issue #1639).
+ * - The partitioned cookie covers logins and silent auth inside a cross-site
+ *   iframe (u2 embed mode) once third-party cookies are blocked, where the
+ *   non-partitioned cookie is rejected.
+ *
+ * Both are SameSite=None so the session also reaches cross-site POSTs to the
+ * login domain (SAML HTTP-POST binding, POST /authorize). Readers must try
+ * every value (getAllAuthCookies), since the two jars can hold different
+ * sessions. See apps/docs/architecture/session-cookies.md.
  */
 export function serializeAuthCookie(
   tenant_id: string,
@@ -171,25 +179,94 @@ export function serializeAuthCookie(
     domain: hostname ? getWildcardDomain(hostname) : undefined,
   };
 
+  const cookieOptions = {
+    ...baseOptions,
+    maxAge: SILENT_AUTH_MAX_AGE_IN_SECONDS,
+  };
+
   // On insecure dev hosts, browsers reject Secure/Partitioned cookies — set
-  // a single non-partitioned cookie. In production keep the Double-Clear +
-  // Partitioned migration behaviour.
+  // a single non-partitioned cookie.
   if (insecure) {
-    return [
-      serialize(cookieName, value, {
-        ...baseOptions,
-        maxAge: SILENT_AUTH_MAX_AGE_IN_SECONDS,
-      }),
-    ];
+    return [serialize(cookieName, value, cookieOptions)];
   }
   return [
-    serialize(cookieName, "", { ...baseOptions, maxAge: 0 }),
-    serialize(cookieName, value, {
-      ...baseOptions,
-      maxAge: SILENT_AUTH_MAX_AGE_IN_SECONDS,
-      partitioned: true,
-    }),
+    serialize(cookieName, value, cookieOptions),
+    serialize(cookieName, value, { ...cookieOptions, partitioned: true }),
   ];
+}
+
+/**
+ * Compact snapshot of what the browser sent on an /authorize request, stored
+ * on the login session and attached to the resulting login log. A dropped
+ * session cookie otherwise leaves no trace: the user just sees the login form.
+ * Keep it small — Analytics Engine caps a log's details at 1024 bytes.
+ */
+export type SessionCookieDiagnostics = {
+  /** Number of session-cookie values sent (0, 1, or 2 when both jars are). */
+  received: number;
+  /** Outcome of looking the values up. */
+  result: "none" | "not_found" | "revoked" | "valid" | "sso_disabled";
+  /** Total number of cookies in the Cookie header. */
+  cookies: number;
+  /** Whether the non-partitioned, SameSite=Lax last-used cookie was sent. */
+  last_used?: boolean;
+  /** Sec-Fetch-Site / Sec-Fetch-Dest / Sec-Fetch-Storage-Access, if sent. */
+  fetch_site?: string;
+  fetch_dest?: string;
+  storage_access?: string;
+  /** Host of the Referer, never the full URL. */
+  referrer?: string;
+};
+
+export function getSessionCookieDiagnostics(
+  tenant_id: string,
+  headers: { header(name: string): string | undefined },
+  received: number,
+  result: SessionCookieDiagnostics["result"],
+): SessionCookieDiagnostics {
+  const cookieHeader = headers.header("cookie");
+  let referrer: string | undefined;
+  const referer = headers.header("referer");
+  if (referer) {
+    try {
+      referrer = new URL(referer).host;
+    } catch {
+      referrer = undefined;
+    }
+  }
+
+  return {
+    received,
+    result,
+    cookies: cookieHeader
+      ? cookieHeader.split(";").filter((pair) => pair.trim()).length
+      : 0,
+    last_used: !!getLastUsedConnectionCookie(tenant_id, cookieHeader),
+    fetch_site: headers.header("sec-fetch-site"),
+    fetch_dest: headers.header("sec-fetch-dest"),
+    storage_access: headers.header("sec-fetch-storage-access"),
+    referrer,
+  };
+}
+
+/**
+ * Private-browsing result reported by the login page's client script
+ * (detectincognitojs). The server can't detect private browsing itself, so
+ * the script writes this short-lived, non-HttpOnly cookie on the login host
+ * and the login log reads it back. Must match client/incognito-handler.ts.
+ */
+export const PRIVATE_BROWSING_COOKIE_NAME = "authhero-private-browsing";
+
+export function getPrivateBrowsingCookie(
+  cookieHeaders?: string,
+): boolean | undefined {
+  if (!cookieHeaders) {
+    return undefined;
+  }
+  const value = parse(cookieHeaders)[PRIVATE_BROWSING_COOKIE_NAME];
+  if (value === "1") return true;
+  if (value === "0") return false;
+  return undefined;
 }
 
 /**
