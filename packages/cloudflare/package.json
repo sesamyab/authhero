@@ -55,9 +55,9 @@
     "vitest": "^4.1.7"
   },
   "peerDependencies": {
-    "@authhero/multi-tenancy": "^14.0.0",
+    "@authhero/multi-tenancy": "^15.4.0",
     "@hono/zod-openapi": "^1.4.0",
-    "authhero": "^3.0.0",
+    "authhero": "^9.28.0",
     "hono": "^4.12.30"
   },
   "peerDependenciesMeta": {
