@@ -115,3 +115,5 @@ export * from "./AuthenticationMethod";
 export * from "./ImportMetadata";
 
 export * from "./codeHookApiShapes";
+export * from "./codeHookApiTypes";
+export * from "./codeHookApiDeclarations";

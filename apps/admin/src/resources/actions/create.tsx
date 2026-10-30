@@ -12,6 +12,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDefaultCodeTemplate } from "../hooks/hookConstants";
 import { ACTION_TRIGGER_CHOICES } from "./formMapping";
+import { ActionAssistant } from "./action-assistant";
+import { verifyActionBeforeSave } from "./api";
+import { useTenantId } from "@/TenantContext";
 
 interface ActionPayload {
   trigger_id?: string;
@@ -46,15 +49,21 @@ function StarterCodeSync() {
 }
 
 export function ActionCreate() {
+  const tenantId = useTenantId() ?? "";
   return (
     <Create
-      transform={({ trigger_id, ...data }: ActionPayload) => ({
-        ...data,
-        supported_triggers: data.supported_triggers ?? [
-          { id: trigger_id || "post-login" },
-        ],
-        secrets: data.secrets?.filter((s) => s?.name),
-      })}
+      transform={({ trigger_id, ...data }: ActionPayload) =>
+        verifyActionBeforeSave(
+          {
+            ...data,
+            supported_triggers: data.supported_triggers ?? [
+              { id: trigger_id || "post-login" },
+            ],
+            secrets: data.secrets?.filter((s) => s?.name),
+          },
+          tenantId,
+        )
+      }
     >
       <SimpleForm className="max-w-none">
         <div className="flex flex-col gap-6 w-full">
@@ -81,6 +90,7 @@ export function ActionCreate() {
             </CardHeader>
             <CardContent>
               <StarterCodeSync />
+              <ActionAssistant />
               <CodeInput source="code" language="javascript" height={420} />
             </CardContent>
           </Card>

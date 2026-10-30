@@ -50,6 +50,10 @@ export function applyConfigMiddleware(
       ctx.env.codeExecutor = config.codeExecutor;
     }
 
+    if (ctx.env.actionCodeGenerator == null && config.actionCodeGenerator) {
+      ctx.env.actionCodeGenerator = config.actionCodeGenerator;
+    }
+
     if (config.webhookInvoker) {
       ctx.env.webhookInvoker = config.webhookInvoker;
     }

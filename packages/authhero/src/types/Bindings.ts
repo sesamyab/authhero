@@ -1,5 +1,9 @@
 import type { SigningCertificateAuthority } from "../helpers/signing-certificate-authority";
-import { CodeExecutor, DataAdapters } from "@authhero/adapter-interfaces";
+import {
+  ActionCodeGenerator,
+  CodeExecutor,
+  DataAdapters,
+} from "@authhero/adapter-interfaces";
 import type { SamlSigner } from "@authhero/saml/core";
 import { Hooks } from "./Hooks";
 import {
@@ -74,6 +78,8 @@ export type Bindings = {
   // Optional code executor for user-authored code hooks
   // Set via init({ codeExecutor: ... })
   codeExecutor?: CodeExecutor;
+
+  actionCodeGenerator?: ActionCodeGenerator;
 
   // Optional custom webhook invoker
   // Set via init({ webhookInvoker: ... })

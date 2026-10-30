@@ -1,0 +1,10 @@
+version: 1
+name: Cloudflare Action Generation
+slug: cloudflare-action-generation
+protocol: http
+port: 4500
+interceptRequests: false
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true

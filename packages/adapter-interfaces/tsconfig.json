@@ -4,6 +4,6 @@
     // "noEmit": true,
     "baseUrl": "."
   },
-  "include": ["src"],
+  "include": ["src", "src/**/*.json"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

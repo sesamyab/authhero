@@ -26,6 +26,7 @@ import {
 } from "@/utils/domainUtils";
 import { getConfigValue } from "@/utils/runtimeConfig";
 import { ACTION_TRIGGER_CHOICES } from "../formMapping";
+import { ActionAssistant } from "../action-assistant";
 
 function getApiUrl(): string {
   const domains = getDomainFromStorage();
@@ -180,6 +181,7 @@ export function DetailsTab() {
           <CardTitle>Code</CardTitle>
         </CardHeader>
         <CardContent>
+          <ActionAssistant />
           <CodeField />
         </CardContent>
       </Card>

@@ -10,6 +10,8 @@ import { DetailsTab } from "./tabs/details-tab";
 import { TestTab } from "./tabs/test-tab";
 import { VersionsTab } from "./tabs/versions-tab";
 import { RawJsonTab } from "@/common/RawJsonTab";
+import { useTenantId } from "@/TenantContext";
+import { verifyActionBeforeSave } from "./api";
 import {
   fromActionFormValues,
   toActionFormValues,
@@ -17,6 +19,7 @@ import {
 } from "./formMapping";
 
 export function ActionEdit() {
+  const tenantId = useTenantId() ?? "";
   // Per-mount sentinel that a user cannot reproduce as a real secret value, so
   // unchanged-secret detection in `transform` only matches values we ourselves
   // wrote in `select`.
@@ -43,7 +46,9 @@ export function ActionEdit() {
           id: data.id,
         }),
       }}
-      transform={(data: ActionRecord) => fromActionFormValues(data, sentinel)}
+      transform={(data: ActionRecord) =>
+        verifyActionBeforeSave(fromActionFormValues(data, sentinel), tenantId)
+      }
     >
       <SimpleForm className="max-w-none">
         <UrlTabs defaultValue="details" className="w-full">
