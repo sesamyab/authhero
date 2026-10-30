@@ -31,6 +31,7 @@ import {
   ListPagination,
   ReferenceManyField,
 } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { DateAgo } from "@/common/DateAgo";
 import {
   UNDEFINED_SCOPE_HINT,
@@ -672,6 +673,9 @@ export function ClientGrantsTab() {
           </p>
         }
       >
+        <div className="flex justify-end mb-2">
+          <JsonActionsButton />
+        </div>
         <DataTable rowClick={false} bulkActionButtons={false}>
           <DataTable.Col source="audience" label="Resource server" />
           <DataTable.Col label="Scopes">

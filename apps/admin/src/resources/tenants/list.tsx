@@ -5,6 +5,7 @@ import { History, Rocket, Users } from "lucide-react";
 import { BadgeField, DataTable, List, TextInput } from "@/components/admin";
 import { CreateButton } from "@/components/admin/create-button";
 import { ExportButton } from "@/components/admin/export-button";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { Button } from "@/components/ui/button";
 import { useHasChildren } from "@/hooks/useHasChildren";
 import { getBasePath } from "@/utils/runtimeConfig";
@@ -104,6 +105,7 @@ function TenantListActions() {
       )}
       <CreateButton />
       <ExportButton />
+      <JsonActionsButton size="default" />
     </div>
   );
 }

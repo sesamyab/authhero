@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { isDatabaseConnectionStrategy } from "@/utils/Strategy";
+import { JsonActionsMenu } from "@/components/JsonActionsButton";
 
 interface ConnectionRecord {
   id: string;
@@ -112,8 +113,11 @@ function ResultPanel({ result }: { result: TryResult }) {
       </div>
       {"userinfo" in result && result.userinfo && (
         <div>
-          <div className="mb-1 text-xs font-medium text-muted-foreground">
-            Normalized profile
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              Normalized profile
+            </span>
+            <JsonActionsMenu data={result.userinfo} filename="userinfo" />
           </div>
           <pre className="max-h-80 overflow-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">
             {JSON.stringify(result.userinfo, null, 2)}
@@ -122,8 +126,16 @@ function ResultPanel({ result }: { result: TryResult }) {
       )}
       {"raw" in result && (
         <div>
-          <div className="mb-1 text-xs font-medium text-muted-foreground">
-            Raw provider response
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              Raw provider response
+            </span>
+            {result.raw ? (
+              <JsonActionsMenu
+                data={result.raw}
+                filename="raw-provider-response"
+              />
+            ) : null}
           </div>
           <pre className="max-h-80 overflow-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">
             {result.raw

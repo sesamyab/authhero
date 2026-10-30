@@ -17,6 +17,7 @@ import {
   ReferenceManyField,
   TextField,
 } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import type { AuthHeroDataProvider } from "@/auth0DataProvider";
 import type { UserRecord } from "./types";
 
@@ -203,6 +204,9 @@ export function RefreshTokensTab() {
           </p>
         }
       >
+        <div className="flex justify-end mb-2">
+          <JsonActionsButton />
+        </div>
         <DataTable rowClick={false} bulkActionButtons={false}>
           <DataTable.Col source="id" />
           <DataTable.Col label="Application">
