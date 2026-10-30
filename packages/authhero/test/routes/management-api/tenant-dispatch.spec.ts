@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { MiddlewareHandler } from "hono";
+import { OpenAPIHono } from "@hono/zod-openapi";
 import { getTestServer } from "../../helpers/test-server";
 
 describe("management-api tenantDispatch", () => {
@@ -186,5 +187,50 @@ describe("management-api tenantDispatch", () => {
     // The tenant's own settings, and anything else, still go to its worker.
     expect(await ask("/tenants/settings")).toBe("forwarded:acme");
     expect(await ask("/tenants/acme/clients")).toBe("forwarded:acme");
+  });
+
+  it("matches the carve-out only at the start of the path", async () => {
+    const backend = {
+      listInvitations: async () => [],
+    } as unknown as import("../../../src/tenant-members/types").TenantMembersBackend;
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+      tenantMembers: { getBackend: () => backend },
+    });
+    const ask = async (path: string) =>
+      (
+        await managementApp.request(
+          path,
+          { headers: { "tenant-id": "acme" } },
+          env,
+        )
+      ).text();
+
+    // A tenant's own resource whose id or name happens to be a carved-out
+    // segment still belongs to its worker.
+    expect(await ask("/organizations/name/operations")).toBe("forwarded:acme");
+    expect(await ask("/clients/rollouts")).toBe("forwarded:acme");
+    expect(await ask("/users/tenant-members")).toBe("forwarded:acme");
+    expect(await ask("/operations-archive")).toBe("forwarded:acme");
+  });
+
+  it("forwards /tenant-members when an extension mounts it instead", async () => {
+    const backend = {
+      listInvitations: async () => [],
+    } as unknown as import("../../../src/tenant-members/types").TenantMembersBackend;
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+      tenantMembers: { getBackend: () => backend },
+      managementApiExtensions: [
+        { path: "/tenant-members", router: new OpenAPIHono() },
+      ],
+    });
+
+    const response = await managementApp.request(
+      "/tenant-members/invitations",
+      { headers: { "tenant-id": "acme" } },
+      env,
+    );
+    expect(await response.text()).toBe("forwarded:acme");
   });
 });

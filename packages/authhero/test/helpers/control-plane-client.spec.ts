@@ -33,11 +33,12 @@ describe("createControlPlaneClient", () => {
       path: "/api/v2/proxy/control-plane/custom-domains",
     });
 
-    expect(res).toEqual({
+    expect(res).toMatchObject({
       status: 200,
       data: { ok: true },
       text: JSON.stringify({ ok: true }),
     });
+    expect(res.headers).toBeInstanceOf(Headers);
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toBe(
       "https://cp.test/api/v2/proxy/control-plane/custom-domains",

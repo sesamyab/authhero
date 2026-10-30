@@ -41,6 +41,8 @@ export interface ControlPlaneResponse {
   data: unknown;
   /** The raw response body, for callers that tell plain-text answers apart. */
   text?: string;
+  /** The response headers, for callers that read a structured signal. */
+  headers?: Headers;
 }
 
 export interface ControlPlaneClient {
@@ -182,7 +184,12 @@ export function createControlPlaneClient(
         }
       }
 
-      return { status: response.status, data, text };
+      return {
+        status: response.status,
+        data,
+        text,
+        headers: response.headers,
+      };
     },
   };
 }

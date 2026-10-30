@@ -7,6 +7,7 @@ import { CONTROL_PLANE_TENANT_MEMBERS_SCOPE } from "../routes/proxy-control-plan
 import {
   TenantInvitation,
   TenantInvitationInput,
+  TenantInvitationNotFoundError,
   TenantMembersBackend,
   TenantMembersListResult,
   TenantMembersPageParams,
@@ -14,7 +15,11 @@ import {
   TenantRole,
   tenantMembersListSchema,
 } from "./types";
-import { CONTROL_PLANE_TENANT_MEMBERS_PATH } from "./wire";
+import {
+  CONTROL_PLANE_TENANT_MEMBERS_PATH,
+  TENANT_MEMBERS_NOT_FOUND_HEADER,
+  TenantMembersNotFoundKind,
+} from "./wire";
 
 export interface ControlPlaneTenantMembersOptions {
   /** Authed transport to the control plane (shared with other adapters). */
@@ -33,24 +38,50 @@ function errorMessage(data: unknown, fallback: string): string {
 }
 
 /**
- * Whether a 404 is the tenant-members resource saying the team (or invitation)
- * is not there. The resource answers that with the plain-text body `Not found`
- * (`routes/proxy-control-plane/tenant-members.ts`). Any other 404 — a route
- * that is not mounted, the zone's origin, a proxy — says nothing about the
- * team, and reading it as "no team" would hide the real failure.
+ * What a 404 from the tenant-members resource says is missing, or undefined
+ * when the 404 is not the resource's own. The resource names it in
+ * `TENANT_MEMBERS_NOT_FOUND_HEADER`, which survives a lost or unreadable body.
+ * Any other 404 (a route that is not mounted, the zone's origin, a proxy) says
+ * nothing about the team, and reading it as "no team" would hide the real
+ * failure.
  */
-function isTeamNotFound(response: ControlPlaneResponse): boolean {
-  if (response.status !== 404) return false;
-  // A client that does not report the raw body (`text` is optional) cannot tell
-  // the two apart; keep reading its 404 as a missing team, as before.
-  return response.text === undefined || response.text.trim() === "Not found";
+function notFoundKind(
+  response: ControlPlaneResponse,
+): TenantMembersNotFoundKind | undefined {
+  if (response.status !== 404) return undefined;
+  const kind = response.headers?.get(TENANT_MEMBERS_NOT_FOUND_HEADER);
+  if (kind === "organization" || kind === "invitation") return kind;
+  // A control plane from before the header answers with the plain-text body
+  // `Not found` alone, and a client that does not report the raw body (`text`
+  // is optional) cannot tell; both keep reading the 404 as a missing team.
+  return response.text === undefined || response.text.trim() === "Not found"
+    ? "organization"
+    : undefined;
+}
+
+/**
+ * Throw the backend's not-found error when the response is the resource's own
+ * 404. `invitationId` is passed only by the call that addresses an invitation.
+ */
+function throwIfNotFound(
+  response: ControlPlaneResponse,
+  tenantId: string,
+  invitationId?: string,
+): void {
+  const kind = notFoundKind(response);
+  if (kind === "invitation" && invitationId !== undefined) {
+    throw new TenantInvitationNotFoundError(invitationId);
+  }
+  if (kind) {
+    throw new TenantOrganizationNotFoundError(tenantId);
+  }
 }
 
 /**
  * Map a non-2xx control-plane response onto an exception. A 4xx passes through
  * with its status; anything else is a 502 — the shard is fine, its upstream is
  * not. That includes a 404 that is not the resource's own "not found" (see
- * `isTeamNotFound`): it is an upstream error, not a missing team.
+ * `notFoundKind`): it is an upstream error, not a missing team.
  */
 function toHttpException(
   response: ControlPlaneResponse,
@@ -110,9 +141,7 @@ export function createControlPlaneTenantMembersAdapter(
           q: params.q,
         })}`,
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 200) {
         throw toHttpException(response, "list tenant members");
       }
@@ -133,9 +162,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/members`,
         body: { tenant_id: tenantId, user_ids: userIds },
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 204 && response.status !== 200) {
         throw toHttpException(response, "add tenant members");
       }
@@ -149,9 +176,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/members`,
         body: { tenant_id: tenantId, user_ids: userIds },
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 204 && response.status !== 200) {
         throw toHttpException(response, "remove tenant members");
       }
@@ -167,9 +192,7 @@ export function createControlPlaneTenantMembersAdapter(
         method: "GET",
         path: `${basePath}/members/${encodeURIComponent(userId)}/roles${query({ tenant_id: tenantId })}`,
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 200) {
         throw toHttpException(response, "list member roles");
       }
@@ -188,9 +211,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/members/${encodeURIComponent(userId)}/roles`,
         body: { tenant_id: tenantId, roles: roleIds },
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 204 && response.status !== 200) {
         throw toHttpException(response, "assign member roles");
       }
@@ -208,9 +229,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/members/${encodeURIComponent(userId)}/roles`,
         body: { tenant_id: tenantId, roles: roleIds },
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 204 && response.status !== 200) {
         throw toHttpException(response, "remove member roles");
       }
@@ -231,9 +250,7 @@ export function createControlPlaneTenantMembersAdapter(
           q: params.q,
         })}`,
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 200) {
         throw toHttpException(response, "list assignable roles");
       }
@@ -254,9 +271,7 @@ export function createControlPlaneTenantMembersAdapter(
           per_page: params.per_page,
         })}`,
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 200) {
         throw toHttpException(response, "list invitations");
       }
@@ -274,9 +289,7 @@ export function createControlPlaneTenantMembersAdapter(
         path: `${basePath}/invitations`,
         body: { tenant_id: tenantId, ...input },
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId);
       if (response.status !== 201 && response.status !== 200) {
         throw toHttpException(response, "create invitation");
       }
@@ -293,9 +306,7 @@ export function createControlPlaneTenantMembersAdapter(
         method: "DELETE",
         path: `${basePath}/invitations/${encodeURIComponent(invitationId)}${query({ tenant_id: tenantId })}`,
       });
-      if (isTeamNotFound(response)) {
-        throw new TenantOrganizationNotFoundError(tenantId);
-      }
+      throwIfNotFound(response, tenantId, invitationId);
       if (response.status !== 204 && response.status !== 200) {
         throw toHttpException(response, "revoke invitation");
       }

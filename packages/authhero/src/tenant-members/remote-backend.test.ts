@@ -4,7 +4,11 @@ import type {
   ControlPlaneResponse,
 } from "../helpers/control-plane-client";
 import { createControlPlaneTenantMembersAdapter } from "./remote-backend";
-import { TenantOrganizationNotFoundError } from "./types";
+import {
+  TenantInvitationNotFoundError,
+  TenantOrganizationNotFoundError,
+} from "./types";
+import { TENANT_MEMBERS_NOT_FOUND_HEADER } from "./wire";
 
 function adapterAnswering(response: ControlPlaneResponse) {
   const client: ControlPlaneClient = { request: async () => response };
@@ -24,6 +28,34 @@ describe("control-plane tenant-members adapter: 404", () => {
     await expect(
       adapter.revokeInvitation("acme", "inv_1"),
     ).rejects.toBeInstanceOf(TenantOrganizationNotFoundError);
+  });
+
+  it("reads the not-found header even when the body was lost", async () => {
+    const adapter = adapterAnswering({
+      status: 404,
+      data: null,
+      text: "",
+      headers: new Headers({
+        [TENANT_MEMBERS_NOT_FOUND_HEADER]: "organization",
+      }),
+    });
+    await expect(adapter.listMembers("acme")).rejects.toBeInstanceOf(
+      TenantOrganizationNotFoundError,
+    );
+  });
+
+  it("tells a missing invitation from a missing team by the header", async () => {
+    const adapter = adapterAnswering({
+      status: 404,
+      data: null,
+      text: "Not found",
+      headers: new Headers({ [TENANT_MEMBERS_NOT_FOUND_HEADER]: "invitation" }),
+    });
+    const error = await adapter
+      .revokeInvitation("acme", "inv_gone")
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(TenantInvitationNotFoundError);
+    expect(error).not.toBeInstanceOf(TenantOrganizationNotFoundError);
   });
 
   it("keeps reading a 404 as a missing team when the client reports no body", async () => {
