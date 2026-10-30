@@ -797,6 +797,7 @@ gtag('config', 'G-DNZWG3PF2L');`,
           items: [
             { text: "Overview", link: "/api/overview" },
             { text: "Endpoints", link: "/api/endpoints" },
+            { text: "Authorize", link: "/api/authorize" },
             { text: "Pagination", link: "/api/pagination" },
             { text: "Prefer Header", link: "/api/prefer-header" },
             { text: "Error Codes", link: "/api/error-codes" },
