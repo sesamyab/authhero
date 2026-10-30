@@ -68,32 +68,54 @@ names in prompts and configure values in the Secrets section.
 Each request also includes TypeScript declarations for the selected trigger's
 `ActionAPI`, including parameter types, optional arguments, return types, and
 referenced types such as token-exchange user attributes and options. These are
-generated at build time from the shared sandbox API types. They describe only
+generated from the shared sandbox API types and committed as
+`codeHookApiDeclarations.generated.json` in `@authhero/adapter-interfaces`
+(see [Generated files](/contributing/development-setup#generated-files)). They describe only
 methods available to code Actions; server-side hook helpers are excluded. The
 model is instructed to use them as reference and still output plain JavaScript.
 
+### Verifying Action code
+
 **Verify code** checks JavaScript syntax, the exported handler for every selected
 trigger, and direct `api.namespace.method(...)` calls against the runtime's
-supported APIs. The editor repeats verification on the submitted code before
-saving. These static checks do not execute the script, check every possible
+supported APIs. These static checks do not execute the script, check every possible
 dynamic API call, or prove runtime behavior. Use the Test tab with representative
 events for behavioral checks after saving.
 
-With `actionCodeGenerator` configured, the server also enforces verification
-before creating an action, changing its code or triggers, deploying it, or
-rolling back a version. Rejected writes do not persist or deploy source.
-Inherited stubs with empty local code are excluded; nonempty local fallback code
-still needs verification. Existing API integrations keep their previous write behavior when
-no generator is configured; the draft verification endpoint is always available.
+Whether verification is required depends on the server:
+
+|                                                                    | Generator configured                                                          | No generator                                                |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `GET /generation`                                                  | Lists the models, `verification_required: true`                               | No models, `verification_required: false`                   |
+| Server writes (create, change code or triggers, deploy, roll back) | Rejected with `400 action_verification_failed` if the code fails verification | Accepted without verification, as before generation existed |
+| Admin save                                                         | Verifies the submitted code first and shows the errors                        | Saves without verifying                                     |
+| **Verify code** button and `POST /verify`                          | Available                                                                     | Available                                                   |
+
+Rejected writes do not persist or deploy source. Inherited stubs with empty local
+code are excluded; nonempty local fallback code still needs verification.
+
+Verification is only enforced together with generation because that's when
+untrusted, model-written code is most likely to reach a save. Turning it on
+everywhere would start rejecting writes from existing Management API
+integrations whose code worked before the verifier existed, and the verifier
+only allows API calls it can check statically. The admin repeats the server's
+rule rather than verifying on every save, so it never blocks a save the server
+would accept. It checks before sending the write so it can show the
+verification errors next to the editor.
+
+The admin reads `GET /generation` to decide. Servers older than authhero 9.28
+don't have that route (or `/verify`). The admin treats a failed request as "no
+generation": it hides the generator and saves without verifying, so a newer
+admin still works against an older server.
 
 The endpoints below are relative to `/api/v2/actions/actions` and require
 `create:actions` or `update:actions`:
 
-| Method | Path | Request | Result |
-| --- | --- | --- | --- |
-| GET | `/generation` | — | Available model IDs and `verification_required` |
-| POST | `/generate` | `{ prompt, model, trigger_id }` | `{ code, verification: { valid, errors } }` |
-| POST | `/verify` | `{ code, supported_triggers: [{ id }] }` | `{ valid, errors }` |
+| Method | Path          | Request                                  | Result                                          |
+| ------ | ------------- | ---------------------------------------- | ----------------------------------------------- |
+| GET    | `/generation` | —                                        | Available model IDs and `verification_required` |
+| POST   | `/generate`   | `{ prompt, model, trigger_id }`          | `{ code, verification: { valid, errors } }`     |
+| POST   | `/verify`     | `{ code, supported_triggers: [{ id }] }` | `{ valid, errors }`                             |
 
 Custom adapters implement `models` (a subset of `glm`, `deepseek`, `qwen`) and
 `generate({ tenantId, prompt, triggerId, model, apiTypes }): Promise<{ code: string }>`. The
@@ -770,12 +792,12 @@ const { app } = init({
 
 The `webhookInvoker` function receives a single object with these properties:
 
-| Parameter             | Type                                  | Description                                                                                        |
-| --------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `hook`                | `Hook`                                | The hook being invoked (contains `url`, `hook_id`, `trigger_id`, etc.)                             |
-| `data`                | `Record<string, unknown>`             | The payload data for the webhook                                                                   |
-| `tenant_id`           | `string`                              | The tenant ID                                                                                      |
-| `createServiceToken`  | `(scope?: string) => Promise<string>` | Lazily creates a service token. Only generates the token when called — no overhead if not used.     |
+| Parameter            | Type                                  | Description                                                                                     |
+| -------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `hook`               | `Hook`                                | The hook being invoked (contains `url`, `hook_id`, `trigger_id`, etc.)                          |
+| `data`               | `Record<string, unknown>`             | The payload data for the webhook                                                                |
+| `tenant_id`          | `string`                              | The tenant ID                                                                                   |
+| `createServiceToken` | `(scope?: string) => Promise<string>` | Lazily creates a service token. Only generates the token when called — no overhead if not used. |
 
 The function must return a `Response` object. If the response status is >= 400, the webhook invocation will be logged as failed.
 
@@ -1368,16 +1390,16 @@ exports.onExecutePostLogin = async (event, api) => {
 
 Supported triggers and their export names:
 
-| Trigger | Export Function | Execution |
-|---------|----------------|-----------|
-| `post-user-login` | `exports.onExecutePostLogin` | Inline (mutates the token) |
-| `credentials-exchange` | `exports.onExecuteCredentialsExchange` | Inline (mutates the token) |
-| `pre-user-registration` | `exports.onExecutePreUserRegistration` | Inline (blocks / mutates the user before creation) |
-| `post-user-registration` | `exports.onExecutePostUserRegistration` | Outbox-backed (retried) |
-| `pre-user-update` | `exports.onExecutePreUserUpdate` | Inline (can deny the update) |
-| `post-user-update` | `exports.onExecutePostUserUpdate` | Outbox-backed (retried); best effort without outbox |
-| `pre-user-deletion` | `exports.onExecutePreUserDeletion` | Inline (can deny deletion) |
-| `post-user-deletion` | `exports.onExecutePostUserDeletion` | Outbox-backed (retried); best effort without outbox |
+| Trigger                  | Export Function                         | Execution                                           |
+| ------------------------ | --------------------------------------- | --------------------------------------------------- |
+| `post-user-login`        | `exports.onExecutePostLogin`            | Inline (mutates the token)                          |
+| `credentials-exchange`   | `exports.onExecuteCredentialsExchange`  | Inline (mutates the token)                          |
+| `pre-user-registration`  | `exports.onExecutePreUserRegistration`  | Inline (blocks / mutates the user before creation)  |
+| `post-user-registration` | `exports.onExecutePostUserRegistration` | Outbox-backed (retried)                             |
+| `pre-user-update`        | `exports.onExecutePreUserUpdate`        | Inline (can deny the update)                        |
+| `post-user-update`       | `exports.onExecutePostUserUpdate`       | Outbox-backed (retried); best effort without outbox |
+| `pre-user-deletion`      | `exports.onExecutePreUserDeletion`      | Inline (can deny deletion)                          |
+| `post-user-deletion`     | `exports.onExecutePostUserDeletion`     | Outbox-backed (retried); best effort without outbox |
 
 ### Console output is persisted
 
@@ -1404,11 +1426,11 @@ const { app } = init({
 });
 ```
 
-| Mode | What is persisted to `logs` |
-|------|-----------------------------|
-| `"full"` (default) | Console output of every action in the execution, subject to the 256-character budget above. |
-| `"errors"` | Only the output of actions that failed — an action that threw or returned an error, or one that denied access. Output from successful actions in the same execution is dropped; if none failed, `logs` is omitted. |
-| `"off"` | Nothing. `logs` is always omitted. |
+| Mode               | What is persisted to `logs`                                                                                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `"full"` (default) | Console output of every action in the execution, subject to the 256-character budget above.                                                                                                                        |
+| `"errors"`         | Only the output of actions that failed — an action that threw or returned an error, or one that denied access. Output from successful actions in the same execution is dropped; if none failed, `logs` is omitted. |
+| `"off"`            | Nothing. `logs` is always omitted.                                                                                                                                                                                 |
 
 The setting applies only at persistence time. Hooks still capture and see their own console output while they run, and the execution record itself (status and per-action results) is written in every mode. Code hooks delivered through the outbox honor it too: when you drain the outbox from a cron, pass the same value as `actionExecutionLogs` to `runOutboxRelay` / `createDefaultDestinations`.
 
