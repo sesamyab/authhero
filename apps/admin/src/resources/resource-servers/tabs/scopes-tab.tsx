@@ -24,6 +24,7 @@ import {
   ReferenceManyField,
   SearchInput,
 } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 
 interface ScopeRecord extends RaRecord {
   resource_server_id: string;
@@ -133,6 +134,9 @@ export function ScopesTab() {
         }
       >
         <FilterForm filters={[<SearchInput key="q" source="q" alwaysOn />]} />
+        <div className="flex justify-end mb-2">
+          <JsonActionsButton />
+        </div>
         <DataTable
           rowClick={(_id, _r, scope) => editPath(scope as ScopeRecord)}
           bulkActionButtons={false}

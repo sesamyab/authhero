@@ -21,6 +21,7 @@ import {
   ListPagination,
   ReferenceManyField,
 } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { DateAgo } from "@/common/DateAgo";
 import { SelectionList } from "@/components/SelectionList";
 
@@ -474,6 +475,9 @@ export function OrganizationsTab() {
           </p>
         }
       >
+        <div className="flex justify-end mb-2">
+          <JsonActionsButton />
+        </div>
         <DataTable
           rowClick={(_, __, record) => `/organizations/${record.id}`}
           bulkActionButtons={false}

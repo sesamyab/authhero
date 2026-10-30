@@ -5,6 +5,7 @@ import {
   ListPagination,
   ReferenceManyField,
 } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { LogsTable, logFiltersWithSearch } from "../../logs/LogsTable";
 
 export function LogsTab() {
@@ -23,7 +24,8 @@ export function LogsTab() {
         <FilterForm filters={logFiltersWithSearch} />
         <FilterButton filters={logFiltersWithSearch} resource="logs" />
         {/* Display controls (columns) on the right */}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <JsonActionsButton />
           <ColumnsButton />
         </div>
       </div>

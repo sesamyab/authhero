@@ -16,6 +16,7 @@ import {
   ReferenceManyField,
   TextField,
 } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 
 interface GrantRecord {
   id: string;
@@ -129,6 +130,9 @@ export function GrantsTab() {
         <p className="text-sm text-muted-foreground py-4">No OAuth grants</p>
       }
     >
+      <div className="flex justify-end mb-2">
+        <JsonActionsButton />
+      </div>
       <DataTable rowClick={false} bulkActionButtons={false}>
         <DataTable.Col label="Application">
           <ClientCell />

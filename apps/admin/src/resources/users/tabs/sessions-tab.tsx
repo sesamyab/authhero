@@ -5,6 +5,7 @@ import {
   ReferenceManyField,
   TextField,
 } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { useRecordContext } from "ra-core";
 
 interface SessionRecord {
@@ -46,6 +47,9 @@ export function SessionsTab() {
         </p>
       }
     >
+      <div className="flex justify-end mb-2">
+        <JsonActionsButton />
+      </div>
       <DataTable rowClick="show" bulkActionButtons={false}>
         <DataTable.Col source="id" />
         <DataTable.Col label="Used at">

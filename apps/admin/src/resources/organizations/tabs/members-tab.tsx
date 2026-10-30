@@ -26,6 +26,7 @@ import {
   ListPagination,
   ReferenceManyField,
 } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { buildInvitationPayload } from "./inviteMember";
 
 interface UserSummary {
@@ -664,6 +665,9 @@ function PendingInvitations() {
           </p>
         }
       >
+        <div className="flex justify-end mb-2">
+          <JsonActionsButton />
+        </div>
         <DataTable bulkActionButtons={false}>
           <DataTable.Col label="Email">
             <InvitationEmailCell />
@@ -725,6 +729,9 @@ export function MembersTab({
             </p>
           }
         >
+          <div className="flex justify-end mb-2">
+            <JsonActionsButton />
+          </div>
           <DataTable
             rowClick={(_, __, record) => `/users/${record.user_id}`}
             bulkActionButtons={false}

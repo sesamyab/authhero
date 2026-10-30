@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { ColumnsButton } from "@/components/admin/columns-button";
 import { CreateButton } from "@/components/admin/create-button";
 import { ExportButton } from "@/components/admin/export-button";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { ListPagination } from "@/components/admin/list-pagination";
 import { FilterButton, FilterForm } from "@/components/admin/filter-form";
 import { SearchInput } from "@/components/admin/search-input";
@@ -145,6 +146,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
             <div className="flex items-center gap-2">
               {hasCreate ? <CreateButton /> : null}
               <ExportButton />
+              <JsonActionsButton size="default" />
             </div>
           )}
         </div>

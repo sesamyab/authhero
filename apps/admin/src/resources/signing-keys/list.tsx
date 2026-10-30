@@ -7,6 +7,7 @@ import {
 } from "ra-core";
 import { Copy, Download, KeyRound, RefreshCw, ShieldOff } from "lucide-react";
 import { DataTable, List } from "@/components/admin";
+import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -497,6 +498,7 @@ function SigningKeyTable({ type }: { type: SigningKeyType }) {
       actions={
         <div className="flex items-center gap-2">
           <RotateSigningKeyButton type={type} />
+          <JsonActionsButton size="default" />
         </div>
       }
     >
