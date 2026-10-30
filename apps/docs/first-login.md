@@ -88,9 +88,11 @@ http://localhost:3000/authorize?client_id=default&response_type=code&redirect_ur
 | `code_challenge` / `code_challenge_method` | PKCE. The challenge is the SHA-256 of the verifier used in step 5, so no client secret is needed. |
 
 To select the login language, append `&ui_locales=sv` for Swedish, or
-`&ui_locales=sv%20en` for Swedish with English as the next preference. The
-requested language must be available and allowed by the tenant's
-`enabled_locales` setting.
+`&ui_locales=sv%20en` for Swedish with English as the next preference. Signing in
+to the dashboard in step 3 created a session, so also append `&prompt=login`.
+Otherwise AuthHero reuses the session and returns a code without showing the
+login screen. The requested language must be available and allowed by the
+tenant's `enabled_locales` setting.
 
 This table covers the example above. See the [Authorize endpoint reference](/api/authorize)
 for all accepted parameters, including language, connection selection, login hints,
