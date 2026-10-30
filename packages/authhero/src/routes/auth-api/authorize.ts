@@ -9,6 +9,7 @@ import {
   CodeChallengeMethod,
   LoginSession,
   LoginSessionState,
+  Session,
   Strategy,
   claimsRequestSchema,
   isDatabaseConnectionStrategy,
@@ -702,10 +703,12 @@ const getRoot = defineRoute({
     }
 
     // Fetch the session from cookies
-    // Users may have multiple cookies with the same name due to domain/path conflicts,
-    // partitioned vs non-partitioned cookies, or browser quirks. Try all cookie values
-    // to find a valid session for robustness.
-    let validSession;
+    // The session cookie is set both non-partitioned and partitioned, and
+    // users may also have duplicates from domain/path conflicts. Usually all
+    // values are the same; when they point to different valid sessions (e.g.
+    // a login inside a cross-site iframe and a later one at top level), the
+    // most recently authenticated session wins. Cookie order means nothing.
+    let validSession: Session | undefined;
     const authCookies = getAllAuthCookies(
       client.tenant.id,
       ctx.req.header("cookie"),
@@ -714,17 +717,20 @@ const getRoot = defineRoute({
     let sessionLookup: SessionCookieDiagnostics["result"] = authCookies.length
       ? "not_found"
       : "none";
-    for (const cookieValue of authCookies) {
+    for (const cookieValue of new Set(authCookies)) {
       const session = await env.data.sessions.get(
         client.tenant.id,
         cookieValue,
       );
       if (session && !session.revoked_at) {
-        validSession = session;
+        if (
+          !validSession ||
+          session.authenticated_at > validSession.authenticated_at
+        ) {
+          validSession = session;
+        }
         sessionLookup = "valid";
-        break;
-      }
-      if (session) {
+      } else if (session && sessionLookup !== "valid") {
         sessionLookup = "revoked";
       }
     }
@@ -734,6 +740,13 @@ const getRoot = defineRoute({
       validSession = undefined;
       sessionLookup = "sso_disabled";
     }
+
+    const sessionCookie = getSessionCookieDiagnostics(
+      client.tenant.id,
+      ctx.req,
+      authCookies.length,
+      sessionLookup,
+    );
 
     // Silent authentication with iframe
     if (prompt == "none") {
@@ -777,6 +790,7 @@ const getRoot = defineRoute({
         client.connections[0].name,
         authParams,
         existingSession,
+        sessionCookie,
       );
     }
 
@@ -789,6 +803,7 @@ const getRoot = defineRoute({
         connection,
         authParams,
         existingSession,
+        sessionCookie,
       );
     } else if (login_ticket) {
       const ticketAuthResult = await ticketAuth(
@@ -815,12 +830,7 @@ const getRoot = defineRoute({
       connection,
       login_hint,
       screen_hint,
-      sessionCookie: getSessionCookieDiagnostics(
-        client.tenant.id,
-        ctx.req,
-        authCookies.length,
-        sessionLookup,
-      ),
+      sessionCookie,
     });
 
     if (universalAuthResult instanceof Response) {

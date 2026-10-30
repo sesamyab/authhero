@@ -7,6 +7,36 @@ import {
 } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../../helpers/test-server";
 
+type Env = Awaited<ReturnType<typeof getTestServer>>["env"];
+
+async function createSession(
+  env: Env,
+  id: string,
+  user_id = "email|userId",
+  authenticated_at?: string,
+) {
+  const session = await env.data.sessions.create("tenantId", {
+    id,
+    user_id,
+    clients: ["clientId"],
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    used_at: new Date().toISOString(),
+    login_session_id: "",
+    device: {
+      last_ip: "",
+      initial_ip: "",
+      last_user_agent: "",
+      initial_user_agent: "",
+      initial_asn: "",
+      last_asn: "",
+    },
+  });
+  if (authenticated_at) {
+    await env.data.sessions.update("tenantId", id, { authenticated_at });
+  }
+  return session;
+}
+
 const authorizeQuery = {
   client_id: "clientId",
   redirect_uri: "https://example.com/callback",
@@ -84,22 +114,7 @@ describe("session cookie diagnostics on the login log", () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
 
-    await env.data.sessions.create("tenantId", {
-      id: "sid_valid",
-      user_id: "email|userId",
-      clients: ["clientId"],
-      expires_at: new Date(Date.now() + 3600_000).toISOString(),
-      used_at: new Date().toISOString(),
-      login_session_id: "",
-      device: {
-        last_ip: "",
-        initial_ip: "",
-        last_user_agent: "",
-        initial_user_agent: "",
-        initial_asn: "",
-        last_asn: "",
-      },
-    });
+    await createSession(env, "sid_valid");
 
     // The Cookie header can't say which jar a value came from; a single
     // value is what a browser sends when only one of the two is present.
@@ -114,5 +129,103 @@ describe("session cookie diagnostics on the login log", () => {
       "https://example.com/callback",
     );
     expect(location.searchParams.get("code")).toBeTruthy();
+  });
+
+  it("uses the most recently authenticated session when the jars disagree", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+    await env.data.users.create("tenantId", {
+      user_id: "email|newerUser",
+      email: "newer@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: "email",
+      is_social: false,
+    });
+    await createSession(
+      env,
+      "sid_older",
+      "email|userId",
+      new Date(Date.now() - 3600_000).toISOString(),
+    );
+    await createSession(
+      env,
+      "sid_newer",
+      "email|newerUser",
+      new Date().toISOString(),
+    );
+
+    // The older session first: cookie order must not decide.
+    const response = await oauthClient.authorize.$get(
+      { query: authorizeQuery },
+      {
+        headers: {
+          cookie:
+            "tenantId-auth-token=sid_older; tenantId-auth-token=sid_newer",
+        },
+      },
+    );
+
+    expect(response.status).toBe(302);
+    const code = new URL(response.headers.get("location")!).searchParams.get(
+      "code",
+    );
+    const stored = await env.data.codes.get(
+      "tenantId",
+      code!,
+      "authorization_code",
+    );
+    expect(stored?.user_id).toBe("email|newerUser");
+  });
+
+  it("revokes every session the browser sent on logout", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+    await createSession(env, "sid_a");
+    await createSession(env, "sid_b");
+
+    const response = await oauthClient.v2.logout.$get(
+      {
+        query: {
+          client_id: "clientId",
+          returnTo: "https://example.com/callback",
+        },
+      },
+      {
+        headers: {
+          cookie: "tenantId-auth-token=sid_a; tenantId-auth-token=sid_b",
+        },
+      },
+    );
+
+    expect(response.status).toBe(302);
+    for (const id of ["sid_a", "sid_b"]) {
+      const session = await env.data.sessions.get("tenantId", id);
+      expect(session?.revoked_at).toBeTruthy();
+    }
+  });
+
+  it("records the snapshot when /authorize goes straight to a connection", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+
+    const response = await oauthClient.authorize.$get(
+      { query: { ...authorizeQuery, connection: "mock-strategy" } },
+      { headers: { cookie: "other=x", "sec-fetch-site": "cross-site" } },
+    );
+
+    expect(response.status).toBe(302);
+    // The mock strategy always issues the provider state "code".
+    const code = await env.data.codes.get("tenantId", "code", "oauth2_state");
+    const loginSession = await env.data.loginSessions.get(
+      "tenantId",
+      code!.login_id,
+    );
+    expect(JSON.parse(loginSession!.state_data!).session_cookie).toMatchObject({
+      received: 0,
+      result: "none",
+      cookies: 1,
+      fetch_site: "cross-site",
+    });
   });
 });

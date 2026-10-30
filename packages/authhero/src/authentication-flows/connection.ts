@@ -30,6 +30,8 @@ import { isConnectLoginSession } from "../helpers/dcr/connect-state";
 import { setTenantId } from "../helpers/set-tenant-id";
 import { writeTryConnectionResult } from "./try-connection";
 import { nanoid } from "nanoid";
+import type { SessionCookieDiagnostics } from "../utils/cookies";
+import { createLoginSessionWithData } from "../state-machines/login-session-data";
 
 export async function connectionAuth(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
@@ -40,6 +42,8 @@ export async function connectionAuth(
   // looked it up. `null` means "looked up, not found" (we create one);
   // `undefined` means "not looked up" (we fetch it here).
   preloadedLoginSession?: LoginSession | null,
+  // What the browser sent on /authorize; ends up on the login log.
+  sessionCookie?: SessionCookieDiagnostics,
 ) {
   if (!authParams.state) {
     throw new JSONHTTPException(400, { message: "State not found" });
@@ -70,16 +74,21 @@ export async function connectionAuth(
     const useragent = ctx.get("useragent");
     const auth0_client = ctx.get("auth0_client");
 
-    loginSession = await ctx.env.data.loginSessions.create(client.tenant.id, {
-      expires_at: new Date(
-        Date.now() + UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS * 1000,
-      ).toISOString(),
-      authParams,
-      csrf_token: nanoid(),
-      ip,
-      useragent,
-      auth0Client: stringifyAuth0Client(auth0_client),
-    });
+    loginSession = await createLoginSessionWithData(
+      ctx.env.data.loginSessions,
+      client.tenant.id,
+      {
+        expires_at: new Date(
+          Date.now() + UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS * 1000,
+        ).toISOString(),
+        authParams,
+        csrf_token: nanoid(),
+        ip,
+        useragent,
+        auth0Client: stringifyAuth0Client(auth0_client),
+      },
+      sessionCookie ? { session_cookie: sessionCookie } : {},
+    );
   }
 
   const strategy = getStrategy(ctx, connection.strategy);

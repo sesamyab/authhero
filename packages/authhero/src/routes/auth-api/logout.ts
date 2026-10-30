@@ -3,7 +3,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { logMessage } from "../../helpers/logging";
 import { Bindings, Variables } from "../../types";
 import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
-import { clearAuthCookie, getAuthCookie } from "../../utils/cookies";
+import { clearAuthCookie, getAllAuthCookies } from "../../utils/cookies";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { getEnrichedClient } from "../../helpers/client";
 import { prefetchClientBundle } from "../../helpers/prefetch-client-bundle";
@@ -83,35 +83,36 @@ const getRoot = defineRoute({
 
     const cookie = ctx.req.header("cookie");
 
-    if (cookie) {
-      const tokenState = getAuthCookie(client.tenant.id, cookie);
-      if (tokenState) {
-        const session = await ctx.env.data.sessions.get(
+    // The session cookie is set non-partitioned and partitioned, and the two
+    // can point to different sessions; end every session this browser sent.
+    for (const tokenState of new Set(
+      getAllAuthCookies(client.tenant.id, cookie),
+    )) {
+      const session = await ctx.env.data.sessions.get(
+        client.tenant.id,
+        tokenState,
+      );
+      if (session) {
+        const user = await ctx.env.data.users.get(
           client.tenant.id,
-          tokenState,
+          session.user_id,
         );
-        if (session) {
-          const user = await ctx.env.data.users.get(
-            client.tenant.id,
-            session.user_id,
-          );
-          if (user) {
-            ctx.set("user_id", user.user_id);
-            ctx.set("connection", user.connection);
-          }
-
-          // Front-channel logout ends the browser session only. Refresh
-          // tokens are grants, not sessions — the auth cookie is shared by
-          // every client on the tenant, so cascading revocation here would
-          // kill other clients' tokens (and this endpoint is an
-          // unauthenticated GET). Auth0 behaves the same; clients revoke
-          // their own tokens via POST /oauth/revoke (RFC 7009).
-          await ctx.env.data.sessions.update(client.tenant.id, tokenState, {
-            revoked_at: new Date().toISOString(),
-          });
-
-          sendBackchannelLogout(ctx, client.tenant.id, session);
+        if (user) {
+          ctx.set("user_id", user.user_id);
+          ctx.set("connection", user.connection);
         }
+
+        // Front-channel logout ends the browser session only. Refresh
+        // tokens are grants, not sessions — the auth cookie is shared by
+        // every client on the tenant, so cascading revocation here would
+        // kill other clients' tokens (and this endpoint is an
+        // unauthenticated GET). Auth0 behaves the same; clients revoke
+        // their own tokens via POST /oauth/revoke (RFC 7009).
+        await ctx.env.data.sessions.update(client.tenant.id, tokenState, {
+          revoked_at: new Date().toISOString(),
+        });
+
+        sendBackchannelLogout(ctx, client.tenant.id, session);
       }
     }
     logMessage(ctx, client.tenant.id, {
