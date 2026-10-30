@@ -1,5 +1,11 @@
 # @authhero/docs
 
+## 1.59.4
+
+### Patch Changes
+
+- 86b744c: Document the authorize endpoint's accepted parameters, including language selection with ui_locales, and link the reference from the first-login guide and API documentation.
+
 ## 1.59.3
 
 ### Patch Changes

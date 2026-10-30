@@ -1,5 +1,19 @@
 # @authhero/admin
 
+## 0.26.0
+
+### Minor Changes
+
+- 27fc769: Add a JSON button that copies or downloads data as JSON. It sits on list pages and table tabs, where it takes the rows shown (or the selected rows), and on every raw JSON view, including the Raw tabs and the Try connection results.
+- f4c7e55: Add prompt-based Action generation through an optional generator adapter, a Cloudflare AI Gateway implementation with GLM, DeepSeek and Qwen choices, and draft previews in the Actions editor. Add static verification before saving, with server-side enforcement for writes and deployments when generation is configured.
+
+  Pass generated TypeScript declarations for each trigger's sandbox API to generator adapters, including method arguments, return types, and token-exchange user attributes and options.
+
+### Patch Changes
+
+- Updated dependencies [f4c7e55]
+  - @authhero/adapter-interfaces@4.25.0
+
 ## 0.25.0
 
 ### Minor Changes

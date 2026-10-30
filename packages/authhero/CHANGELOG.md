@@ -1,5 +1,27 @@
 # authhero
 
+## 9.28.0
+
+### Minor Changes
+
+- f4c7e55: Add prompt-based Action generation through an optional generator adapter, a Cloudflare AI Gateway implementation with GLM, DeepSeek and Qwen choices, and draft previews in the Actions editor. Add static verification before saving, with server-side enforcement for writes and deployments when generation is configured.
+
+  Pass generated TypeScript declarations for each trigger's sandbox API to generator adapters, including method arguments, return types, and token-exchange user attributes and options.
+
+### Patch Changes
+
+- d0d3eaf: Follow-ups to the `tenantDispatch` carve-out from #1633:
+  - The carve-out now matches only at the start of the path, below where the management API is mounted. A tenant's own resource whose name or id happens to be `operations`, `rollouts` or `tenant-members` (for example `/organizations/name/operations`) is forwarded to its worker again instead of being answered by the control plane.
+  - The paths are recorded where those routes are mounted, so the carve-out follows the mount conditions. An extension that overrides `/tenant-members` is no longer carved out.
+  - The control-plane tenant-members resource names what is missing in an `X-Authhero-Not-Found` header (`organization` or `invitation`). The remote adapter reads it, so a missing invitation surfaces as a missing invitation rather than a missing team, and a not-found whose body was lost is no longer reported as a 502. Control planes from before the header still work through the `Not found` body.
+  - `createWfpForwardMiddleware` warns when it is given `localPaths: []` without `includeDefaultLocalPaths`, since an empty list no longer turns the default carve-out off.
+
+- Updated dependencies [f4c7e55]
+  - @authhero/adapter-interfaces@4.25.0
+  - @authhero/proxy@0.11.11
+  - @authhero/saml@0.6.4
+  - @authhero/widget@0.41.8
+
 ## 9.27.1
 
 ### Patch Changes
