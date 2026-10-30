@@ -11,6 +11,17 @@ export const CONTROL_PLANE_TENANT_MEMBERS_PATH =
   "/api/v2/proxy/control-plane/tenant-members";
 
 /**
+ * Set by the control-plane resource on its own 404s, naming what is missing.
+ * Any other 404 (a route that is not mounted, the zone's origin, a proxy) lacks
+ * it, so the remote client can tell "no team" from a broken hop without
+ * reading the body. The body stays `Not found` for clients from before the
+ * header.
+ */
+export const TENANT_MEMBERS_NOT_FOUND_HEADER = "X-Authhero-Not-Found";
+
+export type TenantMembersNotFoundKind = "organization" | "invitation";
+
+/**
  * `tenant_id` rides on every write body for wire readability, but the server
  * NEVER acts on it: the tenant is taken from the verified token and a mismatch
  * is refused (same rule as the custom-domains resource). A shard holding the

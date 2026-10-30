@@ -105,6 +105,16 @@ export function createWfpForwardMiddleware(
     localPaths: extraLocalPaths = [],
     includeDefaultLocalPaths = true,
   } = options;
+  // `localPaths: []` used to switch the default carve-out off; it now adds to
+  // the defaults, so that call silently keeps them. Say so once, at setup.
+  if (
+    options.localPaths?.length === 0 &&
+    options.includeDefaultLocalPaths === undefined
+  ) {
+    console.warn(
+      "[authhero] createWfpForwardMiddleware: `localPaths: []` no longer turns off DEFAULT_LOCAL_PATHS; pass `includeDefaultLocalPaths: false` to dispatch them.",
+    );
+  }
   const localPaths = [
     ...(includeDefaultLocalPaths ? DEFAULT_LOCAL_PATHS : []),
     ...extraLocalPaths,

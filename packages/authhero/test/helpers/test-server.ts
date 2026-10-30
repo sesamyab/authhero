@@ -74,6 +74,8 @@ type getEnvParams = {
   tenantDispatch?: import("hono").MiddlewareHandler;
   // Mounts `/tenant-members`; see `AuthHeroConfig.tenantMembers`.
   tenantMembers?: import("../../src/types/AuthHeroConfig").AuthHeroConfig["tenantMembers"];
+  // Extra management routes; see `AuthHeroConfig.managementApiExtensions`.
+  managementApiExtensions?: import("../../src/types/AuthHeroConfig").AuthHeroConfig["managementApiExtensions"];
   // Optional handler driving POST /tenants/{id}/redeploy (the
   // `config.tenantUpgrade` integration point).
   tenantUpgrade?: (tenantId: string) => Promise<void>;
@@ -294,6 +296,9 @@ export async function getTestServer(
     ...(args.codeExecutor ? { codeExecutor: args.codeExecutor } : {}),
     ...(args.tenantDispatch ? { tenantDispatch: args.tenantDispatch } : {}),
     ...(args.tenantMembers ? { tenantMembers: args.tenantMembers } : {}),
+    ...(args.managementApiExtensions
+      ? { managementApiExtensions: args.managementApiExtensions }
+      : {}),
     ...(args.managementApiMiddleware
       ? { managementApiMiddleware: args.managementApiMiddleware }
       : {}),

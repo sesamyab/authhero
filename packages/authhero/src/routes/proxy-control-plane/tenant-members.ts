@@ -1,10 +1,13 @@
 import { Hono, type Context } from "hono";
 import { Bindings } from "../../types";
 import {
+  TenantInvitationNotFoundError,
   TenantMembersBackend,
   TenantMembersNotFoundError,
 } from "../../tenant-members/types";
 import {
+  TENANT_MEMBERS_NOT_FOUND_HEADER,
+  TenantMembersNotFoundKind,
   createInvitationBodySchema,
   memberRolesBodySchema,
   membersMutationBodySchema,
@@ -105,14 +108,21 @@ export function createTenantMembersControlPlaneApp(
     }
   }
 
-  // Map the backend's "not there" signal to 404; everything else propagates to
-  // the app's onError.
+  // Map the backend's "not there" signal to 404, naming what is missing in
+  // TENANT_MEMBERS_NOT_FOUND_HEADER; everything else propagates to the app's
+  // onError.
   async function run<T>(c: CpCtx, op: () => Promise<T>): Promise<Response | T> {
     try {
       return await op();
     } catch (err) {
       if (err instanceof TenantMembersNotFoundError) {
-        return c.text("Not found", 404);
+        const kind: TenantMembersNotFoundKind =
+          err instanceof TenantInvitationNotFoundError
+            ? "invitation"
+            : "organization";
+        return c.text("Not found", 404, {
+          [TENANT_MEMBERS_NOT_FOUND_HEADER]: kind,
+        });
       }
       throw err;
     }

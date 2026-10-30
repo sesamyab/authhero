@@ -696,6 +696,9 @@ install them only if you import `/wfp`.
   local app. Control-plane routes that authhero itself mounts
   (`/tenant-members`, `/operations`, `/tenants/:id/operations`, `/rollouts`) are
   never dispatched when `tenantDispatch` is set, so they need no entry here.
+  Only the start of the path counts (`/organizations/name/operations` is still
+  dispatched), and a path a `managementApiExtensions` entry takes over is
+  dispatched as before.
   Pass it as `init`'s `tenantDispatch`
   config so it is mounted inside
   authhero's management API **after** the CORS middleware — then the central CORS

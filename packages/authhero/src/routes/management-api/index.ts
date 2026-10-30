@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Context } from "hono";
+import { basePath } from "hono/route";
 import { HTTPException } from "hono/http-exception";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import { Bindings, Variables, AuthHeroConfig } from "../../types";
@@ -96,29 +97,25 @@ import { createServiceToken } from "../../helpers/service-token";
 // it even when the origin isn't allowed, so caches never serve one origin's
 // allow/deny decision to another.
 /**
- * The paths below that this app mounts and serves from the control plane's own
- * database, matched with or without an `/api/v2` prefix. A request for one of
- * them must not be forwarded to a tenant's worker: the worker does not hold
- * that data (and does not mount the routes), so a forwarded request either
- * calls back up to the control plane or answers 404 (#1632).
- *
- * Only paths whose route is actually mounted are listed, in step with the
- * checks that mount them further down. `/tenants/settings` is not among them:
- * that one is the tenant's own and stays with its worker.
+ * Match a request path against the mount paths recorded in `mounts`, relative
+ * to where the management app itself is mounted (`/api/v2` in `init`, `/` when
+ * a test calls the app directly). Anchored at the start, so only a route's own
+ * prefix counts: `/organizations/name/operations` is not `/operations`.
+ * `:param` segments match any single segment.
  */
-function controlPlanePaths(
-  config: AuthHeroConfig,
-  data: DataAdapters,
-): RegExp | undefined {
-  const paths: string[] = [];
-  if (config.tenantMembers) paths.push("tenant-members");
-  if (data.tenantOperations && data.tenantOperationEvents) {
-    paths.push("operations", "tenants/[^/]+/operations");
-    if (data.rollouts) paths.push("rollouts");
-  }
-  return paths.length
-    ? new RegExp(`/(?:${paths.join("|")})(?:/|$)`)
-    : undefined;
+function mountMatcher(mounts: string[]): (ctx: Context) => boolean {
+  let pattern: RegExp | undefined;
+  return (ctx) => {
+    if (mounts.length === 0) return false;
+    pattern ??= new RegExp(
+      `^(?:${mounts
+        .map((mount) => mount.replace(/:[^/]+/g, "[^/]+"))
+        .join("|")})(?:/|$)`,
+    );
+    const base = basePath(ctx);
+    const path = base === "/" ? ctx.req.path : ctx.req.path.slice(base.length);
+    return pattern.test(path);
+  };
 }
 
 function setCorsHeaders(headers: Headers, allowedOrigin: string) {
@@ -266,6 +263,10 @@ export default function create(config: AuthHeroConfig) {
     }
   });
 
+  // Mount paths served from the control plane's own records, filled in where
+  // those routes are mounted below and read by the dispatch carve-out.
+  const controlPlaneMounts: string[] = [];
+
   // Dispatch a request to its tenant's own worker when configured. Mounted
   // here — after the CORS middleware, before the auth/data chain — so a
   // forwarded response is wrapped by the central CORS middleware above and
@@ -280,9 +281,14 @@ export default function create(config: AuthHeroConfig) {
     // requests stay here. Forwarded, the tenant worker would have to call back
     // up to the control plane, an extra hop that fails wherever the worker
     // cannot reach the control plane's own hostname (#1632).
-    const controlPlanePath = controlPlanePaths(config, managementAdapter);
+    //
+    // The paths are recorded where those routes are mounted further down
+    // (`controlPlaneMounts`), so the carve-out cannot drift from what is
+    // actually mounted. `/tenants/settings` is not among them: that one is the
+    // tenant's own and stays with its worker.
+    const isControlPlanePath = mountMatcher(controlPlaneMounts);
     app.use(async (ctx, next) => {
-      if (controlPlanePath?.test(ctx.req.path)) {
+      if (isControlPlanePath(ctx)) {
         return next();
       }
       return dispatch(ctx, next);
@@ -697,6 +703,7 @@ export default function create(config: AuthHeroConfig) {
   // invitations) from the per-tenant admin UI, delegating to a backend that
   // either resolves the org locally or hops to the control plane.
   if (config.tenantMembers && !extensionPaths.has("/tenant-members")) {
+    controlPlaneMounts.push("/tenant-members");
     managementApp.route(
       "/tenant-members",
       createTenantMembersRoutes(
@@ -743,6 +750,7 @@ export default function create(config: AuthHeroConfig) {
     managementAdapter.tenantOperations &&
     managementAdapter.tenantOperationEvents
   ) {
+    controlPlaneMounts.push("/operations", "/tenants/:id/operations");
     managementApp.route("/operations", operationRoutes);
     managementApp.route("/tenants/:id/operations", tenantOperationsRoutes);
   }
@@ -754,6 +762,7 @@ export default function create(config: AuthHeroConfig) {
     managementAdapter.tenantOperations &&
     managementAdapter.tenantOperationEvents
   ) {
+    controlPlaneMounts.push("/rollouts");
     managementApp.route("/rollouts", rolloutRoutes);
   }
 

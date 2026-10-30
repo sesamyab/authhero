@@ -237,6 +237,13 @@ describe("tenant-members control-plane round trip", () => {
       /no organization/i,
     );
   });
+
+  it("surfaces a missing invitation as a missing invitation, not a missing team", async () => {
+    const remote = makeRemote(app);
+    await expect(remote.revokeInvitation(ACME, "inv_gone")).rejects.toThrow(
+      /invitation "inv_gone" not found/i,
+    );
+  });
 });
 
 describe("tenant-members control-plane round trip: default invitation email", () => {

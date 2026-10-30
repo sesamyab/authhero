@@ -125,6 +125,30 @@ describe("createWfpForwardMiddleware localPaths carve-out", () => {
     expect(dispatched).toHaveLength(0);
   });
 
+  it("warns when `localPaths: []` is passed expecting the old opt-out", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      createWfpForwardMiddleware({
+        tenants: tenantsAdapter(async () => tenant()),
+        controlPlaneTenantId: CONTROL_PLANE,
+        localPaths: [],
+      });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain("includeDefaultLocalPaths");
+
+      warn.mockClear();
+      createWfpForwardMiddleware({
+        tenants: tenantsAdapter(async () => tenant()),
+        controlPlaneTenantId: CONTROL_PLANE,
+        localPaths: [],
+        includeDefaultLocalPaths: true,
+      });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("exports the default list so callers can read it", () => {
     expect(DEFAULT_LOCAL_PATHS).toEqual(["/u/widget/"]);
   });
