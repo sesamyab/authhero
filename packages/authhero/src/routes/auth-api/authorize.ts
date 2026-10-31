@@ -717,12 +717,19 @@ const getRoot = defineRoute({
     let sessionLookup: SessionCookieDiagnostics["result"] = authCookies.length
       ? "not_found"
       : "none";
+    const now = new Date();
     for (const cookieValue of new Set(authCookies)) {
       const session = await env.data.sessions.get(
         client.tenant.id,
         cookieValue,
       );
-      if (session && !session.revoked_at) {
+      if (!session) continue;
+      // An expired session must not outrank an older live one: silent auth
+      // would reject it and clear both cookies, logging the user out.
+      const isExpired =
+        (!!session.expires_at && new Date(session.expires_at) < now) ||
+        (!!session.idle_expires_at && new Date(session.idle_expires_at) < now);
+      if (!session.revoked_at && !isExpired) {
         if (
           !validSession ||
           session.authenticated_at > validSession.authenticated_at
@@ -730,8 +737,8 @@ const getRoot = defineRoute({
           validSession = session;
         }
         sessionLookup = "valid";
-      } else if (session && sessionLookup !== "valid") {
-        sessionLookup = "revoked";
+      } else if (sessionLookup !== "valid") {
+        sessionLookup = session.revoked_at ? "revoked" : "expired";
       }
     }
 

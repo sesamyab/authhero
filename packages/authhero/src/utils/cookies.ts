@@ -205,7 +205,13 @@ export type SessionCookieDiagnostics = {
   /** Number of session-cookie values sent (0, 1, or 2 when both jars are). */
   received: number;
   /** Outcome of looking the values up. */
-  result: "none" | "not_found" | "revoked" | "valid" | "sso_disabled";
+  result:
+    | "none"
+    | "not_found"
+    | "revoked"
+    | "expired"
+    | "valid"
+    | "sso_disabled";
   /** Total number of cookies in the Cookie header. */
   cookies: number;
   /** Whether the non-partitioned, SameSite=Lax last-used cookie was sent. */

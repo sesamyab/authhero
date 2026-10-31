@@ -178,6 +178,42 @@ describe("session cookie diagnostics on the login log", () => {
     expect(stored?.user_id).toBe("email|newerUser");
   });
 
+  it("skips an expired session even when it is the most recent", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+    await createSession(
+      env,
+      "sid_live",
+      "email|userId",
+      new Date(Date.now() - 3600_000).toISOString(),
+    );
+    await createSession(
+      env,
+      "sid_expired",
+      "email|userId",
+      new Date().toISOString(),
+    );
+    await env.data.sessions.update("tenantId", "sid_expired", {
+      idle_expires_at: new Date(Date.now() - 1000).toISOString(),
+    });
+
+    const response = await oauthClient.authorize.$get(
+      { query: { ...authorizeQuery, prompt: "none" } },
+      {
+        headers: {
+          cookie:
+            "tenantId-auth-token=sid_expired; tenantId-auth-token=sid_live",
+        },
+      },
+    );
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.searchParams.get("error")).toBeNull();
+    expect(location.searchParams.get("code")).toBeTruthy();
+    expect(response.headers.get("set-cookie") ?? "").not.toContain("Max-Age=0");
+  });
+
   it("revokes every session the browser sent on logout", async () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
