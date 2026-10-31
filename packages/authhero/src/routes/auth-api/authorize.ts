@@ -9,6 +9,7 @@ import {
   CodeChallengeMethod,
   LoginSession,
   LoginSessionState,
+  Session,
   Strategy,
   claimsRequestSchema,
   isDatabaseConnectionStrategy,
@@ -16,7 +17,11 @@ import {
 } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
-import { getAllAuthCookies } from "../../utils/cookies";
+import {
+  getAllAuthCookies,
+  getSessionCookieDiagnostics,
+  type SessionCookieDiagnostics,
+} from "../../utils/cookies";
 import { universalAuth } from "../../authentication-flows/universal";
 import { ticketAuth } from "../../authentication-flows/ticket";
 import { silentAuth } from "../../authentication-flows/silent";
@@ -698,30 +703,57 @@ const getRoot = defineRoute({
     }
 
     // Fetch the session from cookies
-    // Users may have multiple cookies with the same name due to domain/path conflicts,
-    // partitioned vs non-partitioned cookies, or browser quirks. Try all cookie values
-    // to find a valid session for robustness.
-    let validSession;
+    // The session cookie is set both non-partitioned and partitioned, and
+    // users may also have duplicates from domain/path conflicts. Usually all
+    // values are the same; when they point to different valid sessions (e.g.
+    // a login inside a cross-site iframe and a later one at top level), the
+    // most recently authenticated session wins. Cookie order means nothing.
+    let validSession: Session | undefined;
     const authCookies = getAllAuthCookies(
       client.tenant.id,
       ctx.req.header("cookie"),
     );
 
-    for (const cookieValue of authCookies) {
+    let sessionLookup: SessionCookieDiagnostics["result"] = authCookies.length
+      ? "not_found"
+      : "none";
+    const now = new Date();
+    for (const cookieValue of new Set(authCookies)) {
       const session = await env.data.sessions.get(
         client.tenant.id,
         cookieValue,
       );
-      if (session && !session.revoked_at) {
-        validSession = session;
-        break;
+      if (!session) continue;
+      // An expired session must not outrank an older live one: silent auth
+      // would reject it and clear both cookies, logging the user out.
+      const isExpired =
+        (!!session.expires_at && new Date(session.expires_at) < now) ||
+        (!!session.idle_expires_at && new Date(session.idle_expires_at) < now);
+      if (!session.revoked_at && !isExpired) {
+        if (
+          !validSession ||
+          session.authenticated_at > validSession.authenticated_at
+        ) {
+          validSession = session;
+        }
+        sessionLookup = "valid";
+      } else if (sessionLookup !== "valid") {
+        sessionLookup = session.revoked_at ? "revoked" : "expired";
       }
     }
 
     // If SSO is disabled for this client, ignore any existing session
     if (client.sso_disabled) {
       validSession = undefined;
+      sessionLookup = "sso_disabled";
     }
+
+    const sessionCookie = getSessionCookieDiagnostics(
+      client.tenant.id,
+      ctx.req,
+      authCookies.length,
+      sessionLookup,
+    );
 
     // Silent authentication with iframe
     if (prompt == "none") {
@@ -765,6 +797,7 @@ const getRoot = defineRoute({
         client.connections[0].name,
         authParams,
         existingSession,
+        sessionCookie,
       );
     }
 
@@ -777,6 +810,7 @@ const getRoot = defineRoute({
         connection,
         authParams,
         existingSession,
+        sessionCookie,
       );
     } else if (login_ticket) {
       const ticketAuthResult = await ticketAuth(
@@ -803,6 +837,7 @@ const getRoot = defineRoute({
       connection,
       login_hint,
       screen_hint,
+      sessionCookie,
     });
 
     if (universalAuthResult instanceof Response) {

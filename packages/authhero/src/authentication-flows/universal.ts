@@ -14,6 +14,8 @@ import { sendLink } from "../emails";
 import generateOTP from "../utils/otp";
 import { nanoid } from "nanoid";
 import { stringifyAuth0Client } from "../utils/client-info";
+import type { SessionCookieDiagnostics } from "../utils/cookies";
+import { createLoginSessionWithData } from "../state-machines/login-session-data";
 
 interface UniversalAuthParams {
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>;
@@ -24,6 +26,8 @@ interface UniversalAuthParams {
   connection?: string;
   login_hint?: string;
   screen_hint?: string;
+  /** What the browser sent on this /authorize; ends up on the login log. */
+  sessionCookie?: SessionCookieDiagnostics;
 }
 
 /**
@@ -81,6 +85,7 @@ export async function universalAuth({
   connection,
   login_hint,
   screen_hint,
+  sessionCookie,
 }: UniversalAuthParams) {
   const url = new URL(ctx.req.url);
   if (ctx.var.custom_domain) {
@@ -111,7 +116,8 @@ export async function universalAuth({
     session = undefined;
   }
 
-  const loginSession = await ctx.env.data.loginSessions.create(
+  const loginSession = await createLoginSessionWithData(
+    ctx.env.data.loginSessions,
     client.tenant.id,
     {
       expires_at: new Date(
@@ -124,6 +130,7 @@ export async function universalAuth({
       useragent,
       auth0Client,
     },
+    sessionCookie ? { session_cookie: sessionCookie } : {},
   );
   // Lets logMessage tag this request's log entries with the login session.
   ctx.set("loginSession", loginSession);

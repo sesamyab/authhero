@@ -181,6 +181,13 @@ export type LogParams = {
    */
   execution_id?: string;
   /**
+   * Extra troubleshooting fields (e.g. `session_cookie`, `private_browsing` on
+   * a login log). Merged into `details` like `execution_id`, so the request
+   * snapshot is kept. Keep it compact: Analytics Engine caps details at 1024
+   * bytes.
+   */
+  diagnostics?: Record<string, unknown>;
+  /**
    * The login session (the `state`) this event belongs to. Merged into
    * `details` so one login flow can be traced across /authorize, /u/* and
    * /samlp/* log entries. Defaults to `ctx.var.loginSession?.id` when the
@@ -572,7 +579,9 @@ function buildAuditEvent(
     auth0_client: ctx.var.auth0_client,
     ...(params.execution_id ? { execution_id: params.execution_id } : {}),
     ...(loginSessionId ? { login_session_id: loginSessionId } : {}),
-    ...(params.details ? { details: params.details } : {}),
+    ...(params.details || params.diagnostics
+      ? { details: { ...params.details, ...params.diagnostics } }
+      : {}),
     timestamp: new Date().toISOString(),
   };
 }
@@ -682,6 +691,7 @@ export async function logMessage(
         ...details,
         ...(params.execution_id ? { execution_id: params.execution_id } : {}),
         ...(loginSessionId ? { login_session_id: loginSessionId } : {}),
+        ...params.diagnostics,
       },
       isMobile: false,
       client_id: ctx.var.client_id || enrichment.caller_client_id,
