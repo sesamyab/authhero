@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -575,47 +574,6 @@ function LinkUserButton() {
   );
 }
 
-function DuplicateEmailNotice() {
-  const record = useRecordContext<UserRecord>();
-  const dataProvider = useDataProvider();
-  const [others, setOthers] = useState<UserRecord[]>([]);
-  const email = record?.email;
-  const id = record?.id;
-
-  useEffect(() => {
-    if (!email) return;
-    let cancelled = false;
-    dataProvider
-      .getList<UserRecord>("users", {
-        pagination: { page: 1, perPage: 10 },
-        sort: { field: "email", order: "ASC" },
-        filter: { email },
-      })
-      .then(({ data }) => {
-        if (!cancelled) setOthers(data.filter((u) => u.id !== id));
-      })
-      .catch(() => {
-        if (!cancelled) setOthers([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dataProvider, email, id]);
-
-  if (others.length === 0) return null;
-  return (
-    <Alert className="border-sky-600/30 bg-sky-50 text-sky-950 dark:border-sky-500/30 dark:bg-sky-950/40 dark:text-sky-100">
-      <AlertTitle>Other users share this email</AlertTitle>
-      <AlertDescription className="block text-sky-900 dark:text-sky-200">
-        {others.length} other unlinked user{others.length !== 1 ? "s" : ""} (
-        <strong>{others.map((u) => u.id).join(", ")}</strong>) have the email{" "}
-        <strong>{email}</strong>. Use <strong>Link user</strong> under
-        Identities to merge them.
-      </AlertDescription>
-    </Alert>
-  );
-}
-
 function PasswordChangeSection() {
   const record = useRecordContext<UserRecord>();
   const dataProvider = useDataProvider();
@@ -761,7 +719,6 @@ export function DetailsTab() {
   return (
     <div className="flex flex-col gap-6">
       <UserHeader />
-      <DuplicateEmailNotice />
       <IdentityCard />
 
       <Card>
