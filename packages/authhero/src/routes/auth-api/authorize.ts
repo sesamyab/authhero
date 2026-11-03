@@ -709,6 +709,9 @@ const getRoot = defineRoute({
     // a login inside a cross-site iframe and a later one at top level), the
     // most recently authenticated session wins. Cookie order means nothing.
     let validSession: Session | undefined;
+    // Newest expired session, kept so silent auth can still reject it and
+    // clear the stale cookie when no live session was presented.
+    let expiredSession: Session | undefined;
     const authCookies = getAllAuthCookies(
       client.tenant.id,
       ctx.req.header("cookie"),
@@ -737,14 +740,24 @@ const getRoot = defineRoute({
           validSession = session;
         }
         sessionLookup = "valid";
-      } else if (sessionLookup !== "valid") {
-        sessionLookup = session.revoked_at ? "revoked" : "expired";
+      } else {
+        if (
+          !session.revoked_at &&
+          (!expiredSession ||
+            session.authenticated_at > expiredSession.authenticated_at)
+        ) {
+          expiredSession = session;
+        }
+        if (sessionLookup !== "valid") {
+          sessionLookup = session.revoked_at ? "revoked" : "expired";
+        }
       }
     }
 
     // If SSO is disabled for this client, ignore any existing session
     if (client.sso_disabled) {
       validSession = undefined;
+      expiredSession = undefined;
       sessionLookup = "sso_disabled";
     }
 
@@ -765,7 +778,7 @@ const getRoot = defineRoute({
       }
       return silentAuth({
         ctx,
-        session: validSession || undefined,
+        session: validSession ?? expiredSession,
         redirect_uri: sanitizedRedirectUri,
         state,
         response_type,
