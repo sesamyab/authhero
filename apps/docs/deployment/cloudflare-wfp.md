@@ -113,14 +113,16 @@ If the first command 403s, your account doesn't have WFP enabled — talk to you
 npm create authhero@latest auth-dispatcher -- \
   --template=cloudflare-wfp-dispatcher
 cd auth-dispatcher
-npm install
 ```
+
+The scaffolder installs the dependencies for you. If you passed `--skip-install`, run `npm install` now.
 
 This produces a thin Worker built on `@authhero/proxy` that uses the `dispatch_namespace` handler. Key files:
 
 - `src/index.ts` — Worker entrypoint; wraps `createProxyDataAdapter` with a default dispatch fallback
 - `src/types.ts` — `Env` with `AUTH_DB: D1Database` and `DISPATCHER: DispatchNamespace`
 - `wrangler.toml` — declares the dispatch namespace binding and the platform D1
+- `wrangler.local.toml` — a copy of `wrangler.toml` that holds your real IDs (gitignored). The scaffolder creates it; the `db:migrate:remote` and `deploy` scripts use it
 
 ### 1.2 Create the dispatch namespace
 
@@ -136,15 +138,19 @@ The name you pick here must match the `namespace = "..."` field in `wrangler.tom
 npx wrangler d1 create authhero-platform-db
 ```
 
-The output gives you a `database_id`. Copy it into `wrangler.local.toml` (gitignored):
+The output gives you a `database_id`. Open the `[[d1_databases]]` block that already exists in `wrangler.local.toml` and change **only** `database_name` and `database_id`:
 
 ```toml
 [[d1_databases]]
-binding = "AUTH_DB"
-database_name = "authhero-platform-db"
-database_id = "abc123def456..."   # paste here
-migrations_dir = "node_modules/@authhero/drizzle/drizzle"
+binding = "AUTH_DB"                       # keep as is
+database_name = "authhero-platform-db"    # was "authhero-db"
+database_id = "abc123def456..."           # was "local" — paste here
+migrations_dir = "node_modules/@authhero/drizzle/drizzle"   # keep as is
 ```
+
+::: warning Don't paste the block wrangler prints
+`wrangler d1 create` prints its own `[[d1_databases]]` snippet, but it derives the binding name from the database name (for example `authhero_platform_db`). The dispatcher reads `env.AUTH_DB`, so the binding must stay `AUTH_DB`. Pasting wrangler's block as-is leaves the dispatcher without a database.
+:::
 
 ::: tip Why a separate "platform" D1
 The dispatcher only needs `tenants`, `custom_domains`, and `proxy_routes` rows. Keeping it on its own D1 means tenant Workers can't accidentally corrupt the routing table, and per-tenant deploys can't trip dispatcher rate limits.
@@ -174,7 +180,7 @@ npm run db:migrate:local      # apply to local sqlite emulation of D1
 npm run deploy
 ```
 
-The dispatcher is now live at `auth-dispatcher.<your-account>.workers.dev` but it has no tenants and won't resolve any hosts yet. You can sanity-check it:
+The dispatcher is now live at `auth-dispatcher.<your-account>.workers.dev` (wrangler prints the exact URL at the end of the deploy) but it has no tenants and won't resolve any hosts yet. You can sanity-check it:
 
 ```bash
 curl -i https://auth-dispatcher.<your-account>.workers.dev
