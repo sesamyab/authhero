@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -419,6 +420,10 @@ function IdentitiesTable() {
             <TableCell>{identity.provider}</TableCell>
             <TableCell className="font-mono text-xs">
               {identity.user_id}
+              {record?.user_id ===
+                `${identity.provider}|${identity.user_id}` && (
+                <Badge className="ml-2">Primary</Badge>
+              )}
             </TableCell>
             <TableCell>{identity.isSocial ? "Yes" : "No"}</TableCell>
             <TableCell>
@@ -446,10 +451,12 @@ function LinkUserButton() {
   const [searchText, setSearchText] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<UserRecord[]>([]);
+  const [pending, setPending] = useState<UserRecord | null>(null);
 
   const reset = () => {
     setSearchText("");
     setResults([]);
+    setPending(null);
   };
   const handleClose = () => {
     setOpen(false);
@@ -479,6 +486,9 @@ function LinkUserButton() {
     }
   };
 
+  const describe = (u: UserRecord) =>
+    `${u.email || u.phone_number || u.id} (${u.id})`;
+
   const link = async (userId: string | number) => {
     if (!record) return;
     try {
@@ -507,7 +517,9 @@ function LinkUserButton() {
           <DialogHeader>
             <DialogTitle>Link user</DialogTitle>
             <DialogDescription>
-              Search for a user to link this user to.
+              Search for the user that should become the primary. The current
+              user becomes a linked identity of the picked user, and its profile
+              is no longer listed on its own.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
@@ -539,7 +551,7 @@ function LinkUserButton() {
                     <button
                       type="button"
                       className="w-full text-left py-2 px-1 hover:bg-muted rounded"
-                      onClick={() => link(u.id)}
+                      onClick={() => setPending(u)}
                     >
                       <div className="text-sm font-medium">
                         {u.email || u.phone_number || u.id}
@@ -557,6 +569,20 @@ function LinkUserButton() {
               </p>
             ) : null}
           </div>
+          {pending && record && (
+            <div className="rounded-md border p-3 text-sm flex flex-col gap-2">
+              <p>
+                Make <strong>{describe(pending)}</strong> the primary and link{" "}
+                <strong>{describe(record)}</strong> to it?
+              </p>
+              <div className="flex gap-2">
+                <Button onClick={() => link(pending.id)}>Confirm link</Button>
+                <Button variant="outline" onClick={() => setPending(null)}>
+                  Back
+                </Button>
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={handleClose}>
               Close
@@ -565,6 +591,47 @@ function LinkUserButton() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function DuplicateEmailNotice() {
+  const record = useRecordContext<UserRecord>();
+  const dataProvider = useDataProvider();
+  const [others, setOthers] = useState<UserRecord[]>([]);
+  const email = record?.email;
+  const id = record?.id;
+
+  useEffect(() => {
+    if (!email) return;
+    let cancelled = false;
+    dataProvider
+      .getList<UserRecord>("users", {
+        pagination: { page: 1, perPage: 10 },
+        sort: { field: "email", order: "ASC" },
+        filter: { email },
+      })
+      .then(({ data }) => {
+        if (!cancelled) setOthers(data.filter((u) => u.id !== id));
+      })
+      .catch(() => {
+        if (!cancelled) setOthers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataProvider, email, id]);
+
+  if (others.length === 0) return null;
+  return (
+    <Alert className="border-sky-600/30 bg-sky-50 text-sky-950 dark:border-sky-500/30 dark:bg-sky-950/40 dark:text-sky-100">
+      <AlertTitle>Other users share this email</AlertTitle>
+      <AlertDescription className="block text-sky-900 dark:text-sky-200">
+        {others.length} other unlinked user{others.length !== 1 ? "s" : ""} (
+        <strong>{others.map((u) => u.id).join(", ")}</strong>) have the email{" "}
+        <strong>{email}</strong>. Use <strong>Link user</strong> under
+        Identities to merge them.
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -713,6 +780,7 @@ export function DetailsTab() {
   return (
     <div className="flex flex-col gap-6">
       <UserHeader />
+      <DuplicateEmailNotice />
       <IdentityCard />
 
       <Card>

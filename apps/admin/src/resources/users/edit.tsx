@@ -1,5 +1,16 @@
-import { useRecordContext } from "ra-core";
+import { useState } from "react";
+import { useDelete, useNotify, useRecordContext, useRedirect } from "ra-core";
+import { Trash } from "lucide-react";
 import { Edit, SimpleForm } from "@/components/admin";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,9 +24,11 @@ import { PermissionsTab } from "./tabs/permissions-tab";
 import { RolesTab } from "./tabs/roles-tab";
 import { OrganizationsTab } from "./tabs/organizations-tab";
 import { MfaTab } from "./tabs/mfa-tab";
+import type { UserIdentity } from "./tabs/types";
 import { RawJsonTab } from "@/common/RawJsonTab";
 
 interface UserHeaderRecord {
+  identities?: UserIdentity[];
   user_id?: string;
   email?: string;
   email_verified?: boolean;
@@ -61,9 +74,83 @@ function UserEditTitle() {
   );
 }
 
+function DeleteUserButton() {
+  const record = useRecordContext<UserHeaderRecord & { id: string }>();
+  const [deleteOne, { isPending }] = useDelete();
+  const notify = useNotify();
+  const redirect = useRedirect();
+  const [open, setOpen] = useState(false);
+
+  if (!record) return null;
+  const linkedCount = Math.max((record.identities?.length ?? 1) - 1, 0);
+
+  const handleDelete = () =>
+    deleteOne(
+      "users",
+      { id: record.id, previousData: record },
+      {
+        onSuccess: () => {
+          notify("User deleted", { type: "success" });
+          setOpen(false);
+          redirect("list", "users");
+        },
+        onError: () => notify("Error deleting user", { type: "error" }),
+      },
+    );
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        className="cursor-pointer hover:bg-destructive/10! text-destructive! border-destructive!"
+        onClick={() => setOpen(true)}
+      >
+        <Trash />
+        Delete
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete user</DialogTitle>
+            <DialogDescription>
+              Delete {record.user_id ?? record.id}? This cannot be undone.
+              {linkedCount > 0 &&
+                ` The ${linkedCount} linked identit${
+                  linkedCount === 1 ? "y" : "ies"
+                } will be deleted with it.`}{" "}
+              Any app that stores this user&apos;s ID will no longer find them.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={isPending}
+              onClick={handleDelete}
+            >
+              Delete user
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function UserEdit() {
   return (
-    <Edit mutationMode="pessimistic" title={<UserEditTitle />}>
+    <Edit
+      mutationMode="pessimistic"
+      title={<UserEditTitle />}
+      actions={
+        <div className="flex justify-end items-center gap-2">
+          <DeleteUserButton />
+        </div>
+      }
+    >
       <SimpleForm className="max-w-none">
         <UrlTabs defaultValue="details" className="w-full">
           <TabsList>
