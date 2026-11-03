@@ -419,10 +419,11 @@ function IdentitiesTable() {
             <TableCell>{identity.provider}</TableCell>
             <TableCell className="font-mono text-xs">
               {identity.user_id}
-              {record?.user_id ===
-                `${identity.provider}|${identity.user_id}` && (
-                <Badge className="ml-2">Primary</Badge>
-              )}
+              {identities.length > 1 &&
+                record?.user_id ===
+                  `${identity.provider}|${identity.user_id}` && (
+                  <Badge className="ml-2">Primary</Badge>
+                )}
             </TableCell>
             <TableCell>{identity.isSocial ? "Yes" : "No"}</TableCell>
             <TableCell>
