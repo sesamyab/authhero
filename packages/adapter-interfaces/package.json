@@ -34,7 +34,7 @@
     "test": "vitest run",
     "generate:action-types": "node scripts/generate-code-hook-api-types.mjs",
     "check:action-types": "node scripts/generate-code-hook-api-types.mjs --check",
-    "build": "pnpm generate:action-types && vite build && tsc -p tsconfig.types.json && rollup -c rollup.dts.config.mjs"
+    "build": "pnpm check:action-types && vite build && tsc -p tsconfig.types.json && rollup -c rollup.dts.config.mjs"
   },
   "devDependencies": {
     "@hono/zod-openapi": "^1.4.0",

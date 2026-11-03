@@ -48,7 +48,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@authhero/adapter-interfaces": "^14.0.0",
+    "@authhero/adapter-interfaces": "^4.25.0",
     "@hono/zod-openapi": "^1.4.0",
     "authhero": "^9.27.0",
     "hono": "^4.7.0"

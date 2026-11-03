@@ -38,6 +38,29 @@ The changeset will be committed to the repository as a markdown file in the `.ch
 - **Minor version bump (1.0.0 -> 1.1.0)**: New features or non-breaking changes
 - **Patch version bump (1.0.0 -> 1.0.1)**: Bug fixes, documentation updates, or other non-functional changes
 
+### Peer dependency ranges
+
+Packages that depend on another AuthHero package at runtime, such as
+`@authhero/cloudflare-adapter` on `authhero` or `@authhero/multi-tenancy` on
+`@authhero/adapter-interfaces`, list it twice:
+
+- in `devDependencies` as `workspace:*`, so the monorepo builds against the local
+  source
+- in `peerDependencies` as a plain semver range (`^9.28.0`), which is what
+  consumers install against
+
+The peer ranges are plain on purpose. With `workspace:` peer ranges, Changesets
+bumps the depending package's major version every time the peer is released.
+The trade-off is that nothing updates the ranges for you: the config sets
+`bumpVersionsWithWorkspaceProtocolOnly`, so Changesets leaves them alone.
+
+When a change makes a package use an export or behaviour that only exists from a
+certain version of another AuthHero package, raise the peer range in the same PR
+to that version, and add a patch changeset for the depending package. A range
+that's too low lets consumers install versions that crash on missing exports. A
+range that doesn't match a released version blocks installs under strict peer
+dependencies.
+
 ## Release Preparation
 
 Before releasing, ensure that:

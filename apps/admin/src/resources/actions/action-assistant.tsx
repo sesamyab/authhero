@@ -11,9 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { actionRequest, type ActionVerification } from "./api";
+import {
+  actionRequest,
+  getActionGeneration,
+  type ActionGenerationModel as Model,
+  type ActionVerification,
+} from "./api";
 
-type Model = "glm" | "deepseek" | "qwen";
 const modelNames: Record<Model, string> = {
   glm: "GLM",
   deepseek: "DeepSeek",
@@ -58,15 +62,11 @@ export function ActionAssistant() {
     setModels([]);
     setDraft(undefined);
     setVerification(undefined);
-    actionRequest<{ models: Model[] }>(tenantId, "generation")
-      .then((result) => {
-        if (cancelled) return;
-        setModels(result.models);
-        if (result.models[0]) setModel(result.models[0]);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Unable to load generation options.");
-      });
+    getActionGeneration(tenantId).then((result) => {
+      if (cancelled) return;
+      setModels(result.models);
+      if (result.models[0]) setModel(result.models[0]);
+    });
     return () => {
       cancelled = true;
     };

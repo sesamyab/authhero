@@ -69,6 +69,20 @@ Or build a specific project:
 pnpm <project-name> build
 ```
 
+### Generated files
+
+Some generated files are committed, so builds don't rewrite the source tree.
+Builds only check that they're current and fail if they're stale.
+
+| File                                                                                                                                                              | Regenerate after changing                                   | Command                                                            |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
+| `packages/adapter-interfaces/src/types/codeHookApiDeclarations.generated.json`: the TypeScript declarations of each trigger's Action `api`, sent to AI generators | `packages/adapter-interfaces/src/types/codeHookApiTypes.ts` | `pnpm --filter @authhero/adapter-interfaces generate:action-types` |
+
+The `@authhero/adapter-interfaces` build runs `check:action-types`, so CI fails
+on a stale file (the pre-commit hook doesn't build, so it won't catch it). If it
+fails with "Action API declarations are stale", run the command above and commit
+the result.
+
 ## Next Steps
 
 After setting up your development environment, you might want to:

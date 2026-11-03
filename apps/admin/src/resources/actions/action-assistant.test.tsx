@@ -8,9 +8,12 @@ import {
 } from "@testing-library/react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { ActionAssistant } from "./action-assistant";
-import { actionRequest } from "./api";
+import { actionRequest, getActionGeneration } from "./api";
 
-vi.mock("./api", () => ({ actionRequest: vi.fn() }));
+vi.mock("./api", () => ({
+  actionRequest: vi.fn(),
+  getActionGeneration: vi.fn(),
+}));
 vi.mock("@/TenantContext", () => ({ useTenantId: () => "tenant" }));
 afterEach(() => {
   cleanup();
@@ -42,13 +45,15 @@ function Harness() {
   );
 }
 
+const noGeneration = { models: [], verification_required: false };
+
 describe("Action assistant", () => {
   it("previews generated code and only replaces the editor when accepted", async () => {
-    vi.mocked(actionRequest).mockImplementation(async (_tenant, path) =>
-      path === "generation"
-        ? { models: ["glm", "deepseek", "qwen"] }
-        : { code: "generated source" },
-    );
+    vi.mocked(getActionGeneration).mockResolvedValue({
+      models: ["glm", "deepseek", "qwen"],
+      verification_required: true,
+    });
+    vi.mocked(actionRequest).mockResolvedValue({ code: "generated source" });
     render(<Harness />);
     fireEvent.change(await screen.findByLabelText("Describe your action"), {
       target: { value: "Add a role" },
@@ -71,9 +76,8 @@ describe("Action assistant", () => {
     );
   });
   it("invalidates a passed verification when the source or trigger changes", async () => {
-    vi.mocked(actionRequest).mockImplementation(async (_tenant, path) =>
-      path === "generation" ? { models: [] } : { valid: true, errors: [] },
-    );
+    vi.mocked(getActionGeneration).mockResolvedValue(noGeneration);
+    vi.mocked(actionRequest).mockResolvedValue({ valid: true, errors: [] });
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
     await screen.findByText("Verification passed");
@@ -85,11 +89,11 @@ describe("Action assistant", () => {
     expect(screen.queryByText("Verification passed")).toBeNull();
   });
   it("shows actionable errors when verification fails", async () => {
-    vi.mocked(actionRequest).mockImplementation(async (_tenant, path) =>
-      path === "generation"
-        ? { models: [] }
-        : { valid: false, errors: ["Define the trigger handler."] },
-    );
+    vi.mocked(getActionGeneration).mockResolvedValue(noGeneration);
+    vi.mocked(actionRequest).mockResolvedValue({
+      valid: false,
+      errors: ["Define the trigger handler."],
+    });
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
     await waitFor(() =>
@@ -97,5 +101,12 @@ describe("Action assistant", () => {
         "Define the trigger handler.",
       ),
     );
+  });
+  it("shows no error when the server has no generation options", async () => {
+    vi.mocked(getActionGeneration).mockResolvedValue(noGeneration);
+    render(<Harness />);
+    await waitFor(() => expect(getActionGeneration).toHaveBeenCalled());
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByLabelText("Describe your action")).toBeNull();
   });
 });
