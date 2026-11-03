@@ -91,8 +91,10 @@ Whether verification is required depends on the server:
 | Admin save                                                         | Verifies the submitted code first and shows the errors                        | Saves without verifying                                     |
 | **Verify code** button and `POST /verify`                          | Available                                                                     | Available                                                   |
 
-Rejected writes do not persist or deploy source. Inherited stubs with empty local
-code are excluded; nonempty local fallback code still needs verification.
+Rejected writes do not persist or deploy source. Create, update and deploy skip
+inherited stubs with empty local code; nonempty local fallback code still needs
+verification. Rolling back always verifies the version's code, including an empty
+inherited stub.
 
 Verification is only enforced together with generation because that's when
 untrusted, model-written code is most likely to reach a save. Turning it on

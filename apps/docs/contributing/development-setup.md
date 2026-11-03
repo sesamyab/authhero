@@ -78,9 +78,10 @@ Builds only check that they're current and fail if they're stale.
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
 | `packages/adapter-interfaces/src/types/codeHookApiDeclarations.generated.json`: the TypeScript declarations of each trigger's Action `api`, sent to AI generators | `packages/adapter-interfaces/src/types/codeHookApiTypes.ts` | `pnpm --filter @authhero/adapter-interfaces generate:action-types` |
 
-The `@authhero/adapter-interfaces` build runs `check:action-types`, and so does the
-pre-commit hook. If it fails with "Action API declarations are stale", run the
-command above and commit the result.
+The `@authhero/adapter-interfaces` build runs `check:action-types`, so CI fails
+on a stale file (the pre-commit hook doesn't build, so it won't catch it). If it
+fails with "Action API declarations are stale", run the command above and commit
+the result.
 
 ## Next Steps
 
