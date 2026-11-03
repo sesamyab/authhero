@@ -198,7 +198,7 @@ return createFrontChannelAuthResponse(ctx, {
 
 - Sessions are tied to device metadata
 - IP address and user agent tracking
-- Secure cookie settings
+- Secure cookie settings (see [Session cookies](/architecture/session-cookies))
 
 ### Session Expiration
 

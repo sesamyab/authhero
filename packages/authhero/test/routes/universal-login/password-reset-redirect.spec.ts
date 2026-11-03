@@ -330,10 +330,14 @@ describe("session notice helper", () => {
 
   it("empties state_data when the notice was all that was in it", async () => {
     const { data, loginSession } = await loginSessionFor();
+    // /authorize stores session_cookie diagnostics; start from nothing.
+    await data.loginSessions.update("tenantId", loginSession.id, {
+      state_data: "",
+    });
     await setSessionNotice(
       data,
       "tenantId",
-      loginSession,
+      { ...loginSession, state_data: "" },
       "password_reset_success",
     );
     const withNotice = (await data.loginSessions.get(

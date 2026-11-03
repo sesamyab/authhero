@@ -102,13 +102,13 @@ export async function loginWithCode(
     throw new Error("No location header found");
   }
 
-  // Get all Set-Cookie headers (Double-Clear returns multiple cookies)
+  // Get all Set-Cookie headers (the session is set non-partitioned and partitioned)
   const setCookieHeader = enterCodePostResponse.headers.get("set-cookie");
   if (!setCookieHeader) {
     throw new Error("No set-cookie header found");
   }
 
-  // Split by comma to get individual cookies, then find the one with a value (not the clear cookie)
+  // Split by comma to get individual cookies, then find one with a value
   const cookies = setCookieHeader.split(", ");
   const actualCookie = cookies.find((c) => !c.includes("Max-Age=0"));
 

@@ -5,6 +5,7 @@ import {
 } from "./password-reset";
 import { setup, assign, transition } from "xstate";
 import { LoginSession, LoginSessionState } from "@authhero/adapter-interfaces";
+import type { SessionCookieDiagnostics } from "../utils/cookies";
 
 /** Persisted context, grouped by responsibility in types, flat on disk. */
 export interface LoginSessionData {
@@ -34,6 +35,8 @@ export interface LoginSessionData {
   connect?: Record<string, unknown>;
   deviceFlow?: { deviceCodeHash?: string; userCode?: string; ready?: boolean };
   try_connection_result?: unknown;
+  // What the browser sent on /authorize; copied onto the login log
+  session_cookie?: SessionCookieDiagnostics;
 }
 
 /** The on-disk JSON shape stays flat for compatibility with existing sessions. */

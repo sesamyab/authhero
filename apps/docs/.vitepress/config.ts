@@ -209,6 +209,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               text: "Login Flow (endpoints)",
               link: "/architecture/login-flow",
             },
+            {
+              text: "Session Cookies",
+              link: "/architecture/session-cookies",
+            },
             { text: "Adapters", link: "/architecture/adapters" },
             { text: "Audit Events", link: "/architecture/audit-events" },
             {
