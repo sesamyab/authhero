@@ -135,17 +135,10 @@ export async function silentAuth({
       }
     }
 
-    const responseHeaders: Record<string, string> = {
-      Location: errorUrl.toString(),
-    };
-    const setCookieHeader = headers.get("set-cookie");
-    if (setCookieHeader) {
-      responseHeaders["set-cookie"] = setCookieHeader;
-    }
-    return new Response(null, {
-      status: 302,
-      headers: responseHeaders,
-    });
+    // Keep the Headers object so each Set-Cookie stays a separate field;
+    // headers.get() would join them into one comma-separated value.
+    headers.set("Location", errorUrl.toString());
+    return new Response(null, { status: 302, headers });
   }
 
   // OIDC Core 3.1.2.6: emit a consent_required error in the same response
@@ -538,15 +531,7 @@ export async function silentAuth({
     }
   }
 
-  const responseHeaders: Record<string, string> = {
-    Location: successUrl.toString(),
-  };
-  const redirectCookie = headers.get("set-cookie");
-  if (redirectCookie) {
-    responseHeaders["set-cookie"] = redirectCookie;
-  }
-  return new Response(null, {
-    status: 302,
-    headers: responseHeaders,
-  });
+  // Keep the Headers object so each Set-Cookie stays a separate field.
+  headers.set("Location", successUrl.toString());
+  return new Response(null, { status: 302, headers });
 }

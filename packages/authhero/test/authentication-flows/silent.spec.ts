@@ -375,6 +375,58 @@ describe("silent", () => {
     expect(fragmentParams.get("state")).toEqual("test-state");
   });
 
+  it("should send each session cookie as its own Set-Cookie field on the silent-auth redirect", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+
+    const session = await env.data.sessions.create("tenantId", {
+      id: "sessionId",
+      user_id: "email|userId",
+      used_at: new Date().toISOString(),
+      login_session_id: "loginSessionId",
+      device: {
+        last_ip: "",
+        initial_ip: "",
+        last_user_agent: "",
+        initial_user_agent: "",
+        initial_asn: "",
+        last_asn: "",
+      },
+      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+      clients: ["clientId"],
+    });
+
+    const response = await oauthClient.authorize.$get(
+      {
+        query: {
+          client_id: "clientId",
+          redirect_uri: "https://example.com/callback",
+          state: "test-state",
+          prompt: "none",
+          response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+        },
+      },
+      {
+        headers: {
+          origin: "https://example.com",
+          host: "auth.example.com",
+          cookie: `tenantId-auth-token=${session.id}`,
+        },
+      },
+    );
+
+    expect(response.status).toEqual(302);
+    // headers.get() would join the fields with ", "; a browser needs them
+    // as separate Set-Cookie headers to store both the non-partitioned and
+    // the partitioned cookie.
+    const setCookies = response.headers.getSetCookie();
+    expect(setCookies).toHaveLength(2);
+    expect(setCookies.filter((c) => c.includes("Partitioned"))).toHaveLength(1);
+    for (const cookie of setCookies) {
+      expect(cookie.startsWith("tenantId-auth-token=")).toBe(true);
+    }
+  });
+
   it("should return access token with org_id for organization-scoped silent auth", async () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
