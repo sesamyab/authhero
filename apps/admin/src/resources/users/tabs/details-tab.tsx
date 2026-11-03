@@ -419,6 +419,11 @@ function IdentitiesTable() {
             <TableCell>{identity.provider}</TableCell>
             <TableCell className="font-mono text-xs">
               {identity.user_id}
+              {identities.length > 1 &&
+                record?.user_id ===
+                  `${identity.provider}|${identity.user_id}` && (
+                  <Badge className="ml-2">Primary</Badge>
+                )}
             </TableCell>
             <TableCell>{identity.isSocial ? "Yes" : "No"}</TableCell>
             <TableCell>
@@ -507,7 +512,9 @@ function LinkUserButton() {
           <DialogHeader>
             <DialogTitle>Link user</DialogTitle>
             <DialogDescription>
-              Search for a user to link this user to.
+              Search for the user that should become the primary. The current
+              user becomes a linked identity of the picked user, and its profile
+              is no longer listed on its own.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
