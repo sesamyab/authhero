@@ -427,6 +427,59 @@ describe("silent", () => {
     }
   });
 
+  it("should send each deletion cookie as its own Set-Cookie field on the login_required redirect", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+
+    const session = await env.data.sessions.create("tenantId", {
+      id: "sessionId",
+      user_id: "email|userId",
+      used_at: new Date().toISOString(),
+      login_session_id: "loginSessionId",
+      device: {
+        last_ip: "",
+        initial_ip: "",
+        last_user_agent: "",
+        initial_user_agent: "",
+        initial_asn: "",
+        last_asn: "",
+      },
+      expires_at: new Date(Date.now() - 1000).toISOString(), // Expired
+      clients: ["clientId"],
+    });
+
+    const response = await oauthClient.authorize.$get(
+      {
+        query: {
+          client_id: "clientId",
+          redirect_uri: "https://example.com/callback",
+          state: "test-state",
+          prompt: "none",
+          response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+        },
+      },
+      {
+        headers: {
+          origin: "https://example.com",
+          host: "auth.example.com",
+          cookie: `tenantId-auth-token=${session.id}`,
+        },
+      },
+    );
+
+    expect(response.status).toEqual(302);
+    const location = new URL(response.headers.get("location")!);
+    expect(new URLSearchParams(location.hash.slice(1)).get("error")).toEqual(
+      "login_required",
+    );
+    const setCookies = response.headers.getSetCookie();
+    expect(setCookies).toHaveLength(2);
+    expect(setCookies.filter((c) => c.includes("Partitioned"))).toHaveLength(1);
+    for (const cookie of setCookies) {
+      expect(cookie).toContain("Max-Age=0");
+    }
+  });
+
   it("should return access token with org_id for organization-scoped silent auth", async () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
