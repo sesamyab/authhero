@@ -155,7 +155,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           ...(conformance && { bcryptjs: "latest" }),
         },
         devDependencies: {
-          "@cloudflare/workers-types": "^4.0.0",
+          "@cloudflare/workers-types": "^5.0.0",
           "drizzle-kit": "^0.31.0",
           typescript: "^5.9.0",
           wrangler: "^4.0.0",
@@ -194,7 +194,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           hono: "^4.12.0",
         },
         devDependencies: {
-          "@cloudflare/workers-types": "^4.0.0",
+          "@cloudflare/workers-types": "^5.0.0",
           "drizzle-kit": "^0.31.0",
           typescript: "^5.9.0",
           wrangler: "^4.0.0",
@@ -241,7 +241,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           hono: "^4.12.0",
         },
         devDependencies: {
-          "@cloudflare/workers-types": "^4.0.0",
+          "@cloudflare/workers-types": "^5.0.0",
           "drizzle-kit": "^0.31.0",
           typescript: "^5.9.0",
           wrangler: "^4.0.0",
@@ -294,7 +294,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           hono: "^4.12.0",
         },
         devDependencies: {
-          "@cloudflare/workers-types": "^4.0.0",
+          "@cloudflare/workers-types": "^5.0.0",
           "drizzle-kit": "^0.31.0",
           typescript: "^5.9.0",
           wrangler: "^4.0.0",
@@ -323,7 +323,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           hono: "^4.12.0",
         },
         devDependencies: {
-          "@cloudflare/workers-types": "^4.0.0",
+          "@cloudflare/workers-types": "^5.0.0",
           "@types/node": "^22.0.0",
           typescript: "^5.9.0",
           wrangler: "^4.0.0",
