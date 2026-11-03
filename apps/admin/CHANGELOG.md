@@ -1,5 +1,11 @@
 # @authhero/admin
 
+## 0.26.2
+
+### Patch Changes
+
+- cdcde7c: Make primary vs linked users clearer in the user admin: a Primary badge on the identities table and a clearer "Link user" description.
+
 ## 0.26.1
 
 ### Patch Changes
