@@ -2,4 +2,4 @@
 "@authhero/admin": minor
 ---
 
-Make primary vs linked users clear when merging users: Primary badge on identities, confirmation naming both users before linking, duplicate-email notice, and a delete warning.
+Make primary vs linked users clearer in the user admin: a Primary badge on the identities table, a clearer "Link user" description, and a notice when other unlinked users share the same email.

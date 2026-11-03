@@ -451,12 +451,10 @@ function LinkUserButton() {
   const [searchText, setSearchText] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<UserRecord[]>([]);
-  const [pending, setPending] = useState<UserRecord | null>(null);
 
   const reset = () => {
     setSearchText("");
     setResults([]);
-    setPending(null);
   };
   const handleClose = () => {
     setOpen(false);
@@ -485,9 +483,6 @@ function LinkUserButton() {
       setSearching(false);
     }
   };
-
-  const describe = (u: UserRecord) =>
-    `${u.email || u.phone_number || u.id} (${u.id})`;
 
   const link = async (userId: string | number) => {
     if (!record) return;
@@ -551,7 +546,7 @@ function LinkUserButton() {
                     <button
                       type="button"
                       className="w-full text-left py-2 px-1 hover:bg-muted rounded"
-                      onClick={() => setPending(u)}
+                      onClick={() => link(u.id)}
                     >
                       <div className="text-sm font-medium">
                         {u.email || u.phone_number || u.id}
@@ -569,20 +564,6 @@ function LinkUserButton() {
               </p>
             ) : null}
           </div>
-          {pending && record && (
-            <div className="rounded-md border p-3 text-sm flex flex-col gap-2">
-              <p>
-                Make <strong>{describe(pending)}</strong> the primary and link{" "}
-                <strong>{describe(record)}</strong> to it?
-              </p>
-              <div className="flex gap-2">
-                <Button onClick={() => link(pending.id)}>Confirm link</Button>
-                <Button variant="outline" onClick={() => setPending(null)}>
-                  Back
-                </Button>
-              </div>
-            </div>
-          )}
           <DialogFooter>
             <Button variant="outline" onClick={handleClose}>
               Close
