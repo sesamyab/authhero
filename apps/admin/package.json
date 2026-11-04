@@ -16,6 +16,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "prepack": "node -e \"if(!require('fs').existsSync('dist/index.html')){console.error('dist/ is missing: run pnpm build before packing @authhero/admin');process.exit(1)}\"",
     "serve": "vite preview",
     "type-check": "tsc --noEmit",
     "lint": "eslint --quiet --ext .js,.jsx,.ts,.tsx ./src",
