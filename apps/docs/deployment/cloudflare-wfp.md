@@ -322,22 +322,24 @@ tenant row and published to KV automatically when provisioning completes — see
 [Proxy → Deployment topologies → WFP tenant subdomains](/customization/proxy/deployment#wfp-tenant-subdomains).
 :::
 
-### 3.2 Provision the tenant's data store (only if `storage_kind = "own_d1"`)
+### 3.2 Create the tenant's D1 (only if `storage_kind = "own_d1"`)
 
 ```bash
-# Create the per-tenant D1
 npx wrangler d1 create authhero-tenant-acme
-
-# Apply the schema bundle
-npx wrangler d1 migrations apply authhero-tenant-acme --remote \
-  --migrations-dir node_modules/@authhero/drizzle/drizzle
 ```
 
-Then record the `database_id` Cloudflare returned:
+Then record the `database_id` Cloudflare returned in the platform D1:
 
-```sql
-UPDATE tenants SET d1_database_id = 'xyz789...' WHERE id = 'acme';
+```bash
+npx wrangler d1 execute authhero-platform-db --remote --config wrangler.local.toml \
+  --command "UPDATE tenants SET d1_database_id = 'xyz789...' WHERE id = 'acme';"
 ```
+
+::: warning Don't use the binding wrangler prints
+`wrangler d1 create` prints a `[[d1_databases]]` block with a binding derived from the database name (`authhero_tenant_acme`). The tenant Worker reads `env.AUTH_DB`, so keep `binding = "AUTH_DB"` and only copy the name and id into the tenant project in [3.4](#_3-4-deploy-the-tenant-worker-into-the-dispatch-namespace).
+:::
+
+The schema is applied in [3.4](#_3-4-deploy-the-tenant-worker-into-the-dispatch-namespace), once the tenant project exists: `wrangler d1 migrations apply` reads the database from that project's Wrangler config.
 
 ::: tip One-shot schema apply
 Running `wrangler d1 migrations apply` does ~40 sequential HTTP calls to D1 (one per migration), which takes 8-20 seconds. If you need it faster — for programmatic provisioning from a Worker — bundle all migrations into a single SQL file and POST once to `/accounts/:id/d1/database/:dbid/query`. D1's query endpoint accepts multi-statement bodies up to ~100KB; the current drizzle bundle is ~916 lines and fits comfortably. The API-driven provisioner (see [API-driven provisioning](#api-driven-provisioning)) applies migrations through this HTTP endpoint rather than wrangler.
@@ -347,36 +349,64 @@ For Options B/C, skip this step — the data store already exists.
 
 ### 3.3 Seed initial data
 
-The tenant Worker needs at least one admin user, signing keys, and the management API resource server. The `seed()` helper exported from `authhero` is idempotent and does this in one call:
+The tenant's D1 needs at least one admin user, a signing key, and the management API resource server. The `seed()` helper exported from `authhero` is idempotent and does this in one call. The scaffolded `cloudflare` template ships a one-shot seed Worker (`src/seed.ts`) that calls it.
+
+This step needs the tenant project from [3.4](#_3-4-deploy-the-tenant-worker-into-the-dispatch-namespace), so do steps 1–3 there (scaffold, point it at the D1, apply the schema) first, then come back here before you deploy.
+
+The scaffolded seed creates a tenant called `main` and derives the issuer from the request URL, which is `localhost` when you run it through `wrangler dev`. Change the `seed()` call in `src/seed.ts` to match your tenant:
 
 ```typescript
-import { seed } from "authhero";
-import { drizzle } from "drizzle-orm/d1";
-import createAdapters from "@authhero/drizzle";
-
-// Run once against the tenant's D1
-const db = drizzle(env.AUTH_DB);
-const data = createAdapters(db);
-
-await seed({
-  data,
+const result = await seed(adapters, {
+  adminUsername,
+  adminPassword,
+  issuer: "https://auth.acme.com/", // the tenant's public URL, not localhost
   tenantId: "acme",
-  adminEmail: "admin@acme.com",
+  tenantName: "Acme Inc",
+  isControlPlane: false,
+  clientId: "default",
 });
 ```
 
-Easiest way to invoke this: ship a one-shot Worker route in the tenant template (`POST /__seed`) gated behind a setup token, or run it locally with `wrangler dev` against the remote D1.
-
-### 3.4 Deploy the tenant Worker into the dispatch namespace
-
-Scaffold a tenant Worker from the [`cloudflare` template](./cloudflare), edit its `wrangler.toml` to bind to the right data store (see [Step 2](#step-2-pick-a-tenant-storage-model)), then deploy:
+Then run it against the tenant's remote D1:
 
 ```bash
 cd tenant-acme/
-wrangler deploy \
-  --dispatch-namespace=authhero-tenants \
-  --name=tenant-acme-auth
+npx wrangler dev src/seed.ts --remote --config wrangler.local.toml
+
+# in another terminal — choose your own password, don't keep the default
+curl "http://localhost:8787/?username=admin@acme.com&password=<password>"
 ```
+
+The response contains `"success":true` when the seed completed.
+
+::: warning Don't use `npm run seed:remote`
+The script starts `wrangler dev` without `--config wrangler.local.toml`, so it never sees your real `database_id`.
+:::
+
+The seed encrypts credential fields with the `ENCRYPTION_KEY` in `.dev.vars`. The deployed Worker must use the **same** key — see [3.5](#_3-5-wire-secrets).
+
+### 3.4 Deploy the tenant Worker into the dispatch namespace
+
+1. Scaffold a tenant Worker from the [`cloudflare` template](./cloudflare) into a new directory, outside the dispatcher project.
+2. In the new project's `wrangler.local.toml`, point the existing `[[d1_databases]]` block at the tenant's data store (see [Step 2](#step-2-pick-a-tenant-storage-model)). For `own_d1`, change only `database_name` and `database_id` and keep `binding = "AUTH_DB"`.
+3. Remove the `[triggers]` section (`crons = [...]`). Workers in a dispatch namespace never receive scheduled events.
+4. Apply the schema to the tenant's D1 (takes 8–20 seconds):
+
+   ```bash
+   cd tenant-acme/
+   npm run db:migrate:remote
+   ```
+
+5. Seed the database ([3.3](#_3-3-seed-initial-data)).
+6. Deploy into the namespace:
+
+   ```bash
+   node copy-assets.js
+   npx wrangler deploy --config wrangler.local.toml \
+     --dispatch-namespace=authhero-tenants \
+     --name=tenant-acme-auth \
+     --secrets-file .dev.vars
+   ```
 
 The script name **must** match the dispatcher's template — by default `tenant-<tenant_id>-auth`. Override the template globally via the `SCRIPT_NAME_TEMPLATE` env var on the dispatcher (supports `{tenant_id}`, `{custom_domain_id}`, `{domain}`, `{host}` placeholders).
 
@@ -392,15 +422,17 @@ WHERE id = 'acme';
 
 ### 3.5 Wire secrets
 
-The tenant Worker needs at least `ENCRYPTION_KEY` (for at-rest encryption of credential fields) and any provider API keys it uses:
+The tenant Worker needs at least `ENCRYPTION_KEY` (for at-rest encryption of credential fields) and any provider API keys it uses.
+
+`wrangler secret put` has no `--dispatch-namespace` option, so it can't target a Worker inside a dispatch namespace. Pass the secrets when you deploy instead, with `--secrets-file` (the deploy command in [3.4](#_3-4-deploy-the-tenant-worker-into-the-dispatch-namespace)). The file is a `.env`-style list, and secrets you leave out of later deploys are kept:
 
 ```bash
-wrangler secret put --name=tenant-acme-auth ENCRYPTION_KEY
-wrangler secret put --name=tenant-acme-auth EMAIL_API_KEY
-# ... etc.
+# .dev.vars (or any .env-style file you pass to --secrets-file)
+ENCRYPTION_KEY=...
+EMAIL_API_KEY=...
 ```
 
-Generate `ENCRYPTION_KEY` per tenant — don't share it across the namespace. See [Encryption at Rest](/security/encryption-at-rest).
+The scaffolder generates an `ENCRYPTION_KEY` per project in `.dev.vars`. Use that same key for the deploy: the seed in [3.3](#_3-3-seed-initial-data) encrypted its data with it, and a different key cannot decrypt that data. Keep one key per tenant — don't share it across the namespace. See [Encryption at Rest](/security/encryption-at-rest).
 
 If tenants will register their **own** custom domains through their management
 API (rather than you creating them centrally, as in [3.1](#_3-1-create-the-tenant-row-custom-domain-in-the-platform-d1)),
@@ -431,7 +463,7 @@ rather than storing a row Cloudflare never hears about; reads keep working. See
 
 In the Cloudflare Dashboard:
 
-1. Workers & Pages → **dispatcher** Worker → Triggers → Add Custom Domain → `auth.acme.com`
+1. Workers & Pages → **dispatcher** Worker → Settings → Domains & Routes → Add → Custom domain → `auth.acme.com` (the zone must be in the same Cloudflare account; use **Add**, not Add Route, so Cloudflare creates the DNS record for you)
 2. Cloudflare provisions the TLS certificate and points DNS
 
 Or in `wrangler.toml`:
@@ -449,6 +481,10 @@ curl https://auth.acme.com/.well-known/openid-configuration
 ```
 
 Expected: a JWKS issuer document with `"issuer": "https://auth.acme.com/"`. If you get `Unknown host` (404), the `custom_domains` row isn't in place or the dispatcher hasn't picked it up yet (it caches host resolutions for 30s by default — see [the proxy cache config](/customization/proxy/caching)).
+
+::: tip Next: automate onboarding with a control plane
+Steps 3.1–3.6 are the manual flow. To create tenants through `POST /api/v2/tenants`, register customers' own domains in Cloudflare for SaaS, and have the platform create each tenant's D1 and Worker for you, deploy a control plane: scaffold the `cloudflare-control-plane` template and see [Control plane](/customization/multi-tenancy/control-plane) and [API-driven provisioning](#api-driven-provisioning).
+:::
 
 ## Per-tenant routing customization
 
