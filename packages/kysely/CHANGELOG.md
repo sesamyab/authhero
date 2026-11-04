@@ -1,5 +1,13 @@
 # @authhero/kysely-adapter
 
+## 12.18.2
+
+### Patch Changes
+
+- Updated dependencies [278a5ea]
+  - @authhero/adapter-interfaces@4.25.1
+  - @authhero/proxy@0.11.12
+
 ## 12.18.1
 
 ### Patch Changes

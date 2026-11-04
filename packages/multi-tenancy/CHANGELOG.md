@@ -1,5 +1,15 @@
 # @authhero/multi-tenancy
 
+## 15.4.2
+
+### Patch Changes
+
+- 278a5ea: Fix `PATCH /api/v2/tenants/settings` resetting `deployment_type` to `shared` and `provisioning_state` to `ready` whenever the body omitted them, and the same for the defaults nested in `mfa`: a body that patched one factor also switched the MFA policy and every other factor off. The PATCH body now applies only the keys present (new `tenantPatchSchema`); create defaults are unchanged.
+- Updated dependencies [7aaaeae]
+- Updated dependencies [278a5ea]
+  - authhero@9.28.3
+  - @authhero/adapter-interfaces@4.25.1
+
 ## 15.4.1
 
 ### Patch Changes
