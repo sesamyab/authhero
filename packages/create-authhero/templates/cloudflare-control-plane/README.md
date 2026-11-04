@@ -57,6 +57,15 @@ then refused with an error that names the missing key, instead of delivering
 secrets the tenant cannot read. Syncs of tenants that share this database are
 not affected, and neither is the rest of the Worker.
 
+Only the control plane tenant's rows are tagged `cp`. If an intermediate parent
+(a tenant between the control plane and a tenant with its own Worker) publishes
+secrets, they are encrypted with `ENCRYPTION_KEY`, which that tenant's Worker
+does not hold. The tenant Worker checks every ciphertext in a push before it
+writes anything, so such a push is refused with `422 sync_config_key_ring`
+rather than half applied. To publish secrets from an intermediate parent, return
+`"cp"` for its tenant id from `resolveEncryptKeyId` in `src/index.ts`, and save
+its secrets again: values already stored keep the key they were written with.
+
 ## Secrets
 
 - `ENCRYPTION_KEY` — the control plane's own secrets at rest.
