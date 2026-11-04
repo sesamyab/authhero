@@ -1181,6 +1181,50 @@ describe("sync-defaults operation transport (createDispatchSyncConfig → /inter
     expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(current.hash);
   });
 
+  it("returns the applied result when recording the hash fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const update = vi
+      .spyOn(cp.tenants, "update")
+      .mockRejectedValueOnce(new Error("control plane database is down"));
+
+    const first = await syncFor(dispatcherToTenant())("acme", {
+      dryRun: false,
+      force: false,
+    });
+    // The tenant applied the block, so the sync did not fail.
+    expect(first.status).toBe("applied");
+    expect((await tenant.tenants.get("acme"))?.config_sync_hash).toBe(
+      first.hash,
+    );
+    // The row stays stale, and the miss is logged.
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+    expect(error).toHaveBeenCalled();
+
+    // The next sync finds the tenant up to date and records the hash.
+    update.mockRestore();
+    const second = await syncFor(dispatcherToTenant())("acme", {
+      dryRun: false,
+      force: false,
+    });
+    expect(second.status).toBe("up-to-date");
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(first.hash);
+    error.mockRestore();
+  });
+
+  it("still fails the sync when the push itself fails", async () => {
+    const dispatcher = {
+      get: () => ({
+        async fetch() {
+          return new Response("boom", { status: 500 });
+        },
+      }),
+    };
+    await expect(
+      syncFor(dispatcher as never)("acme", { dryRun: false, force: false }),
+    ).rejects.toThrow(/failed: 500/);
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+  });
+
   it("lets an older sync that answers last not overwrite a newer one", async () => {
     // Sync A applies its block, then its answer is held back.
     let release!: () => void;

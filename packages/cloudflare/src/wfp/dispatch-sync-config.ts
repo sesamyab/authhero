@@ -125,16 +125,28 @@ export function createDispatchSyncConfig(
       // what the chain resolves to. Otherwise leave the row as it is: the
       // tenant then shows as drifted and the next sync records the current
       // hash, which is the safe direction to be wrong in.
-      const current = await buildResolvedConfigBlock(
-        controlPlaneAdapters,
-        tenantId,
-        { legacyControlPlane: controlPlaneTenantId, maxDepth },
-      );
-      if (current.hash === result.hash) {
-        await controlPlaneAdapters.tenants.update(tenantId, {
-          config_sync_hash: result.hash,
-          config_synced_at: new Date().toISOString(),
-        });
+      //
+      // The push has already been applied, so a failure here must not fail the
+      // operation: it would report a sync that did happen as failed. Leave the
+      // row stale instead (the tenant shows as drifted and the next sync
+      // records it) and return what the tenant reported.
+      try {
+        const current = await buildResolvedConfigBlock(
+          controlPlaneAdapters,
+          tenantId,
+          { legacyControlPlane: controlPlaneTenantId, maxDepth },
+        );
+        if (current.hash === result.hash) {
+          await controlPlaneAdapters.tenants.update(tenantId, {
+            config_sync_hash: result.hash,
+            config_synced_at: new Date().toISOString(),
+          });
+        }
+      } catch (error) {
+        console.error(
+          `[wfp] could not record the applied config hash of "${tenantId}" on the control plane; it will show as drifted until the next sync:`,
+          error,
+        );
       }
     }
 
