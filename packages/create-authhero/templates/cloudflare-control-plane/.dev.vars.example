@@ -10,8 +10,14 @@
 # Generate one with: openssl rand -base64 32
 # ENCRYPTION_KEY=
 
-# The shared CONTROL PLANE key (key id "cp"). The rollout encrypts projected
-# secrets under this key; each tenant Worker holds the same key to decrypt them.
-# Must be byte-identical across the control plane and every tenant Worker.
+# The shared CONTROL PLANE key (key id "cp"). The control plane tenant's secrets
+# are encrypted under it, and a sync copies that ciphertext into each tenant's
+# database; each tenant Worker holds the same key to decrypt it. Must be
+# byte-identical across the control plane and every tenant Worker.
 #   wrangler secret put CONTROL_PLANE_ENCRYPTION_KEY
 # CONTROL_PLANE_ENCRYPTION_KEY=
+
+# Bearer secret for the sync push to a tenant Worker's /internal/sync-config.
+# Must be identical on the control plane and every tenant Worker (else 401).
+#   wrangler secret put WFP_INTERNAL_SYNC_SECRET
+# WFP_INTERNAL_SYNC_SECRET=

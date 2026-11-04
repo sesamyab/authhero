@@ -3,11 +3,14 @@
 # ════════════════════════════════════════════════════════════════════════════
 # The full authhero app for ONE tenant, deployed into the `authhero-tenants`
 # dispatch namespace and fronted by the WFP dispatcher. It reads only its own
-# D1 and inherits the control plane's defaults from rows the control plane
-# rollout projected into that D1.
+# D1 and inherits the control plane's config from rows the control plane's
+# `sync-defaults` operation pushed into that D1 (POST /internal/sync-config).
 #
-# Deploy into the namespace (one per tenant):
-#   wrangler deploy --dispatch-namespace=authhero-tenants --name=tenant-<id>-auth
+# Deploy into the namespace (one per tenant). Secrets travel in --secrets-file;
+# `wrangler secret put` cannot target a dispatch namespace:
+#   wrangler deploy --config wrangler.local.toml \
+#     --dispatch-namespace=authhero-tenants --name=tenant-<id>-auth \
+#     --secrets-file .dev.vars
 #
 # Sensitive IDs (database_id) go in wrangler.local.toml (gitignored).
 # ════════════════════════════════════════════════════════════════════════════
@@ -37,13 +40,38 @@ database_id = "local"  # Use "local" for local dev, or your actual ID in wrangle
 migrations_dir = "node_modules/@authhero/drizzle/drizzle"
 
 # ════════════════════════════════════════════════════════════════════════════
-# Encryption keys (set as secrets, not here)
+# Variables: which tenant this is, and where its control plane is
 # ════════════════════════════════════════════════════════════════════════════
-#   wrangler secret put ENCRYPTION_KEY                  # this tenant's own key
-#   wrangler secret put CONTROL_PLANE_ENCRYPTION_KEY    # shared "cp" key
+# Set these per tenant in wrangler.local.toml. The Worker reads them once, not
+# from the request, so they are fixed for the life of the script.
 #
-# CONTROL_PLANE_ENCRYPTION_KEY must be byte-identical to the key the control
-# plane used to project this tenant's inherited secrets, or they won't decrypt.
+#   ISSUER                    this tenant's own issuer, with a trailing slash.
+#                             Tokens carry it as `iss`, so do not change it
+#                             after the tenant has issued any.
+#   TENANT_ID                 this tenant's id. A sync pushed for another tenant
+#                             is refused (403 sync_config_tenant_mismatch).
+#   CONTROL_PLANE_TENANT_ID   the control plane's tenant id.
+#   CONTROL_PLANE_ISSUER      the control plane's issuer. Its admin tokens are
+#                             accepted here in addition to ISSUER.
+[vars]
+ISSUER = "https://auth.example.com/"
+TENANT_ID = "acme"
+CONTROL_PLANE_TENANT_ID = "control_plane"
+CONTROL_PLANE_ISSUER = "https://control.example.com/"
+# CORS origins allowed to call this tenant, comma-separated (e.g. an admin UI).
+# ALLOWED_ORIGINS = "https://admin.example.com"
+
+# ════════════════════════════════════════════════════════════════════════════
+# Secrets (set in .dev.vars or --secrets-file, never in this file)
+# ════════════════════════════════════════════════════════════════════════════
+#   ENCRYPTION_KEY                 this tenant's own key
+#   CONTROL_PLANE_ENCRYPTION_KEY   shared "cp" key
+#   WFP_INTERNAL_SYNC_SECRET       bearer secret for the control plane's pushes
+#
+# CONTROL_PLANE_ENCRYPTION_KEY must be byte-identical to the control plane's:
+# a sync copies the control plane's secrets as ciphertext, and without the key
+# the push is refused (422 sync_config_key_ring) before anything is written.
+# WFP_INTERNAL_SYNC_SECRET must match too, or the push answers 401.
 
 # ════════════════════════════════════════════════════════════════════════════
 # Control plane (required for custom domains)
@@ -54,10 +82,9 @@ migrations_dir = "node_modules/@authhero/drizzle/drizzle"
 # plane, which holds the credentials and sees every tenant.
 #
 # Without CONTROL_PLANE_URL a created domain is stored locally and never
-# registered in Cloudflare: it will not route.
+# registered in Cloudflare: it will not route. Add it to [vars] above:
 #
-# [vars]
-# CONTROL_PLANE_URL = "https://auth.example.com"
+# CONTROL_PLANE_URL = "https://control.example.com"
 #
 # The service binding is optional but recommended: this Worker lives in the
 # dispatch namespace, so without it the call leaves Cloudflare and re-enters

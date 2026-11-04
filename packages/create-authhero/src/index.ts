@@ -225,12 +225,17 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           "db:migrate:remote":
             "wrangler d1 migrations apply AUTH_DB --remote --config wrangler.local.toml",
           migrate: "wrangler d1 migrations apply AUTH_DB --local",
+          // Never overwrite: `create-authhero` has already written .dev.vars
+          // with generated keys, and re-running setup must not drop them.
           setup:
-            "cp wrangler.toml wrangler.local.toml && cp .dev.vars.example .dev.vars && echo '✅ Created wrangler.local.toml and .dev.vars - update with your IDs and CONTROL_PLANE_ENCRYPTION_KEY'",
+            "test -f wrangler.local.toml || cp wrangler.toml wrangler.local.toml; test -f .dev.vars || cp .dev.vars.example .dev.vars; echo '✅ wrangler.local.toml and .dev.vars are in place - update them with your IDs, CONTROL_PLANE_ENCRYPTION_KEY and WFP_INTERNAL_SYNC_SECRET'",
           "gen:key": "node scripts/generate-encryption-key.mjs",
           decrypt: "node --env-file=.dev.vars scripts/decrypt-field.mjs",
         },
         dependencies: {
+          // `createWfpTenantApp` (the /internal/sync-config receiver and the
+          // key-ring + runtime-fallback wiring) lives in the `/wfp` subpath.
+          "@authhero/cloudflare-adapter": v,
           "@authhero/drizzle": v,
           "@authhero/multi-tenancy": v,
           "@authhero/widget": v,
@@ -252,7 +257,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
   "cloudflare-control-plane": {
     name: "Cloudflare Workers for Platforms — Control Plane",
     description:
-      "Control plane worker: tenant management + rollout source that projects default connections/prompts/branding into each WFP tenant's database (pair with the dispatcher and tenant templates)",
+      "Control plane worker: tenant management + config source that syncs inherited connections/prompts/branding/hooks into each WFP tenant's own database with the sync-defaults operation (pair with the dispatcher and tenant templates)",
     templateDir: "cloudflare-control-plane",
     packageJson: (projectName, _multiTenant, _conformance, workspace) => {
       const v = workspace ? "workspace:*" : "latest";
@@ -271,12 +276,21 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           "db:migrate:local": "wrangler d1 migrations apply AUTH_DB --local",
           "db:migrate:remote":
             "wrangler d1 migrations apply AUTH_DB --remote --config wrangler.local.toml",
-          migrate: "wrangler d1 migrations apply AUTH_DB --local",
+          // The tenant-operation and rollout tables (`sync-defaults` records
+          // into them) are a second migration set, tracked in its own table.
+          "db:migrate:control-plane:local":
+            "wrangler d1 migrations apply AUTH_DB_CONTROL_PLANE_MIGRATIONS --local",
+          "db:migrate:control-plane:remote":
+            "wrangler d1 migrations apply AUTH_DB_CONTROL_PLANE_MIGRATIONS --remote --config wrangler.local.toml",
+          migrate:
+            "wrangler d1 migrations apply AUTH_DB --local && wrangler d1 migrations apply AUTH_DB_CONTROL_PLANE_MIGRATIONS --local",
           "seed:local": "node seed-helper.js",
           "seed:remote": "node seed-helper.js '' '' remote",
           seed: "node seed-helper.js",
+          // Never overwrite: `create-authhero` has already written .dev.vars
+          // with generated keys, and re-running setup must not drop them.
           setup:
-            "cp wrangler.toml wrangler.local.toml && cp .dev.vars.example .dev.vars && echo '✅ Created wrangler.local.toml and .dev.vars - update with your IDs and CONTROL_PLANE_ENCRYPTION_KEY'",
+            "test -f wrangler.local.toml || cp wrangler.toml wrangler.local.toml; test -f .dev.vars || cp .dev.vars.example .dev.vars; echo '✅ wrangler.local.toml and .dev.vars are in place - update them with your IDs, CONTROL_PLANE_ENCRYPTION_KEY and WFP_INTERNAL_SYNC_SECRET'",
           "gen:key": "node scripts/generate-encryption-key.mjs",
           decrypt: "node --env-file=.dev.vars scripts/decrypt-field.mjs",
         },
@@ -1769,13 +1783,14 @@ program
             // control plane's and tenants' CONTROL_PLANE_ENCRYPTION_KEY.
             fs.appendFileSync(
               devVarsPath,
-              `# Shared control-plane key id "cp". Must be byte-identical across the control plane and every tenant worker.\nCONTROL_PLANE_ENCRYPTION_KEY=${generateEncryptionKey()}\n`,
+              `# Shared control-plane key id "cp". Must be byte-identical across the control plane and every tenant worker.\nCONTROL_PLANE_ENCRYPTION_KEY=${generateEncryptionKey()}\n` +
+                `# Bearer secret for the control plane's sync pushes to a tenant worker's /internal/sync-config. Must be identical on both sides.\nWFP_INTERNAL_SYNC_SECRET=${generateEncryptionKey()}\n`,
             );
             console.log(
-              "🔒 Added generated ENCRYPTION_KEY + CONTROL_PLANE_ENCRYPTION_KEY to .dev.vars",
+              "🔒 Added generated ENCRYPTION_KEY, CONTROL_PLANE_ENCRYPTION_KEY and WFP_INTERNAL_SYNC_SECRET to .dev.vars",
             );
             console.log(
-              "⚠️  Align CONTROL_PLANE_ENCRYPTION_KEY across the control plane and all tenant workers.",
+              "⚠️  Align CONTROL_PLANE_ENCRYPTION_KEY and WFP_INTERNAL_SYNC_SECRET across the control plane and all tenant workers.",
             );
           } else {
             console.log("🔒 Added a generated ENCRYPTION_KEY to .dev.vars");
@@ -2088,31 +2103,42 @@ ENCRYPTION_KEY=${generateEncryptionKey()}
       } else if (setupType === "cloudflare-control-plane") {
         console.log("  npm install");
         console.log(
-          "  npm run setup  # creates wrangler.local.toml + .dev.vars",
+          "  # wrangler.local.toml and .dev.vars (with generated keys) already exist:",
         );
         console.log(
-          "  # set CONTROL_PLANE_ENCRYPTION_KEY in .dev.vars (share it with every tenant worker)",
+          "  # set database_id in wrangler.local.toml. CONTROL_PLANE_ENCRYPTION_KEY and",
+        );
+        console.log(
+          "  # WFP_INTERNAL_SYNC_SECRET are generated: every tenant worker needs the same values",
         );
         console.log("  npm run migrate");
         console.log("  npm run seed");
         console.log("  npm run dev  # or npm run dev:remote for production");
         console.log(
-          "\nWire buildTenantAdapters() in src/index.ts, then project defaults:",
+          "\nOn a remote database, run both migration sets (core + control plane):",
         );
-        console.log("  POST /internal/tenants/:id/sync-defaults");
+        console.log("  npm run db:migrate:remote");
+        console.log("  npm run db:migrate:control-plane:remote");
+        console.log("\nThen sync a tenant that has its own worker and D1:");
+        console.log(
+          '  POST /api/v2/tenants/<id>/operations  { "kind": "sync-defaults", "input": { "dry_run": true } }',
+        );
       } else if (setupType === "cloudflare-wfp-tenant") {
         console.log("  npm install");
         console.log(
-          "  npm run setup  # creates wrangler.local.toml + .dev.vars",
+          "  # wrangler.local.toml and .dev.vars (with generated keys) already exist:",
         );
         console.log(
-          "  # set CONTROL_PLANE_ENCRYPTION_KEY in .dev.vars (must match the control plane)",
+          "  # set the [vars] and database_id in wrangler.local.toml, and replace",
+        );
+        console.log(
+          "  # CONTROL_PLANE_ENCRYPTION_KEY + WFP_INTERNAL_SYNC_SECRET in .dev.vars with the control plane's values",
         );
         console.log("  npm run migrate");
         console.log("  npm run dev  # or npm run dev:remote for production");
         console.log("\nDeploy into the dispatch namespace:");
         console.log(
-          "  wrangler deploy --dispatch-namespace=authhero-tenants --name=tenant-<id>-auth",
+          "  wrangler deploy --config wrangler.local.toml --dispatch-namespace=authhero-tenants --name=tenant-<id>-auth --secrets-file .dev.vars",
         );
       } else if (setupType === "aws-sst") {
         console.log("  npm install");
