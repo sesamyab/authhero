@@ -307,6 +307,9 @@ describe("control-plane template sync wiring", () => {
     // encrypting under a missing key id throws.
     expect(index).toContain('"cp"');
     expect(index).toContain("ring.keys?.cp");
+    // A push to a WFP tenant is refused, naming the key, when the control plane
+    // encrypts without it: the tenant could not read what it was sent.
+    expect(index).toContain("cannotShareSecrets");
   });
 
   it("lets ISSUER be set apart from the Worker's own host", () => {

@@ -253,10 +253,27 @@ function buildSyncDefaults(
     controlPlaneTenantId: CONTROL_PLANE_TENANT_ID,
   });
 
+  // A control plane that encrypts, but has no CONTROL_PLANE_ENCRYPTION_KEY,
+  // stores the control plane tenant's secrets under its own default key. A
+  // push copies that ciphertext as stored, and a tenant Worker has no way to
+  // read it. Refuse the push with the cause, instead of delivering secrets the
+  // tenant cannot use. Only the push is refused: failing here, at configuration
+  // time, would take the whole Worker down for a key only syncing needs.
+  const cannotShareSecrets =
+    Boolean(env.ENCRYPTION_KEY) && !env.CONTROL_PLANE_ENCRYPTION_KEY;
+
   return async (tenantId, options) => {
     const tenant = await rawAdapter.tenants.get(tenantId);
-    return tenant?.deployment_type === "wfp"
-      ? dispatch(tenantId, options)
-      : inProcess(tenantId, options);
+    if (tenant?.deployment_type !== "wfp") {
+      return inProcess(tenantId, options);
+    }
+    if (cannotShareSecrets) {
+      throw new Error(
+        `Cannot sync tenant "${tenantId}": CONTROL_PLANE_ENCRYPTION_KEY is not set on the control plane. ` +
+          "The control plane tenant's secrets are encrypted with ENCRYPTION_KEY, which a tenant Worker does not hold. " +
+          "Set the same CONTROL_PLANE_ENCRYPTION_KEY on the control plane and every tenant Worker, and re-save the secrets so they are encrypted under it.",
+      );
+    }
+    return dispatch(tenantId, options);
   };
 }

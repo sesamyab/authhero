@@ -50,6 +50,13 @@ that get synced) are encrypted under the key id `cp`; everything else under
 it receives only if it holds the same `CONTROL_PLANE_ENCRYPTION_KEY`. Values
 written before the key ring existed stay readable.
 
+When `ENCRYPTION_KEY` is set but `CONTROL_PLANE_ENCRYPTION_KEY` is not, the
+control plane tenant's secrets are encrypted with `ENCRYPTION_KEY`, which no
+tenant Worker holds. A `sync-defaults` push to a tenant with its own Worker is
+then refused with an error that names the missing key, instead of delivering
+secrets the tenant cannot read. Syncs of tenants that share this database are
+not affected, and neither is the rest of the Worker.
+
 ## Secrets
 
 - `ENCRYPTION_KEY` — the control plane's own secrets at rest.
