@@ -15,6 +15,12 @@ export default function createApp(
      * Worker and database. See `buildSyncDefaults` in src/index.ts.
      */
     syncDefaults?: SyncConfigFn;
+    /**
+     * `config.dataAdapter` as stored: secrets as ciphertext, not decrypted.
+     * The sync status, verify and rollouts hash config the way a sync copies
+     * it, so they need this layer when `config.dataAdapter` encrypts.
+     */
+    storedDataAdapter?: DataAdapters;
   } = {},
 ) {
   // initMultiTenant syncs resource servers and roles, mounts /api/v2/tenants
@@ -24,6 +30,7 @@ export default function createApp(
   const { app } = initMultiTenant({
     ...config,
     syncDefaults: options.syncDefaults,
+    storedDataAdapter: options.storedDataAdapter,
     controlPlane: {
       tenantId: CONTROL_PLANE_TENANT_ID,
       clientId: CONTROL_PLANE_CLIENT_ID,

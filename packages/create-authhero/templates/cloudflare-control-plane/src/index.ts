@@ -46,7 +46,7 @@ export default {
     // How the `sync-defaults` tenant operation reaches a tenant. Tenants with
     // their own Worker and D1 are pushed to through the dispatch namespace;
     // tenants that share this database are synced in-process.
-    const syncDefaults = buildSyncDefaults(env, rawAdapter, dataAdapter);
+    const syncDefaults = buildSyncDefaults(env, rawAdapter);
 
     // The control plane is authoritative for custom domains: it is the only
     // place that holds Cloudflare account credentials (so it can register the
@@ -85,7 +85,13 @@ export default {
       },
     };
 
-    const app = createApp(config, { syncDefaults });
+    // `rawAdapter` returns secrets as stored, which is what a sync copies and
+    // hashes. The sync status, verify and rollouts must hash the same way, or
+    // `drifted` is true for every tenant whose chain holds an encrypted secret.
+    const app = createApp(config, {
+      syncDefaults,
+      storedDataAdapter: rawAdapter,
+    });
 
     return app.fetch(request, { ...env, ISSUER: issuer });
   },
@@ -231,13 +237,16 @@ async function buildDataAdapter(env: Env) {
  * namespace, at its `/internal/sync-config`. Any other tenant shares this
  * database, so it is synced in-process.
  *
+ * Both read through `rawAdapter`, the layer that returns secrets as stored, so
+ * a block, and its hash, is the same whichever way it is delivered and matches
+ * the `storedDataAdapter` the sync status is computed from.
+ *
  * Returns undefined when the dispatch namespace or the shared secret is not
  * configured, which leaves only the in-process sync (it refuses WFP tenants).
  */
 function buildSyncDefaults(
   env: Env,
   rawAdapter: DataAdapters,
-  dataAdapter: DataAdapters,
 ): SyncConfigFn | undefined {
   if (!env.DISPATCHER || !env.WFP_INTERNAL_SYNC_SECRET) return undefined;
 
@@ -249,7 +258,7 @@ function buildSyncDefaults(
     // decrypted on the way.
     controlPlaneAdapters: rawAdapter,
   });
-  const inProcess = createInProcessSyncConfig(dataAdapter, {
+  const inProcess = createInProcessSyncConfig(rawAdapter, {
     controlPlaneTenantId: CONTROL_PLANE_TENANT_ID,
   });
 
