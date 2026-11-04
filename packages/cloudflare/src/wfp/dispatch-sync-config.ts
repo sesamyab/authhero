@@ -2,6 +2,7 @@ import type { DataAdapters } from "@authhero/adapter-interfaces";
 import {
   buildResolvedConfigBlock,
   type ApplyResolvedBlockResult,
+  syncErrors,
   type SyncConfigFn,
 } from "@authhero/multi-tenancy";
 import type { DispatchNamespace } from "../code-executor";
@@ -103,6 +104,26 @@ export function createDispatchSyncConfig(
       );
     }
 
-    return (await response.json()) as ApplyResolvedBlockResult;
+    const result = (await response.json()) as ApplyResolvedBlockResult;
+
+    // The tenant worker records the applied hash in its own database only.
+    // Status and the drift reconcile read the control plane's row, so mirror it
+    // there. Only for a real, clean run: a dry run applied nothing, and a
+    // partial run did not reach the block's hash. "up-to-date" means the tenant
+    // already holds this hash, which the control plane may not know yet.
+    if (
+      !dryRun &&
+      result.status !== "dry-run" &&
+      result.hash &&
+      tenant &&
+      syncErrors(result).length === 0
+    ) {
+      await controlPlaneAdapters.tenants.update(tenantId, {
+        config_sync_hash: result.hash,
+        config_synced_at: new Date().toISOString(),
+      });
+    }
+
+    return result;
   };
 }

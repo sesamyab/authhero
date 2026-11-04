@@ -1097,6 +1097,50 @@ describe("sync-defaults operation transport (createDispatchSyncConfig → /inter
     expect(second.status).toBe("up-to-date");
   });
 
+  it("records the applied hash on the control plane's tenant row", async () => {
+    const sync = syncFor(dispatcherToTenant());
+
+    const first = await sync("acme", { dryRun: false, force: false });
+    const row = await cp.tenants.get("acme");
+    expect(row?.config_sync_hash).toBe(first.hash);
+    expect(row?.config_synced_at).toBeTruthy();
+
+    // up-to-date on the tenant, but the control plane lost the hash: restore it
+    await cp.tenants.update("acme", {
+      config_sync_hash: null,
+      config_synced_at: null,
+    });
+    const second = await sync("acme", { dryRun: false, force: false });
+    expect(second.status).toBe("up-to-date");
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(first.hash);
+  });
+
+  it("leaves the control plane's hash alone on a dry run", async () => {
+    await syncFor(dispatcherToTenant())("acme", { dryRun: true, force: false });
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+  });
+
+  it("does not record a hash when the tenant reported errors", async () => {
+    const dispatcher = {
+      get: () => ({
+        async fetch() {
+          const entity = { added: 0, changed: 0, unchanged: 0, deleted: 0 };
+          return Response.json({
+            status: "applied",
+            hash: "h1",
+            changes: [],
+            rows: [],
+            entities: {
+              action: { ...entity, errors: ["insert action:enrich: boom"] },
+            },
+          });
+        },
+      }),
+    };
+    await syncFor(dispatcher as never)("acme", { dryRun: false, force: false });
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+  });
+
   it("removes a copy the control plane stopped sharing only when asked to prune", async () => {
     const sync = syncFor(dispatcherToTenant());
     await sync("acme", { dryRun: false, force: false });
