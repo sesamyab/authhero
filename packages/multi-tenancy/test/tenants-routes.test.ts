@@ -444,6 +444,23 @@ describe("tenant settings: default_client_id validation", () => {
     ).toBe("inherit-on-read");
   });
 
+  it("leaves deployment_type and provisioning_state alone when the body omits them", async () => {
+    await adapters.tenants.update(controlPlaneTenantId, {
+      deployment_type: "wfp",
+      provisioning_state: "pending",
+    });
+
+    const response = await patchSettings(settingsApp(), {
+      config_sync: "synced",
+    });
+
+    expect(response.status).toBe(200);
+    const stored = await adapters.tenants.get(controlPlaneTenantId);
+    expect(stored!.config_sync).toBe("synced");
+    expect(stored!.deployment_type).toBe("wfp");
+    expect(stored!.provisioning_state).toBe("pending");
+  });
+
   it("tells the runtime to forget the remembered mode when it changes", async () => {
     const forget = vi.fn();
     const watched = { ...config, onConfigSyncChange: forget };

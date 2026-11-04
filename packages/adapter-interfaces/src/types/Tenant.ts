@@ -354,4 +354,19 @@ export const tenantSchema = z
     has_children: z.boolean().optional(),
   });
 
+/**
+ * Body schema for PATCH /tenants/settings: every insert field, all optional,
+ * with the create-time defaults removed. `.partial()` alone keeps `.default()`
+ * in zod 4, so a partial body would otherwise be filled with
+ * `deployment_type: "shared"` / `provisioning_state: "ready"` and silently
+ * overwrite the stored values.
+ */
+export const tenantPatchSchema = z
+  .object(tenantInsertSchema.shape)
+  .extend({
+    deployment_type: z.enum(["shared", "wfp"]),
+    provisioning_state: z.enum(["pending", "ready", "failed"]),
+  })
+  .partial();
+
 export type Tenant = z.infer<typeof tenantSchema>;
