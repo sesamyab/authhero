@@ -2,6 +2,7 @@ import type { DataAdapters } from "@authhero/adapter-interfaces";
 import {
   buildResolvedConfigBlock,
   type ApplyResolvedBlockResult,
+  syncErrors,
   type SyncConfigFn,
 } from "@authhero/multi-tenancy";
 import type { DispatchNamespace } from "../code-executor";
@@ -103,6 +104,52 @@ export function createDispatchSyncConfig(
       );
     }
 
-    return (await response.json()) as ApplyResolvedBlockResult;
+    const result = (await response.json()) as ApplyResolvedBlockResult;
+
+    // The tenant worker records the applied hash in its own database only.
+    // Status and the drift reconcile read the control plane's row, so mirror it
+    // there. Only for a real, clean run: a dry run applied nothing, and a
+    // partial run did not reach the block's hash. "up-to-date" means the tenant
+    // already holds this hash, which the control plane may not know yet.
+    if (
+      !dryRun &&
+      result.status !== "dry-run" &&
+      result.hash &&
+      tenant &&
+      syncErrors(result).length === 0
+    ) {
+      // Two syncs of one tenant can overlap (an operator and a rollout), and a
+      // parent can be edited while a push is in flight. Either way this push
+      // may carry a hash the chain has moved on from, and writing it would put
+      // an older result over a newer one. So only record it while it is still
+      // what the chain resolves to. Otherwise leave the row as it is: the
+      // tenant then shows as drifted and the next sync records the current
+      // hash, which is the safe direction to be wrong in.
+      //
+      // The push has already been applied, so a failure here must not fail the
+      // operation: it would report a sync that did happen as failed. Leave the
+      // row stale instead (the tenant shows as drifted and the next sync
+      // records it) and return what the tenant reported.
+      try {
+        const current = await buildResolvedConfigBlock(
+          controlPlaneAdapters,
+          tenantId,
+          { legacyControlPlane: controlPlaneTenantId, maxDepth },
+        );
+        if (current.hash === result.hash) {
+          await controlPlaneAdapters.tenants.update(tenantId, {
+            config_sync_hash: result.hash,
+            config_synced_at: new Date().toISOString(),
+          });
+        }
+      } catch (error) {
+        console.error(
+          `[wfp] could not record the applied config hash of "${tenantId}" on the control plane; it will show as drifted until the next sync:`,
+          error,
+        );
+      }
+    }
+
+    return result;
   };
 }
