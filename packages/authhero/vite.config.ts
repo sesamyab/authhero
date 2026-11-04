@@ -76,7 +76,15 @@ export default defineConfig(async ({ mode }) => {
         fileName: (format) => fileName[format],
       },
       rollupOptions: {
-        external: ["@hono/zod-openapi", "hono", "@authhero/widget/hydrate"],
+        // Matches exact ids and their subpaths. Rollup's `external` array does
+        // exact string matching, so `hono/route` was inlined with its own
+        // GET_MATCH_RESULT symbol and `basePath(ctx)` threw on the host app's
+        // requests whenever `tenantDispatch` was set.
+        external: (id) =>
+          id === "@authhero/widget/hydrate" ||
+          ["@hono/zod-openapi", "hono"].some(
+            (dep) => id === dep || id.startsWith(`${dep}/`),
+          ),
         output: {
           assetFileNames: (assetInfo) => {
             if (assetInfo.name === "style.css") return "tailwind.css";
