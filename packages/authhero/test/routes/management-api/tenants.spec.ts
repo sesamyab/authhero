@@ -164,6 +164,49 @@ describe("management-api tenants", () => {
       });
     });
 
+    it("leaves deployment_type and provisioning_state alone when the body omits them", async () => {
+      const { env, managementClient, token } = await setup();
+      await env.data.tenants.update("tenantId", {
+        deployment_type: "wfp",
+        provisioning_state: "pending",
+      });
+
+      const response = await managementClient.tenants.settings.$patch(
+        {
+          json: { friendly_name: "Renamed Tenant" },
+          header: { "tenant-id": "tenantId" },
+        },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+      expect(response.status).toBe(200);
+      const stored = await env.data.tenants.get("tenantId");
+      expect(stored?.friendly_name).toBe("Renamed Tenant");
+      expect(stored?.deployment_type).toBe("wfp");
+      expect(stored?.provisioning_state).toBe("pending");
+    });
+
+    it("keeps the MFA settings the body omits when it patches one factor", async () => {
+      const { env, managementClient, token } = await setup();
+      await env.data.tenants.update("tenantId", {
+        mfa: { policy: "always", factors: { sms: false, otp: true } },
+      });
+
+      const response = await managementClient.tenants.settings.$patch(
+        {
+          json: { mfa: { factors: { sms: true } } },
+          header: { "tenant-id": "tenantId" },
+        },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+      expect(response.status).toBe(200);
+      const stored = await env.data.tenants.get("tenantId");
+      expect(stored?.mfa?.policy).toBe("always");
+      expect(stored?.mfa?.factors?.sms).toBe(true);
+      expect(stored?.mfa?.factors?.otp).toBe(true);
+    });
+
     describe("config_sync", () => {
       it("lets a control-plane token switch a tenant to synced and back", async () => {
         const { env, managementClient } = await setup();

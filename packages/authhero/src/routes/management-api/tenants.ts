@@ -7,7 +7,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables } from "../../types";
 import {
-  tenantInsertSchema,
+  tenantPatchSchema,
   tenantSchema,
   TenantsDataAdapter,
   LogTypes,
@@ -76,10 +76,7 @@ const patchSettings = defineRoute({
             // deployed bundle targets — it's reconciled by the provisioner,
             // not something a client may set. Omit it from the externally
             // patchable settings so it can't be written through patchSettings.
-            schema: z
-              .object(tenantInsertSchema.shape)
-              .omit({ database_version: true })
-              .partial(),
+            schema: tenantPatchSchema.omit({ database_version: true }),
           },
         },
       },
