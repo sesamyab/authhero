@@ -354,18 +354,42 @@ export const tenantSchema = z
     has_children: z.boolean().optional(),
   });
 
+// The MFA settings without their create-time defaults. `policy` and every
+// factor default to "never" / `false` on create, and a defaulted field inside a
+// patch body is filled in when omitted, so `{ mfa: { factors: { sms: true } } }`
+// would also switch the policy off and every other factor off. Keep the factor
+// list in step with `mfa.factors` in `tenantInsertSchema`: a test compares them.
+const mfaShape = tenantInsertSchema.shape.mfa.unwrap().shape;
+const mfaPatchSchema = z.object({
+  ...mfaShape,
+  policy: z.enum(["never", "always"]).optional(),
+  factors: z
+    .object({
+      sms: z.boolean().optional(),
+      otp: z.boolean().optional(),
+      email: z.boolean().optional(),
+      push_notification: z.boolean().optional(),
+      webauthn_roaming: z.boolean().optional(),
+      webauthn_platform: z.boolean().optional(),
+      recovery_code: z.boolean().optional(),
+      duo: z.boolean().optional(),
+    })
+    .optional(),
+});
+
 /**
  * Body schema for PATCH /tenants/settings: every insert field, all optional,
  * with the create-time defaults removed. `.partial()` alone keeps `.default()`
  * in zod 4, so a partial body would otherwise be filled with
  * `deployment_type: "shared"` / `provisioning_state: "ready"` and silently
- * overwrite the stored values.
+ * overwrite the stored values. The same goes for the defaults nested in `mfa`.
  */
 export const tenantPatchSchema = z
   .object(tenantInsertSchema.shape)
   .extend({
     deployment_type: z.enum(["shared", "wfp"]),
     provisioning_state: z.enum(["pending", "ready", "failed"]),
+    mfa: mfaPatchSchema,
   })
   .partial();
 
