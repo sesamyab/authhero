@@ -1,5 +1,17 @@
 # @authhero/cloudflare-adapter
 
+## 4.1.2
+
+### Patch Changes
+
+- 52f4305: Record the config hash a tenant worker applied on the control plane's tenant row after a successful `sync-defaults` push, so `GET /tenants/{id}/config-sync` stops reporting `drifted: true` and the drift reconcile stops re-enqueuing tenants with their own worker and database. The hash is only recorded while it is still what the tenant's chain resolves to, so a sync that was overtaken by a newer one, or by an edit on a parent, cannot put an older hash over a newer one.
+- Updated dependencies [7aaaeae]
+- Updated dependencies [278a5ea]
+  - authhero@9.28.3
+  - @authhero/multi-tenancy@15.4.2
+  - @authhero/adapter-interfaces@4.25.1
+  - @authhero/kysely-adapter@12.18.2
+
 ## 4.1.1
 
 ### Patch Changes
