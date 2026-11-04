@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   exists,
   makeTempDir,
+  packageRoot,
   readFile,
   readJson,
   runCli,
@@ -324,6 +325,23 @@ describe("control-plane template sync wiring", () => {
     expect(readFile(projectPath, "src/index.ts")).toContain(
       "additionalIssuers",
     );
+  });
+
+  it("does not point anyone at the removed sync route or stub", () => {
+    // `POST /internal/tenants/:id/sync-defaults` and `buildTenantAdapters()`
+    // were removed; neither the templates nor the scaffolder's own messages may
+    // still send people to them.
+    const removed = /internal\/tenants|buildTenantAdapters/;
+    const { projectPath } = projects["control-plane"];
+    for (const file of [
+      "src/index.ts",
+      "src/app.ts",
+      "README.md",
+      "wrangler.toml",
+    ]) {
+      expect(readFile(projectPath, file)).not.toMatch(removed);
+    }
+    expect(readFile(packageRoot, "src/index.ts")).not.toMatch(removed);
   });
 
   it("has no stub left that answers 501", () => {

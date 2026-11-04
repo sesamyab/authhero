@@ -1456,11 +1456,12 @@ function printCloudflareControlPlaneSuccessMessage(): void {
   console.log("\n" + "─".repeat(50));
   console.log("🛰️  Control plane running at https://localhost:3000");
   console.log("🚀 Open https://localhost:3000/setup to complete initial setup");
+  console.log("🔁 Sync a tenant's inherited config (dry run first):");
   console.log(
-    "🔁 Project defaults into a tenant: POST /internal/tenants/:id/sync-defaults",
+    '   POST /api/v2/tenants/<id>/operations  { "kind": "sync-defaults", "input": { "dry_run": true } }',
   );
   console.log(
-    "   (wire buildTenantAdapters() in src/index.ts and protect the route first)",
+    "   (needs a management token with the create:tenant_operations scope)",
   );
   console.log("─".repeat(50) + "\n");
 }
