@@ -313,6 +313,20 @@ describe("control-plane template sync wiring", () => {
     expect(index).toContain("cannotShareSecrets");
   });
 
+  it("hashes config the way a sync copies it, so the status can agree", () => {
+    // A sync copies secrets as stored (ciphertext). The sync status, verify and
+    // rollouts hash through the adapter they are given, so they must be given
+    // the stored layer too, or `drifted` is true for every tenant whose chain
+    // holds an encrypted secret.
+    const { projectPath } = projects["control-plane"];
+    const index = readFile(projectPath, "src/index.ts");
+    expect(index).toContain("storedDataAdapter: rawAdapter");
+    expect(index).toContain("createInProcessSyncConfig(rawAdapter");
+    expect(readFile(projectPath, "src/app.ts")).toContain(
+      "storedDataAdapter: options.storedDataAdapter",
+    );
+  });
+
   it("lets ISSUER be set apart from the Worker's own host", () => {
     // Hosts under the ISSUER apex are never looked up as custom domains, so a
     // control plane that always used its own host as the apex could only

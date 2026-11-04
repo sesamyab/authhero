@@ -50,6 +50,15 @@ that get synced) are encrypted under the key id `cp`; everything else under
 it receives only if it holds the same `CONTROL_PLANE_ENCRYPTION_KEY`. Values
 written before the key ring existed stay readable.
 
+A sync copies secrets as stored, so the block it pushes, and the hash of that
+block, are computed over ciphertext. The sync status (`expected_hash` and
+`drifted`), `verify` and the rollouts compute the same hash, so they have to read
+the same layer: `src/index.ts` passes `rawAdapter` (secrets as stored) to
+`initMultiTenant` as `storedDataAdapter`. Through the decrypting layer the hash
+would cover plaintext, never equal the stored one, and show every tenant as
+drifted. The option is new: it needs a `@authhero/multi-tenancy` release later
+than 15.4.2.
+
 When `ENCRYPTION_KEY` is set but `CONTROL_PLANE_ENCRYPTION_KEY` is not, the
 control plane tenant's secrets are encrypted with `ENCRYPTION_KEY`, which no
 tenant Worker holds. A `sync-defaults` push to a tenant with its own Worker is

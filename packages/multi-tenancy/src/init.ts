@@ -129,6 +129,28 @@ export interface MultiTenantConfig extends Omit<
   syncDefaults?: SyncConfigFn;
 
   /**
+   * The same data adapter as `dataAdapter`, but the layer that returns secrets
+   * as stored: ciphertext, not decrypted. Pass it when `dataAdapter` encrypts at
+   * rest (for example `createEncryptedDataAdapterWithKeyRing`) and tenants are
+   * synced.
+   *
+   * A sync copies secrets as stored, so the block it pushes, and the hash of that
+   * block, are computed over ciphertext. The sync status (`expected_hash` and
+   * `drifted`), `verify` and the fleet rollouts compute the same hash, and they
+   * read through `dataAdapter` unless this is set. Through a decrypting layer the
+   * hash covers plaintext instead, so it never equals the stored one and every
+   * tenant looks drifted. Set it to the same layer the `syncDefaults` transport
+   * reads through.
+   *
+   * Used only to build and hash config blocks, and for the in-process sync;
+   * requests are still served through `dataAdapter`. Must carry the same
+   * adapters as `dataAdapter` (tenant operations, rollouts, ...).
+   *
+   * @default `dataAdapter`
+   */
+  storedDataAdapter?: DataAdapters;
+
+  /**
    * How the `detach` tenant operation reaches a tenant's database. The default
    * works on tenants that share the control plane's database, in-process, and
    * refuses tenants with their own worker and database.
@@ -345,6 +367,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     resolveControlPlane,
     inheritanceShadow,
     syncDefaults,
+    storedDataAdapter,
     detachTenant,
     tenantMemberRequests,
     rolloutExecutor,
@@ -366,6 +389,11 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         "inheritance lookups on top of it.",
     );
   }
+
+  // What builds and hashes config blocks: sync status, verify, fleet rollouts
+  // and the in-process sync. It must read secrets the way the sync copies them
+  // (as stored), which is not what `dataAdapter` does when it encrypts.
+  const storedAdapter = storedDataAdapter ?? rawDataAdapter;
 
   // Wrap adapters with runtime fallback from control plane (only if controlPlane is configured)
   // - dataAdapter: Full fallback with secrets (for auth flows)
@@ -432,7 +460,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     // pass `syncDefaults` to reach tenants with their own database.
     const syncConfig =
       syncDefaults ??
-      createInProcessSyncConfig(rawDataAdapter, {
+      createInProcessSyncConfig(storedAdapter, {
         controlPlaneTenantId,
         resolveControlPlane,
       });
@@ -567,7 +595,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     rawDataAdapter.tenantOperations &&
     rawDataAdapter.tenantOperationEvents
       ? {
-          adapters: rawDataAdapter,
+          adapters: storedAdapter,
           executor: rolloutRunner,
           controlPlaneTenantId,
           resolveControlPlane,
@@ -693,7 +721,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       configSyncStatus: (tenantId) =>
         getConfigSyncStatus(
           {
-            adapters: rawDataAdapter,
+            adapters: storedAdapter,
             controlPlaneTenantId,
             resolveControlPlane,
           },
@@ -705,12 +733,12 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       verifyConfigSync: (tenantId) =>
         verifyTenantConfig(
           {
-            adapters: rawDataAdapter,
+            adapters: storedAdapter,
             controlPlaneTenantId,
             resolveControlPlane,
             syncConfig:
               syncDefaults ??
-              createInProcessSyncConfig(rawDataAdapter, {
+              createInProcessSyncConfig(storedAdapter, {
                 controlPlaneTenantId,
                 resolveControlPlane,
               }),
