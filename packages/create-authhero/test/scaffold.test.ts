@@ -303,8 +303,10 @@ describe("control-plane template sync wiring", () => {
     expect(index).toContain("createDispatchSyncConfig");
     expect(index).toContain("controlPlane: true");
     // The control plane tenant's secrets travel as `cp` ciphertext, so the
-    // tenant's key ring can decrypt them.
+    // tenant's key ring can decrypt them. Only when the ring has that key:
+    // encrypting under a missing key id throws.
     expect(index).toContain('"cp"');
+    expect(index).toContain("ring.keys?.cp");
   });
 
   it("lets ISSUER be set apart from the Worker's own host", () => {

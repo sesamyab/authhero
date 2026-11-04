@@ -213,8 +213,13 @@ async function buildDataAdapter(env: Env) {
         }
       : { default: defaultKey };
     dataAdapter = createEncryptedDataAdapterWithKeyRing(rawAdapter, ring, {
+      // Only use the "cp" key id when the ring has that key: encrypting under
+      // an id the ring lacks throws `No key for id "cp"`. Without the key the
+      // control plane tenant's rows use the default key like everything else.
       resolveEncryptKeyId: (tenantId) =>
-        tenantId === CONTROL_PLANE_TENANT_ID ? "cp" : undefined,
+        tenantId === CONTROL_PLANE_TENANT_ID && ring.keys?.cp
+          ? "cp"
+          : undefined,
     });
   }
   return { db, rawAdapter, dataAdapter };
