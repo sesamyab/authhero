@@ -12,6 +12,21 @@ import {
 } from "../helpers/paginate";
 import type { DrizzleDb } from "./types";
 
+// D1 caps the bound parameters of a single statement at 100. An insert binds
+// 5 columns per row and a delete binds 2 per permission plus the tenant and
+// role, so the admin role (hundreds of management scopes) has to be written in
+// batches or the whole statement is rejected.
+const ASSIGN_CHUNK_SIZE = 15;
+const REMOVE_CHUNK_SIZE = 30;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export function createRolePermissionsAdapter(db: DrizzleDb) {
   return {
     async assign(
@@ -25,18 +40,20 @@ export function createRolePermissionsAdapter(db: DrizzleDb) {
       if (permissions.length === 0) return true;
 
       const now = new Date().toISOString();
-      await db
-        .insert(rolePermissions)
-        .values(
-          permissions.map((perm) => ({
-            tenant_id,
-            role_id,
-            resource_server_identifier: perm.resource_server_identifier,
-            permission_name: perm.permission_name,
-            created_at: now,
-          })),
-        )
-        .onConflictDoNothing();
+      for (const batch of chunk(permissions, ASSIGN_CHUNK_SIZE)) {
+        await db
+          .insert(rolePermissions)
+          .values(
+            batch.map((perm) => ({
+              tenant_id,
+              role_id,
+              resource_server_identifier: perm.resource_server_identifier,
+              permission_name: perm.permission_name,
+              created_at: now,
+            })),
+          )
+          .onConflictDoNothing();
+      }
 
       return true;
     },
@@ -131,26 +148,28 @@ export function createRolePermissionsAdapter(db: DrizzleDb) {
       // where clause to tenant+role and wipe every permission on the role.
       if (permissions.length === 0) return true;
 
-      const permsPredicates = permissions.map((perm) =>
-        and(
-          eq(
-            rolePermissions.resource_server_identifier,
-            perm.resource_server_identifier,
-          ),
-          eq(rolePermissions.permission_name, perm.permission_name),
-        ),
-      );
-
-      await db
-        .delete(rolePermissions)
-        .where(
+      for (const batch of chunk(permissions, REMOVE_CHUNK_SIZE)) {
+        const permsPredicates = batch.map((perm) =>
           and(
-            eq(rolePermissions.tenant_id, tenant_id),
-            eq(rolePermissions.role_id, role_id),
-            or(...permsPredicates),
+            eq(
+              rolePermissions.resource_server_identifier,
+              perm.resource_server_identifier,
+            ),
+            eq(rolePermissions.permission_name, perm.permission_name),
           ),
-        )
-        .returning();
+        );
+
+        await db
+          .delete(rolePermissions)
+          .where(
+            and(
+              eq(rolePermissions.tenant_id, tenant_id),
+              eq(rolePermissions.role_id, role_id),
+              or(...permsPredicates),
+            ),
+          )
+          .returning();
+      }
 
       // Removing an already-absent permission is a no-op, not a failure — the
       // caller turns `false` into a 500.

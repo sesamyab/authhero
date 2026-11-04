@@ -95,3 +95,67 @@ describe("role permissions adapter", () => {
     expect(all).toHaveLength(5);
   });
 });
+
+describe("role permissions adapter on D1", () => {
+  // D1 rejects statements that bind more than 100 parameters, and the admin
+  // role carries hundreds of management scopes.
+  const D1_MAX_BOUND_PARAMETERS = 100;
+  const tenantId = "t1";
+
+  const manyPermissions = Array.from({ length: 252 }, (_, i) => ({
+    resource_server_identifier: "urn:authhero:management",
+    permission_name: `read:resource_${i}`,
+  }));
+
+  async function setup() {
+    const { data, db } = getTestServer();
+    await data.tenants.create({ id: tenantId, name: "Tenant 1" });
+    const role = await data.roles.create(tenantId, {
+      name: "admin",
+      description: "Role with many permissions",
+    });
+
+    const client = (db as any).$client as {
+      prepare: (sql: string) => unknown;
+    };
+    const originalPrepare = client.prepare.bind(client);
+    const boundParameters: number[] = [];
+    client.prepare = (sql: string) => {
+      if (sql.includes('"role_permissions"')) {
+        boundParameters.push((sql.match(/\?/g) ?? []).length);
+      }
+      return originalPrepare(sql);
+    };
+
+    return { data, roleId: role.id, boundParameters };
+  }
+
+  it("assigns hundreds of permissions without exceeding the D1 parameter limit", async () => {
+    const { data, roleId, boundParameters } = await setup();
+
+    expect(
+      await data.rolePermissions.assign(tenantId, roleId, manyPermissions),
+    ).toBe(true);
+
+    expect(Math.max(...boundParameters)).toBeLessThanOrEqual(
+      D1_MAX_BOUND_PARAMETERS,
+    );
+    const stored = await data.rolePermissions.list(tenantId, roleId);
+    expect(stored).toHaveLength(manyPermissions.length);
+  });
+
+  it("removes hundreds of permissions without exceeding the D1 parameter limit", async () => {
+    const { data, roleId, boundParameters } = await setup();
+    await data.rolePermissions.assign(tenantId, roleId, manyPermissions);
+    boundParameters.length = 0;
+
+    expect(
+      await data.rolePermissions.remove(tenantId, roleId, manyPermissions),
+    ).toBe(true);
+
+    expect(Math.max(...boundParameters)).toBeLessThanOrEqual(
+      D1_MAX_BOUND_PARAMETERS,
+    );
+    expect(await data.rolePermissions.list(tenantId, roleId)).toHaveLength(0);
+  });
+});
