@@ -2,12 +2,14 @@
 
 Deploy authhero as a multi-Worker SaaS platform where each tenant (publisher) gets their own isolated authhero Worker, fronted by a thin dispatcher Worker that routes by custom domain.
 
-::: tip Two-tier deploy
+::: tip Two-tier deploy, plus an optional control plane
 WFP authhero is **two Workers**, not one:
 
 1. **Dispatcher** — `@authhero/proxy` running as a Worker. Resolves the request's `Host` header to a tenant, then dispatches to that tenant's Worker via a [dispatch namespace](https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/configuration/dispatch-namespaces/) binding.
 2. **Tenant Worker(s)** — the full `authhero` app, one Worker per tenant, deployed _into_ the dispatch namespace.
-   :::
+
+A third Worker, the **control plane**, is optional. It holds the config your tenants inherit and pushes it into each tenant's own database, so tenants with their own D1 share config without ever reading another database. It is [Step 4](#step-4-add-a-control-plane-and-sync-config).
+:::
 
 ## When to use this
 
@@ -482,9 +484,227 @@ curl https://auth.acme.com/.well-known/openid-configuration
 
 Expected: a JWKS issuer document with `"issuer": "https://auth.acme.com/"`. If you get `Unknown host` (404), the `custom_domains` row isn't in place or the dispatcher hasn't picked it up yet (it caches host resolutions for 30s by default — see [the proxy cache config](/customization/proxy/caching)).
 
-::: tip Next: automate onboarding with a control plane
-Steps 3.1–3.6 are the manual flow. To create tenants through `POST /api/v2/tenants`, register customers' own domains in Cloudflare for SaaS, and have the platform create each tenant's D1 and Worker for you, deploy a control plane: scaffold the `cloudflare-control-plane` template and see [Control plane](/customization/multi-tenancy/control-plane) and [API-driven provisioning](#api-driven-provisioning).
+::: tip Next: add a control plane
+Steps 3.1–3.6 are the manual flow, and the tenant you just deployed works on its own. To share config between tenants (connections with their secrets, hooks, actions, resource servers, branding), add a control plane in [Step 4](#step-4-add-a-control-plane-and-sync-config). To also create tenants through `POST /api/v2/tenants`, register customers' own domains in Cloudflare for SaaS, and have the platform create each tenant's D1 and Worker for you, see [Control plane](/customization/multi-tenancy/control-plane) and [API-driven provisioning](#api-driven-provisioning).
 :::
+
+## Step 4: Add a control plane and sync config
+
+A **control plane** is a separate authhero Worker that owns the config tenants inherit. A `sync-defaults` operation resolves a tenant's parent chain and **pushes** the result through the dispatch namespace into the tenant Worker, which writes it to its own D1. The tenant never reads the control plane at request time.
+
+This step adds a control plane to what you built in Steps 1–3 and syncs the `acme` tenant, which has its own D1. It needs `create-authhero` 0.51.1 or later, whose templates install `authhero` 9.28.3, `@authhero/multi-tenancy` 15.5.0 and `@authhero/cloudflare-adapter` 4.1.2 or later. Earlier versions have problems this step runs into (see [Troubleshooting](#sync-troubleshooting)).
+
+The examples use `control.example.com` for the control plane and `https://token.example.com/` as its issuer apex. Use your own zone.
+
+### 4.1 Scaffold the control plane
+
+```bash
+npx create-authhero@latest control-plane \
+  --template cloudflare-control-plane --package-manager npm \
+  --skip-migrate --skip-start
+cd control-plane/
+```
+
+The scaffold has already written `wrangler.local.toml` and `.dev.vars`, with generated values for `ENCRYPTION_KEY`, `CONTROL_PLANE_ENCRYPTION_KEY` and `WFP_INTERNAL_SYNC_SECRET`. `npm run setup` never overwrites them. The last two are **shared**: every tenant Worker must hold the same values ([4.6](#_4-6-redeploy-the-tenant-worker-from-the-wfp-tenant-template)).
+
+### 4.2 Point it at the platform D1
+
+The control plane and the dispatcher share the platform D1: the control plane writes `tenants`, `custom_domains` and `proxy_routes`, and the dispatcher reads them. In `wrangler.local.toml`, set `database_name` and `database_id` on **both** `[[d1_databases]]` entries (they are the same database, `AUTH_DB` and `AUTH_DB_CONTROL_PLANE_MIGRATIONS`), and keep the bindings as they are. Then apply the schema:
+
+```bash
+npm run db:migrate:remote                 # core schema; applies anything Step 1.4 did not
+npm run db:migrate:control-plane:remote   # tenant operations and rollouts
+```
+
+The tenant-operation and rollout tables are a second migration set that only exists on a control plane. It is tracked in its own table (`d1_migrations_control_plane`), so the two sets never re-apply each other. Without it, `POST /api/v2/tenants/{id}/operations` fails.
+
+### 4.3 Choose the control plane's host and issuer
+
+Give the control plane its own host, for example `control.example.com`, attached to **the control plane Worker** in [4.5](#_4-5-deploy), not to the dispatcher. Then set an issuer apex that is **not** that host, in `wrangler.local.toml`:
+
+```toml
+[vars]
+ISSUER = "https://token.example.com/"
+```
+
+`token.example.com` does not need to exist in DNS. It is the apex under which tenant subdomains (`{tenant}.token.example.com`) are recognised. A request's tenant is found from its host, and hosts under the `ISSUER` apex are read as tenant subdomains and never looked up as custom domains. Leave `ISSUER` unset and the request's own host becomes the apex, so the control plane's tenant can only be found while the database holds a single tenant. Every WFP tenant adds a row, so it stops resolving as soon as you add one (the symptom is a SQL error on `tenants.id = ?`, see [Troubleshooting](#sync-troubleshooting)).
+
+### 4.4 Seed the control plane tenant
+
+The seed derives the issuer from the URL it runs on, which is `localhost` under `wrangler dev`. In `src/seed.ts`, replace the line that builds `issuer` with the control plane's real URL:
+
+```typescript
+const issuer = "https://control.example.com/";
+```
+
+Then seed the remote D1:
+
+```bash
+npx wrangler dev src/seed.ts --remote --config wrangler.local.toml
+
+# in another terminal — choose your own password
+curl "http://localhost:8787/?username=admin&password=<password>"
+```
+
+The response has `"success":true` and includes the `clientSecret` of the `default` client (you need it in [4.7](#_4-7-get-a-management-token)). Don't use `npm run seed:remote`: it starts `wrangler dev` without `--config wrangler.local.toml`.
+
+Now register the control plane's host so requests to it resolve to the `control_plane` tenant. Do this after the seed, since the row references the tenant. Save the statement as `control-domain.sql`:
+
+```sql
+INSERT INTO custom_domains (custom_domain_id, tenant_id, domain, "primary", status,
+                            type, created_at, updated_at)
+VALUES ('cd-control-plane', 'control_plane', 'control.example.com', 1, 'ready',
+        'self_managed_certs', '2026-06-06T00:00:00Z', '2026-06-06T00:00:00Z');
+```
+
+```bash
+npx wrangler d1 execute authhero-platform-db --remote --config wrangler.local.toml --file control-domain.sql
+```
+
+The dispatcher never sees this host, because the domain goes straight to the control plane Worker, so the row does not affect routing.
+
+### 4.5 Deploy
+
+The template already binds the dispatch namespace from [Step 1.2](#_1-2-create-the-dispatch-namespace):
+
+```toml
+[[dispatch_namespaces]]
+binding = "DISPATCHER"
+namespace = "authhero-tenants"
+```
+
+```bash
+node copy-assets.js
+npx wrangler deploy --config wrangler.local.toml --secrets-file .dev.vars
+```
+
+Then, in the Cloudflare Dashboard: Workers & Pages → **authhero-control-plane** → Settings → Domains & Routes → Add → Custom domain → `control.example.com`. Verify:
+
+```bash
+curl https://control.example.com/.well-known/openid-configuration
+```
+
+Expected: `"issuer": "https://control.example.com/"`. A custom domain takes a minute to get its certificate, and a request right after a deploy can still reach the previous version.
+
+### 4.6 Redeploy the tenant Worker from the WFP tenant template
+
+The Worker from [3.4](#_3-4-deploy-the-tenant-worker-into-the-dispatch-namespace) serves logins fine, but only the `cloudflare-wfp-tenant` template receives pushes: it is built with `createWfpTenantApp`, which mounts `/internal/sync-config` and holds the key ring that reads the control plane's secrets. Scaffold it and deploy over the same script:
+
+```bash
+npx create-authhero@latest tenant-acme-v2 \
+  --template cloudflare-wfp-tenant --package-manager npm \
+  --skip-migrate --skip-start
+cd tenant-acme-v2/
+```
+
+Keep the tenant's data and keys, and set what the Worker needs to know about the control plane:
+
+1. In `wrangler.local.toml`, point `[[d1_databases]]` at the tenant's D1 (the same `database_name` and `database_id` as in 3.4, `binding = "AUTH_DB"`), and set `[vars]`:
+
+   ```toml
+   [vars]
+   ISSUER = "https://auth.acme.com/"                       # the tenant's own issuer, as seeded in 3.3
+   TENANT_ID = "acme"
+   CONTROL_PLANE_TENANT_ID = "control_plane"
+   CONTROL_PLANE_ISSUER = "https://control.example.com/"   # the host the control plane mints tokens on
+   ```
+
+2. In `.dev.vars`, keep the tenant's **existing** `ENCRYPTION_KEY` (the one the seed in 3.3 used, since its rows are encrypted with it), and replace the generated `CONTROL_PLANE_ENCRYPTION_KEY` and `WFP_INTERNAL_SYNC_SECRET` with the control plane's values.
+
+3. Deploy over the same script name. The tenant's D1 is untouched, so there is nothing to migrate or seed again:
+
+   ```bash
+   node copy-assets.js
+   npx wrangler deploy --config wrangler.local.toml \
+     --dispatch-namespace=authhero-tenants \
+     --name=tenant-acme-auth \
+     --secrets-file .dev.vars
+   ```
+
+Check that the tenant still answers with the same issuer and key: `curl https://auth.acme.com/.well-known/openid-configuration`.
+
+### 4.7 Get a management token
+
+Operations are created through the control plane's management API, which needs a token. The seed creates the `default` client with a secret but no client grant to the management API, so create one for a first token:
+
+```sql
+INSERT INTO client_grants (id, tenant_id, client_id, audience, scope, created_at, updated_at)
+VALUES ('cg-bootstrap', 'control_plane', 'default', 'urn:authhero:management',
+ '["read:tenants","update:tenants","read:tenant_operations","create:tenant_operations","read:rollouts","create:rollouts","update:rollouts","read:logs","read:connections","create:connections","update:connections"]',
+ '2026-06-06T00:00:00Z', '2026-06-06T00:00:00Z');
+```
+
+Save it as `grant.sql` and run it with `npx wrangler d1 execute authhero-platform-db --remote --config wrangler.local.toml --file grant.sql`, then ask for a token with the client secret from the seed response:
+
+```bash
+TOKEN=$(curl -s -X POST https://control.example.com/oauth/token \
+  -d "grant_type=client_credentials&client_id=default&client_secret=<clientSecret>&audience=urn:authhero:management" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).access_token))')
+```
+
+If you did not keep the secret, it is in the `clients` table, encrypted with `ENCRYPTION_KEY`: read it with `SELECT client_secret FROM clients WHERE tenant_id='control_plane' AND client_id='default'` and decrypt it with `npm run decrypt -- "<enc:v1:… value>"`.
+
+::: warning A bootstrap grant is not a production client
+This gives the default client full management scopes on the control plane. Use it to get started, then create a dedicated machine-to-machine client with only the scopes it needs, rotate its secret, and delete `cg-bootstrap`.
+:::
+
+### 4.8 Sync a tenant
+
+Publish something to share. A connection on the control plane with `scope: "shared"` is inherited by tenants; `override: "secrets"` lets a tenant supply its own client secret:
+
+```bash
+curl -X POST https://control.example.com/api/v2/connections \
+  -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  -d '{"name":"google-oauth2","strategy":"google-oauth2",
+       "options":{"client_id":"<id>","client_secret":"<secret>"},
+       "scope":"shared","override":"secrets"}'
+```
+
+Run the sync as a **dry run** first:
+
+```bash
+curl -X POST https://control.example.com/api/v2/tenants/acme/operations \
+  -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  -d '{"kind":"sync-defaults","input":{"dry_run":true}}'
+```
+
+The operation's `result` lists `changes` as `entity:key` (never content or secrets) and per-entity counts. Expect `connection:google-oauth2:google-oauth2` as added. A row the tenant already has with the same strategy and name is not replaced: it is listed as `skip … (the tenant has its own)`. Run it without `dry_run` to apply. The secret reaches the tenant as ciphertext tagged with the `cp` key, which the tenant Worker reads with `CONTROL_PLANE_ENCRYPTION_KEY`.
+
+Check the result on both sides:
+
+```bash
+# the control plane's view: the hash the tenant applied, and whether the chain moved since
+curl https://control.example.com/api/v2/tenants/acme/config-sync -H "authorization: Bearer $TOKEN"
+
+# the hard check: a dry run against the tenant's own rows, through the dispatch namespace
+curl https://control.example.com/api/v2/tenants/acme/config-sync/verify -H "authorization: Bearer $TOKEN"
+```
+
+`verify` answers `"ok": true` with an empty `differences` list when the tenant's rows match what its parents publish. `GET …/config-sync` shows `drifted: false` with `config_sync_hash` equal to `expected_hash` once the tenant is `synced` (next step).
+
+### 4.9 Flip to `synced`, and roll back
+
+A tenant starts as `inherit-on-read`. To make the synced copy the source of truth, switch it from the control plane:
+
+```bash
+curl -X PATCH https://control.example.com/api/v2/tenants/settings \
+  -H "authorization: Bearer $TOKEN" -H "tenant-id: acme" \
+  -H "content-type: application/json" -d '{"config_sync":"synced"}'
+```
+
+Switch back with `{"config_sync":"inherit-on-read"}`. The runbook [Migrating a tenant to synced config](/customization/multi-tenancy/config-sync-migration) walks through dry run, verify, the flip and a rollback window for a tenant with real traffic.
+
+::: warning Needs `authhero` 9.28.3 or later
+Before 9.28.3, a partial `PATCH /tenants/settings` such as the flip above also reset the tenant's `deployment_type` to `shared`, and with it every later sync went in-process against the control plane's own database instead of to the tenant Worker.
+:::
+
+### 4.10 Things to know
+
+- **The tenant's `/internal/*` routes are reachable through the dispatcher.** `/internal/sync-config`, `/internal/detach` and the others are served by the tenant Worker under its public hostname. They are authenticated by `WFP_INTERNAL_SYNC_SECRET` as a bearer token and answer `401` when it is not set, so treat the secret like a credential: long, random, identical on the control plane and every tenant, and rotated with the Workers.
+- **Two syncs of one tenant are not ordered.** If an operator and a rollout sync the same tenant at once, the tenant can end up with the older block. `verify` shows it. Avoid running a manual sync against a tenant a rollout is working on, and run `verify` after an overlap.
+- **The template does not schedule rollouts.** Manual syncs and `POST /rollouts` work; automatic drift repair needs `reconcileConfigDrift` and `advanceRollouts` wired into `scheduled()` in `src/index.ts`. See [Tenant operations](/customization/multi-tenancy/tenant-operations#what-starts-a-rollout).
+- **Only the control plane tenant's secrets are tagged `cp`.** If an intermediate parent (a tenant between the control plane and a tenant with its own Worker) publishes secrets, the tenant cannot read them and the push is refused with `422 sync_config_key_ring` before anything is written. Return `"cp"` for that tenant from `resolveEncryptKeyId` in `src/index.ts` and save its secrets again.
+- **A control plane that encrypts needs `storedDataAdapter`.** The template passes its raw adapter to `initMultiTenant` as `storedDataAdapter`, so the sync status hashes config the way a push copies it. If you wire your own control plane, do the same ([Tenant operations](/customization/multi-tenancy/tenant-operations#syncing-a-tenant-s-config-sync-defaults)).
 
 ## Per-tenant routing customization
 
@@ -672,7 +892,7 @@ Later phases — fleet rollouts (waves + canary) and D1 Time Travel backups — 
 - **Local dev cannot emulate the namespace.** `wrangler dev` runs the dispatcher locally, but `env.DISPATCHER.get(...).fetch(...)` only resolves against a real namespace in your Cloudflare account. Use `npm run dev:remote` to test end-to-end.
 - **Per-tenant D1 limits.** Cloudflare imposes a maximum number of D1 databases per account. If you choose `own_d1` and onboard hundreds of tenants, you'll hit this — pick `existing_d1` or PlanetScale for the long tail.
 - **Bindings propagate per script.** Each tenant Worker's `wrangler.toml` declares its own bindings; the dispatcher's bindings don't carry through. Codify the per-tenant `wrangler.toml` in your deploy pipeline. When provisioning through `createCloudflareWfpD1Provisioner`, pass an `extraBindings` array to attach additional bindings (beyond the default `AUTH_DB` and `CONTROL_PLANE_BASE_URL`) — including a `service` binding to a shared upstream Worker.
-- **Secrets distribution.** `ENCRYPTION_KEY` and other secrets must be set per-script via `wrangler secret put --name=tenant-<id>-auth …`. Plan to automate this (and rotation) in your deploy tooling.
+- **Secrets distribution.** `ENCRYPTION_KEY` and other secrets are set per script, and `wrangler secret put` has no `--dispatch-namespace` option, so it cannot reach a Worker in a namespace. Pass them on each deploy with `--secrets-file` ([3.5](#_3-5-wire-secrets)); secrets you leave out of a later deploy are kept. Plan to automate this (and rotation) in your deploy tooling.
 - **Dispatch namespace cache.** The dispatcher caches host resolution for 30s by default. After inserting a new `custom_domains` row, the first request may still 404 until the cache expires. Configure a shorter `negativeTtlMs` (see [proxy cache options](/customization/proxy/caching)) if you onboard tenants frequently.
 
 ## Troubleshooting
@@ -705,20 +925,39 @@ Common causes:
 
 ### `ENCRYPTION_KEY not set` errors from the tenant Worker
 
-Each tenant Worker needs its own secret:
+Each tenant Worker needs its own secret, and secrets _do not_ propagate from the dispatcher to namespace scripts. `wrangler secret put` cannot target a Worker in a dispatch namespace, so put the value in the `.dev.vars` you pass on deploy:
 
 ```bash
-wrangler secret put --name=tenant-acme-auth ENCRYPTION_KEY
+npx wrangler deploy --config wrangler.local.toml \
+  --dispatch-namespace=authhero-tenants --name=tenant-acme-auth \
+  --secrets-file .dev.vars
 ```
 
-Secrets _do not_ propagate from the dispatcher to namespace scripts.
+It must be the **same** key the tenant's data was seeded with: a different key cannot decrypt it ([3.5](#_3-5-wire-secrets)).
 
 ### D1 migrations time out
 
 Applying ~40 migrations sequentially can hit Cloudflare's per-request limits when run from a Worker. Workarounds:
 
 - Run `wrangler d1 migrations apply` from your dev machine, not from a Worker
-- Use the one-shot bundle approach described in [Step 3.2](#_3-2-provision-the-tenant-s-data-store-only-if-storage-kind-own-d1): concatenate all migrations into a single SQL file and POST once to `/accounts/:id/d1/database/:dbid/query`
+- Use the one-shot bundle approach described in [Step 3.2](#_3-2-create-the-tenant-s-d1-only-if-storage-kind-own-d1): concatenate all migrations into a single SQL file and POST once to `/accounts/:id/d1/database/:dbid/query`
+
+### Sync troubleshooting
+
+These are the failures you meet in [Step 4](#step-4-add-a-control-plane-and-sync-config). A push to a tenant answers with a status and an `X-Authhero-Error` header, and the operation's `error` carries the same.
+
+| Symptom                                                                                                                                | Cause                                                                                                                                                                                                            | Fix                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A request to the control plane's host answers `500 Failed query: select … from "tenants" where "tenants"."id" = ?` with empty `params` | No tenant was found for the host. With `ISSUER` unset the host is the issuer apex, which is never looked up as a custom domain                                                                                   | Set `ISSUER` to an apex that is not the control plane's host, and add the host to `custom_domains` for `control_plane` ([4.3](#_4-3-choose-the-control-plane-s-host-and-issuer), [4.4](#_4-4-seed-the-control-plane-tenant)) |
+| `401 Invalid issuer` from a call with a `tenant-id` header                                                                             | The token's `iss` is the control plane's host, but a call that names another tenant skips the custom-domain lookup and is compared with `ISSUER`                                                                 | Use `create-authhero` 0.51.0 or later, whose control plane accepts its own host as an additional issuer for control plane tokens                                                                                             |
+| First request after a deploy answers `401` and the next one works                                                                      | The request reached the previous version of the Worker                                                                                                                                                           | Retry once                                                                                                                                                                                                                   |
+| `401` from the tenant on a push                                                                                                        | `WFP_INTERNAL_SYNC_SECRET` differs between the control plane and the tenant, or is not set on the tenant                                                                                                         | Use the same value on both and redeploy the tenant with `--secrets-file`                                                                                                                                                     |
+| `403 sync_config_tenant_mismatch`                                                                                                      | The tenant's `TENANT_ID` is not the tenant the push was addressed to                                                                                                                                             | Fix `TENANT_ID` in the tenant's `[vars]`                                                                                                                                                                                     |
+| `422 sync_config_key_ring`                                                                                                             | The block carries ciphertext the tenant's key ring cannot read, usually because `CONTROL_PLANE_ENCRYPTION_KEY` is missing or different on the tenant, or a parent other than the control plane publishes secrets | Use the same `CONTROL_PLANE_ENCRYPTION_KEY` on the control plane and the tenant. Nothing is written when this happens. See [4.10](#_4-10-things-to-know) for intermediate parents                                            |
+| `Cannot sync tenant …: CONTROL_PLANE_ENCRYPTION_KEY is not set on the control plane`                                                   | The control plane encrypts with `ENCRYPTION_KEY` but has no shared key to tag the control plane tenant's secrets with                                                                                            | Set `CONTROL_PLANE_ENCRYPTION_KEY` on the control plane, then save the secrets again so they are encrypted under it                                                                                                          |
+| `drifted: true` although `verify` says `ok`                                                                                            | Older packages: the control plane never recorded the applied hash, or hashed secrets as plaintext while the push hashed ciphertext                                                                               | Upgrade to `@authhero/cloudflare-adapter` 4.1.2 and `@authhero/multi-tenancy` 15.5.0 or later, and use the current template, which passes `storedDataAdapter`                                                                |
+| `POST /tenants/{id}/operations` fails with a missing-table error                                                                       | The control-plane migration set was not applied                                                                                                                                                                  | `npm run db:migrate:control-plane:remote` ([4.2](#_4-2-point-it-at-the-platform-d1))                                                                                                                                         |
+| A sync of a `wfp` tenant reports every row as added, or `verify` lists everything as `missing`                                         | The tenant row on the control plane lost `deployment_type: "wfp"`, so the sync went in-process against the control plane's own database                                                                          | `UPDATE tenants SET deployment_type = 'wfp' WHERE id = '<tenant>'` on the platform D1, and upgrade to `authhero` 9.28.3 or later so a partial `PATCH` no longer resets it                                                    |
 
 ## Next Steps
 
