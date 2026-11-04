@@ -1141,6 +1141,84 @@ describe("sync-defaults operation transport (createDispatchSyncConfig → /inter
     expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
   });
 
+  const addSharedAction = (name: string) =>
+    cp.actions.create(CP, {
+      name,
+      code: "exports.onExecutePostLogin = async () => {};",
+      scope: "shared",
+    });
+
+  it("does not record a hash the chain moved away from while the push was in flight", async () => {
+    const inner = dispatcherToTenant();
+    const dispatcher = {
+      get() {
+        return {
+          async fetch(url: Request | string, init?: RequestInit) {
+            const response = await inner.get().fetch(url, init);
+            // A parent is edited after the tenant applied this block but
+            // before the control plane hears back.
+            await addSharedAction("added-mid-flight");
+            return response;
+          },
+        };
+      },
+    };
+
+    const stale = await syncFor(dispatcher)("acme", {
+      dryRun: false,
+      force: false,
+    });
+    expect(stale.status).toBe("applied");
+    // Not recorded: the row would claim a hash the chain no longer produces.
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+
+    // The next sync sees the edit and records the current hash.
+    const current = await syncFor(dispatcherToTenant())("acme", {
+      dryRun: false,
+      force: false,
+    });
+    expect(current.hash).not.toBe(stale.hash);
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(current.hash);
+  });
+
+  it("lets an older sync that answers last not overwrite a newer one", async () => {
+    // Sync A applies its block, then its answer is held back.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const inner = dispatcherToTenant();
+    let pushes = 0;
+    const dispatcher = {
+      get() {
+        return {
+          async fetch(url: Request | string, init?: RequestInit) {
+            const response = await inner.get().fetch(url, init);
+            if (++pushes === 1) await held;
+            return response;
+          },
+        };
+      },
+    };
+
+    const older = syncFor(dispatcher)("acme", { dryRun: false, force: false });
+    await vi.waitFor(async () => {
+      expect((await tenant.tenants.get("acme"))?.config_sync_hash).toBeTruthy();
+    });
+
+    // A parent changes, and sync B runs to the end.
+    await addSharedAction("second");
+    const newer = await syncFor(dispatcher)("acme", {
+      dryRun: false,
+      force: false,
+    });
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(newer.hash);
+
+    // A answers last. Its hash is the older one and must not replace B's.
+    release();
+    const olderResult = await older;
+    expect(olderResult.hash).not.toBe(newer.hash);
+    expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(newer.hash);
+  });
+
   it("removes a copy the control plane stopped sharing only when asked to prune", async () => {
     const sync = syncFor(dispatcherToTenant());
     await sync("acme", { dryRun: false, force: false });

@@ -118,10 +118,24 @@ export function createDispatchSyncConfig(
       tenant &&
       syncErrors(result).length === 0
     ) {
-      await controlPlaneAdapters.tenants.update(tenantId, {
-        config_sync_hash: result.hash,
-        config_synced_at: new Date().toISOString(),
-      });
+      // Two syncs of one tenant can overlap (an operator and a rollout), and a
+      // parent can be edited while a push is in flight. Either way this push
+      // may carry a hash the chain has moved on from, and writing it would put
+      // an older result over a newer one. So only record it while it is still
+      // what the chain resolves to. Otherwise leave the row as it is: the
+      // tenant then shows as drifted and the next sync records the current
+      // hash, which is the safe direction to be wrong in.
+      const current = await buildResolvedConfigBlock(
+        controlPlaneAdapters,
+        tenantId,
+        { legacyControlPlane: controlPlaneTenantId, maxDepth },
+      );
+      if (current.hash === result.hash) {
+        await controlPlaneAdapters.tenants.update(tenantId, {
+          config_sync_hash: result.hash,
+          config_synced_at: new Date().toISOString(),
+        });
+      }
     }
 
     return result;
