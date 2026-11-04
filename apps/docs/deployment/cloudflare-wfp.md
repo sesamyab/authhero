@@ -253,7 +253,7 @@ For each publisher, four discrete steps. We'll use `acme` as the example tenant 
 
 ### 3.1 Create the tenant row + custom domain in the platform D1
 
-Either via the dispatcher's management API (if you've deployed an admin instance of authhero) or by direct SQL:
+Either via the management API of a [control plane](/customization/multi-tenancy/control-plane) or by direct SQL. The dispatcher from Step 1 has no management API, so if you haven't deployed a control plane, use direct SQL:
 
 ::: code-group
 
@@ -284,7 +284,8 @@ curl -X POST https://admin.authhero.example.com/api/v2/custom-domains \
 ```
 
 ```sql [Direct SQL]
--- Run against the platform D1 via `wrangler d1 execute authhero-platform-db --remote`
+-- Run against the platform D1 via
+-- `wrangler d1 execute authhero-platform-db --remote --config wrangler.local.toml --file tenant.sql`
 INSERT INTO tenants (id, friendly_name, audience, sender_name, sender_email,
                      deployment_type, storage_kind, bundle_configuration,
                      worker_version, provisioning_state, created_at, updated_at)
@@ -292,8 +293,9 @@ VALUES ('acme', 'Acme Inc', 'https://auth.acme.com/', 'Acme', 'noreply@acme.com'
         'wfp', 'own_d1', 'authhero-drizzle-d1', 'v1.0.0', 'pending',
         '2026-06-06T00:00:00Z', '2026-06-06T00:00:00Z');
 
-INSERT INTO custom_domains (id, tenant_id, domain, type, created_at, updated_at)
-VALUES ('cd-acme', 'acme', 'auth.acme.com', 'auth0_managed_certs',
+INSERT INTO custom_domains (custom_domain_id, tenant_id, domain, "primary", status,
+                            type, created_at, updated_at)
+VALUES ('cd-acme', 'acme', 'auth.acme.com', 1, 'ready', 'auth0_managed_certs',
         '2026-06-06T00:00:00Z', '2026-06-06T00:00:00Z');
 ```
 
