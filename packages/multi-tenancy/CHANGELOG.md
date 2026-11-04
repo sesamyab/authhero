@@ -1,5 +1,21 @@
 # @authhero/multi-tenancy
 
+## 15.5.0
+
+### Minor Changes
+
+- 5283b2c: Add an optional `storedDataAdapter` to `initMultiTenant`: the same data adapter as `dataAdapter`, but the layer that returns secrets as stored (ciphertext). A sync copies secrets as stored, so the block it pushes to a tenant, and the hash of that block, are computed over ciphertext. The sync status (`expected_hash` and `drifted`), `GET /tenants/{id}/config-sync/verify`, the fleet rollouts and the in-process sync read through `dataAdapter`, and when that layer decrypts they hash plaintext instead. The two never agreed, so a control plane that encrypts at rest and pushes to tenants with their own database showed every tenant as drifted even though `verify` passed. Pass the layer the `syncDefaults` transport reads through as `storedDataAdapter`. It is used only to build and hash config blocks and for the in-process sync; requests are still served through `dataAdapter`. Without it the behaviour is unchanged.
+
+## 15.4.2
+
+### Patch Changes
+
+- 278a5ea: Fix `PATCH /api/v2/tenants/settings` resetting `deployment_type` to `shared` and `provisioning_state` to `ready` whenever the body omitted them, and the same for the defaults nested in `mfa`: a body that patched one factor also switched the MFA policy and every other factor off. The PATCH body now applies only the keys present (new `tenantPatchSchema`); create defaults are unchanged.
+- Updated dependencies [7aaaeae]
+- Updated dependencies [278a5ea]
+  - authhero@9.28.3
+  - @authhero/adapter-interfaces@4.25.1
+
 ## 15.4.1
 
 ### Patch Changes

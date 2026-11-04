@@ -9,11 +9,16 @@ import {
   AuthHeroConfig,
   CustomDomainsAdapter,
   DataAdapters,
-  createEncryptedDataAdapter,
+  createEncryptedDataAdapterWithKeyRing,
   loadEncryptionKey,
   runRetention,
+  type KeyRing,
 } from "authhero";
-import { createDirectRolloutAdapter } from "@authhero/multi-tenancy";
+import {
+  createInProcessSyncConfig,
+  type SyncConfigFn,
+} from "@authhero/multi-tenancy";
+import { createDispatchSyncConfig } from "@authhero/cloudflare-adapter/wfp";
 import createApp from "./app";
 import { Env } from "./types";
 
@@ -22,20 +27,26 @@ const CONTROL_PLANE_TENANT_ID = "control_plane";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    const issuer = `${url.protocol}//${url.host}/`;
+    // Hosts under the ISSUER apex are tenant subdomains (`{tenant}.{apex}`) and
+    // are never looked up as custom domains. Left unset, the request's own host
+    // is the apex, which only resolves a tenant while this database holds a
+    // single tenant. Set ISSUER to an apex that is not this Worker's host
+    // (e.g. https://token.example.com/) and add a custom_domains row for this
+    // host, so the control plane tenant is found however many tenants exist.
+    const issuer = env.ISSUER || `${url.protocol}//${url.host}/`;
     const origin = request.headers.get("Origin") || "";
 
-    const { db, dataAdapter: baseAdapter } = await buildDataAdapter(env);
+    const {
+      db,
+      rawAdapter,
+      dataAdapter: baseAdapter,
+    } = await buildDataAdapter(env);
     let dataAdapter = baseAdapter;
 
-    // Rollout source: project the control plane's inheritable defaults into a
-    // WFP tenant's own database. Runs inline here; swap for a Cloudflare
-    // Workflows implementation of ControlPlaneRolloutAdapter when you outgrow it.
-    const rollout = createDirectRolloutAdapter({
-      controlPlaneTenantId: CONTROL_PLANE_TENANT_ID,
-      getControlPlaneAdapters: async () => dataAdapter,
-      getAdapters: (tenantId) => buildTenantAdapters(env, tenantId),
-    });
+    // How the `sync-defaults` tenant operation reaches a tenant. Tenants with
+    // their own Worker and D1 are pushed to through the dispatch namespace;
+    // tenants that share this database are synced in-process.
+    const syncDefaults = buildSyncDefaults(env, rawAdapter);
 
     // The control plane is authoritative for custom domains: it is the only
     // place that holds Cloudflare account credentials (so it can register the
@@ -57,6 +68,16 @@ export default {
 
     const config: AuthHeroConfig & { dataAdapter: DataAdapters } = {
       dataAdapter,
+      // A control plane token carries the host it was minted on as `iss`
+      // (https://<custom-domain>/). A call with a `tenant-id` header acts on
+      // another tenant and skips the custom-domain lookup, so the issuer check
+      // would compare it to env.ISSUER instead and answer 401 "Invalid issuer"
+      // whenever ISSUER is set apart from this host. Accept this host's issuer
+      // for control plane tokens only; the signature is still verified.
+      additionalIssuers: ({ tenant_id }) =>
+        tenant_id === CONTROL_PLANE_TENANT_ID
+          ? [`${url.protocol}//${url.host}/`]
+          : [],
       allowedOrigins: [origin].filter(Boolean),
       proxyControlPlane: {
         resolveHost: createProxyDataAdapter(db).resolveHost,
@@ -64,7 +85,13 @@ export default {
       },
     };
 
-    const app = createApp(config, rollout);
+    // `rawAdapter` returns secrets as stored, which is what a sync copies and
+    // hashes. The sync status, verify and rollouts must hash the same way, or
+    // `drifted` is true for every tenant whose chain holds an encrypted secret.
+    const app = createApp(config, {
+      syncDefaults,
+      storedDataAdapter: rawAdapter,
+    });
 
     return app.fetch(request, { ...env, ISSUER: issuer });
   },
@@ -86,9 +113,9 @@ export default {
   // NOTE: this sweeps only AUTH_DB (the control_plane tenant). Each WFP tenant
   // has its OWN D1 and its tenant Worker cannot carry a cron (dispatch-namespace
   // Workers don't receive scheduled events), so tenant shards must be swept
-  // centrally — call `runRetention({ dataAdapter, tenantId })` per tenant using
-  // `buildTenantAdapters(env, tenantId)` below. That cross-tenant driver is not
-  // wired here yet; see https://authhero.net/deployment/data-retention.
+  // centrally — call `runRetention({ dataAdapter, tenantId })` against each
+  // tenant's own database. That cross-tenant driver is not wired here yet; see
+  // https://authhero.net/deployment/data-retention.
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
     const { dataAdapter } = await buildDataAdapter(env);
 
@@ -155,42 +182,107 @@ function buildCloudflareConfig(
 }
 
 /**
- * Build the base DataAdapters over the control plane's own D1 (AUTH_DB),
- * wrapped with encryption when ENCRYPTION_KEY is set. Shared by the request
- * path and the retention cron so both see the same schema, transaction and
- * encryption configuration. The fetch handler decorates the returned adapter
- * with custom-domains support after this base is built.
+ * Build the DataAdapters over the control plane's own D1 (AUTH_DB). Shared by
+ * the request path and the retention cron so both see the same schema,
+ * transaction and encryption configuration. The fetch handler decorates the
+ * returned adapter with custom-domains support after this base is built.
+ *
+ * `controlPlane: true` adds the tenant-operation and rollout adapters, which
+ * is also what mounts the operations routes (`POST /tenants/{id}/operations`).
+ * It needs the `drizzle-control-plane/` migration set (`npm run
+ * db:migrate:control-plane:remote`) on top of the core one.
+ *
+ * Encryption uses a key ring: the control plane's own rows under
+ * ENCRYPTION_KEY, and the `control_plane` tenant's rows (the shared secrets
+ * that get synced to tenants) under the "cp" key id. A sync copies ciphertext
+ * as stored, so a tenant can only decrypt what it receives if it holds the same
+ * CONTROL_PLANE_ENCRYPTION_KEY. Legacy single-key values stay readable.
+ *
+ * Returns both layers: `rawAdapter` stores secrets as ciphertext (what a sync
+ * copies) and `dataAdapter` decrypts them.
  */
 async function buildDataAdapter(env: Env) {
   const db = drizzle(env.AUTH_DB, { schema });
-  let dataAdapter: DataAdapters = createAdapters(db, {
+  const rawAdapter: DataAdapters = createAdapters(db, {
     useTransactions: false,
+    controlPlane: true,
   });
+  let dataAdapter: DataAdapters = rawAdapter;
   if (env.ENCRYPTION_KEY) {
-    dataAdapter = createEncryptedDataAdapter(
-      dataAdapter,
-      await loadEncryptionKey(env.ENCRYPTION_KEY),
-    );
+    const defaultKey = await loadEncryptionKey(env.ENCRYPTION_KEY);
+    const ring: KeyRing = env.CONTROL_PLANE_ENCRYPTION_KEY
+      ? {
+          default: defaultKey,
+          keys: {
+            cp: await loadEncryptionKey(env.CONTROL_PLANE_ENCRYPTION_KEY),
+          },
+        }
+      : { default: defaultKey };
+    dataAdapter = createEncryptedDataAdapterWithKeyRing(rawAdapter, ring, {
+      // Only use the "cp" key id when the ring has that key: encrypting under
+      // an id the ring lacks throws `No key for id "cp"`. Without the key the
+      // control plane tenant's rows use the default key like everything else.
+      resolveEncryptKeyId: (tenantId) =>
+        tenantId === CONTROL_PLANE_TENANT_ID && ring.keys?.cp
+          ? "cp"
+          : undefined,
+    });
   }
-  return { db, dataAdapter };
+  return { db, rawAdapter, dataAdapter };
 }
 
 /**
- * Return the DataAdapters over the given tenant's OWN D1, wrapped with the same
- * control-plane key ring the tenant Worker uses (see the cloudflare-wfp-tenant
- * template), so projected secrets are re-encrypted under the "cp" key id.
+ * The transport behind the `sync-defaults` operation. A tenant with its own
+ * Worker and D1 (`deployment_type: "wfp"`) is pushed to through the dispatch
+ * namespace, at its `/internal/sync-config`. Any other tenant shares this
+ * database, so it is synced in-process.
  *
- * How you reach a tenant's D1 is platform-specific — a per-tenant binding, or
- * the Cloudflare D1 HTTP API. Implement this before calling sync-defaults; until
- * then the /internal sync endpoint returns 501 with this message.
+ * Both read through `rawAdapter`, the layer that returns secrets as stored, so
+ * a block, and its hash, is the same whichever way it is delivered and matches
+ * the `storedDataAdapter` the sync status is computed from.
+ *
+ * Returns undefined when the dispatch namespace or the shared secret is not
+ * configured, which leaves only the in-process sync (it refuses WFP tenants).
  */
-function buildTenantAdapters(
-  _env: Env,
-  _tenantId: string,
-): Promise<DataAdapters> {
-  throw new Error(
-    "buildTenantAdapters is not configured: return the DataAdapters over the " +
-      "tenant's own D1, wrapped with the control-plane key ring (default key + " +
-      "{ cp: CONTROL_PLANE_ENCRYPTION_KEY }).",
-  );
+function buildSyncDefaults(
+  env: Env,
+  rawAdapter: DataAdapters,
+): SyncConfigFn | undefined {
+  if (!env.DISPATCHER || !env.WFP_INTERNAL_SYNC_SECRET) return undefined;
+
+  const dispatch = createDispatchSyncConfig({
+    dispatcher: env.DISPATCHER,
+    internalSecret: env.WFP_INTERNAL_SYNC_SECRET,
+    controlPlaneTenantId: CONTROL_PLANE_TENANT_ID,
+    // The layer that returns secrets as stored: ciphertext is copied, never
+    // decrypted on the way.
+    controlPlaneAdapters: rawAdapter,
+  });
+  const inProcess = createInProcessSyncConfig(rawAdapter, {
+    controlPlaneTenantId: CONTROL_PLANE_TENANT_ID,
+  });
+
+  // A control plane that encrypts, but has no CONTROL_PLANE_ENCRYPTION_KEY,
+  // stores the control plane tenant's secrets under its own default key. A
+  // push copies that ciphertext as stored, and a tenant Worker has no way to
+  // read it. Refuse the push with the cause, instead of delivering secrets the
+  // tenant cannot use. Only the push is refused: failing here, at configuration
+  // time, would take the whole Worker down for a key only syncing needs.
+  const cannotShareSecrets =
+    Boolean(env.ENCRYPTION_KEY) && !env.CONTROL_PLANE_ENCRYPTION_KEY;
+
+  return async (tenantId, options) => {
+    const tenant = await rawAdapter.tenants.get(tenantId);
+    if (tenant?.deployment_type !== "wfp") {
+      return inProcess(tenantId, options);
+    }
+    if (cannotShareSecrets) {
+      throw new Error(
+        `Cannot sync tenant "${tenantId}": CONTROL_PLANE_ENCRYPTION_KEY is not set on the control plane. ` +
+          "The control plane tenant's secrets are encrypted with ENCRYPTION_KEY, which a tenant Worker does not hold. " +
+          "Set the same CONTROL_PLANE_ENCRYPTION_KEY on the control plane and every tenant Worker, and re-save the secrets so they are encrypted under it.",
+      );
+    }
+    return dispatch(tenantId, options);
+  };
 }

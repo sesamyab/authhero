@@ -1,10 +1,11 @@
 # ════════════════════════════════════════════════════════════════════════════
 # AuthHero Control Plane Worker
 # ════════════════════════════════════════════════════════════════════════════
-# The management surface + rollout source for a Workers-for-Platforms setup.
-# It manages tenants (/api/v2/tenants), serves colocated tenants, and projects
-# the control plane's default connections/prompts/branding into each WFP
-# tenant's own database via POST /internal/tenants/:id/sync-defaults.
+# The management surface + config source for a Workers-for-Platforms setup.
+# It manages tenants (/api/v2/tenants), serves colocated tenants, and syncs the
+# config a tenant inherits (default connections, prompts, branding, hooks, ...)
+# into each WFP tenant's own database with the `sync-defaults` tenant operation:
+#   POST /api/v2/tenants/{id}/operations  { "kind": "sync-defaults" }
 #
 # Pair with:
 #   - cloudflare-wfp-dispatcher  (front door)
@@ -48,18 +49,58 @@ directory = "./dist/assets"
 # custom_domains and proxy_routes. The dispatcher reads this same database.
 [[d1_databases]]
 binding = "AUTH_DB"
-database_name = "authhero-db"
+database_name = "authhero-platform-db"
 database_id = "local"  # Use "local" for local dev, or your actual ID in wrangler.local.toml
 migrations_dir = "node_modules/@authhero/drizzle/drizzle"
+
+# Second migration set, same database. The tenant-operation and rollout tables
+# that `sync-defaults` records into are control-plane only, so they ship apart
+# from the core schema and must be tracked in their own migrations table:
+#   npm run db:migrate:control-plane:local
+#   npm run db:migrate:control-plane:remote
+# This binding exists only so wrangler can apply them; the Worker uses AUTH_DB.
+# Copy it into wrangler.local.toml with the same database_id as above.
+[[d1_databases]]
+binding = "AUTH_DB_CONTROL_PLANE_MIGRATIONS"
+database_name = "authhero-platform-db"
+database_id = "local"
+migrations_dir = "node_modules/@authhero/drizzle/drizzle-control-plane"
+migrations_table = "d1_migrations_control_plane"
+
+# ════════════════════════════════════════════════════════════════════════════
+# Dispatch namespace (tenant Workers)
+# ════════════════════════════════════════════════════════════════════════════
+# Where the tenant Workers live. A `sync-defaults` push to a tenant with its own
+# Worker and D1 goes through this binding to the Worker's /internal/sync-config.
+# Create it once with `npx wrangler dispatch-namespace create authhero-tenants`.
+[[dispatch_namespaces]]
+binding = "DISPATCHER"
+namespace = "authhero-tenants"
+
+# ════════════════════════════════════════════════════════════════════════════
+# Issuer apex
+# ════════════════════════════════════════════════════════════════════════════
+# Hosts under the ISSUER apex are tenant subdomains and are never looked up as
+# custom domains. Unset, the request's own host is the apex, and the control
+# plane tenant is found only while this database holds a single tenant. As soon
+# as it holds more (every WFP tenant has a row here) set an apex that is not
+# this Worker's host, and give this host a custom_domains row for the control
+# plane tenant (see the README):
+#
+# [vars]
+# ISSUER = "https://token.example.com/"
 
 # ════════════════════════════════════════════════════════════════════════════
 # Encryption keys (set as secrets, not here)
 # ════════════════════════════════════════════════════════════════════════════
 #   wrangler secret put ENCRYPTION_KEY                 # control plane's own key
 #   wrangler secret put CONTROL_PLANE_ENCRYPTION_KEY   # shared "cp" key
+#   wrangler secret put WFP_INTERNAL_SYNC_SECRET       # auth for sync pushes
 #
 # CONTROL_PLANE_ENCRYPTION_KEY must be byte-identical to the key each tenant
-# Worker holds, so projected secrets decrypt on the tenant side.
+# Worker holds, so synced secrets decrypt on the tenant side. The same goes for
+# WFP_INTERNAL_SYNC_SECRET: a tenant Worker answers 401 to a push that does not
+# carry its own copy.
 
 # Optional: Enable observability
 # [observability]

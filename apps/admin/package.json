@@ -1,6 +1,6 @@
 {
   "name": "@authhero/admin",
-  "version": "0.26.2",
+  "version": "0.26.4",
   "private": false,
   "packageManager": "pnpm@10.32.1",
   "files": [
@@ -16,6 +16,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "prepack": "node -e \"if(!require('fs').existsSync('dist/index.html')){console.error('dist/ is missing: run pnpm build before packing @authhero/admin');process.exit(1)}\"",
     "serve": "vite preview",
     "type-check": "tsc --noEmit",
     "lint": "eslint --quiet --ext .js,.jsx,.ts,.tsx ./src",

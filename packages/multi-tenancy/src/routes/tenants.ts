@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import {
   tenantInsertSchema,
+  tenantPatchSchema,
   tenantSchema,
   auth0QuerySchema,
   CreateTenantParams,
@@ -753,7 +754,7 @@ export function createTenantsOpenAPIRouter(
         body: {
           content: {
             "application/json": {
-              schema: z.object(tenantInsertSchema.shape).partial(),
+              schema: tenantPatchSchema,
             },
           },
         },

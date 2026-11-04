@@ -1,9 +1,11 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   exists,
   makeTempDir,
+  packageRoot,
   readFile,
   readJson,
   runCli,
@@ -254,16 +256,158 @@ describe.each(["wfp-tenant", "control-plane"] as const)(
       expectValidEncryptionKey(devVars, "CONTROL_PLANE_ENCRYPTION_KEY");
     });
 
-    it("depends on authhero + multi-tenancy + drizzle", () => {
+    it("generates the sync secret in .dev.vars", () => {
+      const devVars = readFile(projects[name].projectPath, ".dev.vars");
+      expectValidEncryptionKey(devVars, "WFP_INTERNAL_SYNC_SECRET");
+    });
+
+    it("depends on authhero + multi-tenancy + drizzle + cloudflare-adapter", () => {
       const pkg = readJson(
         path.join(projects[name].projectPath, "package.json"),
       );
       expect(pkg.dependencies.authhero).toBeTruthy();
       expect(pkg.dependencies["@authhero/multi-tenancy"]).toBeTruthy();
       expect(pkg.dependencies["@authhero/drizzle"]).toBeTruthy();
+      // The control plane pushes with `createDispatchSyncConfig` and the tenant
+      // receives with `createWfpTenantApp`, both from the `/wfp` subpath.
+      expect(pkg.dependencies["@authhero/cloudflare-adapter"]).toBeTruthy();
+    });
+
+    it("`npm run setup` never overwrites existing config or keys", () => {
+      const { projectPath } = projects[name];
+      const pkg = readJson(path.join(projectPath, "package.json"));
+      const devVarsPath = path.join(projectPath, ".dev.vars");
+      const localTomlPath = path.join(projectPath, "wrangler.local.toml");
+      const devVars = fs.readFileSync(devVarsPath, "utf8");
+      const localToml = fs.readFileSync(localTomlPath, "utf8");
+
+      // What an operator has done by the time they run setup: real ids in the
+      // local config, and generated keys in .dev.vars.
+      fs.writeFileSync(localTomlPath, `${localToml}\n# edited\n`);
+      execSync(pkg.scripts.setup, { cwd: projectPath, stdio: "pipe" });
+
+      expect(fs.readFileSync(devVarsPath, "utf8")).toBe(devVars);
+      expect(fs.readFileSync(localTomlPath, "utf8")).toContain("# edited");
     });
   },
 );
+
+describe("control-plane template sync wiring", () => {
+  it("pushes to tenants through a dispatch namespace binding", () => {
+    const { projectPath } = projects["control-plane"];
+    const wrangler = readFile(projectPath, "wrangler.toml");
+    expect(wrangler).toContain("[[dispatch_namespaces]]");
+    expect(wrangler).toContain('binding = "DISPATCHER"');
+    expect(wrangler).toContain('namespace = "authhero-tenants"');
+
+    const index = readFile(projectPath, "src/index.ts");
+    expect(index).toContain("createDispatchSyncConfig");
+    expect(index).toContain("controlPlane: true");
+    // The control plane tenant's secrets travel as `cp` ciphertext, so the
+    // tenant's key ring can decrypt them. Only when the ring has that key:
+    // encrypting under a missing key id throws.
+    expect(index).toContain('"cp"');
+    expect(index).toContain("ring.keys?.cp");
+    // A push to a WFP tenant is refused, naming the key, when the control plane
+    // encrypts without it: the tenant could not read what it was sent.
+    expect(index).toContain("cannotShareSecrets");
+  });
+
+  it("hashes config the way a sync copies it, so the status can agree", () => {
+    // A sync copies secrets as stored (ciphertext). The sync status, verify and
+    // rollouts hash through the adapter they are given, so they must be given
+    // the stored layer too, or `drifted` is true for every tenant whose chain
+    // holds an encrypted secret.
+    const { projectPath } = projects["control-plane"];
+    const index = readFile(projectPath, "src/index.ts");
+    expect(index).toContain("storedDataAdapter: rawAdapter");
+    expect(index).toContain("createInProcessSyncConfig(rawAdapter");
+    expect(readFile(projectPath, "src/app.ts")).toContain(
+      "storedDataAdapter: options.storedDataAdapter",
+    );
+  });
+
+  it("lets ISSUER be set apart from the Worker's own host", () => {
+    // Hosts under the ISSUER apex are never looked up as custom domains, so a
+    // control plane that always used its own host as the apex could only
+    // resolve its tenant while it was the only one in the database.
+    const { projectPath } = projects["control-plane"];
+    expect(readFile(projectPath, "src/index.ts")).toContain("env.ISSUER ||");
+    expect(readFile(projectPath, "src/types.ts")).toContain("ISSUER?: string");
+    // Calls with a `tenant-id` header skip the custom-domain lookup, so tokens
+    // minted on this host must still be accepted for the control plane tenant.
+    expect(readFile(projectPath, "src/index.ts")).toContain(
+      "additionalIssuers",
+    );
+  });
+
+  it("does not point anyone at the removed sync route or stub", () => {
+    // `POST /internal/tenants/:id/sync-defaults` and `buildTenantAdapters()`
+    // were removed; neither the templates nor the scaffolder's own messages may
+    // still send people to them.
+    const removed = /internal\/tenants|buildTenantAdapters/;
+    const { projectPath } = projects["control-plane"];
+    for (const file of [
+      "src/index.ts",
+      "src/app.ts",
+      "README.md",
+      "wrangler.toml",
+    ]) {
+      expect(readFile(projectPath, file)).not.toMatch(removed);
+    }
+    expect(readFile(packageRoot, "src/index.ts")).not.toMatch(removed);
+  });
+
+  it("has no stub left that answers 501", () => {
+    const { projectPath } = projects["control-plane"];
+    expect(readFile(projectPath, "src/index.ts")).not.toContain(
+      "buildTenantAdapters",
+    );
+    expect(readFile(projectPath, "src/app.ts")).not.toContain(
+      "/internal/tenants/",
+    );
+  });
+
+  it("applies the control-plane migration set into its own table", () => {
+    const { projectPath } = projects["control-plane"];
+    const wrangler = readFile(projectPath, "wrangler.toml");
+    expect(wrangler).toContain("drizzle-control-plane");
+    expect(wrangler).toContain(
+      'migrations_table = "d1_migrations_control_plane"',
+    );
+
+    const { scripts } = readJson(path.join(projectPath, "package.json"));
+    expect(scripts["db:migrate:control-plane:remote"]).toContain(
+      "AUTH_DB_CONTROL_PLANE_MIGRATIONS",
+    );
+    expect(scripts.migrate).toContain("AUTH_DB_CONTROL_PLANE_MIGRATIONS");
+  });
+});
+
+describe("wfp-tenant template sync wiring", () => {
+  it("receives pushes through createWfpTenantApp", () => {
+    const { projectPath } = projects["wfp-tenant"];
+    const index = readFile(projectPath, "src/index.ts");
+    expect(index).toContain("createWfpTenantApp");
+    expect(index).toContain("@authhero/cloudflare-adapter/wfp");
+    expect(exists(projectPath, "src/app.ts")).toBe(false);
+  });
+
+  it("declares the variables the worker reads from its environment", () => {
+    const { projectPath } = projects["wfp-tenant"];
+    const wrangler = readFile(projectPath, "wrangler.toml");
+    for (const name of [
+      "ISSUER",
+      "TENANT_ID",
+      "CONTROL_PLANE_TENANT_ID",
+      "CONTROL_PLANE_ISSUER",
+    ]) {
+      expect(wrangler, `${name} should be in [vars]`).toMatch(
+        new RegExp(`^${name} = `, "m"),
+      );
+    }
+  });
+});
 
 describe("aws-sst template", () => {
   it("creates the expected files", () => {

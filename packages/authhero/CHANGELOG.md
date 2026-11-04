@@ -1,5 +1,23 @@
 # authhero
 
+## 9.28.3
+
+### Patch Changes
+
+- 7aaaeae: Keep `hono` subpath imports (`hono/route`, `hono/http-exception`, `hono/jsx`, ...) external in the server build instead of inlining them. The bundled `hono/route` had its own copy of Hono's match-result symbol, so the `tenantDispatch` carve-out from 9.28.0 called `basePath(ctx)` against the host app's Hono and every management API request answered 500 (`Cannot read properties of undefined (reading '0')`) whenever `tenantDispatch` was set. HTTPExceptions thrown by authhero now also pass the host app's `instanceof HTTPException` checks.
+- 278a5ea: Fix `PATCH /api/v2/tenants/settings` resetting `deployment_type` to `shared` and `provisioning_state` to `ready` whenever the body omitted them, and the same for the defaults nested in `mfa`: a body that patched one factor also switched the MFA policy and every other factor off. The PATCH body now applies only the keys present (new `tenantPatchSchema`); create defaults are unchanged.
+- Updated dependencies [278a5ea]
+  - @authhero/adapter-interfaces@4.25.1
+  - @authhero/proxy@0.11.12
+  - @authhero/saml@0.6.5
+  - @authhero/widget@0.41.9
+
+## 9.28.2
+
+### Patch Changes
+
+- 2afb86f: Fix the `@authhero/widget` peer dependency range. It was `^0.1.0`, a version that has never been published, so installing `authhero` with npm failed with `ETARGET` whenever the optional widget peer was resolved (for example in `create-authhero` Cloudflare scaffolds). The range is now `>=0.38.9`, the first widget release that exports `@authhero/widget/page-chrome`, which authhero imports.
+
 ## 9.28.1
 
 ### Patch Changes

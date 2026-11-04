@@ -4,13 +4,31 @@ export interface Env {
   // The control plane's shared database (also home to colocated tenants).
   AUTH_DB: D1Database;
 
+  // The issuer apex, with a trailing slash, e.g. https://token.example.com/.
+  // Variable. Hosts under it are tenant subdomains. Leave unset only while this
+  // database holds a single tenant; otherwise set it to an apex that is not this
+  // Worker's own host, and give this host a custom_domains row for the control
+  // plane tenant. See the "Resolving the control plane tenant" section of the
+  // README.
+  ISSUER?: string;
+
   // Base64-encoded 32-byte key for the control plane's own secrets at rest.
   ENCRYPTION_KEY?: string;
 
-  // Base64-encoded 32-byte key (key id "cp") that shared secrets are encrypted
-  // under when projected into a tenant's database. The control plane holds it
-  // so the rollout can re-encrypt secrets the tenant Worker will decrypt.
+  // Base64-encoded 32-byte key (key id "cp") that the control plane tenant's
+  // secrets are encrypted under. A sync copies that ciphertext into a tenant's
+  // database as stored, and the tenant Worker holds the same key to decrypt it.
   CONTROL_PLANE_ENCRYPTION_KEY?: string;
+
+  // The dispatch namespace the tenant Workers live in. Required to sync a
+  // tenant that has its own Worker and database (`deployment_type: "wfp"`):
+  // the sync is pushed to the Worker's `/internal/sync-config` through it.
+  DISPATCHER?: DispatchNamespace;
+
+  // Shared secret the tenant Workers check on `/internal/sync-config`, sent as
+  // a bearer token. Must be identical on the control plane and every tenant
+  // Worker, otherwise a push answers 401.
+  WFP_INTERNAL_SYNC_SECRET?: string;
 
   // Cloudflare for SaaS credentials for the zone that fronts every tenant's
   // custom domains. They live here and nowhere else: registering a custom

@@ -1,5 +1,18 @@
 # @authhero/admin
 
+## 0.26.4
+
+### Patch Changes
+
+- Updated dependencies [278a5ea]
+  - @authhero/adapter-interfaces@4.25.1
+
+## 0.26.3
+
+### Patch Changes
+
+- 3ddc09b: Publish the admin UI with its built `dist/`. The release workflow only built `packages/**`, so every published version of `@authhero/admin` shipped without `dist/` and `create-authhero --admin-ui` scaffolds failed to build (`Could not resolve "./admin-index-html"`). Packing now also fails if `dist/` is missing.
+
 ## 0.26.2
 
 ### Patch Changes

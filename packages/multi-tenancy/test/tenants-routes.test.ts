@@ -444,6 +444,39 @@ describe("tenant settings: default_client_id validation", () => {
     ).toBe("inherit-on-read");
   });
 
+  it("leaves deployment_type and provisioning_state alone when the body omits them", async () => {
+    await adapters.tenants.update(controlPlaneTenantId, {
+      deployment_type: "wfp",
+      provisioning_state: "pending",
+    });
+
+    const response = await patchSettings(settingsApp(), {
+      config_sync: "synced",
+    });
+
+    expect(response.status).toBe(200);
+    const stored = await adapters.tenants.get(controlPlaneTenantId);
+    expect(stored!.config_sync).toBe("synced");
+    expect(stored!.deployment_type).toBe("wfp");
+    expect(stored!.provisioning_state).toBe("pending");
+  });
+
+  it("keeps the MFA settings the body omits when it patches one factor", async () => {
+    await adapters.tenants.update(controlPlaneTenantId, {
+      mfa: { policy: "always", factors: { sms: false, otp: true } },
+    });
+
+    const response = await patchSettings(settingsApp(), {
+      mfa: { factors: { sms: true } },
+    });
+
+    expect(response.status).toBe(200);
+    const stored = await adapters.tenants.get(controlPlaneTenantId);
+    expect(stored!.mfa?.policy).toBe("always");
+    expect(stored!.mfa?.factors?.sms).toBe(true);
+    expect(stored!.mfa?.factors?.otp).toBe(true);
+  });
+
   it("tells the runtime to forget the remembered mode when it changes", async () => {
     const forget = vi.fn();
     const watched = { ...config, onConfigSyncChange: forget };

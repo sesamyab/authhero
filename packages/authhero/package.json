@@ -11,7 +11,7 @@
     "type": "git",
     "url": "https://github.com/sesamyab/authhero"
   },
-  "version": "9.28.1",
+  "version": "9.28.3",
   "files": [
     "dist"
   ],
@@ -102,7 +102,7 @@
     "xstate": "^5.31.1"
   },
   "peerDependencies": {
-    "@authhero/widget": "^0.1.0",
+    "@authhero/widget": ">=0.38.9",
     "@hono/zod-openapi": "^1.4.0",
     "hono": "^4.8.7",
     "ua-parser-js": "^2.0.0"

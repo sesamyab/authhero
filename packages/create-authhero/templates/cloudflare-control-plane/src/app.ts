@@ -1,10 +1,7 @@
 import { Context } from "hono";
 import { swaggerUI } from "@hono/swagger-ui";
 import { AuthHeroConfig, DataAdapters } from "authhero";
-import {
-  initMultiTenant,
-  type ControlPlaneRolloutAdapter,
-} from "@authhero/multi-tenancy";
+import { initMultiTenant, type SyncConfigFn } from "@authhero/multi-tenancy";
 
 // Control plane configuration. Tenants inherit this tenant's defaults.
 const CONTROL_PLANE_TENANT_ID = "control_plane";
@@ -12,12 +9,28 @@ const CONTROL_PLANE_CLIENT_ID = "default";
 
 export default function createApp(
   config: AuthHeroConfig & { dataAdapter: DataAdapters },
-  rollout: ControlPlaneRolloutAdapter,
+  options: {
+    /**
+     * How the `sync-defaults` tenant operation reaches a tenant with its own
+     * Worker and database. See `buildSyncDefaults` in src/index.ts.
+     */
+    syncDefaults?: SyncConfigFn;
+    /**
+     * `config.dataAdapter` as stored: secrets as ciphertext, not decrypted.
+     * The sync status, verify and rollouts hash config the way a sync copies
+     * it, so they need this layer when `config.dataAdapter` encrypts.
+     */
+    storedDataAdapter?: DataAdapters;
+  } = {},
 ) {
-  // initMultiTenant syncs resource servers and roles, mounts /api/v2/tenants,
-  // and wraps adapters with runtime fallback for colocated tenants.
+  // initMultiTenant syncs resource servers and roles, mounts /api/v2/tenants
+  // (and, because the adapters carry the operations tables,
+  // /api/v2/tenants/{id}/operations and the config-sync routes), and wraps
+  // adapters with runtime fallback for colocated tenants.
   const { app } = initMultiTenant({
     ...config,
+    syncDefaults: options.syncDefaults,
+    storedDataAdapter: options.storedDataAdapter,
     controlPlane: {
       tenantId: CONTROL_PLANE_TENANT_ID,
       clientId: CONTROL_PLANE_CLIENT_ID,
@@ -49,26 +62,7 @@ export default function createApp(
         controlPlaneTenant: CONTROL_PLANE_TENANT_ID,
       });
     })
-    .get("/docs", swaggerUI({ url: "/api/v2/spec" }))
-    // Project the control plane defaults into a WFP tenant's own database.
-    // Call after a tenant is provisioned, and after rotating shared secrets.
-    //
-    // ⚠️  Protect this route before production (service binding, mTLS, or an
-    // admin token). It re-keys tenant databases.
-    .post("/internal/tenants/:id/sync-defaults", async (ctx: Context) => {
-      try {
-        const result = await rollout.syncDefaults(ctx.req.param("id"));
-        return ctx.json({ ok: true, result });
-      } catch (err) {
-        return ctx.json(
-          {
-            ok: false,
-            error: err instanceof Error ? err.message : String(err),
-          },
-          500,
-        );
-      }
-    });
+    .get("/docs", swaggerUI({ url: "/api/v2/spec" }));
 
   return app;
 }

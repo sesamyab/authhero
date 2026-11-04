@@ -11,7 +11,12 @@
 # ENCRYPTION_KEY=
 
 # The CONTROL PLANE key (key id "cp"). Decrypts the shared secrets the control
-# plane projected into this tenant's database. Must be byte-identical to the
-# control plane's CONTROL_PLANE_ENCRYPTION_KEY. In production:
-#   wrangler secret put CONTROL_PLANE_ENCRYPTION_KEY
+# plane synced into this tenant's database. Must be byte-identical to the
+# control plane's CONTROL_PLANE_ENCRYPTION_KEY. In production, pass it with
+# `wrangler deploy --secrets-file .dev.vars`.
 # CONTROL_PLANE_ENCRYPTION_KEY=
+
+# Bearer secret the control plane sends to /internal/sync-config. Must be
+# identical to the control plane's WFP_INTERNAL_SYNC_SECRET, otherwise a sync
+# answers 401.
+# WFP_INTERNAL_SYNC_SECRET=

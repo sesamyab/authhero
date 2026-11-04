@@ -65,6 +65,12 @@ jobs:
         # authhero/multi-tenancy deps, breaking the type-check on a clean checkout.
         run: pnpm -r --filter './packages/**' build
 
+      # @authhero/admin is published from apps/admin, which the packages filter
+      # above does not cover. Without this its tarball ships with no dist/, and
+      # every `create-authhero --admin-ui` scaffold fails to build.
+      - name: Build admin
+        run: pnpm admin build
+
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
