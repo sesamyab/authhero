@@ -389,7 +389,15 @@ The seed encrypts credential fields with the `ENCRYPTION_KEY` in `.dev.vars`. Th
 
 ### 3.4 Deploy the tenant Worker into the dispatch namespace
 
-1. Scaffold a tenant Worker from the [`cloudflare` template](./cloudflare) into a new directory, outside the dispatcher project.
+1. Scaffold a tenant Worker from the [`cloudflare` template](./cloudflare) into a new directory, outside the dispatcher project:
+
+   ```bash
+   cd ..   # out of the dispatcher project
+   npm create authhero@latest tenant-acme -- --template=cloudflare --yes --skip-migrate
+   ```
+
+   `--yes` takes the scaffolder's defaults, which are the answers this guide assumes: **single-tenant** (this Worker serves one tenant, so don't enable multi-tenant mode), the admin UI at `/admin`, no GitHub CI, dependencies installed, dev server not started. `--skip-migrate` is there because the scaffolder's own migration only creates a local emulation of D1; the real schema goes in at step 4. Without `--yes` you are asked each of these in turn, and those are the answers to give.
+
 2. In the new project's `wrangler.local.toml`, point the existing `[[d1_databases]]` block at the tenant's data store (see [Step 2](#step-2-pick-a-tenant-storage-model)). For `own_d1`, change only `database_name` and `database_id` and keep `binding = "AUTH_DB"`.
 3. Remove the `[triggers]` section (`crons = [...]`). Workers in a dispatch namespace never receive scheduled events.
 4. Apply the schema to the tenant's D1 (takes 8–20 seconds):
@@ -501,7 +509,7 @@ The examples use `control.example.com` for the control plane and `https://token.
 ```bash
 npx create-authhero@latest control-plane \
   --template cloudflare-control-plane --package-manager npm \
-  --skip-migrate --skip-start
+  --yes --skip-migrate
 cd control-plane/
 ```
 
@@ -593,7 +601,7 @@ The Worker from [3.4](#_3-4-deploy-the-tenant-worker-into-the-dispatch-namespace
 ```bash
 npx create-authhero@latest tenant-acme-v2 \
   --template cloudflare-wfp-tenant --package-manager npm \
-  --skip-migrate --skip-start
+  --yes --skip-migrate
 cd tenant-acme-v2/
 ```
 
