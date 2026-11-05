@@ -269,7 +269,12 @@ async function requireMfaFromAction(
   tenantId: string,
   loginSession: LoginSession,
   request: MfaRequiredByAction,
+  user: User,
 ): Promise<Response | undefined> {
+  // `user` is the identity the hooks settled on, the primary when an action
+  // or template hook linked the account. The MFA screens read the user from
+  // the login session, so point it at that identity: the challenge must use
+  // the primary's factors, as the tokens will carry the primary's `sub`.
   await updateLoginSessionData(
     ctx.env.data.loginSessions,
     tenantId,
@@ -278,6 +283,7 @@ async function requireMfaFromAction(
       type: LoginSessionEventType.UPDATE_CONTEXT,
       data: { mfa_required_by_action: request },
     },
+    { user_id: user.user_id },
   );
   const current = await ctx.env.data.loginSessions.get(
     tenantId,
@@ -730,6 +736,7 @@ export async function postUserLoginHook(
         tenant_id,
         loginSession,
         mfaRequest,
+        user,
       );
       if (mfaRedirect) return mfaRedirect;
     }

@@ -327,6 +327,100 @@ describe("post-login api.multifactor.enable (issue #1670)", () => {
   });
 });
 
+describe("action-required MFA cannot be bypassed (issue #1670 review)", () => {
+  it("refuses /authorize/resume while the MFA continuation is pending", async () => {
+    const t = await setup({
+      apiCalls: [{ method: "multifactor.enable", args: ["any"] }],
+    });
+    const first = await t.login();
+    expect(first.headers.get("location")).toBe(
+      `/u/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+    );
+
+    const resumed = await t.server.oauthApp.request(
+      `/authorize/resume?state=${encodeURIComponent(t.loginSession.id)}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      t.env,
+    );
+    expect(resumed.status).toBe(403);
+    expect(resumed.headers.get("location") ?? "").not.toContain("code=");
+    expect((await t.stateData()).state).not.toBe(LoginSessionState.COMPLETED);
+
+    // The legitimate path still works afterwards.
+    const viaContinue = await t.server.universalApp.request(
+      `/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      t.env,
+    );
+    expect(viaContinue.headers.get("location")).toBe(
+      `/u2/mfa/totp-challenge?state=${encodeURIComponent(t.loginSession.id)}`,
+    );
+  });
+
+  it("challenges and issues for the primary when a hook linked the account", async () => {
+    const PRIMARY_ID = "email|primaryUser";
+    const t = await setup({
+      onExecutePostLogin: async (event, api) => {
+        await event.ctx.env.data.users.update("tenantId", USER_ID, {
+          linked_to: PRIMARY_ID,
+        });
+        api.multifactor.enable("any");
+      },
+    });
+    const now = new Date().toISOString();
+    await t.env.data.users.create("tenantId", {
+      user_id: PRIMARY_ID,
+      email: "primary@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: "email",
+      is_social: false,
+      created_at: now,
+      updated_at: now,
+      login_count: 0,
+    });
+    // Only the primary has a factor: a challenge built from the secondary
+    // would send the user to enrollment instead.
+    const { authenticationMethods } = t.env.data;
+    for (const method of await authenticationMethods.list(
+      "tenantId",
+      USER_ID,
+    )) {
+      await authenticationMethods.remove("tenantId", method.id);
+    }
+    await authenticationMethods.create("tenantId", {
+      user_id: PRIMARY_ID,
+      type: "totp",
+      totp_secret: TOTP_SECRET,
+      confirmed: true,
+    });
+
+    await t.login();
+    const resumed = await t.server.universalApp.request(
+      `/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      t.env,
+    );
+    expect(resumed.headers.get("location")).toBe(
+      `/u2/mfa/totp-challenge?state=${encodeURIComponent(t.loginSession.id)}`,
+    );
+
+    const done = await t.submitTotp();
+    const location = new URL(done.headers.get("location") ?? "");
+    expect(location.origin + location.pathname).toBe(
+      "https://example.com/callback",
+    );
+    const code = location.searchParams.get("code");
+    expect(code).toBeTruthy();
+    const stored = await t.env.data.codes.get(
+      "tenantId",
+      code ?? "",
+      "authorization_code",
+    );
+    expect(stored?.user_id).toBe(PRIMARY_ID);
+  });
+});
+
 describe("mergeMfaRequest", () => {
   it("defaults a missing or invalid provider to any", () => {
     expect(mergeMfaRequest(undefined, undefined, undefined)).toEqual({

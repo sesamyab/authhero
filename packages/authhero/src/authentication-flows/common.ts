@@ -43,6 +43,7 @@ import {
 import { getIssuer } from "../variables";
 import { samlCallback } from "../strategies/saml";
 import { postUserLoginHook } from "../hooks/index";
+import { resolvePrimaryUser } from "../helpers/users";
 import {
   isTemplateHook,
   handleCredentialsExchangeTemplateHook,
@@ -1655,12 +1656,25 @@ export async function createFrontChannelAuthResponse(
   // Post-login hooks run at most once per login. When an action required MFA
   // (api.multifactor.enable, issue #1670) they already ran before the MFA
   // challenge, so the resume after MFA must not run them again.
-  const skipHooks =
-    params.skipHooks ||
-    Boolean(
-      readLoginSessionData(currentLoginSession.state_data)
-        .mfa_required_by_action,
-    );
+  const hooksRanBeforeMfa = Boolean(
+    readLoginSessionData(currentLoginSession.state_data).mfa_required_by_action,
+  );
+  const skipHooks = params.skipHooks || hooksRanBeforeMfa;
+  // Hooks may have linked the user to a primary before requiring MFA. Resume
+  // stages reload the user from the session, so resolve the primary again:
+  // MFA and tokens must use the identity the hooks settled on.
+  if (hooksRanBeforeMfa && user) {
+    user = await resolvePrimaryUser(ctx.env.data.users, client.tenant.id, user);
+    // The MFA screens read the user from the login session.
+    if (currentLoginSession.user_id !== user.user_id) {
+      await ctx.env.data.loginSessions.update(
+        client.tenant.id,
+        currentLoginSession.id,
+        { user_id: user.user_id },
+      );
+      currentLoginSession = { ...currentLoginSession, user_id: user.user_id };
+    }
+  }
 
   // ============================================================================
   // MFA CHECK
@@ -1870,6 +1884,19 @@ export async function createFrontChannelAuthResponse(
           });
         }
       }
+    }
+
+    // Fail closed: a post-login action required MFA and it has not been
+    // completed. The legitimate resume (/u/continue) reaches the MFA check
+    // above in AUTHENTICATED and is redirected to the challenge; any other
+    // resume path (e.g. /authorize/resume while AWAITING_CONTINUATION) must
+    // not issue a code or tokens.
+    if (stateData.mfa_required_by_action && !stateData.mfa_verified) {
+      throw new JSONHTTPException(403, {
+        error: "access_denied",
+        error_description:
+          "Multi-factor authentication is required to complete this login",
+      });
     }
 
     // ========================================================================
