@@ -217,6 +217,48 @@ describe("management-api tenantDispatch", () => {
     expect(await ask("/tenants/settings", "PATCH")).toBe("forwarded:acme");
   });
 
+  it("keeps the team and the tenant records here together, and only /tenants/settings goes to the worker", async () => {
+    // The team page and the control plane's tenant records are both served by
+    // the control plane. They must not undo each other: the team carve-out
+    // (#1636) and the one for the tenants extension share the same matcher.
+    const backend = {
+      listInvitations: async () => [],
+    } as unknown as import("../../../src/tenant-members/types").TenantMembersBackend;
+    const records = new OpenAPIHono();
+    records.get("/:id", (ctx) => ctx.text("record"));
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+      tenantMembers: { getBackend: () => backend },
+      managementApiExtensions: [
+        { path: "/tenants", router: records, controlPlane: true },
+      ],
+    });
+    const ask = async (path: string, method = "GET") =>
+      (
+        await managementApp.request(
+          path,
+          { method, headers: { "tenant-id": "acme" } },
+          env,
+        )
+      ).text();
+
+    // Served here.
+    expect(await ask("/tenant-members/invitations")).not.toBe("forwarded:acme");
+    expect(await ask("/tenants/acme")).not.toBe("forwarded:acme");
+    expect(await ask("/tenants/acme", "PATCH")).not.toBe("forwarded:acme");
+    expect(await ask("/tenants/acme/operations")).not.toBe("forwarded:acme");
+    expect(await ask("/operations/op_1")).not.toBe("forwarded:acme");
+    expect(await ask("/rollouts")).not.toBe("forwarded:acme");
+    // Forwarded: the tenant's own settings and its own resources, including
+    // ones whose name only looks like a carved-out segment.
+    expect(await ask("/tenants/settings")).toBe("forwarded:acme");
+    expect(await ask("/tenants/settings", "PATCH")).toBe("forwarded:acme");
+    expect(await ask("/users/tenant-members")).toBe("forwarded:acme");
+    expect(await ask("/clients/tenants")).toBe("forwarded:acme");
+    expect(await ask("/organizations/name/operations")).toBe("forwarded:acme");
+    expect(await ask("/tenants-archive")).toBe("forwarded:acme");
+  });
+
   it("forwards /tenants when the extension is not marked as control plane", async () => {
     const records = new OpenAPIHono();
     records.get("/:id", (ctx) => ctx.text("record"));
