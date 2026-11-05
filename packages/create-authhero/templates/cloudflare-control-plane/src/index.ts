@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import createAdapters, { createProxyDataAdapter } from "@authhero/drizzle";
 import * as schema from "@authhero/drizzle/schema/sqlite";
 import createCloudflareAdapters, {
+  createWfpForwardMiddleware,
   syncCustomDomains,
   type CloudflareConfig,
 } from "@authhero/cloudflare-adapter";
@@ -79,6 +80,18 @@ export default {
           ? [`${url.protocol}//${url.host}/`]
           : [],
       allowedOrigins: [origin].filter(Boolean),
+      // An admin UI (the hosted one or your own) sends every tenant-scoped call
+      // to this control plane with a `tenant-id` header. For a `wfp` tenant that
+      // is ready, hand the call to the tenant's own Worker over the dispatch
+      // namespace, so it reads and writes the tenant's database and not this
+      // one. The control plane tenant, shared tenants and tenants still
+      // provisioning are served here as usual. The Worker verifies the call's
+      // control plane token against the public key a `sync-defaults` operation
+      // copied into its database.
+      tenantDispatch: createWfpForwardMiddleware({
+        tenants: dataAdapter.tenants,
+        controlPlaneTenantId: CONTROL_PLANE_TENANT_ID,
+      }),
       proxyControlPlane: {
         resolveHost: createProxyDataAdapter(db).resolveHost,
         customDomains,

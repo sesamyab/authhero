@@ -157,6 +157,15 @@ export interface ManagementApiExtension {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   router: OpenAPIHono<any, any, any>;
+  /**
+   * Set when the routes act on the control plane's own records (for example
+   * the tenant records `@authhero/multi-tenancy` mounts at `/tenants`). With
+   * `tenantDispatch`, a request for a tenant that runs in its own worker would
+   * otherwise be forwarded there, where those records do not exist. Requests
+   * to these routes are served here instead. `/tenants/settings` is the one
+   * exception: it is the tenant's own and still goes to its worker.
+   */
+  controlPlane?: boolean;
 }
 
 /**

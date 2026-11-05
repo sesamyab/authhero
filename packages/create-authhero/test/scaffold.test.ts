@@ -313,6 +313,17 @@ describe("control-plane template sync wiring", () => {
     expect(index).toContain("cannotShareSecrets");
   });
 
+  it("forwards a ready wfp tenant's calls to its own Worker", () => {
+    // An admin UI sends tenant-scoped calls here with a `tenant-id` header. For
+    // a `wfp` tenant they must reach that tenant's Worker and database, or the
+    // control plane answers from its own database, where the tenant has no data.
+    const { projectPath } = projects["control-plane"];
+    const index = readFile(projectPath, "src/index.ts");
+    expect(index).toContain("createWfpForwardMiddleware");
+    expect(index).toMatch(/tenantDispatch: createWfpForwardMiddleware\(\{/);
+    expect(index).toContain("controlPlaneTenantId: CONTROL_PLANE_TENANT_ID");
+  });
+
   it("hashes config the way a sync copies it, so the status can agree", () => {
     // A sync copies secrets as stored (ciphertext). The sync status, verify and
     // rollouts hash through the adapter they are given, so they must be given

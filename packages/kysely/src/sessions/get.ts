@@ -20,6 +20,7 @@ export function get(db: Kysely<Database>) {
       tenant_id: _,
       device,
       clients,
+      authentication,
       created_at_ts,
       updated_at_ts,
       expires_at_ts,
@@ -66,6 +67,7 @@ export function get(db: Kysely<Database>) {
       ...dates,
       device: JSON.parse(device),
       clients: JSON.parse(clients),
+      ...(authentication ? { authentication: JSON.parse(authentication) } : {}),
     };
   };
 }

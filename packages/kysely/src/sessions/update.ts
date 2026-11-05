@@ -12,6 +12,9 @@ export function update(db: Kysely<Database>) {
       updated_at_ts: now,
       device: session.device ? JSON.stringify(session.device) : undefined,
       clients: session.clients ? JSON.stringify(session.clients) : undefined,
+      authentication: session.authentication
+        ? JSON.stringify(session.authentication)
+        : undefined,
     };
 
     // Convert date fields if provided
