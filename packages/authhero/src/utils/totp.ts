@@ -49,18 +49,23 @@ export async function generateTOTP(secret: Uint8Array): Promise<string> {
  * Verify a code against the current period ±1 (RFC 6238 §6 recommends
  * tolerating one step of transmission delay / clock drift, and oslo's
  * current-slice-only check made codes fail at period boundaries).
+ *
+ * Returns the matched time step (counter), or null if the code does not
+ * match. Callers must record the step with
+ * `authenticationMethods.consumeTotpStep` and reject the code if that fails,
+ * so an accepted code cannot be replayed within its window (RFC 6238 §5.2).
  */
 export async function verifyTOTP(
   code: string,
   secret: Uint8Array,
-): Promise<boolean> {
+): Promise<number | null> {
   const counter = Math.floor(Date.now() / (TOTP_PERIOD_SECONDS * 1000));
-  for (const step of [0, -1, 1]) {
-    if ((await generateHOTP(secret, counter + step)) === code) {
-      return true;
+  for (const offset of [0, -1, 1]) {
+    if ((await generateHOTP(secret, counter + offset)) === code) {
+      return counter + offset;
     }
   }
-  return false;
+  return null;
 }
 
 /** otpauth:// URI for enrolling the secret in an authenticator app. */

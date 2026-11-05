@@ -524,6 +524,7 @@ export const sqlAuthenticationMethodSchema = z.object({
   type: z.string(),
   phone_number: z.string().optional().nullable(),
   totp_secret: z.string().optional().nullable(),
+  totp_last_step: z.number().optional().nullable(),
   credential_id: z.string().optional().nullable(),
   public_key: z.string().optional().nullable(),
   sign_count: z.number().optional().nullable(),

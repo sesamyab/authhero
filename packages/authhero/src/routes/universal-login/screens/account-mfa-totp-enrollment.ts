@@ -252,10 +252,12 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Verify the TOTP code
-      let valid: boolean;
+      // Verify the TOTP code. The method is created below with the matched
+      // step as its last accepted step, so this code cannot then be replayed
+      // on the login challenge within its window (#1666).
+      let step: number | null;
       try {
-        valid = await verifyTotpCode(secretBase32, code);
+        step = await verifyTotpCode(secretBase32, code);
       } catch (err) {
         logMessage(ctx, tenant.id, {
           type: LogTypes.MFA_AUTH_FAILED,
@@ -268,7 +270,7 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         };
       }
 
-      if (!valid) {
+      if (step === null) {
         logMessage(ctx, tenant.id, {
           type: LogTypes.MFA_AUTH_FAILED,
           description: "MFA TOTP enrollment verification failed - invalid code",
@@ -296,6 +298,7 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         user_id: user.user_id,
         type: "totp",
         totp_secret: secretBase32,
+        totp_last_step: step,
         confirmed: true,
       });
 

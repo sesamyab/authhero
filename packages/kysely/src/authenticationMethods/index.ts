@@ -7,6 +7,7 @@ import { getByCredentialId } from "./getByCredentialId";
 import { list } from "./list";
 import { update } from "./update";
 import { remove } from "./remove";
+import { consumeTotpStep } from "./consumeTotpStep";
 
 export function createAuthenticationMethodsAdapter(
   db: Kysely<Database>,
@@ -18,5 +19,6 @@ export function createAuthenticationMethodsAdapter(
     list: list(db),
     update: update(db),
     remove: remove(db),
+    consumeTotpStep: consumeTotpStep(db),
   };
 }

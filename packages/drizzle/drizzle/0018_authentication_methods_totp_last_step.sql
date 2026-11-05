@@ -1,0 +1,1 @@
+ALTER TABLE `authentication_methods` ADD `totp_last_step` integer;

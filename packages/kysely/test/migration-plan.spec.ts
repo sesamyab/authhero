@@ -66,7 +66,7 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-11-05T12:00:00_session_authentication";
+    const last = "2026-11-05T13:00:00_authentication_methods_totp_last_step";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
 
@@ -76,13 +76,17 @@ describe("planMigrations", () => {
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
     expect(output).toMatch(
-      /alter table "sessions" add column "authentication"/i,
+      /alter table "authentication_methods" add column "totp_last_step"/i,
     );
-    expect(await columnNames(db, "sessions")).not.toContain("authentication");
+    expect(await columnNames(db, "authentication_methods")).not.toContain(
+      "totp_last_step",
+    );
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    expect(await columnNames(db, "sessions")).toContain("authentication");
+    expect(await columnNames(db, "authentication_methods")).toContain(
+      "totp_last_step",
+    );
     await db.destroy();
   });
 });

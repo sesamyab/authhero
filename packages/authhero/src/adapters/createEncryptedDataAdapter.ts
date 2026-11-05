@@ -378,6 +378,8 @@ function wrapAuthenticationMethods(
       );
     },
     remove: (tenant_id, method_id) => base.remove(tenant_id, method_id),
+    consumeTotpStep: (tenant_id, method_id, step) =>
+      base.consumeTotpStep(tenant_id, method_id, step),
   };
 }
 

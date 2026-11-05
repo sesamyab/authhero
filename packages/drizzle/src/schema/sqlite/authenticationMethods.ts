@@ -12,6 +12,7 @@ export const authenticationMethods = sqliteTable(
     type: text("type", { length: 32 }).notNull(),
     phone_number: text("phone_number", { length: 32 }),
     totp_secret: text("totp_secret", { length: 255 }),
+    totp_last_step: integer("totp_last_step"),
     credential_id: text("credential_id", { length: 512 }),
     public_key: text("public_key"),
     sign_count: integer("sign_count"),
