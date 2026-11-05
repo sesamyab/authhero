@@ -8,7 +8,7 @@ const { managementClient } = vi.hoisted(() => ({
     users: { list: vi.fn(), get: vi.fn() },
     resourceServers: { get: vi.fn(), update: vi.fn() },
     prompts: { partials: { get: vi.fn(), set: vi.fn() } },
-    tenants: { settings: { update: vi.fn() } },
+    tenants: { settings: { get: vi.fn(), update: vi.fn() } },
   },
 }));
 
@@ -482,6 +482,233 @@ describe("update for the settings resource", () => {
       id: "settings",
       config_sync: "synced",
     });
+  });
+});
+
+describe("tenant settings and the control plane's sync fields", () => {
+  const CP_STATUS = {
+    tenant_id: TENANT_ID,
+    parent_tenant_id: "sesamy",
+    config_sync: "synced",
+  };
+
+  /** A client that answers the control plane routes and can fail the PATCH. */
+  function controlPlaneClient(options: { patchStatus?: number } = {}) {
+    const calls: HttpCall[] = [];
+    const client = async (url: string, init?: RequestInit) => {
+      calls.push({ url, options: init });
+      if (url.endsWith("/config-sync")) {
+        return {
+          status: 200,
+          headers: new Headers(),
+          body: "",
+          json: CP_STATUS,
+        };
+      }
+      if (init?.method === "PATCH" && options.patchStatus) {
+        throw Object.assign(new Error("failed"), {
+          status: options.patchStatus,
+        });
+      }
+      return {
+        status: 200,
+        headers: new Headers(),
+        body: "",
+        json: { ...CP_STATUS, ...JSON.parse(String(init?.body ?? "{}")) },
+      };
+    };
+    return { client, calls };
+  }
+
+  const tenantRow = {
+    id: TENANT_ID,
+    friendly_name: "Tenant",
+    config_sync: "inherit-on-read",
+    parent_tenant_id: null,
+  };
+
+  it("shows the control plane's mode and parent, not the tenant's own copy", async () => {
+    managementClient.tenants.settings.get.mockResolvedValue(tenantRow);
+    const { client, calls } = controlPlaneClient();
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    const { data } = await provider.getOne("settings", { id: "settings" });
+
+    expect(data).toMatchObject({
+      config_sync: "synced",
+      parent_tenant_id: "sesamy",
+      _control_plane_sync: true,
+    });
+    expect(calls[0]!.url).toBe(
+      `${API_URL}/api/v2/tenants/${TENANT_ID}/config-sync`,
+    );
+    expect(headerOf(calls[0], "tenant-id")).toBeNull();
+  });
+
+  it("leaves the record alone when the control plane cannot be read", async () => {
+    managementClient.tenants.settings.get.mockResolvedValue(tenantRow);
+    const client = async () => {
+      throw Object.assign(new Error("not found"), { status: 404 });
+    };
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    const { data } = await provider.getOne("settings", { id: "settings" });
+
+    expect(data).toEqual({ ...tenantRow, id: "settings" });
+  });
+
+  it("does not look up a mode for the control plane itself", async () => {
+    managementClient.tenants.settings.get.mockResolvedValue({
+      ...tenantRow,
+      is_control_plane: true,
+    });
+    const { client, calls } = controlPlaneClient();
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    await provider.getOne("settings", { id: "settings" });
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("saves a changed mode on the control plane and keeps it out of the tenant's settings", async () => {
+    managementClient.tenants.settings.update.mockResolvedValue({
+      ...tenantRow,
+      friendly_name: "Renamed",
+    });
+    const { client, calls } = controlPlaneClient();
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    const result = await provider.update("settings", {
+      id: "settings",
+      previousData: {
+        id: "settings",
+        config_sync: "inherit-on-read",
+        parent_tenant_id: null,
+        _control_plane_sync: true,
+      },
+      data: {
+        id: "settings",
+        friendly_name: "Renamed",
+        config_sync: "synced",
+        parent_tenant_id: null,
+        _control_plane_sync: true,
+      },
+    });
+
+    const patch = calls.find((c) => c.options?.method === "PATCH");
+    expect(patch!.url).toBe(`${API_URL}/api/v2/tenants/${TENANT_ID}`);
+    expect(headerOf(patch, "tenant-id")).toBeNull();
+    expect(bodyOf(patch)).toEqual({ config_sync: "synced" });
+    const sent = managementClient.tenants.settings.update.mock.calls[0]![0];
+    expect(sent).toEqual({ friendly_name: "Renamed" });
+    expect(result.data).toMatchObject({
+      config_sync: "synced",
+      _control_plane_sync: true,
+    });
+  });
+
+  it("changes nothing on the control plane when the mode and parent are untouched", async () => {
+    managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+    const { client, calls } = controlPlaneClient();
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+    const record = {
+      id: "settings",
+      friendly_name: "Tenant",
+      config_sync: "synced",
+      parent_tenant_id: "sesamy",
+      _control_plane_sync: true,
+    };
+
+    const result = await provider.update("settings", {
+      id: "settings",
+      previousData: record,
+      data: { ...record, friendly_name: "Renamed" },
+    });
+
+    expect(calls.filter((c) => c.options?.method === "PATCH")).toHaveLength(0);
+    // The tenant's own worker would refuse a value that differs from its copy,
+    // so the unchanged mode is not sent there either.
+    expect(managementClient.tenants.settings.update.mock.calls[0]![0]).toEqual({
+      friendly_name: "Renamed",
+    });
+    expect(result.data).toMatchObject({
+      config_sync: "synced",
+      parent_tenant_id: "sesamy",
+    });
+  });
+
+  it("clears the parent with null", async () => {
+    managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+    const { client, calls } = controlPlaneClient();
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    await provider.update("settings", {
+      id: "settings",
+      previousData: {
+        id: "settings",
+        config_sync: "synced",
+        parent_tenant_id: "sesamy",
+        _control_plane_sync: true,
+      },
+      data: {
+        id: "settings",
+        config_sync: "synced",
+        parent_tenant_id: "",
+        _control_plane_sync: true,
+      },
+    });
+
+    const patch = calls.find((c) => c.options?.method === "PATCH");
+    expect(bodyOf(patch)).toEqual({ parent_tenant_id: null });
+  });
+
+  it.each([404, 405])(
+    "falls back to the tenant's own settings when the control plane answers %i",
+    async (status) => {
+      managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+      const { client } = controlPlaneClient({ patchStatus: status });
+      const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+      await provider.update("settings", {
+        id: "settings",
+        previousData: {
+          id: "settings",
+          config_sync: "inherit-on-read",
+          _control_plane_sync: true,
+        },
+        data: {
+          id: "settings",
+          config_sync: "synced",
+          _control_plane_sync: true,
+        },
+      });
+
+      expect(
+        managementClient.tenants.settings.update.mock.calls[0]![0],
+      ).toEqual({ config_sync: "synced" });
+    },
+  );
+
+  it("does not hide a refusal from the control plane", async () => {
+    const { client } = controlPlaneClient({ patchStatus: 403 });
+    const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+    await expect(
+      provider.update("settings", {
+        id: "settings",
+        previousData: {
+          id: "settings",
+          config_sync: "inherit-on-read",
+          _control_plane_sync: true,
+        },
+        data: {
+          id: "settings",
+          config_sync: "synced",
+          _control_plane_sync: true,
+        },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(managementClient.tenants.settings.update).not.toHaveBeenCalled();
   });
 });
 

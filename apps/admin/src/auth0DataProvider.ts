@@ -282,6 +282,14 @@ function normalizeSDKResponse(
 }
 
 // Helper to create headers with tenant ID
+// Marks a tenant settings record whose `config_sync` and `parent_tenant_id`
+// were read from the control plane's own record of the tenant. The settings
+// endpoint is the tenant's own and, for a tenant that runs in its own worker,
+// is answered by that worker, which holds neither field as the control plane
+// does and refuses to change them. The marker makes the save go to the control
+// plane instead. It is never sent to the server.
+const CONTROL_PLANE_SYNC_KEY = "_control_plane_sync";
+
 function createHeaders(tenantId?: string): Headers {
   const headers = new Headers();
   if (tenantId) {
@@ -745,6 +753,51 @@ export default (
     return managementClientPromise;
   };
 
+  // The control plane's record of this tenant, read with no `tenant-id` header
+  // so the control plane answers it itself on any version. Null when it cannot
+  // be read: a single-tenant deployment has no such route, and a tenant's own
+  // admin may only read through its own worker.
+  const readControlPlaneSync = async (): Promise<ApiRecord | null> => {
+    if (!tenantId) return null;
+    try {
+      const res = await httpClient(
+        `${apiUrl}/api/v2/tenants/${encodeURIComponent(tenantId)}/config-sync`,
+        { headers: createHeaders() },
+      );
+      const status = res.json as ApiRecord | undefined;
+      return status && typeof status.config_sync === "string" ? status : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const withControlPlaneSync = async (
+    record: ApiRecord,
+  ): Promise<ApiRecord> => {
+    // The control plane has nothing to inherit, so it has no mode to show.
+    if (record.is_control_plane) return record;
+    const status = await readControlPlaneSync();
+    if (!status) return record;
+    return {
+      ...record,
+      config_sync: status.config_sync,
+      parent_tenant_id: status.parent_tenant_id ?? null,
+      [CONTROL_PLANE_SYNC_KEY]: true,
+    };
+  };
+
+  const patchControlPlaneTenant = async (
+    changes: ApiRecord,
+  ): Promise<ApiRecord> => {
+    const headers = createHeaders();
+    headers.set("Content-Type", "application/json");
+    const res = await httpClient(
+      `${apiUrl}/api/v2/tenants/${encodeURIComponent(String(tenantId))}`,
+      { method: "PATCH", headers, body: JSON.stringify(changes) },
+    );
+    return res.json as ApiRecord;
+  };
+
   return {
     getList: async (resourcePath, params) => {
       const resource = parseResource(resourcePath);
@@ -930,9 +983,13 @@ export default (
       }
 
       if (resource === "settings") {
-        return fetchSingleton(resource, () =>
+        const singleton = await fetchSingleton(resource, () =>
           managementClient.tenants.settings.get(),
         );
+        return {
+          ...singleton,
+          data: await Promise.all(singleton.data.map(withControlPlaneSync)),
+        };
       }
 
       if (resource === "attack-protection") {
@@ -1513,10 +1570,10 @@ export default (
       if (resource === "settings") {
         const result = await managementClient.tenants.settings.get();
         return {
-          data: {
+          data: await withControlPlaneSync({
             ...result,
             id: resource,
-          },
+          }),
         };
       }
 
@@ -2184,11 +2241,65 @@ export default (
 
       // Handle singleton resources
       if (resource === "settings") {
-        const result = await managementClient.tenants.settings.update(
-          cleanParams.data,
-        );
+        const { [CONTROL_PLANE_SYNC_KEY]: marked, ...formData } =
+          cleanParams.data;
+        const viaControlPlane =
+          Boolean(marked) ||
+          Boolean(params.previousData?.[CONTROL_PLANE_SYNC_KEY]);
+        if (!viaControlPlane) {
+          const result =
+            await managementClient.tenants.settings.update(formData);
+          return {
+            data: { ...result, id: resource },
+          };
+        }
+
+        // The sync mode and the parent belong to the control plane's record.
+        // Send a change there, and keep both out of the tenant's own settings
+        // either way: the tenant's worker would refuse a value that differs
+        // from its own copy.
+        const { config_sync, parent_tenant_id, ...rest } = formData;
+        const previous = params.previousData ?? {};
+        const changes: ApiRecord = {};
+        if ("config_sync" in formData && config_sync !== previous.config_sync) {
+          changes.config_sync = config_sync;
+        }
+        if (
+          "parent_tenant_id" in formData &&
+          (parent_tenant_id || null) !== (previous.parent_tenant_id || null)
+        ) {
+          changes.parent_tenant_id = parent_tenant_id || null;
+        }
+
+        let saved: ApiRecord | undefined;
+        let body: ApiRecord = rest;
+        if (Object.keys(changes).length > 0 && tenantId) {
+          try {
+            saved = await patchControlPlaneTenant(changes);
+          } catch (error) {
+            const status = (error as { status?: number } | undefined)?.status;
+            // A control plane without the route (older packages): fall back to
+            // the tenant's own settings, which is what always happened.
+            if (status !== 404 && status !== 405) throw error;
+            body = formData;
+          }
+        }
+
+        const result = await managementClient.tenants.settings.update(body);
         return {
-          data: { ...result, id: resource },
+          data: {
+            ...result,
+            ...(saved
+              ? {
+                  config_sync: saved.config_sync,
+                  parent_tenant_id: saved.parent_tenant_id,
+                }
+              : body === rest
+                ? { config_sync, parent_tenant_id }
+                : {}),
+            [CONTROL_PLANE_SYNC_KEY]: true,
+            id: resource,
+          },
         };
       }
 
