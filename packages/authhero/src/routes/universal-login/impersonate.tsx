@@ -289,8 +289,10 @@ const postSwitch = defineRoute({
     }
 
     // Update the existing session to point to the target user
+    // The impersonator's MFA must not carry over to the target (#1668).
     await ctx.env.data.sessions.update(client.tenant.id, currentSession.id, {
       user_id: targetUser.user_id,
+      authentication: { methods: [] },
     });
 
     // Log the impersonation as a login with the impersonating user in the description

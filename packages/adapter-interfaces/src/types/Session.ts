@@ -1,6 +1,31 @@
 import { z } from "@hono/zod-openapi";
 import { deviceSchema } from "./Device";
 
+export const sessionAuthenticationMethodSchema = z.object({
+  name: z
+    .string()
+    .describe(
+      'Authentication method name, e.g. "mfa" for a completed second factor',
+    ),
+  timestamp: z.string().describe("When the method was completed (ISO 8601)"),
+  type: z
+    .string()
+    .optional()
+    .describe(
+      'For "mfa": the authentication method type used, e.g. "totp", "phone", "passkey"',
+    ),
+});
+
+export type SessionAuthenticationMethod = z.infer<
+  typeof sessionAuthenticationMethodSchema
+>;
+
+export const sessionAuthenticationSchema = z.object({
+  methods: z.array(sessionAuthenticationMethodSchema),
+});
+
+export type SessionAuthentication = z.infer<typeof sessionAuthenticationSchema>;
+
 export const sessionInsertSchema = z.object({
   id: z.string(),
   revoked_at: z.string().optional(),
@@ -15,6 +40,11 @@ export const sessionInsertSchema = z.object({
   clients: z
     .array(z.string())
     .describe("List of client details for the session"),
+  authentication: sessionAuthenticationSchema
+    .optional()
+    .describe(
+      "Authentication methods completed in this session (currently MFA only)",
+    ),
 });
 
 export type SessionInsert = z.infer<typeof sessionInsertSchema>;
