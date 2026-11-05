@@ -207,7 +207,13 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
     description:
       "Per-tenant authhero worker (own D1) that inherits control plane defaults via runtime fallback + keyed encryption (deploy into the dispatch namespace; pair with the control-plane template)",
     templateDir: "cloudflare-wfp-tenant",
-    packageJson: (projectName, _multiTenant, _conformance, workspace) => {
+    packageJson: (
+      projectName,
+      _multiTenant,
+      _conformance,
+      workspace,
+      adminUi,
+    ) => {
       const v = workspace ? "workspace:*" : "latest";
       return {
         name: projectName,
@@ -238,6 +244,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           "@authhero/cloudflare-adapter": v,
           "@authhero/drizzle": v,
           "@authhero/multi-tenancy": v,
+          ...(adminUi && { "@authhero/admin": v }),
           "@authhero/widget": v,
           "@hono/swagger-ui": "^0.6.0",
           "@hono/zod-openapi": "^1.4.0",
@@ -1386,6 +1393,34 @@ function runCommand(command: string, cwd: string): Promise<void> {
 }
 
 /**
+ * Wires the admin UI into the WFP tenant template's `src/index.ts`. The
+ * template carries two marker comments so it compiles without the admin
+ * package; they become the import and the `adminIndexHtml` option, or are
+ * removed. `copy-assets.js` (run on postinstall) writes `admin-index-html.ts`
+ * and copies the admin bundle into the assets directory.
+ */
+export function applyWfpTenantAdminUi(
+  projectPath: string,
+  adminUi?: boolean,
+): void {
+  const file = path.join(projectPath, "src", "index.ts");
+  if (!fs.existsSync(file)) return;
+  const source = fs.readFileSync(file, "utf8");
+  const next = source
+    .replace(
+      /^[ \t]*\/\/ @authhero-admin-import\n/m,
+      adminUi ? 'import adminIndexHtml from "./admin-index-html";\n' : "",
+    )
+    .replace(
+      /^([ \t]*)\/\/ @authhero-admin-config\n/m,
+      adminUi
+        ? "$1// Serve the admin UI at /admin. It signs in against this Worker's own\n$1// issuer, so a tenant manages itself without the control plane.\n$1adminIndexHtml,\n"
+        : "",
+    );
+  fs.writeFileSync(file, next);
+}
+
+/**
  * Generates app.ts and seed.ts files for cloudflare setup based on multi-tenant flag
  */
 function generateCloudflareFiles(
@@ -1658,9 +1693,14 @@ program
       console.log("Multi-tenant mode: enabled");
     }
 
-    // Handle admin UI option (local + cloudflare — AWS uses hosted admin)
+    // Handle admin UI option (local, cloudflare and the WFP tenant worker —
+    // AWS uses hosted admin; the control plane has no admin wiring yet)
     let adminUi = false;
-    if (setupType === "local" || setupType === "cloudflare") {
+    if (
+      setupType === "local" ||
+      setupType === "cloudflare" ||
+      setupType === "cloudflare-wfp-tenant"
+    ) {
       if (options.adminUi !== undefined) {
         adminUi = options.adminUi;
       } else if (isNonInteractive) {
@@ -1739,6 +1779,9 @@ program
     // For Cloudflare setups, generate app.ts and seed.ts based on multi-tenant flag
     if (setupType === "cloudflare") {
       generateCloudflareFiles(projectPath, multiTenant, adminUi);
+    }
+    if (setupType === "cloudflare-wfp-tenant") {
+      applyWfpTenantAdminUi(projectPath, adminUi);
     }
 
     // For Cloudflare setups, create local config files

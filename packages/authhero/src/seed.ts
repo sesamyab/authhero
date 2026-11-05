@@ -648,6 +648,14 @@ export interface SeedResult {
   clientSecret: string;
 }
 
+function originOf(issuer: string): string | undefined {
+  try {
+    return new URL(issuer).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Seed the AuthHero database with initial data.
  * Creates a default tenant, admin user, password connection, and default client.
@@ -677,21 +685,33 @@ export async function seed(
     tenantName = "Control Plane",
     isControlPlane = true,
     clientId = "default",
-    callbacks = [
-      "https://manage.authhero.net/auth-callback",
-      "https://local.authhero.net/auth-callback",
-      "https://localhost:5173/auth-callback",
-      "http://localhost:3000/auth-callback",
-      "http://localhost:3000/admin/auth-callback",
-    ],
-    allowedLogoutUrls = [
-      "https://manage.authhero.net",
-      "https://local.authhero.net",
-      "http://localhost:5173",
-      "http://localhost:3000",
-    ],
     debug = true,
   } = options;
+
+  // The server's own origin, from the issuer. The admin UI is served from the
+  // same origin as the server it manages and signs in against it, so the
+  // default client has to allow it; otherwise `/admin` stops at
+  // "redirect_uri not allowed" on any deployed host. Additive: the fixed
+  // defaults below stay, and explicit `callbacks` / `allowedLogoutUrls` win.
+  const issuerOrigin = options.issuer ? originOf(options.issuer) : undefined;
+  const callbacks = options.callbacks ?? [
+    "https://manage.authhero.net/auth-callback",
+    "https://local.authhero.net/auth-callback",
+    "https://localhost:5173/auth-callback",
+    "http://localhost:3000/auth-callback",
+    "http://localhost:3000/admin/auth-callback",
+    ...(issuerOrigin
+      ? [`${issuerOrigin}/auth-callback`, `${issuerOrigin}/admin/auth-callback`]
+      : []),
+  ];
+  const allowedLogoutUrls = options.allowedLogoutUrls ?? [
+    "https://manage.authhero.net",
+    "https://local.authhero.net",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    ...(issuerOrigin ? [issuerOrigin, `${issuerOrigin}/admin`] : []),
+  ];
+  const webOrigins = issuerOrigin ? [issuerOrigin] : undefined;
 
   // Determine the audience based on tenant type
   // Main tenant uses urn:authhero:management for cross-tenant management
@@ -842,6 +862,7 @@ export async function seed(
       name: "Default Application",
       callbacks,
       allowed_logout_urls: allowedLogoutUrls,
+      ...(webOrigins ? { web_origins: webOrigins } : {}),
       connections: [Strategy.USERNAME_PASSWORD],
       client_metadata: {
         universal_login_version: "2",
