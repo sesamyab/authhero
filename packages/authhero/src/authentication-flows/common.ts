@@ -326,7 +326,7 @@ export async function createAuthTokens(
   // omit it otherwise rather than listing single-factor methods.
   // The login session's MFA only counts for the user who completed it:
   // completeLogin can swap `user` (e.g. impersonation) and keep the session.
-  const amr =
+  let amr =
     params.amr ??
     (user && params.loginSession?.user_id === user.user_id
       ? amrFromLoginSession(params.loginSession)
@@ -462,6 +462,19 @@ export async function createAuthTokens(
   // Following OIDC Core spec section 5.4 for standard claims
   const scopes = authParams.scope?.split(" ") || [];
   const hasOpenidScope = scopes.includes("openid");
+
+  // Refresh-token exchanges, silent auth and SSO hops carry no MFA of their
+  // own: the browser session is what remembers it (#1668). Only a live session
+  // of this same user counts, so impersonation never inherits the claim.
+  if (!amr && user && hasOpenidScope && session_id && ctx.var.tenant_id) {
+    const session = await ctx.env.data.sessions.get(
+      ctx.var.tenant_id,
+      session_id,
+    );
+    if (session && sessionSatisfiesMfa(session, user.user_id)) {
+      amr = ["mfa"];
+    }
+  }
 
   // Per OIDC Core 5.4: scope-driven Claims (profile / email / address / phone)
   // are returned from the UserInfo Endpoint "when a response_type value is

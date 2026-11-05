@@ -31,7 +31,7 @@ async function createAwaitingMfaSession(
     authParams: {
       client_id: "clientId",
       redirect_uri: "https://example.com/callback",
-      scope: "openid email profile",
+      scope: "openid email profile offline_access",
       response_type: AuthorizationResponseType.CODE,
       state: "state",
       nonce: "nonce",
@@ -62,7 +62,7 @@ async function createAwaitingMfaSession(
   return loginSession;
 }
 
-async function exchangeCode(oauthApp: any, env: any, redirect: string) {
+async function exchangeCodeFull(oauthApp: any, env: any, redirect: string) {
   const code = new URL(redirect).searchParams.get("code");
   if (!code) throw new Error(`no code in ${redirect}`);
   const res = await testClient(oauthApp, env).oauth.token.$post({
@@ -75,7 +75,11 @@ async function exchangeCode(oauthApp: any, env: any, redirect: string) {
     },
   });
   expect(res.status).toBe(200);
-  const body = (await res.json()) as { id_token: string };
+  return (await res.json()) as { id_token: string; refresh_token?: string };
+}
+
+async function exchangeCode(oauthApp: any, env: any, redirect: string) {
+  const body = await exchangeCodeFull(oauthApp, env, redirect);
   return decodeIdToken(body.id_token);
 }
 
@@ -135,6 +139,121 @@ describe("amr claim after MFA", () => {
       res.headers.get("location")!,
     );
     expect(claims.amr).toEqual(["mfa"]);
+  });
+
+  it("keeps amr=[mfa] on ID tokens from a refresh token after MFA", async () => {
+    const { u2App, oauthApp, env } = await getTestServer({
+      mockEmail: true,
+      testTenantLanguage: "en",
+    });
+    const enrollment = await env.data.authenticationMethods.create("tenantId", {
+      user_id: "email|userId",
+      type: "totp",
+      totp_secret: TOTP_SECRET,
+      confirmed: true,
+    });
+    const session = await createAwaitingMfaSession(env, {
+      authenticationMethodId: enrollment.id,
+    });
+    const code = await generateTOTP(decodeBase32(TOTP_SECRET));
+    const res = await postForm(
+      u2App,
+      env,
+      "/mfa/totp-challenge",
+      session.id,
+      code,
+    );
+    expect(res.status).toBe(302);
+
+    const first = await exchangeCodeFull(
+      oauthApp,
+      env,
+      res.headers.get("location")!,
+    );
+    expect(first.refresh_token).toBeTypeOf("string");
+
+    // Drop the login session's MFA flags so only the browser session can
+    // vouch for the MFA on refresh.
+    await env.data.loginSessions.update("tenantId", session.id, {
+      state_data: "{}",
+    });
+
+    const refreshed = await testClient(oauthApp, env).oauth.token.$post({
+      form: {
+        grant_type: "refresh_token",
+        client_id: "clientId",
+        client_secret: "clientSecret",
+        refresh_token: first.refresh_token!,
+      },
+    });
+    expect(refreshed.status).toBe(200);
+    const body = (await refreshed.json()) as { id_token?: string };
+    expect(body.id_token).toBeTypeOf("string");
+    expect(decodeIdToken(body.id_token!).amr).toEqual(["mfa"]);
+
+    // The browser session, not just the login session, remembers the MFA
+    const stored = await env.data.sessions.get(
+      "tenantId",
+      `session-${session.id}`,
+    );
+    expect(stored?.authentication?.methods?.[0]?.name).toBe("mfa");
+  });
+
+  it("does not lend the session's MFA to a different user (impersonation)", async () => {
+    const { u2App, oauthApp, env } = await getTestServer({
+      mockEmail: true,
+      testTenantLanguage: "en",
+    });
+    const enrollment = await env.data.authenticationMethods.create("tenantId", {
+      user_id: "email|userId",
+      type: "totp",
+      totp_secret: TOTP_SECRET,
+      confirmed: true,
+    });
+    const session = await createAwaitingMfaSession(env, {
+      authenticationMethodId: enrollment.id,
+    });
+    const code = await generateTOTP(decodeBase32(TOTP_SECRET));
+    const res = await postForm(
+      u2App,
+      env,
+      "/mfa/totp-challenge",
+      session.id,
+      code,
+    );
+    const first = await exchangeCodeFull(
+      oauthApp,
+      env,
+      res.headers.get("location")!,
+    );
+    await env.data.loginSessions.update("tenantId", session.id, {
+      state_data: "{}",
+    });
+    await env.data.users.create("tenantId", {
+      user_id: "email|someoneElse",
+      email: "else@example.com",
+      email_verified: true,
+      connection: "email",
+      provider: "email",
+      is_social: false,
+    });
+    // The session now belongs to another user while still holding the
+    // original user's MFA entry
+    await env.data.sessions.update("tenantId", `session-${session.id}`, {
+      user_id: "email|someoneElse",
+    });
+
+    const refreshed = await testClient(oauthApp, env).oauth.token.$post({
+      form: {
+        grant_type: "refresh_token",
+        client_id: "clientId",
+        client_secret: "clientSecret",
+        refresh_token: first.refresh_token!,
+      },
+    });
+    expect(refreshed.status).toBe(200);
+    const body = (await refreshed.json()) as { id_token?: string };
+    expect(decodeIdToken(body.id_token!)).not.toHaveProperty("amr");
   });
 
   it("adds amr=[mfa] to the ID token after SMS MFA", async () => {
