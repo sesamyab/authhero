@@ -1387,6 +1387,34 @@ describe("sync-defaults operation transport (createDispatchSyncConfig → /inter
       expect(await tenantKeys()).toEqual([]);
     });
 
+    it("marks a synced tenant as drifted when a later key could not be stored", async () => {
+      const sync = syncFor(dispatcherToTenant());
+      const first = await sync("acme", { dryRun: false, force: false });
+      expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(first.hash);
+
+      await cp.keys.create(cpKey("cp-kid-1"));
+      const create = tenant.keys.create;
+      tenant.keys.create = async () => {
+        throw new Error("disk full");
+      };
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        // The block is unchanged, so the tenant answers "up-to-date".
+        const second = await sync("acme", { dryRun: false, force: false });
+        expect(second.status).toBe("up-to-date");
+      } finally {
+        tenant.keys.create = create;
+        spy.mockRestore();
+      }
+
+      expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+
+      // The next sync stores the key and records the hash again.
+      await sync("acme", { dryRun: false, force: false });
+      expect(await tenantKeys()).toEqual(["cp-kid-1"]);
+      expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(first.hash);
+    });
+
     it("accepts a push from a control plane that sends no keys", async () => {
       const res = await app.fetch(
         new Request("https://tenant.internal/internal/sync-config", {

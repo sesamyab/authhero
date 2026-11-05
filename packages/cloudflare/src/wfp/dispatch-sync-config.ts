@@ -135,9 +135,26 @@ export function createDispatchSyncConfig(
         ?.errors ?? [];
     if (keyErrors.length > 0) {
       console.error(
-        `[wfp] "${tenantId}" could not store ${keyErrors.length} control plane signing key(s); the config hash is not recorded, so it shows as drifted:`,
+        `[wfp] "${tenantId}" could not store ${keyErrors.length} control plane signing key(s); its config hash is cleared, so it shows as drifted until a sync stores them:`,
         keyErrors,
       );
+      // The block can be unchanged (the tenant answers "up-to-date") while the
+      // key failed, and the control plane may already hold that hash. Not
+      // recording is not enough then: clear it so status and the drift reconcile
+      // see the tenant and push again. A dry run changed nothing, so it leaves
+      // the row alone. Best effort, like the recording below.
+      if (!dryRun && tenant) {
+        try {
+          await controlPlaneAdapters.tenants.update(tenantId, {
+            config_sync_hash: null,
+          });
+        } catch (error) {
+          console.error(
+            `[wfp] could not clear the config hash of "${tenantId}" after a key failure:`,
+            error,
+          );
+        }
+      }
     }
     if (
       !dryRun &&
