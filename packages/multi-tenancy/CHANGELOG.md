@@ -1,5 +1,27 @@
 # @authhero/multi-tenancy
 
+## 15.6.0
+
+### Minor Changes
+
+- 2207af4: The `sync-defaults` operation now carries the control plane's public signing keys to a WFP tenant, next to the resolved config block. A tenant that never got the provisioning seed (one onboarded by hand), or has not seen a key rotation, can verify control-plane tokens after the next sync, and a rotated key no longer needs a re-seed. The keys are outside the block and its hash, so drift status is unchanged; the receiver adds missing keys by `kid` and a dry run writes nothing. A push without keys, from an older control plane, still works. `@authhero/multi-tenancy` exports `buildControlPlaneSigningKeys` and `applyControlPlaneSigningKeys` for hosts that wire their own transport.
+- 6897384: `PATCH /tenants/{id}` changes a tenant's `config_sync` mode and parent on the control plane, by id. It is for control-plane callers only (organization-scoped tokens get `403`) and writes only the fields the body names. Until now the mode could only be changed through `PATCH /tenants/settings`, which acts on the tenant named by the request.
+
+  With `tenantDispatch`, a request for a tenant that runs in its own worker is forwarded to that worker, and `/tenants/settings` is the tenant's own and still is. The control plane's tenant records (the list, `/tenants/{id}`, config-sync status, operations) are not in the tenant's database, so `ManagementApiExtension` has a new `controlPlane` flag, which `@authhero/multi-tenancy` sets on `/tenants`: those requests are now served by the control plane even when the `tenant-id` header names a `wfp` tenant. Both packages are needed for this: with an older `authhero`, the flag is ignored and the request is still forwarded.
+
+### Patch Changes
+
+- Updated dependencies [0c5d015]
+- Updated dependencies
+- Updated dependencies [34f2ecd]
+- Updated dependencies [08f89af]
+- Updated dependencies [2207af4]
+- Updated dependencies [e38186d]
+- Updated dependencies [6897384]
+- Updated dependencies [254f94f]
+  - authhero@9.29.0
+  - @authhero/adapter-interfaces@4.26.0
+
 ## 15.5.0
 
 ### Minor Changes

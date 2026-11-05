@@ -1,5 +1,21 @@
 # @authhero/admin
 
+## 0.26.5
+
+### Patch Changes
+
+- 233a5cc: Show only the application settings and tabs that apply to the client's application type. Machine-to-Machine clients no longer show the Connections, Organizations and Refresh Tokens tabs, the login-screen options or the Login button. Client Grants shows for Machine-to-Machine clients and for any confidential client with the Client Credentials grant. SSO is hidden for Native and Machine-to-Machine clients unless a SAML addon is already configured.
+- db3b7dd: A tenant's config sync mode and parent are now read from and saved on the control plane's record of the tenant. The settings endpoint is the tenant's own, and for a tenant that runs in its own worker it is answered by that worker, which showed the worker's copy and refused a change with `403 Only the control plane can change a tenant's config_sync mode`. A changed mode or parent is sent to `PATCH /tenants/{id}`; if the control plane has no such route (older packages) the save goes to the tenant's settings as before, and a refusal is shown rather than hidden. When the control plane's record cannot be read, the form behaves as it did.
+- 433bf2d: Allow setting an optional client ID when creating a new application in the admin UI.
+- 08f89af: Post-login actions can require MFA per login with `api.multifactor.enable(provider, { allowRememberBrowser })`, both from code actions and from the `onExecutePostLogin` config hook. The user is challenged after all actions have run and before tokens are issued, with any factor the tenant has enabled. Actions still run only once per login. `"none"` never turns off MFA required by the tenant policy or by another action, and `allowRememberBrowser` is recorded but not acted on yet.
+
+  `tenant.mfa.policy` now also accepts Auth0's `all-applications` (enforced like `always`) and `confidence-score`. Adaptive MFA is not supported, so `confidence-score` is enforced like `always`. `PUT /api/v2/guardian/policies` stores `["confidence-score"]` as-is and still stores `["all-applications"]` as `always`. It now rejects unknown policy values with `400`; before, they silently set the policy to `never`. The admin MFA page lists the new values. `customize_mfa_in_postlogin_action` is documented as stored but without effect.
+
+- Updated dependencies [08f89af]
+- Updated dependencies [e38186d]
+- Updated dependencies [254f94f]
+  - @authhero/adapter-interfaces@4.26.0
+
 ## 0.26.4
 
 ### Patch Changes

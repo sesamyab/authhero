@@ -1,5 +1,22 @@
 # @authhero/kysely-adapter
 
+## 12.19.0
+
+### Minor Changes
+
+- e38186d: Store MFA completion on the browser session. Sessions get an optional `authentication.methods[]` field (Auth0's shape): each successful MFA challenge appends `{ name: "mfa", type, timestamp }`. SSO to another client on a session that completed MFA no longer asks for MFA again, and silent authentication (`prompt=none`) returns `interaction_required` when the tenant requires MFA but the session never completed it, for example a session from before MFA was enabled. Adds a nullable `sessions.authentication` column (kysely migration `2026-11-05T12:00:00_session_authentication`, drizzle `0017_session_authentication`).
+- 254f94f: Reject reuse of a TOTP code within its validity window (RFC 6238 §5.2, #1666). `verifyTOTP` now returns the matched time step instead of a boolean, and the last accepted step is stored on the `totp` authentication method as `totp_last_step`. The MFA login challenge, the login enrollment confirmation and the account-security enrollment all reject a code whose step is not greater than the stored one, so a code that succeeded once fails on a second submit.
+
+  Adapters must implement the new `authenticationMethods.consumeTotpStep(tenant_id, method_id, step)`, which records the step in a single conditional update (like `codes.consume`) and returns false on a replay. The kysely, drizzle and aws adapters implement it. Kysely and drizzle add a nullable `totp_last_step` column to `authentication_methods`. Run the migrations before deploying.
+
+### Patch Changes
+
+- Updated dependencies [08f89af]
+- Updated dependencies [e38186d]
+- Updated dependencies [254f94f]
+  - @authhero/adapter-interfaces@4.26.0
+  - @authhero/proxy@0.11.13
+
 ## 12.18.2
 
 ### Patch Changes
