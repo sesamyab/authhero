@@ -142,7 +142,9 @@
       "sendCodeFailedText": "Det gick inte att skicka verifieringskoden. Försök igen.",
       "noCodeText": "Ange verifieringskoden",
       "invalidCodeText": "Ogiltig kod. Försök igen.",
-      "sessionInvalidText": "Något gick fel. Starta registreringen igen."
+      "sessionInvalidText": "Något gick fel. Starta registreringen igen.",
+      "tooManyFailuresText": "För många misslyckade försök. Gå tillbaka till ditt konto och försök igen senare.",
+      "tooManySmsText": "För många verifieringskoder har skickats. Försök igen senare."
     },
     "account-mfa-totp-enrollment": {
       "title": "Konfigurera autentiseringsapp",
@@ -155,7 +157,8 @@
       "backToSecurityText": "Tillbaka till säkerhetsinställningar",
       "noCodeText": "Ange verifieringskoden",
       "invalidCodeText": "Ogiltig kod. Försök igen.",
-      "verificationFailedText": "Verifieringen misslyckades. Försök igen."
+      "verificationFailedText": "Verifieringen misslyckades. Försök igen.",
+      "tooManyFailuresText": "För många misslyckade försök. Gå tillbaka till ditt konto och försök igen senare."
     }
   },
   "consent": {
@@ -507,7 +510,8 @@
       "unexpectedError": "Något gick fel. Försök igen.",
       "enrollmentComplete": "MFA-registreringen är klar. Du kan stänga denna sida.",
       "pickAuthenticatorText": "Prova en annan metod",
-      "qrCodeAltText": "QR-kod"
+      "qrCodeAltText": "QR-kod",
+      "too-many-failures": "Du har överskridit det högsta antalet misslyckade försök. Börja om inloggningen."
     },
     "mfa-totp-challenge": {
       "title": "Verifiera din identitet",
@@ -517,7 +521,8 @@
       "invalid-code": "Koden du angav är ogiltig",
       "transaction-not-found": "Din registreringstransaktion har gått ut, du behöver börja om.",
       "unexpectedError": "Något gick fel. Försök igen.",
-      "pageTitle": "Verifiera identitet | ${clientName}"
+      "pageTitle": "Verifiera identitet | ${clientName}",
+      "too-many-failures": "Du har överskridit det högsta antalet misslyckade försök. Börja om inloggningen."
     }
   },
   "mfa-phone": {
@@ -545,7 +550,8 @@
       "invalidCode": "Koden du angav är ogiltig. Försök igen.",
       "unexpectedError": "Något gick fel. Försök igen.",
       "resendSuccess": "Vi skickade en ny kod till din telefon",
-      "enrollmentComplete": "MFA-registreringen är klar. Du kan stänga denna sida."
+      "enrollmentComplete": "MFA-registreringen är klar. Du kan stänga denna sida.",
+      "too-many-failures": "Du har överskridit det högsta antalet misslyckade försök. Börja om inloggningen."
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Ange ditt telefonnummer för att logga in med en telefonkod | ${clientName}",

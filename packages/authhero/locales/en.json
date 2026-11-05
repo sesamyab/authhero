@@ -142,7 +142,9 @@
       "sendCodeFailedText": "Failed to send verification code. Please try again.",
       "noCodeText": "Please enter the verification code",
       "invalidCodeText": "Invalid code. Please try again.",
-      "sessionInvalidText": "Something went wrong. Please start the enrollment again."
+      "sessionInvalidText": "Something went wrong. Please start the enrollment again.",
+      "tooManyFailuresText": "Too many failed attempts. Please go back to your account and try again later.",
+      "tooManySmsText": "Too many verification codes have been sent. Please try again later."
     },
     "account-mfa-totp-enrollment": {
       "title": "Set Up Authenticator App",
@@ -155,7 +157,8 @@
       "backToSecurityText": "Back to Security Settings",
       "noCodeText": "Please enter the verification code",
       "invalidCodeText": "Invalid code. Please try again.",
-      "verificationFailedText": "Verification failed. Please try again."
+      "verificationFailedText": "Verification failed. Please try again.",
+      "tooManyFailuresText": "Too many failed attempts. Please go back to your account and try again later."
     }
   },
   "consent": {
@@ -507,7 +510,8 @@
       "pageTitle": "Set up Authenticator | ${clientName}",
       "enrollmentComplete": "MFA enrollment is complete. You can close this page.",
       "pickAuthenticatorText": "Try another method",
-      "qrCodeAltText": "QR code"
+      "qrCodeAltText": "QR code",
+      "too-many-failures": "You have exceeded the maximum number of failed attempts. Please start the login again."
     },
     "mfa-totp-challenge": {
       "title": "Verify your identity",
@@ -517,7 +521,8 @@
       "invalid-code": "The code you entered is invalid",
       "transaction-not-found": "Your enrollment transaction expired, you will need to start again.",
       "unexpectedError": "Something went wrong. Please try again.",
-      "pageTitle": "Verify Identity | ${clientName}"
+      "pageTitle": "Verify Identity | ${clientName}",
+      "too-many-failures": "You have exceeded the maximum number of failed attempts. Please start the login again."
     }
   },
   "mfa-phone": {
@@ -545,7 +550,8 @@
       "invalidCode": "The code you entered is invalid. Please try again.",
       "unexpectedError": "Something went wrong. Please try again.",
       "resendSuccess": "We sent a new code to your phone",
-      "enrollmentComplete": "MFA enrollment is complete. You can close this page."
+      "enrollmentComplete": "MFA enrollment is complete. You can close this page.",
+      "too-many-failures": "You have exceeded the maximum number of failed attempts. Please start the login again."
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Enter your phone number to log in using a phone code | ${clientName}",

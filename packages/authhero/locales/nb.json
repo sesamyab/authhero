@@ -142,7 +142,9 @@
       "sendCodeFailedText": "Kunne ikke sende bekreftelseskoden. Prøv igjen.",
       "noCodeText": "Skriv inn bekreftelseskoden",
       "invalidCodeText": "Ugyldig kode. Prøv igjen.",
-      "sessionInvalidText": "Noe gikk galt. Start registreringen på nytt."
+      "sessionInvalidText": "Noe gikk galt. Start registreringen på nytt.",
+      "tooManyFailuresText": "For mange mislykkede forsøk. Gå tilbake til kontoen din og prøv igjen senere.",
+      "tooManySmsText": "For mange bekreftelseskoder er sendt. Prøv igjen senere."
     },
     "account-mfa-totp-enrollment": {
       "title": "Sett opp autentiseringsapp",
@@ -155,7 +157,8 @@
       "backToSecurityText": "Tilbake til sikkerhetsinnstillinger",
       "noCodeText": "Skriv inn bekreftelseskoden",
       "invalidCodeText": "Ugyldig kode. Prøv igjen.",
-      "verificationFailedText": "Bekreftelsen mislyktes. Prøv igjen."
+      "verificationFailedText": "Bekreftelsen mislyktes. Prøv igjen.",
+      "tooManyFailuresText": "For mange mislykkede forsøk. Gå tilbake til kontoen din og prøv igjen senere."
     }
   },
   "consent": {
@@ -507,7 +510,8 @@
       "unexpectedError": "Noe gikk galt. Vennligst prøv igjen.",
       "enrollmentComplete": "MFA-registreringen er fullført. Du kan lukke denne siden.",
       "pickAuthenticatorText": "Prøv en annen metode",
-      "qrCodeAltText": "QR-kode"
+      "qrCodeAltText": "QR-kode",
+      "too-many-failures": "Du har overskredet maksimalt antall mislykkede forsøk. Start innloggingen på nytt."
     },
     "mfa-totp-challenge": {
       "title": "Bekreft identiteten din",
@@ -517,7 +521,8 @@
       "invalid-code": "Koden du skrev inn er ugyldig",
       "transaction-not-found": "Registreringsøkten din har utløpt, du må starte på nytt.",
       "unexpectedError": "Noe gikk galt. Vennligst prøv igjen.",
-      "pageTitle": "Bekreft identitet | ${clientName}"
+      "pageTitle": "Bekreft identitet | ${clientName}",
+      "too-many-failures": "Du har overskredet maksimalt antall mislykkede forsøk. Start innloggingen på nytt."
     }
   },
   "mfa-phone": {
@@ -545,7 +550,8 @@
       "invalidCode": "Koden du skrev inn er ugyldig. Prøv igjen.",
       "unexpectedError": "Noe gikk galt. Prøv igjen.",
       "resendSuccess": "Vi sendte en ny kode til telefonen din",
-      "enrollmentComplete": "MFA-registreringen er fullført. Du kan lukke denne siden."
+      "enrollmentComplete": "MFA-registreringen er fullført. Du kan lukke denne siden.",
+      "too-many-failures": "Du har overskredet maksimalt antall mislykkede forsøk. Start innloggingen på nytt."
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Skriv inn telefonnummeret ditt for å logge inn med en telefonkode | ${clientName}",

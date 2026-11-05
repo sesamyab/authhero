@@ -7,11 +7,24 @@ import { setup, assign, transition } from "xstate";
 import { LoginSession, LoginSessionState } from "@authhero/adapter-interfaces";
 import type { SessionCookieDiagnostics } from "../utils/cookies";
 
+export interface MfaRequiredByAction {
+  /** The provider the (last enabling) action passed, e.g. "any". */
+  provider: string;
+  /** Recorded for remember-browser support; not acted on yet. */
+  allow_remember_browser: boolean;
+}
+
 /** Persisted context, grouped by responsibility in types, flat on disk. */
 export interface LoginSessionData {
   passwordReset?: PasswordResetFlow;
   // Authentication and MFA
   mfa_verified?: boolean;
+  /**
+   * Set when a post-login action called `api.multifactor.enable(...)`. Forces
+   * MFA regardless of the tenant policy, and marks that post-login hooks have
+   * already run for this login so the resume after MFA does not run them again.
+   */
+  mfa_required_by_action?: MfaRequiredByAction;
   /** Authentication method type that satisfied MFA (e.g. "totp", "phone") */
   mfa_method?: string;
   /** When MFA was verified (ISO 8601); copied onto the browser session */
@@ -20,6 +33,9 @@ export interface LoginSessionData {
   phoneNumber?: string;
   totpSecret?: string;
   guardian_enrollment?: boolean;
+  // MFA brute-force limits (see authentication-flows/mfa-attempts.ts)
+  mfa_failed_attempts?: number;
+  mfa_sms_sent?: number;
   pending_email_verification?: unknown;
   // Hooks and continuation
   hookId?: string;

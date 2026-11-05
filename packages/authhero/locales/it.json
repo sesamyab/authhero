@@ -142,7 +142,9 @@
       "sendCodeFailedText": "Invio del codice di verifica non riuscito. Riprova.",
       "noCodeText": "Inserisci il codice di verifica",
       "invalidCodeText": "Codice non valido. Riprova.",
-      "sessionInvalidText": "Qualcosa è andato storto. Ricomincia la registrazione."
+      "sessionInvalidText": "Qualcosa è andato storto. Ricomincia la registrazione.",
+      "tooManyFailuresText": "Troppi tentativi non riusciti. Torna al tuo account e riprova più tardi.",
+      "tooManySmsText": "Sono stati inviati troppi codici di verifica. Riprova più tardi."
     },
     "account-mfa-totp-enrollment": {
       "title": "Configura l'app di autenticazione",
@@ -155,7 +157,8 @@
       "backToSecurityText": "Torna alle impostazioni di sicurezza",
       "noCodeText": "Inserisci il codice di verifica",
       "invalidCodeText": "Codice non valido. Riprova.",
-      "verificationFailedText": "Verifica non riuscita. Riprova."
+      "verificationFailedText": "Verifica non riuscita. Riprova.",
+      "tooManyFailuresText": "Troppi tentativi non riusciti. Torna al tuo account e riprova più tardi."
     }
   },
   "consent": {
@@ -507,7 +510,8 @@
       "unexpectedError": "Qualcosa è andato storto. Riprova.",
       "enrollmentComplete": "La registrazione MFA è completata. Puoi chiudere questa pagina.",
       "pickAuthenticatorText": "Prova un altro metodo",
-      "qrCodeAltText": "Codice QR"
+      "qrCodeAltText": "Codice QR",
+      "too-many-failures": "Hai superato il numero massimo di tentativi non riusciti. Ricomincia l'accesso."
     },
     "mfa-totp-challenge": {
       "title": "Verifica la tua identità",
@@ -517,7 +521,8 @@
       "invalid-code": "Il codice inserito non è valido",
       "transaction-not-found": "La tua transazione di registrazione è scaduta, dovrai ricominciare.",
       "unexpectedError": "Qualcosa è andato storto. Riprova.",
-      "pageTitle": "Verifica identità | ${clientName}"
+      "pageTitle": "Verifica identità | ${clientName}",
+      "too-many-failures": "Hai superato il numero massimo di tentativi non riusciti. Ricomincia l'accesso."
     }
   },
   "mfa-phone": {
@@ -545,7 +550,8 @@
       "invalidCode": "Il codice inserito non è valido. Riprova.",
       "unexpectedError": "Qualcosa è andato storto. Riprova.",
       "resendSuccess": "Abbiamo inviato un nuovo codice al tuo telefono",
-      "enrollmentComplete": "La registrazione MFA è completata. Puoi chiudere questa pagina."
+      "enrollmentComplete": "La registrazione MFA è completata. Puoi chiudere questa pagina.",
+      "too-many-failures": "Hai superato il numero massimo di tentativi non riusciti. Ricomincia l'accesso."
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Inserisci il tuo numero di telefono per accedere con un codice telefonico | ${clientName}",

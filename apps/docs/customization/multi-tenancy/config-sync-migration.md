@@ -15,7 +15,7 @@ Background: [per-tenant sync mode](./runtime-fallback.md#per-tenant-sync-mode-co
 
 **Checklist.** Every item must be true before step 1.
 
-- The control plane has the tenant operations adapters (`GET /api/v2/tenants/{id}/operations` answers) and a `sync-defaults` executor. For a tenant with its own worker and database, `syncDefaults: createDispatchSyncConfig({...})` is passed to `initMultiTenant`.
+- The control plane has the tenant operations adapters (`GET /api/v2/tenants/{id}/operations` answers) and a `sync-defaults` executor. For a tenant with its own worker and database, `syncDefaults: createDispatchSyncConfig({...})` is passed to `initMultiTenant`. If the control plane encrypts at rest, it also passes the layer that returns secrets as stored as `storedDataAdapter`; without it step 3's status shows `drifted: true` for a tenant that is in sync. The [Workers for Platforms guide](/deployment/cloudflare-wfp#step-4-add-a-control-plane-and-sync-config) sets all of this up.
 - `WFP_INTERNAL_SYNC_SECRET` is set to the same value on the control plane and the tenant worker. A mismatch answers `401`.
 - The tenant worker has `TENANT_ID` set (a push for another tenant is refused with `403 sync_config_tenant_mismatch`).
 - The tenant worker has `CONTROL_PLANE_ENCRYPTION_KEY`, so it can decrypt secrets the control plane encrypted. Without it the push stops with `422 sync_config_key_ring` and nothing is written.

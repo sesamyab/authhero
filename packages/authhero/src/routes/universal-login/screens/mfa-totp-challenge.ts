@@ -16,6 +16,11 @@ import {
 } from "../../../state-machines/login-session";
 import { createFrontChannelAuthResponse } from "../../../authentication-flows/common";
 import { logMessage } from "../../../helpers/logging";
+import {
+  checkMfaAttemptAllowed,
+  isMfaLockedOut,
+  recordMfaFailure,
+} from "../../../authentication-flows/mfa-attempts";
 
 /**
  * Create the mfa-totp-challenge screen
@@ -157,6 +162,21 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
         state,
       );
 
+      const tooManyFailures = async () => {
+        const errorMessage = m["too-many-failures"]();
+        return {
+          error: errorMessage,
+          screen: await mfaTotpChallengeScreen({
+            ...context,
+            errors: { code: errorMessage },
+          }),
+        };
+      };
+
+      if (loginSession && isMfaLockedOut(loginSession)) {
+        return tooManyFailures();
+      }
+
       if (
         !loginSession ||
         !loginSession.user_id ||
@@ -196,6 +216,17 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
         };
       }
 
+      if (
+        !(await checkMfaAttemptAllowed(
+          ctx,
+          client.tenant.id,
+          loginSession,
+          loginSession.user_id,
+        ))
+      ) {
+        return tooManyFailures();
+      }
+
       // Verify the TOTP code, then atomically record its time step so the
       // same code cannot be accepted again within its window (#1666).
       let valid: boolean;
@@ -231,6 +262,16 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
           description: "MFA TOTP verification failed - invalid code",
           userId: loginSession.user_id,
         });
+
+        const { lockedOut } = await recordMfaFailure(
+          ctx,
+          client.tenant.id,
+          loginSession.id,
+          loginSession.user_id,
+        );
+        if (lockedOut) {
+          return tooManyFailures();
+        }
 
         const errorMessage = m["invalid-code"]();
         return {
@@ -294,6 +335,7 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
               mfa_verified: true,
               mfa_method: "totp",
               mfa_verified_at: new Date().toISOString(),
+              mfa_failed_attempts: undefined,
             },
           },
           { state: newState },

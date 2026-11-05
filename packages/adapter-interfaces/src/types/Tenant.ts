@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { attackProtectionSchema } from "./AttackProtection";
+import { mfaPolicySchema } from "./TenantSettings";
 
 export const tenantInsertSchema = z.object({
   id: z.string().optional(),
@@ -224,7 +225,11 @@ export const tenantInsertSchema = z.object({
   // Organization settings
   allow_organization_name_in_authentication_api: z.boolean().optional(),
 
-  // MFA settings
+  // MFA settings. In Auth0 this gates factor customisation from post-login
+  // actions (`api.authentication.challengeWith` / `enrollWith`), which
+  // AuthHero does not implement yet, so it is stored but has no effect.
+  // `api.multifactor.enable(...)` is honoured whatever its value: gating it
+  // would silently skip MFA an action asked for.
   customize_mfa_in_postlogin_action: z.boolean().optional(),
 
   // ACR values
@@ -287,8 +292,8 @@ export const tenantInsertSchema = z.object({
   // Guardian MFA Factors configuration (internal storage, exposed via /guardian API)
   mfa: z
     .object({
-      // MFA policy: "never" = MFA disabled, "always" = MFA required for all logins
-      policy: z.enum(["never", "always"]).default("never").optional(),
+      // MFA policy, see `mfaPolicySchema` for what each value enforces.
+      policy: mfaPolicySchema.default("never").optional(),
       // Factor states
       factors: z
         .object({
@@ -362,7 +367,7 @@ export const tenantSchema = z
 const mfaShape = tenantInsertSchema.shape.mfa.unwrap().shape;
 const mfaPatchSchema = z.object({
   ...mfaShape,
-  policy: z.enum(["never", "always"]).optional(),
+  policy: mfaPolicySchema.optional(),
   factors: z
     .object({
       sms: z.boolean().optional(),

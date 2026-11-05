@@ -35,6 +35,19 @@ export interface ActionRegistrationUserAPI extends ActionLinkAPI {
   setAppMetadata(key: string, value: unknown): void;
 }
 
+export interface ActionMultifactorEnableOptions {
+  /** Recorded with the request; remembering the browser is not supported yet. */
+  allowRememberBrowser?: boolean;
+}
+
+export interface ActionMultifactorAPI {
+  /**
+   * Require MFA for this login with any factor the tenant has enabled.
+   * `"none"` never removes MFA required by the tenant policy or another action.
+   */
+  enable(provider: string, options?: ActionMultifactorEnableOptions): void;
+}
+
 export interface ActionExchangeUserAttributes {
   /** The user's id within the named connection, not a full AuthHero user_id. */
   user_id: string;
@@ -75,6 +88,7 @@ export interface CodeHookApiByTrigger {
       ): void;
     };
     user: ActionLinkAPI;
+    multifactor: ActionMultifactorAPI;
   };
   "credentials-exchange": {
     accessToken: ActionClaimAPI;

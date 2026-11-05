@@ -17,6 +17,11 @@ import {
   verifyTotpCode,
 } from "../../../authentication-flows/mfa";
 import { logMessage } from "../../../helpers/logging";
+import {
+  checkMfaAttemptAllowed,
+  isMfaLockedOut,
+  recordMfaFailure,
+} from "../../../authentication-flows/mfa-attempts";
 import QRCode from "qrcode";
 import { createTranslation } from "../../../i18n";
 import { escapeHtml } from "../sanitization-utils";
@@ -153,6 +158,13 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         );
       }
 
+      if (isMfaLockedOut(loginSession)) {
+        return accountMfaTotpEnrollmentScreen({
+          ...context,
+          errors: { code: getTranslation(context).m.tooManyFailuresText() },
+        });
+      }
+
       // Generate a new TOTP secret
       const secretBase32 = generateTotpSecret();
 
@@ -212,6 +224,26 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         : {};
       const secretBase32 = stateData.totpSecret as string | undefined;
 
+      const tooManyFailures = async () => ({
+        error: m.tooManyFailuresText(),
+        screen: await accountMfaTotpEnrollmentScreen({
+          ...context,
+          errors: { code: m.tooManyFailuresText() },
+        }),
+      });
+
+      if (
+        loginSession &&
+        !(await checkMfaAttemptAllowed(
+          ctx,
+          tenant.id,
+          loginSession,
+          user.user_id,
+        ))
+      ) {
+        return tooManyFailures();
+      }
+
       if (!secretBase32) {
         // Session expired or secret lost — redirect to start over
         const routePrefix = context.routePrefix || "/u2";
@@ -244,6 +276,17 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
           description: "MFA TOTP enrollment verification failed - invalid code",
           userId: user.user_id,
         });
+        if (loginSession) {
+          const { lockedOut } = await recordMfaFailure(
+            ctx,
+            tenant.id,
+            loginSession.id,
+            user.user_id,
+          );
+          if (lockedOut) {
+            return tooManyFailures();
+          }
+        }
         return {
           error: m.invalidCodeText(),
           screen: await reRenderWithQr(context, m.invalidCodeText()),
@@ -272,7 +315,7 @@ export const accountMfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         state,
         {
           type: LoginSessionEventType.UPDATE_CONTEXT,
-          data: { totpSecret: undefined },
+          data: { totpSecret: undefined, mfa_failed_attempts: undefined },
         },
         {},
       );

@@ -12,6 +12,12 @@ import { escapeHtml } from "../sanitization-utils";
 import { createTranslation } from "../../../i18n";
 import { verifyMfaOtp, sendMfaOtp } from "../../../authentication-flows/mfa";
 import {
+  checkMfaAttemptAllowed,
+  isMfaLockedOut,
+  MfaSmsRateLimitError,
+  recordMfaFailure,
+} from "../../../authentication-flows/mfa-attempts";
+import {
   transitionLoginSession,
   LoginSessionEventType,
 } from "../../../state-machines/login-session";
@@ -208,8 +214,14 @@ export const mfaPhoneChallengeScreenDefinition: ScreenDefinition = {
         try {
           await sendMfaOtp(ctx, client, loginSession, phone);
           messages.push({ text: m.resendSuccess(), type: "success" });
-        } catch {
-          messages.push({ text: m["send-sms-failed"](), type: "error" });
+        } catch (err) {
+          messages.push({
+            text:
+              err instanceof MfaSmsRateLimitError
+                ? m["too-many-sms"]()
+                : m["send-sms-failed"](),
+            type: "error",
+          });
         }
 
         return {
@@ -239,6 +251,21 @@ export const mfaPhoneChallengeScreenDefinition: ScreenDefinition = {
         state,
       );
 
+      const tooManyFailures = async () => {
+        const errorMessage = m["too-many-failures"]();
+        return {
+          error: errorMessage,
+          screen: await mfaPhoneChallengeScreen({
+            ...context,
+            errors: { code: errorMessage },
+          }),
+        };
+      };
+
+      if (loginSession && isMfaLockedOut(loginSession)) {
+        return tooManyFailures();
+      }
+
       if (
         !loginSession ||
         !loginSession.user_id ||
@@ -252,6 +279,17 @@ export const mfaPhoneChallengeScreenDefinition: ScreenDefinition = {
             errors: { code: errorMessage },
           }),
         };
+      }
+
+      if (
+        !(await checkMfaAttemptAllowed(
+          ctx,
+          client.tenant.id,
+          loginSession,
+          loginSession.user_id,
+        ))
+      ) {
+        return tooManyFailures();
       }
 
       logMessage(ctx, client.tenant.id, {
@@ -298,6 +336,16 @@ export const mfaPhoneChallengeScreenDefinition: ScreenDefinition = {
           description: "MFA verification failed - invalid code",
           userId: loginSession.user_id,
         });
+
+        const { lockedOut } = await recordMfaFailure(
+          ctx,
+          client.tenant.id,
+          loginSession.id,
+          loginSession.user_id,
+        );
+        if (lockedOut) {
+          return tooManyFailures();
+        }
 
         const phone = await getEnrollmentPhone(
           ctx,
@@ -393,6 +441,7 @@ export const mfaPhoneChallengeScreenDefinition: ScreenDefinition = {
               mfa_verified: true,
               mfa_method: "phone",
               mfa_verified_at: new Date().toISOString(),
+              mfa_failed_attempts: undefined,
             },
           },
           { state: newState },

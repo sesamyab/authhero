@@ -4,6 +4,7 @@ import {
   LoginSession,
   LogTypes,
   AuthenticationMethod,
+  MfaPolicy,
   Strategy,
 } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../types";
@@ -13,6 +14,7 @@ import { logMessage } from "../helpers/logging";
 import { createClientServiceToken } from "../helpers/service-token";
 import { verifyTOTP, createTOTPKeyURI } from "../utils/totp";
 import { encodeBase32, decodeBase32 } from "@authhero/adapter-interfaces";
+import { enforceMfaSmsSendLimit } from "./mfa-attempts";
 
 const MFA_OTP_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -27,12 +29,29 @@ export type MfaCheckResult =
     };
 
 /**
+ * Whether the tenant MFA policy alone requires MFA. `all-applications` is
+ * Auth0's name for `always`. `confidence-score` (adaptive MFA) is accepted but
+ * not supported: with no risk score to consult it is enforced like `always`,
+ * never skipped. Fails closed: anything but an unset policy or `never`
+ * requires MFA.
+ */
+export function tenantPolicyRequiresMfa(
+  policy: MfaPolicy | undefined,
+): boolean {
+  return policy !== undefined && policy !== "never";
+}
+
+/**
  * Check if MFA is required for a user based on tenant policy and enrollment status.
+ *
+ * `options.force` requires MFA whatever the tenant policy says; it is set when
+ * a post-login action called `api.multifactor.enable(...)`.
  */
 export async function checkMfaRequired(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   tenantId: string,
   userId: string,
+  options: { force?: boolean } = {},
 ): Promise<MfaCheckResult> {
   const tenant = await ctx.env.data.tenants.get(tenantId);
   if (!tenant) {
@@ -40,8 +59,7 @@ export async function checkMfaRequired(
   }
 
   // Check MFA policy
-  const policy = tenant.mfa?.policy;
-  if (!policy || policy === "never") {
+  if (!options.force && !tenantPolicyRequiresMfa(tenant.mfa?.policy)) {
     return { required: false };
   }
 
@@ -55,7 +73,7 @@ export async function checkMfaRequired(
   if (!hasSupportedFactor) {
     throw new HTTPException(500, {
       message:
-        "MFA policy requires MFA but no supported factors are enabled. Enable at least one factor (e.g. SMS, OTP, or WebAuthn) in the tenant MFA configuration.",
+        "MFA is required (by the tenant policy or a post-login action) but no supported factors are enabled. Enable at least one factor (e.g. SMS, OTP, or WebAuthn) in the tenant MFA configuration.",
     });
   }
 
@@ -97,8 +115,19 @@ export async function sendMfaOtp(
   client: EnrichedClient,
   loginSession: LoginSession,
   phoneNumber: string,
+  userId?: string,
 ): Promise<void> {
   const tenant = client.tenant;
+
+  // Cap SMS volume per login session and per user before sending anything
+  await enforceMfaSmsSendLimit(
+    ctx,
+    tenant.id,
+    loginSession.id,
+    phoneNumber,
+    userId,
+  );
+
   const code = generateOTP();
   const codeId = `mfa:${loginSession.id}`;
 

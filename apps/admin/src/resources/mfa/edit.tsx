@@ -43,9 +43,17 @@ function FactorsTab() {
           choices={[
             { id: "never", name: "Never" },
             { id: "always", name: "Always (required for all logins)" },
+            {
+              id: "all-applications",
+              name: "All applications (Auth0 name for Always)",
+            },
+            {
+              id: "confidence-score",
+              name: "Adaptive (not supported: enforced like Always)",
+            },
           ]}
           defaultValue="never"
-          helperText="Controls when users are prompted for multi-factor authentication."
+          helperText="Controls when users are prompted for multi-factor authentication. Post-login actions can also require MFA per login with api.multifactor.enable()."
         />
         <div className="grid gap-2 sm:grid-cols-2">
           <FactorRow source="mfa.factors.otp" label="One-time password (OTP)" />
