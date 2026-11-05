@@ -75,7 +75,11 @@ async function setup() {
   await env.data.loginSessions.update("tenantId", loginSession.id, {
     session_id: session.id,
   });
-  return { client: testClient(universalApp, env), state: loginSession.id };
+  return {
+    client: testClient(universalApp, env),
+    state: loginSession.id,
+    env,
+  };
 }
 
 describe("classic /u/impersonate with SAML", () => {
@@ -87,6 +91,26 @@ describe("classic /u/impersonate with SAML", () => {
     });
     expect(res.status).toBe(200);
     expect(decode(await res.text())).toContain("target@example.com");
+  });
+  it("switch drops the impersonator's MFA from the session (#1668)", async () => {
+    const { client, state, env } = await setup();
+    await env.data.sessions.update("tenantId", "session123", {
+      authentication: {
+        methods: [
+          { name: "mfa", type: "totp", timestamp: new Date().toISOString() },
+        ],
+      },
+    });
+
+    const res = await client.impersonate.switch.$post({
+      query: { state },
+      form: { user_id: TARGET },
+    });
+    expect(res.status).toBe(200);
+
+    const session = await env.data.sessions.get("tenantId", "session123");
+    expect(session?.user_id).toBe(TARGET);
+    expect(session?.authentication?.methods ?? []).toEqual([]);
   });
   it("continue returns the SAML form", async () => {
     const { client, state } = await setup();

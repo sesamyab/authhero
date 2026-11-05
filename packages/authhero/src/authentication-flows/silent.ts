@@ -238,7 +238,7 @@ export async function silentAuth({
   // sessions from before the tenant turned MFA on.
   const { checkMfaRequired } = await import("./mfa");
   const mfaCheck = await checkMfaRequired(ctx, client.tenant.id, user.user_id);
-  if (mfaCheck.required && !sessionSatisfiesMfa(session, session.user_id)) {
+  if (mfaCheck.required && !sessionSatisfiesMfa(session, user.user_id)) {
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_SILENT_AUTH,
       description: "Multi-factor authentication required",
