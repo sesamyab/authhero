@@ -277,4 +277,59 @@ describe("MFA completion on the session (#1668)", () => {
     const body = await response.text();
     expect(body).toMatch(/"code":"[^"]+"/);
   });
+
+  it("does not let a linked identity's session MFA cover the primary user in silent auth", async () => {
+    const server = await getTestServer({ testTenantLanguage: "en" });
+    const { env, oauthApp } = server;
+    await enrollTotp(env);
+    await env.data.users.create("tenantId", {
+      user_id: "auth0|secondary",
+      email: "foo@example.com",
+      email_verified: true,
+      provider: "auth0",
+      connection: "Username-Password-Authentication",
+      is_social: false,
+      linked_to: USER_ID,
+    });
+
+    // A session on the secondary identity that recorded MFA for it.
+    const session = await env.data.sessions.create("tenantId", {
+      id: "secondarySession",
+      user_id: "auth0|secondary",
+      login_session_id: "oldLoginSession",
+      device,
+      clients: ["clientId"],
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      idle_expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      authentication: {
+        methods: [
+          { name: "mfa", type: "totp", timestamp: new Date().toISOString() },
+        ],
+      },
+    });
+    await enableTotpMfa(env);
+
+    const oauthClient = testClient(oauthApp, env);
+    const response = await oauthClient.authorize.$get(
+      {
+        query: {
+          client_id: "clientId",
+          redirect_uri: "https://example.com/callback",
+          state: "state",
+          prompt: "none",
+          response_type: AuthorizationResponseType.CODE,
+          response_mode: AuthorizationResponseMode.WEB_MESSAGE,
+        },
+      },
+      {
+        headers: {
+          origin: "https://example.com",
+          cookie: `tenantId-auth-token=${session.id}`,
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("interaction_required");
+  });
 });
