@@ -11,6 +11,7 @@ import {
   CustomDomainsAdapter,
   DataAdapters,
   createEncryptedDataAdapterWithKeyRing,
+  createLocalTenantMembersBackend,
   loadEncryptionKey,
   runRetention,
   type KeyRing,
@@ -92,6 +93,21 @@ export default {
         tenants: dataAdapter.tenants,
         controlPlaneTenantId: CONTROL_PLANE_TENANT_ID,
       }),
+      // A tenant's team is an organization on this control plane whose name is
+      // the tenant id, so the admin's Team page is answered here, from this
+      // database, and not by the tenant's Worker. Mounting it also keeps
+      // `/tenant-members` out of `tenantDispatch`. Every call is pinned to the
+      // token's `org_name`. Invitations need an email provider to be mailed.
+      tenantMembers: {
+        getBackend: (c) =>
+          createLocalTenantMembersBackend({
+            data: c.env.data,
+            controlPlaneTenantId: CONTROL_PLANE_TENANT_ID,
+            issuer,
+            invitationClientId: "default",
+            ctx: c,
+          }),
+      },
       proxyControlPlane: {
         resolveHost: createProxyDataAdapter(db).resolveHost,
         customDomains,
