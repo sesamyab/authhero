@@ -120,6 +120,13 @@
       "when": 1793196589959,
       "tag": "0016_tenant_member_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1793878172004,
+      "tag": "0017_session_authentication",
+      "breakpoints": true
     }
   ]
 }

@@ -10,16 +10,24 @@ export interface UrlTabsProps extends Omit<
   "value" | "onValueChange"
 > {
   param?: string;
+  // Tab values that can currently be shown. When the URL selects one outside
+  // this list, the default tab is shown instead.
+  availableValues?: string[];
 }
 
 export function UrlTabs({
   param = "tab",
   defaultValue,
+  availableValues,
   ...props
 }: UrlTabsProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const requested = searchParams.get(param);
   const current =
-    searchParams.get(param) ?? (defaultValue as string | undefined);
+    requested !== null &&
+    (!availableValues || availableValues.includes(requested))
+      ? requested
+      : (defaultValue as string | undefined);
 
   const handleChange = React.useCallback(
     (value: string) => {

@@ -47,6 +47,7 @@ Key points:
 
 - The Universal Login screen **never issues tokens or sets the auth cookie**. Its job is: validate credentials, write `user_id` + `auth_strategy` + `auth_connection` onto the login session, transition the state machine to `AUTHENTICATED`, and 302 to `/authorize/resume`.
 - If MFA or email verification is required, the state transitions to `AWAITING_MFA` / `AWAITING_EMAIL_VERIFICATION` and `/authorize/resume` redirects back to the appropriate UL screen instead of completing.
+- When MFA succeeds, the completion (time and authentication method type) is also recorded on the browser session as `authentication.methods[]` entries with `name: "mfa"`. A later `/authorize` that reuses that session (SSO, for this or another client) treats MFA as satisfied, and silent authentication (`prompt=none`) returns `interaction_required` when the tenant requires MFA but the session never completed it, for example a session from before MFA was enabled.
 - Only `/authorize/resume` writes the `{tenant_id}-auth-token` cookie (via `serializeAuthCookie`), and it does so on the host the authorize request originated from.
 
 ## 2. Social (OAuth) connection flow

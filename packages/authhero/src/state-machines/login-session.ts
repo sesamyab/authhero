@@ -25,6 +25,10 @@ export interface LoginSessionData {
    * already run for this login so the resume after MFA does not run them again.
    */
   mfa_required_by_action?: MfaRequiredByAction;
+  /** Authentication method type that satisfied MFA (e.g. "totp", "phone") */
+  mfa_method?: string;
+  /** When MFA was verified (ISO 8601); copied onto the browser session */
+  mfa_verified_at?: string;
   authenticationMethodId?: string;
   phoneNumber?: string;
   totpSecret?: string;

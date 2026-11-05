@@ -59,6 +59,11 @@ import { getMissingConsentScopes } from "../helpers/consent";
 import { isDeviceLoginSession, deviceFlowData } from "../helpers/device-flow";
 import { isConnectLoginSession } from "../helpers/dcr/connect-state";
 import {
+  getSessionMfaCompletion,
+  recordSessionMfa,
+  sessionSatisfiesMfa,
+} from "../helpers/session-mfa";
+import {
   buildScopeClaims,
   buildRequestedClaims,
 } from "../helpers/scope-claims";
@@ -1732,6 +1737,50 @@ export async function createFrontChannelAuthResponse(
       });
     }
 
+    // MFA was verified in this login: copy it onto the browser session so
+    // later SSO hops and silent auth know this session completed MFA (#1668).
+    // Best-effort: if the write fails the session just isn't marked, which
+    // only means MFA is asked for again — never that it is skipped.
+    if (
+      mfaState === LoginSessionState.AUTHENTICATED &&
+      stateData.mfa_verified === true &&
+      session_id
+    ) {
+      try {
+        const session = await ctx.env.data.sessions.get(
+          client.tenant.id,
+          session_id,
+        );
+        const verifiedAt =
+          typeof stateData.mfa_verified_at === "string"
+            ? stateData.mfa_verified_at
+            : undefined;
+        if (
+          session &&
+          !session.revoked_at &&
+          session.user_id === user.user_id &&
+          // Without a verification time (a login session from before this
+          // was tracked) only record once, so re-entries don't stack entries.
+          (verifiedAt || !getSessionMfaCompletion(session))
+        ) {
+          await recordSessionMfa(
+            ctx.env.data.sessions,
+            client.tenant.id,
+            session,
+            {
+              type:
+                typeof stateData.mfa_method === "string"
+                  ? stateData.mfa_method
+                  : undefined,
+              timestamp: verifiedAt ?? new Date().toISOString(),
+            },
+          );
+        }
+      } catch (err) {
+        console.error("Failed to record MFA completion on session", err);
+      }
+    }
+
     // If state is AUTHENTICATED and MFA hasn't been verified yet, check if MFA is required
     if (
       mfaState === LoginSessionState.AUTHENTICATED &&
@@ -1746,7 +1795,18 @@ export async function createFrontChannelAuthResponse(
         { force: Boolean(stateData.mfa_required_by_action) },
       );
 
-      if (mfaCheck.required) {
+      // A browser session that already completed MFA satisfies the policy, so
+      // an SSO hop to this or another client doesn't ask again (#1668).
+      const sessionCompletedMfa =
+        mfaCheck.required && session_id
+          ? await ctx.env.data.sessions
+              .get(client.tenant.id, session_id)
+              .then((session) =>
+                session ? sessionSatisfiesMfa(session, user.user_id) : false,
+              )
+          : false;
+
+      if (mfaCheck.required && !sessionCompletedMfa) {
         // Transition to AWAITING_MFA
         const { state: newState } = transitionLoginSession(
           LoginSessionState.AUTHENTICATED,

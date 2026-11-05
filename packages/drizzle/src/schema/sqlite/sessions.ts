@@ -26,6 +26,8 @@ export const sessions = sqliteTable(
     device: text("device").notNull(),
     clients: text("clients").notNull(),
     login_session_id: text("login_session_id", { length: 21 }),
+    // JSON: { methods: [{ name, timestamp, type? }] } — MFA completion (#1668)
+    authentication: text("authentication"),
   },
   (table) => [
     primaryKey({ columns: [table.tenant_id, table.id], name: "sessions_pk" }),
