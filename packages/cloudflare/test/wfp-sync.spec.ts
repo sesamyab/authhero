@@ -1297,6 +1297,150 @@ describe("sync-defaults operation transport (createDispatchSyncConfig → /inter
     expect((await tenant.connections.list(CP)).connections).toHaveLength(0);
   });
 
+  describe("control plane signing keys", () => {
+    const cpKey = (kid: string) => ({
+      kid,
+      type: "jwt_signing" as const,
+      cert: "-----PUBLIC-----",
+      fingerprint: "fp",
+      thumbprint: "tp",
+    });
+    const tenantKeys = async () =>
+      (await tenant.keys.list({ q: "type:jwt_signing" })).signingKeys.map(
+        (k) => k.kid,
+      );
+
+    it("delivers the public key with a sync, never the private part", async () => {
+      await cp.keys.create({ ...cpKey("cp-kid-1"), pkcs7: "PRIVATE" });
+
+      await syncFor(dispatcherToTenant())("acme", {
+        dryRun: false,
+        force: false,
+      });
+
+      expect(await tenantKeys()).toEqual(["cp-kid-1"]);
+      const { signingKeys } = await tenant.keys.list({
+        q: "type:jwt_signing",
+      });
+      expect(signingKeys[0]?.pkcs7).toBeFalsy();
+      expect(signingKeys[0]?.tenant_id).toBeFalsy();
+    });
+
+    it("brings a rotated key across on the next sync and keeps the old one", async () => {
+      await cp.keys.create(cpKey("cp-kid-1"));
+      const sync = syncFor(dispatcherToTenant());
+      await sync("acme", { dryRun: false, force: false });
+
+      await cp.keys.create(cpKey("cp-kid-2"));
+      // The block is unchanged, so the sync is a no-op for config but still
+      // carries the new key.
+      const second = await sync("acme", { dryRun: false, force: false });
+
+      expect(second.status).toBe("up-to-date");
+      expect((await tenantKeys()).sort()).toEqual(["cp-kid-1", "cp-kid-2"]);
+    });
+
+    it("does not write the keys on a dry run", async () => {
+      await cp.keys.create(cpKey("cp-kid-1"));
+
+      await syncFor(dispatcherToTenant())("acme", {
+        dryRun: true,
+        force: false,
+      });
+
+      expect(await tenantKeys()).toEqual([]);
+    });
+
+    it("leaves the config hash alone", async () => {
+      const before = await syncFor(dispatcherToTenant())("acme", {
+        dryRun: true,
+        force: false,
+      });
+      await cp.keys.create(cpKey("cp-kid-1"));
+      const after = await syncFor(dispatcherToTenant())("acme", {
+        dryRun: true,
+        force: false,
+      });
+
+      expect(after.hash).toBe(before.hash);
+    });
+
+    it("does not record the hash when a key could not be stored", async () => {
+      await cp.keys.create(cpKey("cp-kid-1"));
+      const create = tenant.keys.create;
+      tenant.keys.create = async () => {
+        throw new Error("disk full");
+      };
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      try {
+        await syncFor(dispatcherToTenant())("acme", {
+          dryRun: false,
+          force: false,
+        });
+      } finally {
+        tenant.keys.create = create;
+        spy.mockRestore();
+      }
+
+      expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+      expect(await tenantKeys()).toEqual([]);
+    });
+
+    it("marks a synced tenant as drifted when a later key could not be stored", async () => {
+      const sync = syncFor(dispatcherToTenant());
+      const first = await sync("acme", { dryRun: false, force: false });
+      expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(first.hash);
+
+      await cp.keys.create(cpKey("cp-kid-1"));
+      const create = tenant.keys.create;
+      tenant.keys.create = async () => {
+        throw new Error("disk full");
+      };
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        // The block is unchanged, so the tenant answers "up-to-date".
+        const second = await sync("acme", { dryRun: false, force: false });
+        expect(second.status).toBe("up-to-date");
+      } finally {
+        tenant.keys.create = create;
+        spy.mockRestore();
+      }
+
+      expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+
+      // The next sync stores the key and records the hash again.
+      await sync("acme", { dryRun: false, force: false });
+      expect(await tenantKeys()).toEqual(["cp-kid-1"]);
+      expect((await cp.tenants.get("acme"))?.config_sync_hash).toBe(first.hash);
+    });
+
+    it("accepts a push from a control plane that sends no keys", async () => {
+      const res = await app.fetch(
+        new Request("https://tenant.internal/internal/sync-config", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer push-secret",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            tenantId: "acme",
+            resolved: await (
+              await import("@authhero/multi-tenancy")
+            ).buildResolvedConfigBlock(cp, "acme", {
+              legacyControlPlane: CP,
+            }),
+          }),
+        }),
+        env,
+        ctx,
+      );
+
+      expect(res.status).toBe(200);
+      expect(await tenantKeys()).toEqual([]);
+    });
+  });
+
   it("refuses the push before any write when the tenant cannot decrypt a key id", async () => {
     // A control-plane action whose secret is stored under the "cp" key id.
     const cpKey = await loadEncryptionKey(b64Key(2));

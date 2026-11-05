@@ -169,6 +169,20 @@ export async function buildControlPlaneDefaultsPayload(
 }
 
 /**
+ * The control plane's public signing keys, stripped of private material, as the
+ * `sync-config` push carries them. Rotation mints a new `kid`, so sending them
+ * with every sync is what lets a tenant keep verifying control-plane tokens
+ * after a rotation. Apply them with {@link applyControlPlaneSigningKeys}.
+ */
+export async function buildControlPlaneSigningKeys(
+  controlPlaneAdapters: DataAdapters,
+): Promise<SigningKey[]> {
+  return (await listControlPlaneKeys(controlPlaneAdapters.keys)).map(
+    toPublicControlPlaneKey,
+  );
+}
+
+/**
  * Build the FK-target tenant seeds: always the control-plane tenant row, plus
  * the target tenant's own row when a (distinct) `targetTenantId` is given.
  * `friendly_name` is read off the control-plane DB (which holds every tenant's
@@ -198,7 +212,7 @@ async function buildTenantSeeds(
  * create-if-missing by `kid` — rotation mints a new kid, and leaving old public
  * keys behind is harmless. `pkcs7` is re-stripped defensively here too.
  */
-async function applyControlPlaneSigningKeys(
+export async function applyControlPlaneSigningKeys(
   keys: SigningKey[],
   target: DataAdapters,
   continueOnError: boolean,

@@ -1,5 +1,6 @@
 import type { DataAdapters } from "@authhero/adapter-interfaces";
 import {
+  buildControlPlaneSigningKeys,
   buildResolvedConfigBlock,
   type ApplyResolvedBlockResult,
   syncErrors,
@@ -74,6 +75,12 @@ export function createDispatchSyncConfig(
       { legacyControlPlane: controlPlaneTenantId, maxDepth },
     );
 
+    // The control plane's public signing keys travel with every push. They are
+    // outside the block (and its hash), so a tenant that lacks one, or has not
+    // seen a rotation yet, is brought up to date without showing as drifted.
+    const signingKeys =
+      await buildControlPlaneSigningKeys(controlPlaneAdapters);
+
     const scriptName = fillTemplate(scriptNameTemplate, tenantId);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -88,7 +95,14 @@ export function createDispatchSyncConfig(
             "content-type": "application/json",
             authorization: `Bearer ${internalSecret}`,
           },
-          body: JSON.stringify({ tenantId, resolved, dryRun, force, prune }),
+          body: JSON.stringify({
+            tenantId,
+            resolved,
+            signingKeys,
+            dryRun,
+            force,
+            prune,
+          }),
           signal: controller.signal,
         });
     } finally {
@@ -111,12 +125,44 @@ export function createDispatchSyncConfig(
     // there. Only for a real, clean run: a dry run applied nothing, and a
     // partial run did not reach the block's hash. "up-to-date" means the tenant
     // already holds this hash, which the control plane may not know yet.
+    //
+    // A control plane key the tenant could not store counts as a failure too:
+    // it is reported next to the block, outside the entity results that
+    // `syncErrors` reads, and recording the hash would show the tenant as up to
+    // date while control-plane tokens still fail with "No matching kid found".
+    const keyErrors =
+      (result as { signingKeys?: { errors?: unknown[] } }).signingKeys
+        ?.errors ?? [];
+    if (keyErrors.length > 0) {
+      console.error(
+        `[wfp] "${tenantId}" could not store ${keyErrors.length} control plane signing key(s); its config hash is cleared, so it shows as drifted until a sync stores them:`,
+        keyErrors,
+      );
+      // The block can be unchanged (the tenant answers "up-to-date") while the
+      // key failed, and the control plane may already hold that hash. Not
+      // recording is not enough then: clear it so status and the drift reconcile
+      // see the tenant and push again. A dry run changed nothing, so it leaves
+      // the row alone. Best effort, like the recording below.
+      if (!dryRun && tenant) {
+        try {
+          await controlPlaneAdapters.tenants.update(tenantId, {
+            config_sync_hash: null,
+          });
+        } catch (error) {
+          console.error(
+            `[wfp] could not clear the config hash of "${tenantId}" after a key failure:`,
+            error,
+          );
+        }
+      }
+    }
     if (
       !dryRun &&
       result.status !== "dry-run" &&
       result.hash &&
       tenant &&
-      syncErrors(result).length === 0
+      syncErrors(result).length === 0 &&
+      keyErrors.length === 0
     ) {
       // Two syncs of one tenant can overlap (an operator and a rollout), and a
       // parent can be edited while a push is in flight. Either way this push

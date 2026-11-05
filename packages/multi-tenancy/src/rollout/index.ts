@@ -22,6 +22,8 @@ export type {
 export {
   buildControlPlaneDefaultsPayload,
   applyControlPlaneDefaultsPayload,
+  buildControlPlaneSigningKeys,
+  applyControlPlaneSigningKeys,
 } from "./payload";
 export type {
   ApplyResolvedBlockOptions,
