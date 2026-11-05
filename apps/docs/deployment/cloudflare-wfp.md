@@ -303,6 +303,10 @@ VALUES ('cd-acme', 'acme', 'auth.acme.com', 1, 'ready', 'auth0_managed_certs',
 
 :::
 
+::: tip Using the central admin? The control plane also needs an organization
+The admin asks the control plane for a token scoped to an organization **named like the tenant** (`acme`). Creating the tenant through the management API makes that organization for you; direct SQL does not, and the admin then fails with `Organization 'acme' not found` when you open the tenant. In the admin, open the control plane tenant, create an organization with the tenant's id as its name, and add your admin user to it.
+:::
+
 ::: tip control-plane scope
 The `POST /api/v2/tenants` endpoint requires the `create:tenants` scope **and** must be called against a control-plane tenant (see [Multi-Tenancy](/architecture/multi-tenancy)). Use a service-account token, never a tenant token.
 :::
@@ -376,10 +380,14 @@ cd tenant-acme/
 npx wrangler dev src/seed.ts --remote --config wrangler.local.toml
 
 # in another terminal — choose your own password, don't keep the default
-curl "http://localhost:8787/?username=admin@acme.com&password=<password>"
+curl "http://localhost:8787/?username=admin&password=<password>"
 ```
 
 The response contains `"success":true` when the seed completed.
+
+::: warning Use a username without `@`
+The management API refuses a username that contains `@`, and the users list validates every row it returns, so one such user makes `GET /users` answer `500` for the whole tenant. Keep the address out of the username (`admin`, not `admin@acme.com`); an address belongs in the email field.
+:::
 
 ::: warning Don't use `npm run seed:remote`
 The script starts `wrangler dev` without `--config wrangler.local.toml`, so it never sees your real `database_id`.
