@@ -12,7 +12,6 @@ import {
   createServiceTokenCore,
 } from "authhero";
 import { Env } from "./types";
-// @authhero-admin-import
 
 // ──────────────────────────────────────────────────────────────────────────────
 // What `createWfpTenantApp` gives this Worker, so none of it is wired here:
@@ -54,7 +53,6 @@ export default createWfpTenantApp<Env>({
 
   configure: (base, env) => ({
     ...base,
-    // @authhero-admin-config
     // The app is built once per isolate, so the origins are fixed rather than
     // echoed per request. Leave ALLOWED_ORIGINS unset to allow none.
     allowedOrigins: (env.ALLOWED_ORIGINS ?? "")

@@ -34,7 +34,6 @@ const cases = {
   "cloudflare-ci": ["--template", "cloudflare", "--github-ci"],
   "wfp-dispatcher": ["--template", "cloudflare-wfp-dispatcher"],
   "wfp-tenant": ["--template", "cloudflare-wfp-tenant"],
-  "wfp-tenant-admin": ["--template", "cloudflare-wfp-tenant", "--admin-ui"],
   "control-plane": ["--template", "cloudflare-control-plane"],
   "aws-sst": ["--template", "aws-sst"],
   proxy: ["--template", "proxy"],
@@ -406,26 +405,6 @@ describe("wfp-tenant template sync wiring", () => {
       expect(wrangler, `${name} should be in [vars]`).toMatch(
         new RegExp(`^${name} = `, "m"),
       );
-    }
-  });
-});
-
-describe("wfp-tenant template admin UI", () => {
-  it("serves the admin at /admin when asked for", () => {
-    const { projectPath } = projects["wfp-tenant-admin"];
-    const index = readFile(projectPath, "src/index.ts");
-    expect(index).toContain('import adminIndexHtml from "./admin-index-html";');
-    expect(index).toMatch(/^\s+adminIndexHtml,$/m);
-    expect(index).not.toContain("@authhero-admin");
-    expect(
-      readJson(path.join(projectPath, "package.json")).dependencies,
-    ).toHaveProperty("@authhero/admin");
-  });
-
-  it("leaves no marker comments behind", () => {
-    for (const name of ["wfp-tenant", "wfp-tenant-admin"] as const) {
-      const index = readFile(projects[name].projectPath, "src/index.ts");
-      expect(index, name).not.toContain("@authhero-admin");
     }
   });
 });
