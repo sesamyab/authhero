@@ -673,6 +673,39 @@ describe("tenant settings and the control plane's sync fields", () => {
     );
   });
 
+  it("reads and saves the control plane's record with the control plane client, not the tenant's", async () => {
+    managementClient.tenants.settings.get.mockResolvedValue(tenantRow);
+    managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+    // The tenant's client holds a token scoped to the tenant's organization,
+    // which the control plane refuses for the sync mode and the parent.
+    const tenantClient = createHttpClient(() => {
+      throw new Error("the tenant's client must not be used for these calls");
+    });
+    const controlPlane = controlPlaneClient();
+    const provider = auth0DataProvider(
+      API_URL,
+      tenantClient.client,
+      TENANT_ID,
+      undefined,
+      controlPlane.client,
+    );
+
+    const { data } = await provider.getOne("settings", { id: "settings" });
+    expect(data).toMatchObject({ config_sync: "synced" });
+
+    await provider.update("settings", {
+      id: "settings",
+      previousData: { ...data },
+      data: { ...data, config_sync: "inherit-on-read" },
+    });
+
+    expect(tenantClient.calls).toHaveLength(0);
+    expect(controlPlane.calls.map((c) => c.options?.method ?? "GET")).toEqual([
+      "GET",
+      "PATCH",
+    ]);
+  });
+
   it("clears the parent with null", async () => {
     managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
     const { client, calls } = controlPlaneClient();
