@@ -11,6 +11,7 @@ import { LogTypes } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import { createTranslation } from "../../../i18n";
 import { sendMfaOtp } from "../../../authentication-flows/mfa";
+import { MfaSmsRateLimitError } from "../../../authentication-flows/mfa-attempts";
 import { logMessage } from "../../../helpers/logging";
 import { HTTPException } from "hono/http-exception";
 import {
@@ -275,7 +276,9 @@ export const mfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
         // below, so we don't flag them to Cloudflare observability. Only
         // unexpected failures (e.g. SMS provider errors) are logged at error
         // level.
-        const isExpected = err instanceof HTTPException && err.status < 500;
+        const isExpected =
+          (err instanceof HTTPException && err.status < 500) ||
+          err instanceof MfaSmsRateLimitError;
         if (!isExpected) {
           console.error(
             "[mfa-phone-enrollment] Error during phone enrollment:",
@@ -287,7 +290,10 @@ export const mfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
           description: `MFA phone enrollment failed: ${err instanceof Error ? err.message : String(err)}`,
           userId: loginSession.user_id,
         });
-        const errorMessage = m["sms-authenticator-error"]();
+        const errorMessage =
+          err instanceof MfaSmsRateLimitError
+            ? m["too-many-sms"]()
+            : m["sms-authenticator-error"]();
         return {
           error: errorMessage,
           screen: await mfaPhoneEnrollmentScreen({

@@ -12,6 +12,12 @@ import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import { resolveAccountUser } from "./account-helpers";
 import { escapeHtml } from "../sanitization-utils";
 import { sendMfaOtp, verifyMfaOtp } from "../../../authentication-flows/mfa";
+import {
+  checkMfaAttemptAllowed,
+  isMfaLockedOut,
+  MfaSmsRateLimitError,
+  recordMfaFailure,
+} from "../../../authentication-flows/mfa-attempts";
 import { logMessage } from "../../../helpers/logging";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import type { CountryCode } from "libphonenumber-js";
@@ -250,6 +256,16 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
           };
         }
 
+        if (isMfaLockedOut(loginSession)) {
+          return {
+            error: m.tooManyFailuresText(),
+            screen: phoneInputScreen({
+              ...context,
+              errors: { phone_number: m.tooManyFailuresText() },
+            }),
+          };
+        }
+
         try {
           logMessage(ctx, tenant.id, {
             type: LogTypes.MFA_ENROLL_STARTED,
@@ -320,11 +336,15 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
             description: `MFA phone enrollment failed: ${err instanceof Error ? err.message : String(err)}`,
             userId: user.user_id,
           });
+          const errorText =
+            err instanceof MfaSmsRateLimitError
+              ? m.tooManySmsText()
+              : m.sendCodeFailedText();
           return {
-            error: m.sendCodeFailedText(),
+            error: errorText,
             screen: phoneInputScreen({
               ...context,
-              errors: { phone_number: m.sendCodeFailedText() },
+              errors: { phone_number: errorText },
             }),
           };
         }
@@ -364,6 +384,28 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
           };
         }
 
+        const tooManyFailures = () => ({
+          error: m.tooManyFailuresText(),
+          screen: codeInputScreen(
+            {
+              ...context,
+              errors: { code: m.tooManyFailuresText() },
+            },
+            masked,
+          ),
+        });
+
+        if (
+          !(await checkMfaAttemptAllowed(
+            ctx,
+            tenant.id,
+            loginSession,
+            user.user_id,
+          ))
+        ) {
+          return tooManyFailures();
+        }
+
         const valid = await verifyMfaOtp(ctx, tenant.id, loginSession.id, code);
 
         if (!valid) {
@@ -373,6 +415,15 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
               "MFA phone enrollment verification failed - invalid code",
             userId: user.user_id,
           });
+          const { lockedOut } = await recordMfaFailure(
+            ctx,
+            tenant.id,
+            loginSession.id,
+            user.user_id,
+          );
+          if (lockedOut) {
+            return tooManyFailures();
+          }
           return {
             error: m.invalidCodeText(),
             screen: codeInputScreen(
@@ -421,7 +472,11 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
           state,
           {
             type: LoginSessionEventType.UPDATE_CONTEXT,
-            data: { authenticationMethodId: undefined, phoneNumber: undefined },
+            data: {
+              authenticationMethodId: undefined,
+              phoneNumber: undefined,
+              mfa_failed_attempts: undefined,
+            },
           },
           {},
         );

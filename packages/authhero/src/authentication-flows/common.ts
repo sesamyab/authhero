@@ -1843,12 +1843,18 @@ export async function createFrontChannelAuthResponse(
             throw new Error("MFA enrollment is missing phone_number");
           }
 
-          await sendMfaOtp(
-            ctx,
-            client,
-            params.loginSession,
-            mfaCheck.enrollment.phone_number,
-          );
+          const { MfaSmsRateLimitError } = await import("./mfa-attempts");
+          try {
+            await sendMfaOtp(
+              ctx,
+              client,
+              params.loginSession,
+              mfaCheck.enrollment.phone_number,
+            );
+          } catch (err) {
+            // Over the SMS cap: the last code sent is still valid.
+            if (!(err instanceof MfaSmsRateLimitError)) throw err;
+          }
 
           return new Response(null, {
             status: 302,

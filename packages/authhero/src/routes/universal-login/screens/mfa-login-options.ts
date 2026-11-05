@@ -324,12 +324,20 @@ export const mfaLoginOptionsScreenDefinition: ScreenDefinition = {
         if (selectedEnrollment.phone_number) {
           const { sendMfaOtp } =
             await import("../../../authentication-flows/mfa");
-          await sendMfaOtp(
-            ctx,
-            client,
-            loginSession,
-            selectedEnrollment.phone_number,
-          );
+          const { MfaSmsRateLimitError } =
+            await import("../../../authentication-flows/mfa-attempts");
+          try {
+            await sendMfaOtp(
+              ctx,
+              client,
+              loginSession,
+              selectedEnrollment.phone_number,
+            );
+          } catch (err) {
+            // Over the SMS cap: the last code sent is still valid, so continue
+            // to the challenge screen instead of sending another one.
+            if (!(err instanceof MfaSmsRateLimitError)) throw err;
+          }
         }
 
         return {

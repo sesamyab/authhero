@@ -13,6 +13,7 @@ import { logMessage } from "../helpers/logging";
 import { createClientServiceToken } from "../helpers/service-token";
 import { verifyTOTP, createTOTPKeyURI } from "../utils/totp";
 import { encodeBase32, decodeBase32 } from "@authhero/adapter-interfaces";
+import { enforceMfaSmsSendLimit } from "./mfa-attempts";
 
 const MFA_OTP_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -99,6 +100,10 @@ export async function sendMfaOtp(
   phoneNumber: string,
 ): Promise<void> {
   const tenant = client.tenant;
+
+  // Cap SMS volume per login session and per user before sending anything
+  await enforceMfaSmsSendLimit(ctx, tenant.id, loginSession.id, phoneNumber);
+
   const code = generateOTP();
   const codeId = `mfa:${loginSession.id}`;
 

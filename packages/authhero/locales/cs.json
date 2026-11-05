@@ -142,7 +142,9 @@
       "sendCodeFailedText": "Ověřovací kód se nepodařilo odeslat. Zkuste to znovu.",
       "noCodeText": "Zadejte ověřovací kód",
       "invalidCodeText": "Neplatný kód. Zkuste to znovu.",
-      "sessionInvalidText": "Něco se pokazilo. Začněte registraci znovu."
+      "sessionInvalidText": "Něco se pokazilo. Začněte registraci znovu.",
+      "tooManyFailuresText": "Příliš mnoho neúspěšných pokusů. Vraťte se ke svému účtu a zkuste to později.",
+      "tooManySmsText": "Bylo odesláno příliš mnoho ověřovacích kódů. Zkuste to později."
     },
     "account-mfa-totp-enrollment": {
       "title": "Nastavit ověřovací aplikaci",
@@ -155,7 +157,8 @@
       "backToSecurityText": "Zpět na nastavení zabezpečení",
       "noCodeText": "Zadejte ověřovací kód",
       "invalidCodeText": "Neplatný kód. Zkuste to znovu.",
-      "verificationFailedText": "Ověření se nezdařilo. Zkuste to znovu."
+      "verificationFailedText": "Ověření se nezdařilo. Zkuste to znovu.",
+      "tooManyFailuresText": "Příliš mnoho neúspěšných pokusů. Vraťte se ke svému účtu a zkuste to později."
     }
   },
   "consent": {
@@ -507,7 +510,8 @@
       "unexpectedError": "Něco se pokazilo. Zkuste to prosím znovu.",
       "enrollmentComplete": "Registrace MFA je dokončena. Tuto stránku můžete zavřít.",
       "pickAuthenticatorText": "Zkusit jinou metodu",
-      "qrCodeAltText": "QR kód"
+      "qrCodeAltText": "QR kód",
+      "too-many-failures": "Překročili jste maximální počet neúspěšných pokusů. Začněte přihlášení znovu."
     },
     "mfa-totp-challenge": {
       "title": "Ověřte svou identitu",
@@ -517,7 +521,8 @@
       "invalid-code": "Zadaný kód je neplatný",
       "transaction-not-found": "Platnost vaší registrace vypršela, budete muset začít znovu.",
       "unexpectedError": "Něco se pokazilo. Zkuste to prosím znovu.",
-      "pageTitle": "Ověření identity | ${clientName}"
+      "pageTitle": "Ověření identity | ${clientName}",
+      "too-many-failures": "Překročili jste maximální počet neúspěšných pokusů. Začněte přihlášení znovu."
     }
   },
   "mfa-phone": {
@@ -545,7 +550,8 @@
       "invalidCode": "Zadaný kód je neplatný. Zkuste to znovu.",
       "unexpectedError": "Něco se pokazilo. Zkuste to znovu.",
       "resendSuccess": "Odeslali jsme nový kód na váš telefon",
-      "enrollmentComplete": "Registrace MFA je dokončena. Tuto stránku můžete zavřít."
+      "enrollmentComplete": "Registrace MFA je dokončena. Tuto stránku můžete zavřít.",
+      "too-many-failures": "Překročili jste maximální počet neúspěšných pokusů. Začněte přihlášení znovu."
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Zadejte své telefonní číslo pro přihlášení pomocí telefonního kódu | ${clientName}",

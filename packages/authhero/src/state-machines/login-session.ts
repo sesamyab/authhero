@@ -16,6 +16,9 @@ export interface LoginSessionData {
   phoneNumber?: string;
   totpSecret?: string;
   guardian_enrollment?: boolean;
+  // MFA brute-force limits (see authentication-flows/mfa-attempts.ts)
+  mfa_failed_attempts?: number;
+  mfa_sms_sent?: number;
   pending_email_verification?: unknown;
   // Hooks and continuation
   hookId?: string;
