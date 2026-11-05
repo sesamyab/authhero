@@ -389,7 +389,7 @@ export const mfaPhoneChallengeScreenDefinition: ScreenDefinition = {
           state,
           {
             type: LoginSessionEventType.UPDATE_CONTEXT,
-            data: { mfa_verified: true },
+            data: { mfa_verified: true, mfa_methods: ["sms"] },
           },
           { state: newState },
         );
