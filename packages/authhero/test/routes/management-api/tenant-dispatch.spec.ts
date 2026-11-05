@@ -189,6 +189,50 @@ describe("management-api tenantDispatch", () => {
     expect(await ask("/tenants/acme/clients")).toBe("forwarded:acme");
   });
 
+  it("keeps the control plane's tenant records here, but not /tenants/settings", async () => {
+    const records = new OpenAPIHono();
+    records.get("/:id", (ctx) => ctx.text("record"));
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+      managementApiExtensions: [
+        { path: "/tenants", router: records, controlPlane: true },
+      ],
+    });
+    const ask = async (path: string, method = "GET") =>
+      (
+        await managementApp.request(
+          path,
+          { method, headers: { "tenant-id": "acme" } },
+          env,
+        )
+      ).text();
+
+    // Tenant records live on the control plane, so a call that names a
+    // tenant by the header still reads and writes them here.
+    expect(await ask("/tenants/acme")).not.toBe("forwarded:acme");
+    expect(await ask("/tenants/acme", "PATCH")).not.toBe("forwarded:acme");
+    expect(await ask("/tenants/acme/config-sync")).not.toBe("forwarded:acme");
+    // The tenant's own settings still go to its worker.
+    expect(await ask("/tenants/settings")).toBe("forwarded:acme");
+    expect(await ask("/tenants/settings", "PATCH")).toBe("forwarded:acme");
+  });
+
+  it("forwards /tenants when the extension is not marked as control plane", async () => {
+    const records = new OpenAPIHono();
+    records.get("/:id", (ctx) => ctx.text("record"));
+    const { managementApp, env } = await getTestServer({
+      tenantDispatch: fakeForward,
+      managementApiExtensions: [{ path: "/tenants", router: records }],
+    });
+
+    const response = await managementApp.request(
+      "/tenants/acme",
+      { headers: { "tenant-id": "acme" } },
+      env,
+    );
+    expect(await response.text()).toBe("forwarded:acme");
+  });
+
   it("matches the carve-out only at the start of the path", async () => {
     const backend = {
       listInvitations: async () => [],
