@@ -750,38 +750,23 @@ Control-plane tokens may cross into a tenant only for the control-plane tenant i
 
 ### Tenant's own admin
 
-Each tenant Worker can serve its own admin UI at `/admin` on the tenant's own host (`https://acme.example.com/admin`). It signs in against that Worker's issuer, so the control plane is not involved.
+The `cloudflare-wfp-tenant` template does not include an admin UI, because a platform's admin is the central one above. A tenant that should be self-contained can serve `@authhero/admin` itself: install it, run its `copy-assets.js` step, and pass the generated `admin-index-html.ts` as `adminIndexHtml` in the Worker's `configure`. The admin then signs in against that Worker's issuer, at `/admin` on the tenant's host.
 
-Scaffold the tenant Worker with the admin UI:
+That setup needs two things on the tenant, because the sync carries no users or clients:
 
-```bash
-npx create-authhero@latest tenant-acme --template cloudflare-wfp-tenant --admin-ui --yes --skip-migrate
-```
-
-`--yes` includes it. It adds `@authhero/admin`, `node copy-assets.js` (run on install and before every deploy) copies the bundle into `dist/assets/admin`, and `src/index.ts` passes `adminIndexHtml` to the app.
-
-::: warning Needs the release that adds `--admin-ui` to this template
-Older `cloudflare-wfp-tenant` scaffolds have no admin UI. Add `@authhero/admin`, run `node copy-assets.js`, and pass the generated `admin-index-html.ts` as `adminIndexHtml` to `createWfpTenantApp`'s `configure`.
-:::
-
-#### Allow the admin's sign-in on the tenant's client
-
-The tenant also needs an admin user and the `default` client before `/admin` can sign anyone in. They come from the seed in [3.3](#_3-3-seed-initial-data), not from the sync, which carries no users or clients; a tenant that was only provisioned and synced has neither.
-
-The admin UI signs in through the tenant's `default` client, which must allow `https://<tenant host>/admin/auth-callback`. A tenant seeded with the scaffolded seed Worker gets this from `issuer`, which the seed passes (needs the `authhero` release that makes `seed()` allow the issuer's own admin callback). A tenant that was seeded earlier still has only the fixed defaults and stops at `redirect_uri not allowed`. Add the host in the tenant's D1:
+- An admin user and the `default` client, from the seed in [3.3](#_3-3-seed-initial-data).
+- The tenant host's `/admin/auth-callback` on that client. A tenant seeded with `seed()` and an `issuer` gets it (needs the `authhero` release that makes `seed()` allow the issuer's own admin callback). One seeded earlier has only the fixed defaults and stops at `redirect_uri not allowed`; add the host in the tenant's D1:
 
 ```bash
 npx wrangler d1 execute tenant-db --remote --command "
 UPDATE clients SET
-  callbacks = json_insert(callbacks, '\$[#]', 'https://acme.example.com/admin/auth-callback'),
-  allowed_logout_urls = json_insert(allowed_logout_urls, '\$[#]', 'https://acme.example.com/admin'),
-  web_origins = json_insert(web_origins, '\$[#]', 'https://acme.example.com')
+  callbacks = json_insert(callbacks, '\\$[#]', 'https://acme.example.com/admin/auth-callback'),
+  allowed_logout_urls = json_insert(allowed_logout_urls, '\\$[#]', 'https://acme.example.com/admin'),
+  web_origins = json_insert(web_origins, '\\$[#]', 'https://acme.example.com')
 WHERE client_id = 'default';"
 ```
 
-Check the result with `SELECT client_id, callbacks FROM clients;`. Tenants created through API provisioning go through `provisionDefaultClients`, which does not add the tenant's own host yet, so add it the same way.
-
-The control-plane template does not serve an admin UI. Without a central admin, operate it through the management API as in [4.7](#_4-7-get-a-management-token) and [4.8](#_4-8-sync-a-tenant).
+Check the result with `SELECT client_id, callbacks FROM clients;`. Without a central admin, you can also operate tenants through the management API as in [4.7](#_4-7-get-a-management-token) and [4.8](#_4-8-sync-a-tenant).
 
 ## Per-tenant routing customization
 
