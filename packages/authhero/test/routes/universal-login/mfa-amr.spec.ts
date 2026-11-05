@@ -8,6 +8,9 @@ import { getTestServer } from "../../helpers/test-server";
 import { getAdminToken } from "../../helpers/token";
 import { generateTOTP } from "../../../src/utils/totp";
 import { decodeBase32 } from "@authhero/adapter-interfaces";
+import bcryptjs from "bcryptjs";
+import { Strategy } from "@authhero/adapter-interfaces";
+import { USERNAME_PASSWORD_PROVIDER } from "../../../src/constants";
 import { amrFromLoginSession } from "../../../src/authentication-flows/common";
 
 const TOTP_SECRET = "JBSWY3DPEHPK3PXP";
@@ -177,31 +180,58 @@ describe("amr claim after MFA", () => {
   });
 
   it("omits amr when no MFA was performed", async () => {
-    const { oauthApp, universalApp, env } = await getTestServer({
+    const { oauthApp, env } = await getTestServer({
       mockEmail: true,
       testTenantLanguage: "en",
     });
-    const authorize = await testClient(oauthApp, env).authorize.$get({
-      query: {
+    const oauthClient = testClient(oauthApp, env);
+    await env.data.users.create("tenantId", {
+      email: "pw@example.com",
+      email_verified: true,
+      name: "Pw User",
+      nickname: "Pw User",
+      connection: Strategy.USERNAME_PASSWORD,
+      provider: USERNAME_PASSWORD_PROVIDER,
+      is_social: false,
+      user_id: `${USERNAME_PASSWORD_PROVIDER}|pwUser`,
+    });
+    await env.data.passwords.create("tenantId", {
+      user_id: `${USERNAME_PASSWORD_PROVIDER}|pwUser`,
+      password: await bcryptjs.hash("Test1234!", 10),
+      algorithm: "bcrypt",
+    });
+    const co = await oauthClient.co.authenticate.$post({
+      json: {
         client_id: "clientId",
-        redirect_uri: "https://example.com/callback",
-        state: "state",
-        nonce: "nonce",
-        scope: "openid email profile",
-        response_type: AuthorizationResponseType.CODE,
+        credential_type: "http://auth0.com/oauth/grant-type/password-realm",
+        realm: Strategy.USERNAME_PASSWORD,
+        password: "Test1234!",
+        username: "pw@example.com",
       },
     });
-    const state = new URL(
-      `https://example.com${authorize.headers.get("location")}`,
-    ).searchParams.get("state")!;
-    const login = await testClient(universalApp, env).login.identifier.$post({
-      query: { state },
-      form: { username: "foo@example.com" },
+    expect(co.status).toBe(200);
+    const { login_ticket } = (await co.json()) as { login_ticket: string };
+    const authorize = await oauthClient.authorize.$get({
+      query: {
+        client_id: "clientId",
+        login_ticket,
+        realm: Strategy.USERNAME_PASSWORD,
+        response_type: "code",
+        redirect_uri: "https://example.com/callback",
+        scope: "openid profile email",
+        state: "state",
+        nonce: "nonce",
+      },
     });
-    expect(login.status).toBe(302);
-    // No MFA configured: nothing is recorded, so no amr is emitted.
-    const stored = await env.data.loginSessions.get("tenantId", state);
-    expect(amrFromLoginSession(stored)).toBeUndefined();
+    expect(authorize.status).toBe(302);
+
+    const claims = await exchangeCode(
+      oauthApp,
+      env,
+      authorize.headers.get("location")!,
+    );
+    expect(claims.sub).toBeTypeOf("string");
+    expect(claims).not.toHaveProperty("amr");
   });
 
   it("amrFromLoginSession ignores mfa_verified without a recorded method", () => {
