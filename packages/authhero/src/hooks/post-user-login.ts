@@ -3,6 +3,7 @@ import {
   DataAdapters,
   LogTypes,
   LoginSession,
+  LoginSessionState,
   Strategy,
   StrategyType,
   User,
@@ -11,7 +12,10 @@ import { Bindings, Variables } from "../types";
 import { EnrichedClient } from "../helpers/client";
 import { logMessage } from "../helpers/logging";
 import { stripInternalUserFields } from "../helpers/hook-user-payload";
-import { startLoginSessionHook } from "../authentication-flows/common";
+import {
+  startLoginSessionContinuation,
+  startLoginSessionHook,
+} from "../authentication-flows/common";
 import { isFormHook, handleFormHook } from "./formhooks";
 import { resolvePrimaryUser } from "../helpers/users";
 import { isPageHook, handlePageHook } from "./pagehooks";
@@ -35,7 +39,13 @@ import {
   resolveConnectionName,
 } from "../helpers/connection";
 import { waitUntil } from "../helpers/wait-until";
-import { readLoginSessionData } from "../state-machines/login-session";
+import {
+  LoginSessionEventType,
+  MfaRequiredByAction,
+  readLoginSessionData,
+} from "../state-machines/login-session";
+import { updateLoginSessionData } from "../state-machines/login-session-data";
+import { sessionSatisfiesMfa } from "../helpers/session-mfa";
 import { getPrivateBrowsingCookie } from "../utils/cookies";
 
 // Type guard for webhook hooks
@@ -214,6 +224,105 @@ async function buildEnhancedEventObject(
 }
 
 /**
+ * Fold one `api.multifactor.enable(provider, options)` call into the request
+ * collected so far for this login.
+ *
+ * Conservative by design (issue #1670): once any action has required MFA it
+ * stays required. `"none"` is a no-op rather than Auth0's "skip MFA", so it can
+ * never remove MFA required by the tenant policy or by another action. Every
+ * other provider, including ones AuthHero has no specific support for (e.g.
+ * "duo"), requires MFA with any factor the tenant has enabled. The browser may
+ * only be remembered when every enabling call allowed it.
+ */
+export function mergeMfaRequest(
+  current: MfaRequiredByAction | undefined,
+  provider: unknown,
+  options: unknown,
+): MfaRequiredByAction | undefined {
+  const name = typeof provider === "string" && provider ? provider : "any";
+  if (name === "none") return current;
+  const allowRememberBrowser =
+    typeof options === "object" &&
+    options !== null &&
+    "allowRememberBrowser" in options &&
+    options.allowRememberBrowser === true;
+  return {
+    provider: name,
+    allow_remember_browser: current
+      ? current.allow_remember_browser && allowRememberBrowser
+      : allowRememberBrowser,
+  };
+}
+
+/**
+ * Record an action's MFA request on the login session and, when the login is
+ * otherwise ready to complete, send the browser through `/u/continue` so the
+ * MFA check in `createFrontChannelAuthResponse` (which runs before post-login
+ * hooks) picks the request up and challenges the user.
+ *
+ * Returns undefined when no redirect is needed: MFA was already verified in
+ * this login, or the login session is not in AUTHENTICATED (e.g. the
+ * cross-origin ticket path, which authenticates on the later /authorize and
+ * runs the MFA check there).
+ */
+async function requireMfaFromAction(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  tenantId: string,
+  loginSession: LoginSession,
+  request: MfaRequiredByAction,
+  user: User,
+): Promise<Response | undefined> {
+  // The identity the hooks settled on: the primary when any hook linked the
+  // account (resolved again here because a link made through the data adapter
+  // by the env hook isn't reflected in `user`). The MFA screens read the user
+  // from the login session, so point it at that identity: the challenge must
+  // use the primary's factors, as the tokens will carry the primary's `sub`.
+  user = await resolvePrimaryUser(
+    ctx.env.data.users,
+    tenantId,
+    (await ctx.env.data.users.get(tenantId, user.user_id)) ?? user,
+  );
+  await updateLoginSessionData(
+    ctx.env.data.loginSessions,
+    tenantId,
+    loginSession.id,
+    {
+      type: LoginSessionEventType.UPDATE_CONTEXT,
+      data: { mfa_required_by_action: request },
+    },
+    { user_id: user.user_id },
+  );
+  const current = await ctx.env.data.loginSessions.get(
+    tenantId,
+    loginSession.id,
+  );
+  if (
+    !current ||
+    current.state !== LoginSessionState.AUTHENTICATED ||
+    readLoginSessionData(current.state_data).mfa_verified
+  ) {
+    return undefined;
+  }
+  // The browser session already completed MFA for this same user (#1668):
+  // the action's requirement is met, so don't send the user round again.
+  if (current.session_id) {
+    const session = await ctx.env.data.sessions.get(
+      tenantId,
+      current.session_id,
+    );
+    if (session && sessionSatisfiesMfa(session, user.user_id)) {
+      return undefined;
+    }
+  }
+  const continueUrl = `/u/continue?state=${encodeURIComponent(loginSession.id)}`;
+  await startLoginSessionContinuation(ctx, tenantId, current, [], continueUrl);
+  return new Response(null, {
+    status: 302,
+    headers: { location: continueUrl },
+  });
+}
+
+/**
  * Checks for post-user-login hooks (form, page, template, code, or webhook)
  * and handles them in that order. Also:
  *  - logs the successful login,
@@ -281,6 +390,8 @@ export async function postUserLoginHook(
   // rather than inline is what makes the record survive every exit: an env
   // hook or form/page hook that redirects, and a hook that throws.
   const outcomes: HandleCodeHookOutcome[] = [];
+  // `api.multifactor.enable(...)` calls from the env hook and code hooks.
+  let mfaRequest: MfaRequiredByAction | undefined;
   try {
     // Update the user's last login info. Deferred off the critical path:
     // nothing in this request reads the result (the in-memory `user` keeps
@@ -348,6 +459,11 @@ export async function postUserLoginHook(
           prompt: {
             render: (_formId: string) => {},
           },
+          multifactor: {
+            enable: (provider, options) => {
+              mfaRequest = mergeMfaRequest(mfaRequest, provider, options);
+            },
+          },
           redirect: {
             sendUserTo: (
               url: string,
@@ -411,6 +527,21 @@ export async function postUserLoginHook(
 
       if (thrown) {
         throw thrown;
+      }
+
+      // Persist an MFA request before any redirect below: the resume after a
+      // hook redirect skips post-login hooks, so this is the only chance to
+      // record it. The MFA check on resume then enforces it.
+      if (mfaRequest) {
+        await updateLoginSessionData(
+          data.loginSessions,
+          tenant_id,
+          loginSession.id,
+          {
+            type: LoginSessionEventType.UPDATE_CONTEXT,
+            data: { mfa_required_by_action: mfaRequest },
+          },
+        );
       }
 
       // If a redirect was requested, mark session as awaiting hook and return redirect
@@ -549,6 +680,14 @@ export async function postUserLoginHook(
         user,
         candidates: linkCandidates,
       });
+      const codeHookApi = {
+        ...linkingApi.api,
+        multifactor: {
+          enable: (provider: unknown, options?: unknown) => {
+            mfaRequest = mergeMfaRequest(mfaRequest, provider, options);
+          },
+        },
+      };
 
       for (const hook of codeHooks) {
         if (!isCodeHook(hook)) continue;
@@ -566,7 +705,7 @@ export async function postUserLoginHook(
             hook,
             eventForHook,
             "post-user-login",
-            linkingApi.api,
+            codeHookApi,
           );
           if (outcome) outcomes.push(outcome);
         } catch (err) {
@@ -605,6 +744,20 @@ export async function postUserLoginHook(
         url: loginSession?.authorization_url || ctx.req.url,
       },
     });
+
+    // An action required MFA (issue #1670): challenge the user before tokens
+    // are issued. Hooks have run in full by now, and the resume after MFA
+    // does not run them again (see `mfa_required_by_action`).
+    if (mfaRequest && loginSession) {
+      const mfaRedirect = await requireMfaFromAction(
+        ctx,
+        tenant_id,
+        loginSession,
+        mfaRequest,
+        user,
+      );
+      if (mfaRedirect) return mfaRedirect;
+    }
 
     // If no form hook, just return the user
     return user;

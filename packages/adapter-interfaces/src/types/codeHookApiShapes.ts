@@ -30,6 +30,9 @@ export const TRIGGER_API_SHAPES: Readonly<
     // host-side (candidate allowlist + verified-email gate) — see the
     // post-user-login dispatch.
     user: ["setLinkedTo"],
+    // Require MFA for this login (issue #1670). Replayed host-side into the
+    // login session so the MFA check runs before tokens are issued.
+    multifactor: ["enable"],
   },
   "credentials-exchange": {
     accessToken: ["setCustomClaim"],

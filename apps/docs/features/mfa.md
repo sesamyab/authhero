@@ -222,6 +222,42 @@ Share the `ticket_url` with the user. When they open it, they are redirected to 
 3. Monitor authentication methods via the API or the user MFA tab in the Admin UI
 4. Once enough users are enrolled, set the policy to `always` to enforce MFA for all logins
 
+## MFA Policies
+
+`PUT /api/v2/guardian/policies` takes Auth0's Guardian policy values. The value is stored on `tenant.mfa.policy`:
+
+| Guardian policies | Stored `mfa.policy` | Behaviour |
+|-------------------|---------------------|-----------|
+| `[]` | `never` | The tenant policy never requires MFA. Post-login actions can still require it per login. |
+| `["all-applications"]` | `always` | MFA is required for every interactive login. `all-applications` can also be written directly to `mfa.policy` and is enforced the same way. |
+| `["confidence-score"]` | `confidence-score` | Adaptive MFA. **Not supported**: AuthHero has no risk score, so this is enforced like `all-applications`, never skipped. It is accepted so Auth0 tooling can round-trip it. |
+
+Any other value is rejected with `400`.
+
+## Requiring MFA From a Post-Login Action
+
+A post-login action can require MFA for the current login, for example only for one application, a role or an organization. This is the most flexible way to roll MFA out gradually: leave the policy on `never` and require MFA where you need it.
+
+```js
+exports.onExecutePostLogin = async (event, api) => {
+  if (event.authorization?.roles.includes("admin")) {
+    api.multifactor.enable("any", { allowRememberBrowser: false });
+  }
+};
+```
+
+How AuthHero applies it:
+
+- Any provider other than `"none"` (`"any"`, `"guardian"`, `"google-authenticator"`, `"duo"`, ...) requires MFA with any factor the tenant has enabled. The provider does not restrict which factor the user is challenged with.
+- `api.multifactor.enable("none")` does nothing. Unlike Auth0, it does not turn MFA off for the login: it never overrides the tenant policy or another action that required MFA.
+- If MFA was already completed in the same login (for example because the tenant policy requires it), the user is not challenged again.
+- Post-login actions run once per login. The MFA challenge happens after all actions have run and before tokens are issued.
+- `allowRememberBrowser` is recorded but remembering the browser is not supported yet.
+- At least one MFA factor must be enabled on the tenant, otherwise the login fails.
+- Silent authentication (`prompt=none`) does not run post-login actions, so action-required MFA does not apply there.
+
+The tenant setting `customize_mfa_in_postlogin_action` is stored for Auth0 parity but has no effect. In Auth0 it enables `api.authentication.challengeWith` / `enrollWith`, which AuthHero does not implement. `api.multifactor.enable` works whatever its value.
+
 ## Disabling MFA
 
 To disable MFA:
@@ -346,7 +382,8 @@ AuthHero's MFA implementation is compatible with Auth0's Guardian API:
 |----------------|-----------------|
 | `GET /api/v2/guardian/factors` | Supported |
 | `PUT /api/v2/guardian/factors/{name}` | Supported |
-| `GET/PUT /api/v2/guardian/policies` | Supported |
+| `GET/PUT /api/v2/guardian/policies` | Supported (`confidence-score` is enforced like `all-applications`) |
+| Post-login `api.multifactor.enable` | Supported (`"none"` never disables MFA; remember browser not yet) |
 | `GET/PUT /api/v2/guardian/factors/sms/selected-provider` | Supported |
 | `GET/PUT /api/v2/guardian/factors/sms/providers/twilio` | Supported |
 | `POST /api/v2/guardian/enrollments/ticket` | Supported |

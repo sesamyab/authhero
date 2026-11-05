@@ -43,6 +43,7 @@ import {
 import { getIssuer } from "../variables";
 import { samlCallback } from "../strategies/saml";
 import { postUserLoginHook } from "../hooks/index";
+import { resolvePrimaryUser } from "../helpers/users";
 import {
   isTemplateHook,
   handleCredentialsExchangeTemplateHook,
@@ -1678,6 +1679,29 @@ export async function createFrontChannelAuthResponse(
     }
   }
 
+  // Post-login hooks run at most once per login. When an action required MFA
+  // (api.multifactor.enable, issue #1670) they already ran before the MFA
+  // challenge, so the resume after MFA must not run them again.
+  const hooksRanBeforeMfa = Boolean(
+    readLoginSessionData(currentLoginSession.state_data).mfa_required_by_action,
+  );
+  const skipHooks = params.skipHooks || hooksRanBeforeMfa;
+  // Hooks may have linked the user to a primary before requiring MFA. Resume
+  // stages reload the user from the session, so resolve the primary again:
+  // MFA and tokens must use the identity the hooks settled on.
+  if (hooksRanBeforeMfa && user) {
+    user = await resolvePrimaryUser(ctx.env.data.users, client.tenant.id, user);
+    // The MFA screens read the user from the login session.
+    if (currentLoginSession.user_id !== user.user_id) {
+      await ctx.env.data.loginSessions.update(
+        client.tenant.id,
+        currentLoginSession.id,
+        { user_id: user.user_id },
+      );
+      currentLoginSession = { ...currentLoginSession, user_id: user.user_id };
+    }
+  }
+
   // ============================================================================
   // MFA CHECK
   // ============================================================================
@@ -1788,6 +1812,8 @@ export async function createFrontChannelAuthResponse(
         ctx,
         client.tenant.id,
         user.user_id,
+        // A post-login action called api.multifactor.enable (issue #1670).
+        { force: Boolean(stateData.mfa_required_by_action) },
       );
 
       // A browser session that already completed MFA satisfies the policy, so
@@ -1947,6 +1973,31 @@ export async function createFrontChannelAuthResponse(
       }
     }
 
+    // Fail closed: a post-login action required MFA and it has not been
+    // completed. The legitimate resume (/u/continue) reaches the MFA check
+    // above in AUTHENTICATED and is redirected to the challenge; any other
+    // resume path (e.g. /authorize/resume while AWAITING_CONTINUATION) must
+    // not issue a code or tokens. A browser session in which this same user
+    // already completed MFA satisfies it, as it does for the policy (#1668).
+    if (
+      stateData.mfa_required_by_action &&
+      !stateData.mfa_verified &&
+      !(
+        session_id &&
+        (await ctx.env.data.sessions
+          .get(client.tenant.id, session_id)
+          .then((session) =>
+            session ? sessionSatisfiesMfa(session, user.user_id) : false,
+          ))
+      )
+    ) {
+      throw new JSONHTTPException(403, {
+        error: "access_denied",
+        error_description:
+          "Multi-factor authentication is required to complete this login",
+      });
+    }
+
     // ========================================================================
     // CONNECT (DCR consent) CONTINUATION
     // ========================================================================
@@ -1960,7 +2011,7 @@ export async function createFrontChannelAuthResponse(
     if (session_id && isDeviceLoginSession(currentLoginSession.state_data)) {
       // MFA has completed above. Run post-login hooks here, because device
       // authorization returns before completeLogin (the usual hook boundary).
-      if (!deviceFlowData(currentLoginSession)?.ready && !params.skipHooks) {
+      if (!deviceFlowData(currentLoginSession)?.ready && !skipHooks) {
         const hookResult = await postUserLoginHook(
           ctx,
           ctx.env.data,
@@ -2171,7 +2222,7 @@ export async function createFrontChannelAuthResponse(
     // normally run. Run them here so page/form hooks (e.g. impersonate) can
     // interrupt the login and webhooks/code hooks still fire.
     let samlUser = user;
-    if (params.loginSession && !params.skipHooks) {
+    if (params.loginSession && !skipHooks) {
       const hookResult = await postUserLoginHook(
         ctx,
         ctx.env.data,
@@ -2215,7 +2266,7 @@ export async function createFrontChannelAuthResponse(
     loginSession: currentLoginSession,
     loginSessionIsCurrent: true,
     responseType,
-    skipHooks: params.skipHooks,
+    skipHooks,
     organization: params.organization,
     impersonatingUser: params.impersonatingUser,
     sessionReused: Boolean(params.existingSessionIdToLink),
