@@ -199,6 +199,63 @@ describe("amr claim after MFA", () => {
     expect(stored?.authentication?.methods?.[0]?.name).toBe("mfa");
   });
 
+  it("does not lend the session's MFA to a different user (impersonation)", async () => {
+    const { u2App, oauthApp, env } = await getTestServer({
+      mockEmail: true,
+      testTenantLanguage: "en",
+    });
+    const enrollment = await env.data.authenticationMethods.create("tenantId", {
+      user_id: "email|userId",
+      type: "totp",
+      totp_secret: TOTP_SECRET,
+      confirmed: true,
+    });
+    const session = await createAwaitingMfaSession(env, {
+      authenticationMethodId: enrollment.id,
+    });
+    const code = await generateTOTP(decodeBase32(TOTP_SECRET));
+    const res = await postForm(
+      u2App,
+      env,
+      "/mfa/totp-challenge",
+      session.id,
+      code,
+    );
+    const first = await exchangeCodeFull(
+      oauthApp,
+      env,
+      res.headers.get("location")!,
+    );
+    await env.data.loginSessions.update("tenantId", session.id, {
+      state_data: "{}",
+    });
+    await env.data.users.create("tenantId", {
+      user_id: "email|someoneElse",
+      email: "else@example.com",
+      email_verified: true,
+      connection: "email",
+      provider: "email",
+      is_social: false,
+    });
+    // The session now belongs to another user while still holding the
+    // original user's MFA entry
+    await env.data.sessions.update("tenantId", `session-${session.id}`, {
+      user_id: "email|someoneElse",
+    });
+
+    const refreshed = await testClient(oauthApp, env).oauth.token.$post({
+      form: {
+        grant_type: "refresh_token",
+        client_id: "clientId",
+        client_secret: "clientSecret",
+        refresh_token: first.refresh_token!,
+      },
+    });
+    expect(refreshed.status).toBe(200);
+    const body = (await refreshed.json()) as { id_token?: string };
+    expect(decodeIdToken(body.id_token!)).not.toHaveProperty("amr");
+  });
+
   it("adds amr=[mfa] to the ID token after SMS MFA", async () => {
     const { u2App, oauthApp, env } = await getTestServer({
       mockEmail: true,
