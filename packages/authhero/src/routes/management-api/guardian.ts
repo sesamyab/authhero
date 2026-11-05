@@ -1,5 +1,6 @@
 import { createLoginSessionWithData } from "../../state-machines/login-session-data";
 import {
+  managementError,
   managementValidationHook,
   notFound,
 } from "../../errors/management-api-error";
@@ -7,7 +8,11 @@ import { Bindings, Variables } from "../../types";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { nanoid } from "nanoid";
-import { LoginSessionState, LogTypes } from "@authhero/adapter-interfaces";
+import {
+  LoginSessionState,
+  LogTypes,
+  MfaPolicy,
+} from "@authhero/adapter-interfaces";
 import { getIssuer } from "../../variables";
 import { logMessage } from "../../helpers/logging";
 
@@ -391,15 +396,42 @@ const getPolicies = defineRoute({
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
     const tenant = await ctx.env.data.tenants.get(tenantId);
-    const policy = tenant?.mfa?.policy;
-
-    // Auth0 format: ["all-applications"] for "always", [] for "never"
-    if (policy === "always") {
-      return ctx.json(["all-applications"]);
-    }
-    return ctx.json([]);
+    return ctx.json(toGuardianPolicies(tenant?.mfa?.policy));
   },
 });
+
+const GUARDIAN_POLICY_VALUES = ["all-applications", "confidence-score"];
+
+/**
+ * Auth0 Guardian policies -> `tenant.mfa.policy`. `[]` is "never".
+ * `all-applications` is stored as `always` (same enforcement) so older bundles
+ * that only know never/always can still read a synced tenant.
+ * `confidence-score` is stored as-is; risk scoring is not supported and it is
+ * enforced like `always`. Unknown values are rejected rather than silently
+ * turning MFA off.
+ */
+function fromGuardianPolicies(policies: string[]): MfaPolicy {
+  const unknown = policies.filter((p) => !GUARDIAN_POLICY_VALUES.includes(p));
+  if (unknown.length > 0) {
+    throw managementError(
+      400,
+      `Invalid MFA policy: ${unknown.join(", ")}. Allowed values: ${GUARDIAN_POLICY_VALUES.join(", ")}.`,
+      "invalid_body",
+    );
+  }
+  if (policies.includes("all-applications")) return "always";
+  if (policies.includes("confidence-score")) return "confidence-score";
+  return "never";
+}
+
+/** `tenant.mfa.policy` -> Auth0 Guardian policies. */
+function toGuardianPolicies(policy: MfaPolicy | undefined): string[] {
+  if (policy === "always" || policy === "all-applications") {
+    return ["all-applications"];
+  }
+  if (policy === "confidence-score") return ["confidence-score"];
+  return [];
+}
 
 const putPolicies = defineRoute({
   route: createRoute({
@@ -443,8 +475,7 @@ const putPolicies = defineRoute({
       throw notFound.tenant();
     }
 
-    // Map Auth0 format to internal: ["all-applications"] = "always", [] = "never"
-    const policy = policies.includes("all-applications") ? "always" : "never";
+    const policy = fromGuardianPolicies(policies);
 
     await ctx.env.data.tenants.update(tenantId, {
       mfa: {
@@ -460,7 +491,7 @@ const putPolicies = defineRoute({
       targetId: tenantId,
     });
 
-    return ctx.json(policy === "always" ? ["all-applications"] : []);
+    return ctx.json(toGuardianPolicies(policy));
   },
 });
 

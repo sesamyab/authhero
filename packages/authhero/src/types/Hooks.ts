@@ -258,6 +258,17 @@ export type OnExecutePostLoginAPI = {
   prompt: {
     render: (formId: string) => void;
   };
+  /**
+   * Require MFA for this login (Auth0's `api.multifactor`). Any provider other
+   * than `"none"` requires MFA with any factor the tenant has enabled;
+   * `"none"` never removes MFA required by the tenant policy or another action.
+   */
+  multifactor: {
+    enable: (
+      provider: string,
+      options?: { allowRememberBrowser?: boolean },
+    ) => void;
+  };
   redirect: {
     sendUserTo: (
       url: string,

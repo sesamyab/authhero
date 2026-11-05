@@ -31,6 +31,7 @@ export function isTemplateHook(
  */
 const NOOP_POST_LOGIN_API: OnExecutePostLoginAPI = {
   prompt: { render: () => {} },
+  multifactor: { enable: () => {} },
   redirect: {
     sendUserTo: () => {},
     encodeToken: () => "",

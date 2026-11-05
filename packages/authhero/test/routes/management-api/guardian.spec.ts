@@ -461,4 +461,71 @@ describe("guardian management API endpoints", () => {
       );
     });
   });
+
+  describe("GET/PUT /api/v2/guardian/policies", () => {
+    async function putPolicies(policies: unknown) {
+      const server = await getTestServer();
+      const token = await getAdminToken();
+      const headers = {
+        "tenant-id": "tenantId",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      };
+      const put = await server.managementApp.request(
+        "/guardian/policies",
+        { method: "PUT", headers, body: JSON.stringify(policies) },
+        server.env,
+      );
+      const get = () =>
+        server.managementApp.request(
+          "/guardian/policies",
+          { method: "GET", headers },
+          server.env,
+        );
+      return { put, get, env: server.env };
+    }
+
+    it("stores all-applications as always, which older bundles can read", async () => {
+      const { put, get, env } = await putPolicies(["all-applications"]);
+      expect(put.status).toBe(200);
+      expect(await put.json()).toEqual(["all-applications"]);
+      const tenant = await env.data.tenants.get("tenantId");
+      expect(tenant?.mfa?.policy).toBe("always");
+      expect(await (await get()).json()).toEqual(["all-applications"]);
+    });
+
+    it("stores confidence-score as-is", async () => {
+      const { put, get, env } = await putPolicies(["confidence-score"]);
+      expect(put.status).toBe(200);
+      expect(await put.json()).toEqual(["confidence-score"]);
+      const tenant = await env.data.tenants.get("tenantId");
+      expect(tenant?.mfa?.policy).toBe("confidence-score");
+      expect(await (await get()).json()).toEqual(["confidence-score"]);
+    });
+
+    it("stores an empty list as never", async () => {
+      const { put, env } = await putPolicies([]);
+      expect(put.status).toBe(200);
+      expect(await put.json()).toEqual([]);
+      const tenant = await env.data.tenants.get("tenantId");
+      expect(tenant?.mfa?.policy).toBe("never");
+    });
+
+    it("rejects unknown policy values instead of turning MFA off", async () => {
+      const { put, env } = await putPolicies(["all-aplications"]);
+      expect(put.status).toBe(400);
+      const body = (await put.json()) as { message: string };
+      expect(body.message).toContain("all-aplications");
+      const tenant = await env.data.tenants.get("tenantId");
+      expect(tenant?.mfa?.policy).not.toBe("never");
+    });
+
+    it("reports a policy of all-applications written directly on the tenant", async () => {
+      const { get, env } = await putPolicies([]);
+      await env.data.tenants.update("tenantId", {
+        mfa: { policy: "all-applications" },
+      });
+      expect(await (await get()).json()).toEqual(["all-applications"]);
+    });
+  });
 });

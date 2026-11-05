@@ -1652,6 +1652,16 @@ export async function createFrontChannelAuthResponse(
     }
   }
 
+  // Post-login hooks run at most once per login. When an action required MFA
+  // (api.multifactor.enable, issue #1670) they already ran before the MFA
+  // challenge, so the resume after MFA must not run them again.
+  const skipHooks =
+    params.skipHooks ||
+    Boolean(
+      readLoginSessionData(currentLoginSession.state_data)
+        .mfa_required_by_action,
+    );
+
   // ============================================================================
   // MFA CHECK
   // ============================================================================
@@ -1718,6 +1728,8 @@ export async function createFrontChannelAuthResponse(
         ctx,
         client.tenant.id,
         user.user_id,
+        // A post-login action called api.multifactor.enable (issue #1670).
+        { force: Boolean(stateData.mfa_required_by_action) },
       );
 
       if (mfaCheck.required) {
@@ -1873,7 +1885,7 @@ export async function createFrontChannelAuthResponse(
     if (session_id && isDeviceLoginSession(currentLoginSession.state_data)) {
       // MFA has completed above. Run post-login hooks here, because device
       // authorization returns before completeLogin (the usual hook boundary).
-      if (!deviceFlowData(currentLoginSession)?.ready && !params.skipHooks) {
+      if (!deviceFlowData(currentLoginSession)?.ready && !skipHooks) {
         const hookResult = await postUserLoginHook(
           ctx,
           ctx.env.data,
@@ -2084,7 +2096,7 @@ export async function createFrontChannelAuthResponse(
     // normally run. Run them here so page/form hooks (e.g. impersonate) can
     // interrupt the login and webhooks/code hooks still fire.
     let samlUser = user;
-    if (params.loginSession && !params.skipHooks) {
+    if (params.loginSession && !skipHooks) {
       const hookResult = await postUserLoginHook(
         ctx,
         ctx.env.data,
@@ -2128,7 +2140,7 @@ export async function createFrontChannelAuthResponse(
     loginSession: currentLoginSession,
     loginSessionIsCurrent: true,
     responseType,
-    skipHooks: params.skipHooks,
+    skipHooks,
     organization: params.organization,
     impersonatingUser: params.impersonatingUser,
     sessionReused: Boolean(params.existingSessionIdToLink),

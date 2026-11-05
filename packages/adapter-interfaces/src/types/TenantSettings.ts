@@ -1,5 +1,26 @@
 import { z } from "@hono/zod-openapi";
 
+/**
+ * The tenant MFA policy (`tenant.mfa.policy`).
+ *
+ * - `never`: the tenant policy never requires MFA. Post-login actions can still
+ *   require it per login with `api.multifactor.enable(...)`.
+ * - `always`: MFA is required for every interactive login.
+ * - `all-applications`: Auth0's Guardian policy name for `always`; enforced
+ *   identically. `PUT /guardian/policies` still stores `always` so bundles that
+ *   predate this value can read synced tenants.
+ * - `confidence-score`: Auth0's adaptive MFA. Accepted and stored for parity,
+ *   but risk scoring is NOT supported: it is enforced like `always`, so MFA is
+ *   never skipped on a score we cannot compute.
+ */
+export const mfaPolicySchema = z.enum([
+  "never",
+  "always",
+  "all-applications",
+  "confidence-score",
+]);
+export type MfaPolicy = z.infer<typeof mfaPolicySchema>;
+
 // Based on Auth0 Management API v2 Tenant Settings
 // https://auth0.com/docs/api/management/v2/tenants/tenant-settings-route
 
@@ -99,8 +120,7 @@ export const tenantSettingsSchema = z.object({
   // Guardian MFA Factors configuration (internal storage, exposed via /guardian API)
   mfa: z
     .object({
-      // MFA policy: "never" = MFA disabled, "always" = MFA required for all logins
-      policy: z.enum(["never", "always"]).default("never").optional(),
+      policy: mfaPolicySchema.default("never").optional(),
       // Factor states
       factors: z
         .object({
