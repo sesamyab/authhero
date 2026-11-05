@@ -2291,7 +2291,9 @@ export default (
             ...result,
             ...(saved
               ? {
-                  config_sync: saved.config_sync,
+                  // A tenant that never had a mode set has none stored, which
+                  // is the same as reading it at request time.
+                  config_sync: saved.config_sync ?? "inherit-on-read",
                   parent_tenant_id: saved.parent_tenant_id,
                 }
               : body === rest

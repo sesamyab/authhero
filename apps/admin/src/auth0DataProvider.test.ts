@@ -637,6 +637,42 @@ describe("tenant settings and the control plane's sync fields", () => {
     });
   });
 
+  it("shows a mode the control plane has not stored as inherit-on-read, and keeps one it has", async () => {
+    managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+    const answer = (config_sync: string | null) => async (url: string) => ({
+      status: 200,
+      headers: new Headers(),
+      body: "",
+      json: url.endsWith("/config-sync")
+        ? CP_STATUS
+        : { ...CP_STATUS, config_sync, parent_tenant_id: "sesamy" },
+    });
+    const change = (client: ReturnType<typeof answer>) =>
+      auth0DataProvider(API_URL, client, TENANT_ID).update("settings", {
+        id: "settings",
+        previousData: {
+          id: "settings",
+          config_sync: "inherit-on-read",
+          parent_tenant_id: null,
+          _control_plane_sync: true,
+        },
+        data: {
+          id: "settings",
+          config_sync: "inherit-on-read",
+          parent_tenant_id: "sesamy",
+          _control_plane_sync: true,
+        },
+      });
+
+    expect((await change(answer(null))).data.config_sync).toBe(
+      "inherit-on-read",
+    );
+    expect((await change(answer("synced"))).data.config_sync).toBe("synced");
+    expect((await change(answer("detached"))).data.config_sync).toBe(
+      "detached",
+    );
+  });
+
   it("clears the parent with null", async () => {
     managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
     const { client, calls } = controlPlaneClient();
