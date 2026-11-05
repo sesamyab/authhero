@@ -114,6 +114,8 @@ export interface CreateAuthTokensParams {
   authParams: AuthParams;
   client: AuthTokenClient;
   loginSession?: LoginSession;
+  /** Authentication Methods References for the id_token `amr` claim. Defaults to what the login session recorded. */
+  amr?: string[];
   user?: User;
   session_id?: string;
   refresh_token?: string;
@@ -247,6 +249,15 @@ function buildCredentialsExchangeApi(
   };
 }
 
+/** `["mfa"]` when the login session completed an MFA factor, else undefined. */
+export function amrFromLoginSession(
+  loginSession: LoginSession | undefined | null,
+): string[] | undefined {
+  if (!loginSession?.state_data) return undefined;
+  const data = readLoginSessionData(loginSession.state_data);
+  return data.mfa_verified && data.mfa_method ? ["mfa"] : undefined;
+}
+
 export async function createAuthTokens(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   params: CreateAuthTokensParams,
@@ -310,6 +321,15 @@ export async function createAuthTokens(
   // implicit/hybrid path), resolve it without an extra round-trip where we
   // can: the login session we already hold carries `authenticated_at`; only
   // fall back to a `sessions.get` when it doesn't.
+  // Like Auth0, only emit `amr` (["mfa"]) when an MFA factor was completed;
+  // omit it otherwise rather than listing single-factor methods.
+  // The login session's MFA only counts for the user who completed it:
+  // completeLogin can swap `user` (e.g. impersonation) and keep the session.
+  const amr =
+    params.amr ??
+    (user && params.loginSession?.user_id === user.user_id
+      ? amrFromLoginSession(params.loginSession)
+      : undefined);
   let auth_time = params.auth_time;
   const promptValues = authParams.prompt?.split(" ") ?? [];
   const authTimeRequired =
@@ -483,6 +503,7 @@ export async function createAuthTokens(
     // it lets RPs verify re-authentication for prompt=login / max_age
     // flows.
     ...(auth_time !== undefined ? { auth_time } : {}),
+    ...(amr ? { amr } : {}),
     // OIDC Core 2.1: When acr_values is requested, the server SHOULD return
     // an acr claim with one of the requested values
     ...(authParams.acr_values
