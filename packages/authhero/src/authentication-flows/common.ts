@@ -114,6 +114,8 @@ export interface CreateAuthTokensParams {
   authParams: AuthParams;
   client: AuthTokenClient;
   loginSession?: LoginSession;
+  /** Authentication Methods References for the id_token `amr` claim. Defaults to what the login session recorded. */
+  amr?: string[];
   user?: User;
   session_id?: string;
   refresh_token?: string;
@@ -247,6 +249,15 @@ function buildCredentialsExchangeApi(
   };
 }
 
+/** `["mfa"]` when the login session completed an MFA factor, else undefined. */
+export function amrFromLoginSession(
+  loginSession: LoginSession | undefined | null,
+): string[] | undefined {
+  if (!loginSession?.state_data) return undefined;
+  const data = readLoginSessionData(loginSession.state_data);
+  return data.mfa_verified && data.mfa_method ? ["mfa"] : undefined;
+}
+
 export async function createAuthTokens(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   params: CreateAuthTokensParams,
@@ -310,6 +321,9 @@ export async function createAuthTokens(
   // implicit/hybrid path), resolve it without an extra round-trip where we
   // can: the login session we already hold carries `authenticated_at`; only
   // fall back to a `sessions.get` when it doesn't.
+  // Like Auth0, only emit `amr` (["mfa"]) when an MFA factor was completed;
+  // omit it otherwise rather than listing single-factor methods.
+  let amr = params.amr ?? amrFromLoginSession(params.loginSession);
   let auth_time = params.auth_time;
   const promptValues = authParams.prompt?.split(" ") ?? [];
   const authTimeRequired =
@@ -442,6 +456,19 @@ export async function createAuthTokens(
   const scopes = authParams.scope?.split(" ") || [];
   const hasOpenidScope = scopes.includes("openid");
 
+  // Refresh-token exchanges, silent auth and SSO hops carry no MFA of their
+  // own: the browser session is what remembers it (#1668). Only a live session
+  // of this same user counts, so impersonation never inherits the claim.
+  if (!amr && user && hasOpenidScope && session_id && ctx.var.tenant_id) {
+    const session = await ctx.env.data.sessions.get(
+      ctx.var.tenant_id,
+      session_id,
+    );
+    if (session && sessionSatisfiesMfa(session, user.user_id)) {
+      amr = ["mfa"];
+    }
+  }
+
   // Per OIDC Core 5.4: scope-driven Claims (profile / email / address / phone)
   // are returned from the UserInfo Endpoint "when a response_type value is
   // used that results in an Access Token being issued." Only the pure
@@ -483,6 +510,7 @@ export async function createAuthTokens(
     // it lets RPs verify re-authentication for prompt=login / max_age
     // flows.
     ...(auth_time !== undefined ? { auth_time } : {}),
+    ...(amr ? { amr } : {}),
     // OIDC Core 2.1: When acr_values is requested, the server SHOULD return
     // an acr claim with one of the requested values
     ...(authParams.acr_values
