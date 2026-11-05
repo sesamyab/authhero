@@ -39,6 +39,8 @@ async function setup(options: {
   apiCalls?: ApiCall[];
   policy?: string[];
   onExecutePostLogin?: OnExecutePostLogin;
+  /** SSO onto an existing browser session owned by this user that completed MFA. */
+  mfaSessionUserId?: string;
 }) {
   const { codeExecutor, runs } = recordingExecutor(options.apiCalls ?? []);
   const server = await getTestServer({
@@ -100,6 +102,37 @@ async function setup(options: {
     },
   });
 
+  let existingSessionIdToLink: string | undefined;
+  if (options.mfaSessionUserId) {
+    const now = Date.now();
+    const session = await env.data.sessions.create("tenantId", {
+      id: "mfaSession",
+      user_id: options.mfaSessionUserId,
+      login_session_id: "earlierLoginSession",
+      device: {
+        last_ip: "",
+        initial_ip: "",
+        last_user_agent: "",
+        initial_user_agent: "",
+        initial_asn: "",
+        last_asn: "",
+      },
+      clients: ["clientId"],
+      expires_at: new Date(now + 3600_000).toISOString(),
+      idle_expires_at: new Date(now + 3600_000).toISOString(),
+      authentication: {
+        methods: [
+          {
+            name: "mfa",
+            type: "totp",
+            timestamp: new Date(now - 60_000).toISOString(),
+          },
+        ],
+      },
+    });
+    existingSessionIdToLink = session.id;
+  }
+
   // Drive the first pass (credentials accepted -> post-login hooks) the way a
   // login screen does, from inside a real Hono request.
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -120,6 +153,7 @@ async function setup(options: {
       user,
       loginSession,
       authStrategy: { strategy: "email", strategy_type: "passwordless" },
+      existingSessionIdToLink,
     });
     await flushBackgroundPromises(ctx);
     return response;
@@ -418,6 +452,122 @@ describe("action-required MFA cannot be bypassed (issue #1670 review)", () => {
       "authorization_code",
     );
     expect(stored?.user_id).toBe(PRIMARY_ID);
+  });
+});
+
+describe("action-required MFA on a session that completed MFA (#1668)", () => {
+  it("issues without a 403 or an extra redirect for the same user", async () => {
+    const t = await setup({
+      apiCalls: [{ method: "multifactor.enable", args: ["any"] }],
+      mfaSessionUserId: USER_ID,
+    });
+    const response = await t.login();
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.origin + location.pathname).toBe(
+      "https://example.com/callback",
+    );
+    expect(location.searchParams.get("code")).toBeTruthy();
+    expect(t.runs).toEqual(["post-user-login"]);
+  });
+
+  it("lets a resumed login through when the hook redirected and the session completed MFA", async () => {
+    // The env hook requires MFA and also redirects, so the requirement is
+    // stored and enforced on resume, where the session's MFA satisfies it.
+    const t = await setup({
+      mfaSessionUserId: USER_ID,
+      onExecutePostLogin: async (_event, api) => {
+        api.multifactor.enable("any");
+        api.redirect.sendUserTo("https://hook.example.com/step");
+      },
+    });
+    const first = await t.login();
+    expect(first.headers.get("location")).toContain(
+      "https://hook.example.com/step",
+    );
+    expect((await t.stateData()).data.mfa_required_by_action).toBeTruthy();
+
+    const resumed = await t.server.oauthApp.request(
+      `/authorize/resume?state=${encodeURIComponent(t.loginSession.id)}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      t.env,
+    );
+    expect(resumed.status).toBe(302);
+    const location = new URL(resumed.headers.get("location") ?? "");
+    expect(location.origin + location.pathname).toBe(
+      "https://example.com/callback",
+    );
+    expect(location.searchParams.get("code")).toBeTruthy();
+  });
+
+  it("refuses that resumed login when the session never completed MFA", async () => {
+    const t = await setup({
+      onExecutePostLogin: async (_event, api) => {
+        api.multifactor.enable("any");
+        api.redirect.sendUserTo("https://hook.example.com/step");
+      },
+    });
+    await t.login();
+    const resumed = await t.server.oauthApp.request(
+      `/authorize/resume?state=${encodeURIComponent(t.loginSession.id)}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      t.env,
+    );
+    expect(resumed.status).toBe(403);
+  });
+
+  it("still challenges when a hook linked the user to a different primary", async () => {
+    // The session's MFA was completed by the secondary identity; linked
+    // identities don't inherit it (#1668), so the primary is challenged.
+    const PRIMARY_ID = "email|primaryUser";
+    const t = await setup({
+      mfaSessionUserId: USER_ID,
+      onExecutePostLogin: async (event, api) => {
+        await event.ctx.env.data.users.update("tenantId", USER_ID, {
+          linked_to: PRIMARY_ID,
+        });
+        api.multifactor.enable("any");
+      },
+    });
+    const now = new Date().toISOString();
+    await t.env.data.users.create("tenantId", {
+      user_id: PRIMARY_ID,
+      email: "primary@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: "email",
+      is_social: false,
+      created_at: now,
+      updated_at: now,
+      login_count: 0,
+    });
+    await t.env.data.authenticationMethods.create("tenantId", {
+      user_id: PRIMARY_ID,
+      type: "totp",
+      totp_secret: TOTP_SECRET,
+      confirmed: true,
+    });
+
+    const response = await t.login();
+    expect(response.headers.get("location")).toBe(
+      `/u/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+    );
+    const resumed = await t.server.universalApp.request(
+      `/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      t.env,
+    );
+    expect(resumed.headers.get("location")).toBe(
+      `/u2/mfa/totp-challenge?state=${encodeURIComponent(t.loginSession.id)}`,
+    );
+
+    // Skipping the challenge through /authorize/resume is still refused.
+    const bypass = await t.server.oauthApp.request(
+      `/authorize/resume?state=${encodeURIComponent(t.loginSession.id)}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      t.env,
+    );
+    expect(bypass.headers.get("location") ?? "").not.toContain("code=");
   });
 });
 

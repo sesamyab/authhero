@@ -1950,8 +1950,20 @@ export async function createFrontChannelAuthResponse(
     // completed. The legitimate resume (/u/continue) reaches the MFA check
     // above in AUTHENTICATED and is redirected to the challenge; any other
     // resume path (e.g. /authorize/resume while AWAITING_CONTINUATION) must
-    // not issue a code or tokens.
-    if (stateData.mfa_required_by_action && !stateData.mfa_verified) {
+    // not issue a code or tokens. A browser session in which this same user
+    // already completed MFA satisfies it, as it does for the policy (#1668).
+    if (
+      stateData.mfa_required_by_action &&
+      !stateData.mfa_verified &&
+      !(
+        session_id &&
+        (await ctx.env.data.sessions
+          .get(client.tenant.id, session_id)
+          .then((session) =>
+            session ? sessionSatisfiesMfa(session, user.user_id) : false,
+          ))
+      )
+    ) {
       throw new JSONHTTPException(403, {
         error: "access_denied",
         error_description:

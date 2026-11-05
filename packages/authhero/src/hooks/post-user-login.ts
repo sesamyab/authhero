@@ -45,6 +45,7 @@ import {
   readLoginSessionData,
 } from "../state-machines/login-session";
 import { updateLoginSessionData } from "../state-machines/login-session-data";
+import { sessionSatisfiesMfa } from "../helpers/session-mfa";
 import { getPrivateBrowsingCookie } from "../utils/cookies";
 
 // Type guard for webhook hooks
@@ -271,10 +272,16 @@ async function requireMfaFromAction(
   request: MfaRequiredByAction,
   user: User,
 ): Promise<Response | undefined> {
-  // `user` is the identity the hooks settled on, the primary when an action
-  // or template hook linked the account. The MFA screens read the user from
-  // the login session, so point it at that identity: the challenge must use
-  // the primary's factors, as the tokens will carry the primary's `sub`.
+  // The identity the hooks settled on: the primary when any hook linked the
+  // account (resolved again here because a link made through the data adapter
+  // by the env hook isn't reflected in `user`). The MFA screens read the user
+  // from the login session, so point it at that identity: the challenge must
+  // use the primary's factors, as the tokens will carry the primary's `sub`.
+  user = await resolvePrimaryUser(
+    ctx.env.data.users,
+    tenantId,
+    (await ctx.env.data.users.get(tenantId, user.user_id)) ?? user,
+  );
   await updateLoginSessionData(
     ctx.env.data.loginSessions,
     tenantId,
@@ -295,6 +302,17 @@ async function requireMfaFromAction(
     readLoginSessionData(current.state_data).mfa_verified
   ) {
     return undefined;
+  }
+  // The browser session already completed MFA for this same user (#1668):
+  // the action's requirement is met, so don't send the user round again.
+  if (current.session_id) {
+    const session = await ctx.env.data.sessions.get(
+      tenantId,
+      current.session_id,
+    );
+    if (session && sessionSatisfiesMfa(session, user.user_id)) {
+      return undefined;
+    }
   }
   const continueUrl = `/u/continue?state=${encodeURIComponent(loginSession.id)}`;
   await startLoginSessionContinuation(ctx, tenantId, current, [], continueUrl);
