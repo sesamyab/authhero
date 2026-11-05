@@ -88,4 +88,43 @@ describe("sessions", () => {
     const result = await data.sessions.get("tenantId", "non-existent");
     expect(result).toBeNull();
   });
+
+  it("round-trips the MFA authentication record", async () => {
+    const { data } = await getTestServer();
+    await data.tenants.create({
+      id: "tenantId",
+      friendly_name: "Test Tenant",
+      audience: "https://example.com",
+      sender_email: "login@example.com",
+      sender_name: "SenderName",
+    });
+
+    await data.sessions.create("tenantId", {
+      id: "session-mfa",
+      user_id: "user-1",
+      login_session_id: "login-session-1",
+      device: {
+        last_ip: "",
+        initial_ip: "",
+        initial_user_agent: "",
+        last_user_agent: "",
+        initial_asn: "",
+        last_asn: "",
+      },
+      clients: ["client-1"],
+    });
+    expect(
+      (await data.sessions.get("tenantId", "session-mfa"))?.authentication,
+    ).toBeUndefined();
+
+    const authentication = {
+      methods: [
+        { name: "mfa", type: "totp", timestamp: "2026-11-05T12:00:00.000Z" },
+      ],
+    };
+    await data.sessions.update("tenantId", "session-mfa", { authentication });
+    expect(
+      (await data.sessions.get("tenantId", "session-mfa"))?.authentication,
+    ).toEqual(authentication);
+  });
 });

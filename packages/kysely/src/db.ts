@@ -257,11 +257,14 @@ const sqlSessionSchema = sessionSchema
     revoked_at: true,
     device: true,
     clients: true,
+    authentication: true,
   })
   .extend({
     tenant_id: z.string(),
     device: z.string(),
     clients: z.string(),
+    // JSON-serialized SessionAuthentication (MFA completion, #1668)
+    authentication: z.string().nullable().optional(),
     // Date fields - bigint timestamps with _ts suffix
     created_at_ts: z.number(),
     updated_at_ts: z.number(),

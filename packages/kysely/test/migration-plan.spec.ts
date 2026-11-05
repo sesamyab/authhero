@@ -15,6 +15,13 @@ function createDb() {
   });
 }
 
+async function tableNames(db: Kysely<Database>): Promise<string[]> {
+  const { rows } = await sql<{
+    name: string;
+  }>`SELECT name FROM sqlite_master WHERE type = 'table'`.execute(db);
+  return rows.map((row) => row.name);
+}
+
 async function columnNames(
   db: Kysely<Database>,
   table: string,
@@ -22,13 +29,6 @@ async function columnNames(
   const { rows } = await sql<{
     name: string;
   }>`SELECT name FROM pragma_table_info(${table})`.execute(db);
-  return rows.map((row) => row.name);
-}
-
-async function tableNames(db: Kysely<Database>): Promise<string[]> {
-  const { rows } = await sql<{
-    name: string;
-  }>`SELECT name FROM sqlite_master WHERE type = 'table'`.execute(db);
   return rows.map((row) => row.name);
 }
 
@@ -66,7 +66,7 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-11-05T12:00:00_authentication_methods_totp_last_step";
+    const last = "2026-11-05T13:00:00_authentication_methods_totp_last_step";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
 

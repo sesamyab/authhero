@@ -41,7 +41,10 @@ export interface PassthroughConfig<T> {
 
   /**
    * Methods that should be synced to secondaries.
-   * Default: ["create", "rawCreate", "update", "remove", "delete", "set"]
+   * Default: ["create", "rawCreate", "update", "remove", "delete", "set",
+   * "consumeTotpStep"]. `consumeTotpStep` is a conditional write, so mirroring
+   * it keeps a secondary's `totp_last_step` current and a failover to it
+   * cannot accept an already-used TOTP code.
    */
   syncMethods?: string[];
 }
@@ -98,7 +101,15 @@ export function createPassthroughAdapter<T extends object>(
   const {
     primary,
     secondaries,
-    syncMethods = ["create", "rawCreate", "update", "remove", "delete", "set"],
+    syncMethods = [
+      "create",
+      "rawCreate",
+      "update",
+      "remove",
+      "delete",
+      "set",
+      "consumeTotpStep",
+    ],
   } = config;
 
   const handler: ProxyHandler<T> = {

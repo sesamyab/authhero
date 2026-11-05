@@ -321,8 +321,10 @@ async function handleImpersonateSubmit(
 
   // Switch identity only after authorization succeeds, so rejected scopes or
   // failures generating the response leave the original SSO identity intact.
+  // The impersonator's MFA must not carry over to the target (#1668).
   await ctx.env.data.sessions.update(tenant.id, currentSession.id, {
     user_id: targetUser.user_id,
+    authentication: { methods: [] },
   });
 
   // Log successful impersonation after auth response is confirmed

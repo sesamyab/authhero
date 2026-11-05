@@ -290,7 +290,11 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
           state,
           {
             type: LoginSessionEventType.UPDATE_CONTEXT,
-            data: { mfa_verified: true },
+            data: {
+              mfa_verified: true,
+              mfa_method: "totp",
+              mfa_verified_at: new Date().toISOString(),
+            },
           },
           { state: newState },
         );

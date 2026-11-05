@@ -29,6 +29,7 @@ export function create(db: Kysely<Database>) {
       revoked_at,
       device,
       clients,
+      authentication,
       ...sessionWithoutDates
     } = session;
 
@@ -57,6 +58,9 @@ export function create(db: Kysely<Database>) {
           revoked_at_ts: isoToDbDate(revoked_at),
           device: JSON.stringify(device),
           clients: JSON.stringify(clients),
+          authentication: authentication
+            ? JSON.stringify(authentication)
+            : null,
         })
         .execute();
 

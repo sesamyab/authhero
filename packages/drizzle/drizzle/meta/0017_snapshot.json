@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "326c1e06-f638-4758-94d9-297b97df9b6e",
+  "id": "f736512b-c366-4396-9b7a-994205a916db",
   "prevId": "e9baa938-b6d2-44b5-9de8-6bf2f1960c72",
   "tables": {
     "tenants": {
@@ -2272,6 +2272,13 @@
         "login_session_id": {
           "name": "login_session_id",
           "type": "text(21)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "authentication": {
+          "name": "authentication",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -6146,13 +6153,6 @@
         "totp_secret": {
           "name": "totp_secret",
           "type": "text(255)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "totp_last_step": {
-          "name": "totp_last_step",
-          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

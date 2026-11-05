@@ -124,8 +124,15 @@
     {
       "idx": 17,
       "version": "6",
-      "when": 1793877900175,
-      "tag": "0017_authentication_methods_totp_last_step",
+      "when": 1793878172004,
+      "tag": "0017_session_authentication",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793883216148,
+      "tag": "0018_authentication_methods_totp_last_step",
       "breakpoints": true
     }
   ]
