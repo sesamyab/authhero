@@ -324,6 +324,18 @@ describe("control-plane template sync wiring", () => {
     expect(index).toContain("controlPlaneTenantId: CONTROL_PLANE_TENANT_ID");
   });
 
+  it("answers the Team page from the control plane's own database", () => {
+    // A team is an organization on the control plane named like the tenant, so
+    // the control plane serves `/tenant-members` itself. Mounting it also keeps
+    // the route out of `tenantDispatch`, which would send it to a tenant Worker
+    // that cannot answer it.
+    const { projectPath } = projects["control-plane"];
+    const index = readFile(projectPath, "src/index.ts");
+    expect(index).toContain("createLocalTenantMembersBackend");
+    expect(index).toMatch(/tenantMembers: \{/);
+    expect(index).toContain("controlPlaneTenantId: CONTROL_PLANE_TENANT_ID");
+  });
+
   it("hashes config the way a sync copies it, so the status can agree", () => {
     // A sync copies secrets as stored (ciphertext). The sync status, verify and
     // rollouts hash through the adapter they are given, so they must be given

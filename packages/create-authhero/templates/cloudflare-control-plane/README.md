@@ -48,6 +48,8 @@ An admin UI (the hosted one at `manage.authhero.net`, or `@authhero/admin` hoste
 
 The tenant Worker must be able to verify the control plane's token, which needs the control plane's public key in the tenant's database. Every `sync-defaults` operation delivers it, so run one for a tenant you onboarded by hand and after a key rotation. A dry run sends the key but does not store it, so finish with a run that is not a dry run.
 
+The admin's **Team** page works the same way for every tenant, `wfp` or not. A tenant's team is an organization on this control plane whose name is the tenant id (creating a tenant through the management API makes it; one added with SQL needs it created by hand), and `tenantMembers` serves it from this database. An invitation is created without an email provider but is only mailed when the control plane has one.
+
 ## Encryption
 
 `src/index.ts` uses a key ring. The `control_plane` tenant's rows (the secrets
