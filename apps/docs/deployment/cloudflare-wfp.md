@@ -730,11 +730,13 @@ There are two ways to give people an admin UI on a Workers-for-Platforms setup. 
 
 `@authhero/admin` is a static single-page app. Build it once with the control plane as its fixed domain, and host it anywhere that serves static files:
 
-| Variable               | Value                                                                      |
-| ---------------------- | -------------------------------------------------------------------------- |
-| `VITE_AUTH0_DOMAIN`    | The control plane's issuer, for example `https://token.example.com`        |
-| `VITE_AUTH0_API_URL`   | The control plane's management API, for example `https://auth.example.com` |
-| `VITE_AUTH0_CLIENT_ID` | A client on the control plane that the admin signs in with                 |
+| Variable               | Value                                                                   |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `VITE_AUTH0_DOMAIN`    | The control plane's own host, for example `https://control.example.com` |
+| `VITE_AUTH0_API_URL`   | The same host, which serves the management API                          |
+| `VITE_AUTH0_CLIENT_ID` | A client on the control plane that the admin signs in with              |
+
+Use the host you gave the control plane in [4.3](#_4-3-choose-the-control-plane-s-host-and-issuer), the one you asked for a token on in [4.7](#_4-7-get-a-management-token), for both. Not the `ISSUER` apex: it is only the base that tenant subdomains hang under and does not need to exist in DNS.
 
 With the domain fixed, the admin opens on the control plane's tenant list and never asks for a domain. It sends every tenant-scoped call to the control plane with a `tenant-id` header. For that to work:
 
