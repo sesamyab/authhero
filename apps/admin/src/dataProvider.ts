@@ -131,6 +131,9 @@ export function getDataproviderForTenant(
     dynamicHttpClient,
     tenantId,
     auth0Domain,
+    // The control plane's own record of the tenant (sync mode, parent) is read
+    // and written with a token that has no organization.
+    authorizedHttpClient,
   );
 
   return auth0Provider;

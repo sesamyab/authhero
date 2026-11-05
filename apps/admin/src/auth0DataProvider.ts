@@ -734,6 +734,13 @@ export default (
   httpClient = fetchUtils.fetchJson,
   tenantId?: string,
   domain?: string,
+  // Calls about the control plane's own record of this tenant (its sync mode
+  // and parent) go through this client. The tenant's `httpClient` carries a
+  // token scoped to the tenant's organization, which the control plane refuses
+  // for those two settings: only a control-plane credential may change them. A
+  // client without an organization gives an operator that, and gives a tenant
+  // member a token with no management rights, which is refused as it should be.
+  controlPlaneHttpClient = httpClient,
 ): AuthHeroDataProvider => {
   // Get or create management client for SDK calls
   let managementClientPromise: Promise<ManagementClient> | null = null;
@@ -760,7 +767,7 @@ export default (
   const readControlPlaneSync = async (): Promise<ApiRecord | null> => {
     if (!tenantId) return null;
     try {
-      const res = await httpClient(
+      const res = await controlPlaneHttpClient(
         `${apiUrl}/api/v2/tenants/${encodeURIComponent(tenantId)}/config-sync`,
         { headers: createHeaders() },
       );
@@ -791,7 +798,7 @@ export default (
   ): Promise<ApiRecord> => {
     const headers = createHeaders();
     headers.set("Content-Type", "application/json");
-    const res = await httpClient(
+    const res = await controlPlaneHttpClient(
       `${apiUrl}/api/v2/tenants/${encodeURIComponent(String(tenantId))}`,
       { method: "PATCH", headers, body: JSON.stringify(changes) },
     );
