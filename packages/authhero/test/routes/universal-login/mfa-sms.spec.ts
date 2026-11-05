@@ -425,6 +425,9 @@ describe("MFA SMS", () => {
         action: "resend",
       });
       expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).toContain("We sent a new code to your phone");
+      expect(body).not.toContain("There was a problem sending the SMS");
 
       const sent = server.getSentSms();
       expect(sent).toHaveLength(2);
@@ -450,6 +453,9 @@ describe("MFA SMS", () => {
         post(server, "/mfa/phone-challenge", ls.id, { action: "resend" }),
       );
       expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).toContain("There was a problem sending the SMS");
+      expect(body).not.toContain("We sent a new code to your phone");
       expect(server.getSentSms()).toHaveLength(1);
     });
 
@@ -659,6 +665,9 @@ describe("MFA SMS", () => {
         post(server, "/mfa/phone-challenge", ls.id, { action: "resend" }),
       );
       expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).toContain("There was a problem sending the SMS");
+      expect(body).not.toContain("We sent a new code to your phone");
       expect(server.getSentSms()).toHaveLength(1);
     });
   });
@@ -915,16 +924,28 @@ describe("MFA SMS", () => {
         phone_number: PHONE_INPUT,
       });
       const code = lastCode(server);
+      const before = await server.env.data.loginSessions.get("tenantId", state);
       const ok = await postAccount(server, state, {
         action: "verify_code",
         code,
       });
       expect(ok.status).toBe(302);
+
+      // A successful enrollment clears the pending enrollment from state_data,
+      // so restore it: only the consumed code should now block the replay.
+      await server.env.data.loginSessions.update("tenantId", state, {
+        state_data: before!.state_data,
+      });
       const replay = await postAccount(server, state, {
         action: "verify_code",
         code,
       });
       expect(replay.status).toBe(400);
+      const methods = await server.env.data.authenticationMethods.list(
+        "tenantId",
+        USER_ID,
+      );
+      expect(methods).toHaveLength(1);
     });
   });
 });
