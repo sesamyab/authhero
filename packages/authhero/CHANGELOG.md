@@ -1,5 +1,36 @@
 # authhero
 
+## 9.29.0
+
+### Minor Changes
+
+- 0c5d015: Emit the `amr` claim (`["mfa"]`) in the ID token after a completed TOTP or SMS MFA challenge, and omit it when no MFA was performed. The factors used are recorded on the login session.
+- Keep the `amr: ["mfa"]` ID token claim for the rest of a session that completed MFA: it is now also emitted on ID tokens from refresh tokens, silent auth and SSO hops, based on the MFA recorded on the browser session.
+- 08f89af: Post-login actions can require MFA per login with `api.multifactor.enable(provider, { allowRememberBrowser })`, both from code actions and from the `onExecutePostLogin` config hook. The user is challenged after all actions have run and before tokens are issued, with any factor the tenant has enabled. Actions still run only once per login. `"none"` never turns off MFA required by the tenant policy or by another action, and `allowRememberBrowser` is recorded but not acted on yet.
+
+  `tenant.mfa.policy` now also accepts Auth0's `all-applications` (enforced like `always`) and `confidence-score`. Adaptive MFA is not supported, so `confidence-score` is enforced like `always`. `PUT /api/v2/guardian/policies` stores `["confidence-score"]` as-is and still stores `["all-applications"]` as `always`. It now rejects unknown policy values with `400`; before, they silently set the policy to `never`. The admin MFA page lists the new values. `customize_mfa_in_postlogin_action` is documented as stored but without effect.
+
+- 2207af4: `seed()` now allows the issuer's own origin on the default client when `issuer` is passed: `<origin>/auth-callback` and `<origin>/admin/auth-callback` as callbacks, the origin and `<origin>/admin` as logout URLs, and the origin as a web origin. Without it the admin UI served from a deployed host stopped at "redirect_uri not allowed". Explicit `callbacks` / `allowedLogoutUrls` still win and the fixed defaults are kept. Only a client that `seed()` creates gets the new URLs: when the default client already exists it is left as it is, so an existing tenant has to add them to its client itself.
+- 6897384: `PATCH /tenants/{id}` changes a tenant's `config_sync` mode and parent on the control plane, by id. It is for control-plane callers only (organization-scoped tokens get `403`) and writes only the fields the body names. Until now the mode could only be changed through `PATCH /tenants/settings`, which acts on the tenant named by the request.
+
+  With `tenantDispatch`, a request for a tenant that runs in its own worker is forwarded to that worker, and `/tenants/settings` is the tenant's own and still is. The control plane's tenant records (the list, `/tenants/{id}`, config-sync status, operations) are not in the tenant's database, so `ManagementApiExtension` has a new `controlPlane` flag, which `@authhero/multi-tenancy` sets on `/tenants`: those requests are now served by the control plane even when the `tenant-id` header names a `wfp` tenant. Both packages are needed for this: with an older `authhero`, the flag is ignored and the request is still forwarded.
+
+### Patch Changes
+
+- 34f2ecd: Limit failed MFA verifications: after 5 bad TOTP or SMS codes on the challenge, login enrollment or account-security enrollment screens the login session fails (`too_many_mfa_failures`, logged as `gd_otp_rate_limit_exceed`) and later codes, even correct ones, are rejected. When `data.rateLimit` is configured each attempt also consumes the `brute-force` scope keyed by user. MFA SMS sends are capped at 5 per login session and consume the same scope per user.
+- e38186d: Store MFA completion on the browser session. Sessions get an optional `authentication.methods[]` field (Auth0's shape): each successful MFA challenge appends `{ name: "mfa", type, timestamp }`. SSO to another client on a session that completed MFA no longer asks for MFA again, and silent authentication (`prompt=none`) returns `interaction_required` when the tenant requires MFA but the session never completed it, for example a session from before MFA was enabled. Adds a nullable `sessions.authentication` column (kysely migration `2026-11-05T12:00:00_session_authentication`, drizzle `0017_session_authentication`).
+- 254f94f: Reject reuse of a TOTP code within its validity window (RFC 6238 §5.2, #1666). `verifyTOTP` now returns the matched time step instead of a boolean, and the last accepted step is stored on the `totp` authentication method as `totp_last_step`. The MFA login challenge, the login enrollment confirmation and the account-security enrollment all reject a code whose step is not greater than the stored one, so a code that succeeded once fails on a second submit.
+
+  Adapters must implement the new `authenticationMethods.consumeTotpStep(tenant_id, method_id, step)`, which records the step in a single conditional update (like `codes.consume`) and returns false on a replay. The kysely, drizzle and aws adapters implement it. Kysely and drizzle add a nullable `totp_last_step` column to `authentication_methods`. Run the migrations before deploying.
+
+- Updated dependencies [08f89af]
+- Updated dependencies [e38186d]
+- Updated dependencies [254f94f]
+  - @authhero/adapter-interfaces@4.26.0
+  - @authhero/proxy@0.11.13
+  - @authhero/saml@0.6.6
+  - @authhero/widget@0.41.10
+
 ## 9.28.3
 
 ### Patch Changes

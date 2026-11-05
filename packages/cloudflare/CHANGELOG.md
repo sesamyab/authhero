@@ -1,5 +1,28 @@
 # @authhero/cloudflare-adapter
 
+## 4.2.0
+
+### Minor Changes
+
+- 2207af4: The `sync-defaults` operation now carries the control plane's public signing keys to a WFP tenant, next to the resolved config block. A tenant that never got the provisioning seed (one onboarded by hand), or has not seen a key rotation, can verify control-plane tokens after the next sync, and a rotated key no longer needs a re-seed. The keys are outside the block and its hash, so drift status is unchanged; the receiver adds missing keys by `kid` and a dry run writes nothing. A push without keys, from an older control plane, still works. `@authhero/multi-tenancy` exports `buildControlPlaneSigningKeys` and `applyControlPlaneSigningKeys` for hosts that wire their own transport.
+
+### Patch Changes
+
+- 34cd00c: Require `@authhero/multi-tenancy` 15.6.0 or later. The `sync-defaults` push and `createWfpTenantApp` now use `buildControlPlaneSigningKeys` and `applyControlPlaneSigningKeys`, which earlier versions do not export. With the old peer range a package manager accepted a lockfile that kept an older `@authhero/multi-tenancy` next to this version, and the first sync failed with a missing export.
+- Updated dependencies [0c5d015]
+- Updated dependencies
+- Updated dependencies [34f2ecd]
+- Updated dependencies [08f89af]
+- Updated dependencies [2207af4]
+- Updated dependencies [e38186d]
+- Updated dependencies [2207af4]
+- Updated dependencies [6897384]
+- Updated dependencies [254f94f]
+  - authhero@9.29.0
+  - @authhero/adapter-interfaces@4.26.0
+  - @authhero/kysely-adapter@12.19.0
+  - @authhero/multi-tenancy@15.6.0
+
 ## 4.1.2
 
 ### Patch Changes
