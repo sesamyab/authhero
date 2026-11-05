@@ -284,11 +284,13 @@ export default function create(config: AuthHeroConfig) {
     //
     // The paths are recorded where those routes are mounted further down
     // (`controlPlaneMounts`), so the carve-out cannot drift from what is
-    // actually mounted. `/tenants/settings` is not among them: that one is the
-    // tenant's own and stays with its worker.
+    // actually mounted. That includes an extension marked `controlPlane`, such
+    // as the tenant records at `/tenants`. `/tenants/settings` is the exception:
+    // it is the tenant's own and stays with its worker.
     const isControlPlanePath = mountMatcher(controlPlaneMounts);
+    const isTenantOwnPath = mountMatcher(["/tenants/settings"]);
     app.use(async (ctx, next) => {
-      if (isControlPlanePath(ctx)) {
+      if (isControlPlanePath(ctx) && !isTenantOwnPath(ctx)) {
         return next();
       }
       return dispatch(ctx, next);
@@ -770,6 +772,9 @@ export default function create(config: AuthHeroConfig) {
   // These go through the full middleware chain (caching, tenant, auth, entity hooks)
   if (config.managementApiExtensions) {
     for (const extension of config.managementApiExtensions) {
+      if (extension.controlPlane) {
+        controlPlaneMounts.push(extension.path);
+      }
       managementApp.route(extension.path, extension.router);
     }
   }
