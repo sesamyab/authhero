@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, isNull, lt } from "drizzle-orm";
 import type { AuthenticationMethod } from "@authhero/adapter-interfaces";
 import { authenticationMethods } from "../schema/sqlite";
 import { removeNullProperties, parseJsonIfString } from "../helpers/transform";
@@ -66,6 +66,7 @@ export function createAuthenticationMethodsAdapter(db: DrizzleDb) {
         type: method.type,
         phone_number: method.phone_number,
         totp_secret: method.totp_secret,
+        totp_last_step: method.totp_last_step,
         credential_id: method.credential_id,
         public_key: method.public_key,
         sign_count: method.sign_count,
@@ -191,6 +192,31 @@ export function createAuthenticationMethodsAdapter(db: DrizzleDb) {
         );
       }
       return result;
+    },
+
+    async consumeTotpStep(
+      tenant_id: string,
+      method_id: string,
+      step: number,
+    ): Promise<boolean> {
+      // Single conditional UPDATE, like codes.consume: two concurrent submits
+      // of the same code cannot both match the `totp_last_step < step` guard.
+      const results = await db
+        .update(authenticationMethods)
+        .set({ totp_last_step: step, updated_at_ts: Date.now() })
+        .where(
+          and(
+            eq(authenticationMethods.tenant_id, tenant_id),
+            eq(authenticationMethods.id, method_id),
+            or(
+              isNull(authenticationMethods.totp_last_step),
+              lt(authenticationMethods.totp_last_step, step),
+            ),
+          ),
+        )
+        .returning({ id: authenticationMethods.id });
+
+      return results.length > 0;
     },
 
     async remove(tenant_id: string, method_id: string): Promise<boolean> {

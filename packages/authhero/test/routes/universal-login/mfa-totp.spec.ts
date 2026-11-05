@@ -397,7 +397,10 @@ describe("MFA TOTP (authenticator app)", () => {
         const enrollRedirect = enrollPostResponse.headers.get("location")!;
         expect(enrollRedirect).toContain("/mfa/totp-challenge");
 
-        // Now generate a fresh code for the challenge (TOTP codes are time-based)
+        // The enrollment code's time step is now recorded, so the challenge
+        // needs a code from the next 30-second window (#1666).
+        const realNow = Date.now();
+        vi.spyOn(Date, "now").mockReturnValue(realNow + 30_000);
         const challengeCode = await generateTOTP(secretBytes);
 
         // POST the valid code to the challenge screen
@@ -413,6 +416,8 @@ describe("MFA TOTP (authenticator app)", () => {
           },
           env,
         );
+
+        vi.restoreAllMocks();
 
         // Should redirect to the callback URL (completing the auth flow)
         expect(challengeResponse.status).toBe(302);
@@ -619,11 +624,16 @@ describe("MFA TOTP (authenticator app)", () => {
 
       // Generate a valid code
       const secretBytes = decodeBase32(secret);
+      const now = Date.now();
+      vi.spyOn(Date, "now").mockReturnValue(now);
+      const step = Math.floor(now / 30_000);
       const code = await generateTOTP(secretBytes);
 
       // Our function should verify it
+      // verifyTotpCode returns the matched time step (#1666)
       const result = await verifyTotpCode(secret, code);
-      expect(result).toBe(true);
+      expect(result).toBe(step);
+      vi.restoreAllMocks();
     });
 
     it("should reject an invalid TOTP code", async () => {
@@ -632,7 +642,7 @@ describe("MFA TOTP (authenticator app)", () => {
 
       const secret = generateTotpSecret();
       const result = await verifyTotpCode(secret, "000000");
-      expect(result).toBe(false);
+      expect(result).toBeNull();
     });
   });
 });

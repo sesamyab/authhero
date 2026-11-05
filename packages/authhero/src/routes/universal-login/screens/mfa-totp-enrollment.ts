@@ -336,10 +336,21 @@ export const mfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Verify the TOTP code
+      // Verify the TOTP code, then atomically record its time step on the
+      // pending enrollment so the same code cannot be accepted again within
+      // its window (#1666). Without a pending enrollment there is nothing to
+      // record the step on, so the code is rejected.
       let valid: boolean;
       try {
-        valid = await verifyTotpCode(secretBase32, code);
+        const step = await verifyTotpCode(secretBase32, code);
+        valid =
+          step !== null &&
+          !!stateData.authenticationMethodId &&
+          (await ctx.env.data.authenticationMethods.consumeTotpStep(
+            client.tenant.id,
+            stateData.authenticationMethodId,
+            step,
+          ));
       } catch (err) {
         logMessage(ctx, client.tenant.id, {
           type: LogTypes.MFA_AUTH_FAILED,

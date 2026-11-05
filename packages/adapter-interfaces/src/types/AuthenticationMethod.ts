@@ -21,6 +21,11 @@ const authenticationMethodBaseSchema = z.object({
   phone_number: z.string().optional(),
   // TOTP-specific
   totp_secret: z.string().optional(),
+  // RFC 6238 time step (Unix time / 30 s) of the last accepted TOTP code.
+  // A code is only accepted when its step is greater than this, so a code
+  // cannot be replayed within its validity window. Advance it with
+  // `authenticationMethods.consumeTotpStep`, never with `update`.
+  totp_last_step: z.number().int().nonnegative().optional(),
   // WebAuthn/Passkey-specific
   credential_id: z.string().optional(),
   public_key: z.string().optional(),
@@ -77,7 +82,7 @@ export type AuthenticationMethodInsert = z.infer<
 >;
 
 export type AuthenticationMethodUpdate = Partial<
-  Omit<AuthenticationMethodInsert, "user_id" | "type">
+  Omit<AuthenticationMethodInsert, "user_id" | "type" | "totp_last_step">
 >;
 
 export const authenticationMethodSchema = authenticationMethodBaseSchema

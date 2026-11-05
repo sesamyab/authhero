@@ -17,6 +17,7 @@ import {
   removeNullProperties,
 } from "../utils";
 import { nanoid } from "nanoid";
+import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 interface AuthenticationMethodItem extends DynamoDBBaseItem {
   id: string;
@@ -25,6 +26,7 @@ interface AuthenticationMethodItem extends DynamoDBBaseItem {
   type: string;
   phone_number?: string;
   totp_secret?: string;
+  totp_last_step?: number;
   credential_id?: string;
   public_key?: string;
   sign_count?: number;
@@ -66,6 +68,7 @@ export function createAuthenticationMethodsAdapter(
         type: method.type,
         phone_number: method.phone_number,
         totp_secret: method.totp_secret,
+        totp_last_step: method.totp_last_step,
         credential_id: method.credential_id,
         public_key: method.public_key,
         sign_count: method.sign_count,
@@ -174,6 +177,48 @@ export function createAuthenticationMethodsAdapter(
       );
 
       return authenticationMethodSchema.parse(merged);
+    },
+
+    async consumeTotpStep(
+      tenantId: string,
+      methodId: string,
+      step: number,
+    ): Promise<boolean> {
+      // Conditional write, like codes.consume: DynamoDB evaluates the
+      // condition and applies the update atomically, so two concurrent
+      // submits of the same code cannot both succeed.
+      try {
+        await ctx.client.send(
+          new UpdateCommand({
+            TableName: ctx.tableName,
+            Key: {
+              PK: authenticationMethodKeys.pk(tenantId),
+              SK: authenticationMethodKeys.sk(methodId),
+            },
+            UpdateExpression: "SET #step = :step, #updated_at = :now",
+            ConditionExpression:
+              "attribute_exists(PK) AND (attribute_not_exists(#step) OR #step = :null OR #step < :step)",
+            ExpressionAttributeNames: {
+              "#step": "totp_last_step",
+              "#updated_at": "updated_at",
+            },
+            ExpressionAttributeValues: {
+              ":step": step,
+              ":now": new Date().toISOString(),
+              ":null": null,
+            },
+          }),
+        );
+        return true;
+      } catch (err: unknown) {
+        if (
+          err instanceof Error &&
+          err.name === "ConditionalCheckFailedException"
+        ) {
+          return false;
+        }
+        throw err;
+      }
     },
 
     async remove(tenantId: string, methodId: string): Promise<boolean> {

@@ -218,12 +218,14 @@ export function createTotpUri(
 }
 
 /**
- * Verify a TOTP code against a base32-encoded secret.
+ * Verify a TOTP code against a base32-encoded secret. Returns the matched
+ * time step, or null if the code is invalid. The step must then be recorded
+ * with `authenticationMethods.consumeTotpStep` to reject replays.
  */
 export async function verifyTotpCode(
   secretBase32: string,
   code: string,
-): Promise<boolean> {
+): Promise<number | null> {
   const secretBytes = decodeBase32(secretBase32);
   return verifyTOTP(code, secretBytes);
 }

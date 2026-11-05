@@ -21,6 +21,7 @@ export function list(db: Kysely<Database>) {
       type: row.type as AuthenticationMethod["type"],
       phone_number: row.phone_number ?? undefined,
       totp_secret: row.totp_secret ?? undefined,
+      totp_last_step: row.totp_last_step ?? undefined,
       credential_id: row.credential_id ?? undefined,
       public_key: row.public_key ?? undefined,
       sign_count: row.sign_count ?? undefined,

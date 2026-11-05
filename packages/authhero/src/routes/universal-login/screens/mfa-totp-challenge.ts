@@ -84,7 +84,7 @@ async function getEnrollmentSecret(
   ctx: ScreenContext["ctx"],
   tenantId: string,
   loginSession: { state_data?: string | null; user_id?: string | null },
-): Promise<string | undefined> {
+): Promise<{ id: string; totp_secret: string } | undefined> {
   const stateData = loginSession.state_data
     ? JSON.parse(loginSession.state_data)
     : {};
@@ -95,7 +95,7 @@ async function getEnrollmentSecret(
       stateData.authenticationMethodId,
     );
     if (enrollment?.totp_secret) {
-      return enrollment.totp_secret;
+      return { id: enrollment.id, totp_secret: enrollment.totp_secret };
     }
   }
 
@@ -108,7 +108,10 @@ async function getEnrollmentSecret(
       (e) => e.type === "totp" && e.confirmed,
     );
     if (totpEnrollment?.totp_secret) {
-      return totpEnrollment.totp_secret;
+      return {
+        id: totpEnrollment.id,
+        totp_secret: totpEnrollment.totp_secret,
+      };
     }
   }
 
@@ -176,13 +179,13 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
       });
 
       // Get the TOTP secret
-      const totpSecret = await getEnrollmentSecret(
+      const totpEnrollment = await getEnrollmentSecret(
         ctx,
         client.tenant.id,
         loginSession,
       );
 
-      if (!totpSecret) {
+      if (!totpEnrollment) {
         const errorMessage = m["transaction-not-found"]();
         return {
           error: errorMessage,
@@ -193,10 +196,18 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Verify the TOTP code
+      // Verify the TOTP code, then atomically record its time step so the
+      // same code cannot be accepted again within its window (#1666).
       let valid: boolean;
       try {
-        valid = await verifyTotpCode(totpSecret, code);
+        const step = await verifyTotpCode(totpEnrollment.totp_secret, code);
+        valid =
+          step !== null &&
+          (await ctx.env.data.authenticationMethods.consumeTotpStep(
+            client.tenant.id,
+            totpEnrollment.id,
+            step,
+          ));
       } catch (err) {
         logMessage(ctx, client.tenant.id, {
           type: LogTypes.MFA_AUTH_FAILED,
