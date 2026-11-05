@@ -9,6 +9,7 @@ import { getTestServer } from "../../helpers/test-server";
 import { generateTOTP } from "../../../src/utils/totp";
 import { verifyTotpCode } from "../../../src/authentication-flows/mfa";
 import {
+  recordMfaFailure,
   MFA_LOCKOUT_REASON,
   MFA_MAX_FAILED_ATTEMPTS,
   MFA_MAX_SMS_SENDS,
@@ -214,6 +215,23 @@ describe("MFA failed-attempt limits", () => {
       ]);
       await expectLockedOut(env, session.id);
     });
+  });
+
+  it("reports a lockout instead of throwing when a concurrent request already failed the session", async () => {
+    const { env } = await getTestServer();
+    const session = await env.data.loginSessions.create("tenantId", {
+      expires_at: new Date(Date.now() + 600000).toISOString(),
+      csrf_token: "csrfToken",
+      authParams: { client_id: "clientId" },
+      user_id: USER_ID,
+      state: LoginSessionState.FAILED,
+      failure_reason: "some_other_reason",
+    });
+    const ctx = { env } as unknown as Parameters<typeof recordMfaFailure>[0];
+
+    await expect(
+      recordMfaFailure(ctx, "tenantId", session.id, USER_ID),
+    ).resolves.toEqual({ lockedOut: true });
   });
 
   describe("SMS challenge", () => {

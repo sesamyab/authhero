@@ -8,6 +8,7 @@ import {
 import { Bindings, Variables } from "../types";
 import { logMessage } from "../helpers/logging";
 import {
+  FinalizedLoginSessionError,
   readLoginSessionData,
   updateLoginSessionData,
 } from "../state-machines/login-session-data";
@@ -134,19 +135,28 @@ export async function recordMfaFailure(
     tenantId,
     loginSessionId,
   );
-  if (!current) return { lockedOut: true };
+  if (!current || isMfaLockedOut(current)) return { lockedOut: true };
 
   const failed =
     (readLoginSessionData(current.state_data).mfa_failed_attempts ?? 0) + 1;
-  await updateLoginSessionData(
-    ctx.env.data.loginSessions,
-    tenantId,
-    loginSessionId,
-    {
-      type: LoginSessionEventType.UPDATE_CONTEXT,
-      data: { mfa_failed_attempts: failed },
-    },
-  );
+  try {
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      loginSessionId,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { mfa_failed_attempts: failed },
+      },
+    );
+  } catch (error) {
+    // A concurrent request already failed the session: report the lockout
+    // instead of surfacing a 500.
+    if (error instanceof FinalizedLoginSessionError) {
+      return { lockedOut: true };
+    }
+    throw error;
+  }
 
   if (failed < MFA_MAX_FAILED_ATTEMPTS) return { lockedOut: false };
 
