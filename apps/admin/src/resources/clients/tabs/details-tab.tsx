@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getClientShape } from "../shape";
+import { useClientShape } from "../use-client-shape";
 
 const GRANT_TYPE_CHOICES = [
   { id: "implicit", name: "Implicit" },
@@ -203,12 +203,7 @@ function Timestamps() {
 }
 
 export function DetailsTab() {
-  const record = useRecordContext<{
-    id: string;
-    app_type?: string;
-    client_metadata?: Record<string, unknown> | null;
-  }>();
-  const shape = getClientShape(record);
+  const shape = useClientShape();
   return (
     <div className="flex flex-col gap-3">
       <TextInput source="id" readOnly />
@@ -220,17 +215,21 @@ export function DetailsTab() {
         helperText="Enable Auth0-compatible behavior. Disable for strict OIDC compliance."
         defaultValue={true}
       />
-      <BooleanInput
-        source="hide_sign_up_disabled_error"
-        label="Hide sign-up-disabled error (enumeration-safe)"
-        helperText="When the password connection has disable_signup=true, suppress the explicit account-does-not-exist error and let the OTP/password challenge fail generically. Mitigates email enumeration at the cost of UX clarity."
-      />
-      <SelectInput
-        source="client_metadata.email_validation"
-        label="Email validation"
-        choices={EMAIL_VALIDATION_CHOICES}
-        defaultValue="disabled"
-      />
+      {shape.isInteractive && (
+        <>
+          <BooleanInput
+            source="hide_sign_up_disabled_error"
+            label="Hide sign-up-disabled error (enumeration-safe)"
+            helperText="When the password connection has disable_signup=true, suppress the explicit account-does-not-exist error and let the OTP/password challenge fail generically. Mitigates email enumeration at the cost of UX clarity."
+          />
+          <SelectInput
+            source="client_metadata.email_validation"
+            label="Email validation"
+            choices={EMAIL_VALIDATION_CHOICES}
+            defaultValue="disabled"
+          />
+        </>
+      )}
       <ClientMetadataInput />
       <GrantTypesInput />
       {shape.showCallbacks && (

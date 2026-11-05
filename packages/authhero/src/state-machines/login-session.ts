@@ -12,8 +12,10 @@ export interface LoginSessionData {
   passwordReset?: PasswordResetFlow;
   // Authentication and MFA
   mfa_verified?: boolean;
-  /** MFA factors completed on this login session: "totp" | "sms". Drives the `amr` claim. */
-  mfa_methods?: string[];
+  /** Authentication method type that satisfied MFA (e.g. "totp", "phone") */
+  mfa_method?: string;
+  /** When MFA was verified (ISO 8601); copied onto the browser session */
+  mfa_verified_at?: string;
   authenticationMethodId?: string;
   phoneNumber?: string;
   totpSecret?: string;

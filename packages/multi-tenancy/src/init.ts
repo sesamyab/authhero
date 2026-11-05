@@ -759,7 +759,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     entityHooks,
     managementApiExtensions: [
       ...managementApiExtensions,
-      { path: "/tenants", router: tenantsRouter },
+      { path: "/tenants", router: tenantsRouter, controlPlane: true },
     ],
     // Child tenants must not modify entities synced from the control plane.
     // This has to run inside the management API (after auth, before the

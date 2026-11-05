@@ -127,7 +127,7 @@ describe("amr claim after MFA", () => {
     expect(res.status).toBe(302);
 
     const stored = await env.data.loginSessions.get("tenantId", session.id);
-    expect(JSON.parse(stored!.state_data!).mfa_methods).toEqual(["totp"]);
+    expect(JSON.parse(stored!.state_data!).mfa_method).toBe("totp");
 
     const claims = await exchangeCode(
       oauthApp,
@@ -169,7 +169,7 @@ describe("amr claim after MFA", () => {
     expect(res.status).toBe(302);
 
     const stored = await env.data.loginSessions.get("tenantId", session.id);
-    expect(JSON.parse(stored!.state_data!).mfa_methods).toEqual(["sms"]);
+    expect(JSON.parse(stored!.state_data!).mfa_method).toBe("phone");
 
     const claims = await exchangeCode(
       oauthApp,
@@ -244,7 +244,7 @@ describe("amr claim after MFA", () => {
       amrFromLoginSession({
         state_data: JSON.stringify({
           mfa_verified: true,
-          mfa_methods: ["sms"],
+          mfa_method: "phone",
         }),
       } as any),
     ).toEqual(["mfa"]);

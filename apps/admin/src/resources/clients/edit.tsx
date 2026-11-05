@@ -12,6 +12,7 @@ import { RawJsonTab } from "@/common/RawJsonTab";
 import { CimdBanner } from "./cimd";
 import { ClientLoginButton } from "./login-button";
 import { DeleteButton } from "@/components/admin/delete-button";
+import { useClientShape } from "./use-client-shape";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -44,6 +45,82 @@ function transformClient(data: Record<string, unknown>) {
   return out;
 }
 
+// Tabs that don't apply to the application type are hidden, e.g. a
+// Machine-to-Machine client has no connections, organizations or refresh
+// tokens, and only clients with Client Credentials have client grants.
+function ClientTabs() {
+  const shape = useClientShape();
+  const availableTabs = [
+    "details",
+    ...(shape.showSso ? ["sso"] : []),
+    ...(shape.showClientGrants ? ["grants"] : []),
+    ...(shape.isInteractive ? ["connections", "organizations"] : []),
+    "advanced",
+    ...(shape.isInteractive ? ["refresh"] : []),
+    "raw",
+  ];
+  return (
+    <UrlTabs
+      defaultValue="details"
+      availableValues={availableTabs}
+      className="w-full"
+    >
+      <TabsList>
+        <TabsTrigger value="details">Details</TabsTrigger>
+        {shape.showSso && <TabsTrigger value="sso">SSO</TabsTrigger>}
+        {shape.showClientGrants && (
+          <TabsTrigger value="grants">Client Grants</TabsTrigger>
+        )}
+        {shape.isInteractive && (
+          <>
+            <TabsTrigger value="connections">Connections</TabsTrigger>
+            <TabsTrigger value="organizations">Organizations</TabsTrigger>
+          </>
+        )}
+        <TabsTrigger value="advanced">Advanced</TabsTrigger>
+        {shape.isInteractive && (
+          <TabsTrigger value="refresh">Refresh Tokens</TabsTrigger>
+        )}
+        <TabsTrigger value="raw">Raw JSON</TabsTrigger>
+      </TabsList>
+      <TabsContent value="details" className="mt-4">
+        <DetailsTab />
+      </TabsContent>
+      {shape.showSso && (
+        <TabsContent value="sso" className="mt-4">
+          <SsoTab />
+        </TabsContent>
+      )}
+      {shape.showClientGrants && (
+        <TabsContent value="grants" className="mt-4">
+          <ClientGrantsTab />
+        </TabsContent>
+      )}
+      {shape.isInteractive && (
+        <>
+          <TabsContent value="connections" className="mt-4">
+            <ConnectionsTab />
+          </TabsContent>
+          <TabsContent value="organizations" className="mt-4">
+            <OrganizationsTab />
+          </TabsContent>
+        </>
+      )}
+      <TabsContent value="advanced" className="mt-4">
+        <AdvancedTab />
+      </TabsContent>
+      {shape.isInteractive && (
+        <TabsContent value="refresh" className="mt-4">
+          <RefreshTokensTab />
+        </TabsContent>
+      )}
+      <TabsContent value="raw" className="mt-4">
+        <RawJsonTab />
+      </TabsContent>
+    </UrlTabs>
+  );
+}
+
 export function ClientEdit() {
   return (
     <Edit
@@ -58,42 +135,7 @@ export function ClientEdit() {
     >
       <SimpleForm className="max-w-none">
         <CimdBanner />
-        <UrlTabs defaultValue="details" className="w-full">
-          <TabsList>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="sso">SSO</TabsTrigger>
-            <TabsTrigger value="grants">Client Grants</TabsTrigger>
-            <TabsTrigger value="connections">Connections</TabsTrigger>
-            <TabsTrigger value="organizations">Organizations</TabsTrigger>
-            <TabsTrigger value="advanced">Advanced</TabsTrigger>
-            <TabsTrigger value="refresh">Refresh Tokens</TabsTrigger>
-            <TabsTrigger value="raw">Raw JSON</TabsTrigger>
-          </TabsList>
-          <TabsContent value="details" className="mt-4">
-            <DetailsTab />
-          </TabsContent>
-          <TabsContent value="sso" className="mt-4">
-            <SsoTab />
-          </TabsContent>
-          <TabsContent value="grants" className="mt-4">
-            <ClientGrantsTab />
-          </TabsContent>
-          <TabsContent value="connections" className="mt-4">
-            <ConnectionsTab />
-          </TabsContent>
-          <TabsContent value="organizations" className="mt-4">
-            <OrganizationsTab />
-          </TabsContent>
-          <TabsContent value="advanced" className="mt-4">
-            <AdvancedTab />
-          </TabsContent>
-          <TabsContent value="refresh" className="mt-4">
-            <RefreshTokensTab />
-          </TabsContent>
-          <TabsContent value="raw" className="mt-4">
-            <RawJsonTab />
-          </TabsContent>
-        </UrlTabs>
+        <ClientTabs />
       </SimpleForm>
     </Edit>
   );

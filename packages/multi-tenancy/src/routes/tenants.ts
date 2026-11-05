@@ -890,5 +890,116 @@ export function createTenantsOpenAPIRouter(
     },
   );
 
+  // --------------------------------
+  // PATCH /:id - Change a tenant's operator-owned settings
+  // --------------------------------
+  // Registered after `/settings` so that path keeps meaning "the current
+  // tenant". Unlike `/settings`, which acts on the tenant named by the request
+  // (and is forwarded to that tenant's own worker when it runs apart), this
+  // addresses the tenant's record on the control plane by id. The sync mode and
+  // the parent are kept there: the sync reads them from the control plane's row,
+  // so a change written anywhere else would not take effect.
+  app.openapi(
+    createRoute({
+      tags: ["tenants"],
+      method: "patch",
+      path: "/{id}",
+      request: {
+        params: z.object({ id: z.string() }),
+        body: {
+          content: {
+            "application/json": {
+              schema: tenantPatchSchema.pick({
+                config_sync: true,
+                parent_tenant_id: true,
+              }),
+            },
+          },
+        },
+      },
+      security: [
+        {
+          Bearer: ["update:tenants"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: tenantSchema,
+            },
+          },
+          description: "Updated tenant",
+        },
+        403: {
+          description: "Only the control plane can change these settings",
+        },
+        404: {
+          description: "Tenant not found",
+        },
+      },
+    }),
+    async (ctx) => {
+      const { id } = ctx.req.valid("param");
+      const updates = ctx.req.valid("json");
+
+      if (!isControlPlaneCaller(ctx)) {
+        throw new HTTPException(403, {
+          message:
+            "Only the control plane can change a tenant's config_sync mode or parent",
+        });
+      }
+
+      const tenants = getRequestData(ctx).tenants;
+      const existingTenant = await tenants.get(id);
+      if (!existingTenant) {
+        throw new HTTPException(404, { message: "Tenant not found" });
+      }
+
+      // Only what the body names is written; the rest of the record is left
+      // as it is.
+      const changes: { config_sync?: typeof existingTenant.config_sync } & {
+        parent_tenant_id?: typeof existingTenant.parent_tenant_id;
+      } = {};
+      if ("config_sync" in updates) changes.config_sync = updates.config_sync;
+      if ("parent_tenant_id" in updates) {
+        await validateTenantParent({
+          tenantId: id,
+          parentTenantId: updates.parent_tenant_id,
+          getTenant: (tenantId) => tenants.get(tenantId),
+          getChildren: async (parentId) =>
+            (
+              await fetchAll<{ id: string; parent_tenant_id?: string | null }>(
+                (p) => tenants.list(p),
+                "tenants",
+              )
+            )
+              .filter((t) => t.parent_tenant_id === parentId)
+              .map((t) => t.id),
+        });
+        changes.parent_tenant_id = updates.parent_tenant_id;
+      }
+
+      if (Object.keys(changes).length > 0) {
+        await tenants.update(id, changes);
+        if ("config_sync" in changes) {
+          config.onConfigSyncChange?.(id);
+        }
+      }
+
+      const updatedTenant = await tenants.get(id);
+      if (!updatedTenant) {
+        throw new HTTPException(500, {
+          message: "Failed to retrieve updated tenant",
+        });
+      }
+
+      return ctx.json({
+        ...updatedTenant,
+        ...(await computedFields(ctx, updatedTenant.id)),
+      });
+    },
+  );
+
   return app;
 }

@@ -3,6 +3,7 @@ import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTenantId } from "@/TenantContext";
 import type { AuthHeroDataProvider } from "../../auth0DataProvider";
+import { getClientShape } from "./shape";
 
 interface CustomDomainRecord {
   id: string;
@@ -48,10 +49,15 @@ async function resolveCustomBaseUrl(
 }
 
 export function ClientLoginButton() {
-  const record = useRecordContext<{ id: string }>();
+  const record = useRecordContext<{
+    id: string;
+    app_type?: string;
+    client_metadata?: Record<string, unknown> | null;
+  }>();
   const dataProvider = useDataProvider<AuthHeroDataProvider>();
   const tenantId = useTenantId();
-  if (!record) return null;
+  // Machine-to-Machine clients have no login flow to try.
+  if (!record || !getClientShape(record).isInteractive) return null;
 
   const clientId = record.id;
 
