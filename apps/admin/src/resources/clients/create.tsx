@@ -40,6 +40,13 @@ const APP_TYPES: Array<{
   },
 ];
 
+// Trim once on submit; trimming in the input's parse would eat spaces mid-typing.
+function trimClientId(data: Record<string, unknown>) {
+  const { client_id, ...rest } = data;
+  const trimmed = typeof client_id === "string" ? client_id.trim() : "";
+  return trimmed ? { ...rest, client_id: trimmed } : rest;
+}
+
 export function ClientCreate() {
   const [appType, setAppType] = useState<AppType | null>(null);
 
@@ -86,7 +93,7 @@ export function ClientCreate() {
   const isM2M = appType === "non_interactive";
 
   return (
-    <Create>
+    <Create transform={trimClientId}>
       <SimpleForm defaultValues={{ app_type: appType }}>
         <div className="flex items-center justify-between gap-4 mb-2">
           <div>
@@ -111,7 +118,6 @@ export function ClientCreate() {
           source="client_id"
           label="Client ID (optional)"
           helperText="Leave empty to generate one. Cannot be changed after creation."
-          parse={(v: string) => v?.trim() || undefined}
         />
         {!isM2M && (
           <TextInput
