@@ -142,7 +142,9 @@
       "sendCodeFailedText": "Nie udało się wysłać kodu weryfikacyjnego. Spróbuj ponownie.",
       "noCodeText": "Wpisz kod weryfikacyjny",
       "invalidCodeText": "Nieprawidłowy kod. Spróbuj ponownie.",
-      "sessionInvalidText": "Coś poszło nie tak. Rozpocznij rejestrację od nowa."
+      "sessionInvalidText": "Coś poszło nie tak. Rozpocznij rejestrację od nowa.",
+      "tooManyFailuresText": "Zbyt wiele nieudanych prób. Wróć do swojego konta i spróbuj ponownie później.",
+      "tooManySmsText": "Wysłano zbyt wiele kodów weryfikacyjnych. Spróbuj ponownie później."
     },
     "account-mfa-totp-enrollment": {
       "title": "Skonfiguruj aplikację uwierzytelniającą",
@@ -155,7 +157,8 @@
       "backToSecurityText": "Wróć do ustawień zabezpieczeń",
       "noCodeText": "Wpisz kod weryfikacyjny",
       "invalidCodeText": "Nieprawidłowy kod. Spróbuj ponownie.",
-      "verificationFailedText": "Weryfikacja nie powiodła się. Spróbuj ponownie."
+      "verificationFailedText": "Weryfikacja nie powiodła się. Spróbuj ponownie.",
+      "tooManyFailuresText": "Zbyt wiele nieudanych prób. Wróć do swojego konta i spróbuj ponownie później."
     }
   },
   "consent": {
@@ -507,7 +510,8 @@
       "unexpectedError": "Coś poszło nie tak. Spróbuj ponownie.",
       "enrollmentComplete": "Rejestracja MFA została zakończona. Możesz zamknąć tę stronę.",
       "pickAuthenticatorText": "Wypróbuj inną metodę",
-      "qrCodeAltText": "Kod QR"
+      "qrCodeAltText": "Kod QR",
+      "too-many-failures": "Przekroczono maksymalną liczbę nieudanych prób. Rozpocznij logowanie od nowa."
     },
     "mfa-totp-challenge": {
       "title": "Zweryfikuj swoją tożsamość",
@@ -517,7 +521,8 @@
       "invalid-code": "Wprowadzony kod jest nieprawidłowy",
       "transaction-not-found": "Twoja transakcja rejestracji wygasła, musisz zacząć od nowa.",
       "unexpectedError": "Coś poszło nie tak. Spróbuj ponownie.",
-      "pageTitle": "Weryfikacja tożsamości | ${clientName}"
+      "pageTitle": "Weryfikacja tożsamości | ${clientName}",
+      "too-many-failures": "Przekroczono maksymalną liczbę nieudanych prób. Rozpocznij logowanie od nowa."
     }
   },
   "mfa-phone": {
@@ -545,7 +550,8 @@
       "invalidCode": "Wprowadzony kod jest nieprawidłowy. Spróbuj ponownie.",
       "unexpectedError": "Coś poszło nie tak. Spróbuj ponownie.",
       "resendSuccess": "Wysłaliśmy nowy kod na Twój telefon",
-      "enrollmentComplete": "Rejestracja MFA została zakończona. Możesz zamknąć tę stronę."
+      "enrollmentComplete": "Rejestracja MFA została zakończona. Możesz zamknąć tę stronę.",
+      "too-many-failures": "Przekroczono maksymalną liczbę nieudanych prób. Rozpocznij logowanie od nowa."
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Wpisz swój numer telefonu, aby zalogować się kodem telefonicznym | ${clientName}",

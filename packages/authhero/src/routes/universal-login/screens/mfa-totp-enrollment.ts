@@ -18,6 +18,11 @@ import {
   verifyTotpCode,
 } from "../../../authentication-flows/mfa";
 import { logMessage } from "../../../helpers/logging";
+import {
+  checkMfaAttemptAllowed,
+  recordMfaFailure,
+  resetMfaFailures,
+} from "../../../authentication-flows/mfa-attempts";
 import QRCode from "qrcode";
 
 /**
@@ -336,6 +341,28 @@ export const mfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
         };
       }
 
+      const tooManyFailures = async () => {
+        const errorMessage = m["too-many-failures"]();
+        return {
+          error: errorMessage,
+          screen: await mfaTotpEnrollmentScreen({
+            ...context,
+            errors: { code: errorMessage },
+          }),
+        };
+      };
+
+      if (
+        !(await checkMfaAttemptAllowed(
+          ctx,
+          client.tenant.id,
+          loginSession,
+          loginSession.user_id,
+        ))
+      ) {
+        return tooManyFailures();
+      }
+
       // Verify the TOTP code
       let valid: boolean;
       try {
@@ -364,6 +391,16 @@ export const mfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
           userId: loginSession.user_id,
         });
 
+        const { lockedOut } = await recordMfaFailure(
+          ctx,
+          client.tenant.id,
+          loginSession.id,
+          loginSession.user_id,
+        );
+        if (lockedOut) {
+          return tooManyFailures();
+        }
+
         const user = await ctx.env.data.users.get(
           client.tenant.id,
           loginSession.user_id,
@@ -385,6 +422,8 @@ export const mfaTotpEnrollmentScreenDefinition: ScreenDefinition = {
           ),
         };
       }
+
+      await resetMfaFailures(ctx, client.tenant.id, loginSession.id);
 
       // Confirm the enrollment
       if (stateData.authenticationMethodId) {

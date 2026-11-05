@@ -142,7 +142,9 @@
       "sendCodeFailedText": "Vahvistuskoodin lähettäminen epäonnistui. Yritä uudelleen.",
       "noCodeText": "Syötä vahvistuskoodi",
       "invalidCodeText": "Virheellinen koodi. Yritä uudelleen.",
-      "sessionInvalidText": "Jokin meni pieleen. Aloita rekisteröinti uudelleen."
+      "sessionInvalidText": "Jokin meni pieleen. Aloita rekisteröinti uudelleen.",
+      "tooManyFailuresText": "Liian monta epäonnistunutta yritystä. Palaa tilillesi ja yritä myöhemmin uudelleen.",
+      "tooManySmsText": "Vahvistuskoodeja on lähetetty liian monta. Yritä myöhemmin uudelleen."
     },
     "account-mfa-totp-enrollment": {
       "title": "Ota todentajasovellus käyttöön",
@@ -155,7 +157,8 @@
       "backToSecurityText": "Takaisin suojausasetuksiin",
       "noCodeText": "Syötä vahvistuskoodi",
       "invalidCodeText": "Virheellinen koodi. Yritä uudelleen.",
-      "verificationFailedText": "Vahvistus epäonnistui. Yritä uudelleen."
+      "verificationFailedText": "Vahvistus epäonnistui. Yritä uudelleen.",
+      "tooManyFailuresText": "Liian monta epäonnistunutta yritystä. Palaa tilillesi ja yritä myöhemmin uudelleen."
     }
   },
   "consent": {
@@ -507,7 +510,8 @@
       "unexpectedError": "Jokin meni pieleen. Yritä uudelleen.",
       "enrollmentComplete": "MFA-rekisteröinti on valmis. Voit sulkea tämän sivun.",
       "pickAuthenticatorText": "Kokeile toista menetelmää",
-      "qrCodeAltText": "QR-koodi"
+      "qrCodeAltText": "QR-koodi",
+      "too-many-failures": "Olet ylittänyt epäonnistuneiden yritysten enimmäismäärän. Aloita kirjautuminen uudelleen."
     },
     "mfa-totp-challenge": {
       "title": "Vahvista henkilöllisyytesi",
@@ -517,7 +521,8 @@
       "invalid-code": "Syöttämäsi koodi on virheellinen",
       "transaction-not-found": "Rekisteröintitapahtumasi on vanhentunut, sinun täytyy aloittaa alusta.",
       "unexpectedError": "Jokin meni pieleen. Yritä uudelleen.",
-      "pageTitle": "Vahvista henkilöllisyys | ${clientName}"
+      "pageTitle": "Vahvista henkilöllisyys | ${clientName}",
+      "too-many-failures": "Olet ylittänyt epäonnistuneiden yritysten enimmäismäärän. Aloita kirjautuminen uudelleen."
     }
   },
   "mfa-phone": {
@@ -545,7 +550,8 @@
       "invalidCode": "Antamasi koodi on virheellinen. Yritä uudelleen.",
       "unexpectedError": "Jokin meni pieleen. Yritä uudelleen.",
       "resendSuccess": "Lähetimme uuden koodin puhelimeesi",
-      "enrollmentComplete": "MFA-rekisteröinti on valmis. Voit sulkea tämän sivun."
+      "enrollmentComplete": "MFA-rekisteröinti on valmis. Voit sulkea tämän sivun.",
+      "too-many-failures": "Olet ylittänyt epäonnistuneiden yritysten enimmäismäärän. Aloita kirjautuminen uudelleen."
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Syötä puhelinnumerosi kirjautuaksesi puhelinkoodilla | ${clientName}",

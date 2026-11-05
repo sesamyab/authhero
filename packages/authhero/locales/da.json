@@ -142,7 +142,9 @@
       "sendCodeFailedText": "Bekræftelseskoden kunne ikke sendes. Prøv igen.",
       "noCodeText": "Indtast bekræftelseskoden",
       "invalidCodeText": "Ugyldig kode. Prøv igen.",
-      "sessionInvalidText": "Noget gik galt. Start tilmeldingen igen."
+      "sessionInvalidText": "Noget gik galt. Start tilmeldingen igen.",
+      "tooManyFailuresText": "For mange mislykkede forsøg. Gå tilbage til din konto, og prøv igen senere.",
+      "tooManySmsText": "Der er sendt for mange bekræftelseskoder. Prøv igen senere."
     },
     "account-mfa-totp-enrollment": {
       "title": "Opsæt autentificeringsapp",
@@ -155,7 +157,8 @@
       "backToSecurityText": "Tilbage til sikkerhedsindstillinger",
       "noCodeText": "Indtast bekræftelseskoden",
       "invalidCodeText": "Ugyldig kode. Prøv igen.",
-      "verificationFailedText": "Bekræftelsen mislykkedes. Prøv igen."
+      "verificationFailedText": "Bekræftelsen mislykkedes. Prøv igen.",
+      "tooManyFailuresText": "For mange mislykkede forsøg. Gå tilbage til din konto, og prøv igen senere."
     }
   },
   "consent": {
@@ -507,7 +510,8 @@
       "unexpectedError": "Noget gik galt. Prøv venligst igen.",
       "enrollmentComplete": "MFA-tilmeldingen er fuldført. Du kan lukke denne side.",
       "pickAuthenticatorText": "Prøv en anden metode",
-      "qrCodeAltText": "QR-kode"
+      "qrCodeAltText": "QR-kode",
+      "too-many-failures": "Du har overskredet det maksimale antal mislykkede forsøg. Start login forfra."
     },
     "mfa-totp-challenge": {
       "title": "Bekræft din identitet",
@@ -517,7 +521,8 @@
       "invalid-code": "Den indtastede kode er ugyldig",
       "transaction-not-found": "Din session er udløbet. Du skal starte forfra.",
       "unexpectedError": "Noget gik galt. Prøv venligst igen.",
-      "pageTitle": "Bekræft identitet | ${clientName}"
+      "pageTitle": "Bekræft identitet | ${clientName}",
+      "too-many-failures": "Du har overskredet det maksimale antal mislykkede forsøg. Start login forfra."
     }
   },
   "mfa-phone": {
@@ -545,7 +550,8 @@
       "invalidCode": "Den indtastede kode er ugyldig. Prøv igen.",
       "unexpectedError": "Noget gik galt. Prøv igen.",
       "resendSuccess": "Vi sendte en ny kode til din telefon",
-      "enrollmentComplete": "MFA-tilmeldingen er fuldført. Du kan lukke denne side."
+      "enrollmentComplete": "MFA-tilmeldingen er fuldført. Du kan lukke denne side.",
+      "too-many-failures": "Du har overskredet det maksimale antal mislykkede forsøg. Start login forfra."
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Indtast dit telefonnummer for at logge ind med en telefonkode | ${clientName}",
