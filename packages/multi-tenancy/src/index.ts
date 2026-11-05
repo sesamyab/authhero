@@ -35,6 +35,8 @@ export {
   projectControlPlaneDefaults,
   buildControlPlaneDefaultsPayload,
   applyControlPlaneDefaultsPayload,
+  buildControlPlaneSigningKeys,
+  applyControlPlaneSigningKeys,
   applyResolvedConfigBlock,
   buildResolvedConfigBlock,
   findUndecryptableKeyIds,

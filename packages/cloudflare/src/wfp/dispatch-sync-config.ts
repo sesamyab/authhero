@@ -1,5 +1,6 @@
 import type { DataAdapters } from "@authhero/adapter-interfaces";
 import {
+  buildControlPlaneSigningKeys,
   buildResolvedConfigBlock,
   type ApplyResolvedBlockResult,
   syncErrors,
@@ -74,6 +75,12 @@ export function createDispatchSyncConfig(
       { legacyControlPlane: controlPlaneTenantId, maxDepth },
     );
 
+    // The control plane's public signing keys travel with every push. They are
+    // outside the block (and its hash), so a tenant that lacks one, or has not
+    // seen a rotation yet, is brought up to date without showing as drifted.
+    const signingKeys =
+      await buildControlPlaneSigningKeys(controlPlaneAdapters);
+
     const scriptName = fillTemplate(scriptNameTemplate, tenantId);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -88,7 +95,14 @@ export function createDispatchSyncConfig(
             "content-type": "application/json",
             authorization: `Bearer ${internalSecret}`,
           },
-          body: JSON.stringify({ tenantId, resolved, dryRun, force, prune }),
+          body: JSON.stringify({
+            tenantId,
+            resolved,
+            signingKeys,
+            dryRun,
+            force,
+            prune,
+          }),
           signal: controller.signal,
         });
     } finally {

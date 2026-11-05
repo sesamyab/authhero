@@ -1,4 +1,5 @@
 import { Hono, type Context, type ExecutionContext } from "hono";
+import type { SigningKey } from "@authhero/adapter-interfaces";
 import {
   init,
   loadEncryptionKey,
@@ -16,6 +17,7 @@ import {
 import {
   withRuntimeFallback,
   applyControlPlaneDefaultsPayload,
+  applyControlPlaneSigningKeys,
   applyResolvedConfigBlock,
   createShadowReporter,
   detachTenantRows,
@@ -345,6 +347,8 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
     let body: {
       tenantId?: string;
       resolved?: ResolvedConfigBlock;
+      /** The control plane's public signing keys. Absent from older pushes. */
+      signingKeys?: SigningKey[];
       dryRun?: boolean;
       force?: boolean;
       prune?: boolean;
@@ -382,6 +386,17 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
           continueOnError: options.continueOnError ?? true,
         },
       );
+      // The control plane's public keys, so its tokens keep verifying here
+      // (new tenants, and after a rotation). Create-if-missing by kid and never
+      // part of the hash, and a dry run writes nothing.
+      if (body.dryRun !== true && Array.isArray(body.signingKeys)) {
+        const keys = await applyControlPlaneSigningKeys(
+          body.signingKeys,
+          encrypted,
+          options.continueOnError ?? true,
+        );
+        return c.json({ ...result, signingKeys: keys });
+      }
       return c.json(result);
     } catch (err) {
       // A key ring that cannot decrypt is a configuration problem the control
