@@ -1365,6 +1365,28 @@ describe("sync-defaults operation transport (createDispatchSyncConfig → /inter
       expect(after.hash).toBe(before.hash);
     });
 
+    it("does not record the hash when a key could not be stored", async () => {
+      await cp.keys.create(cpKey("cp-kid-1"));
+      const create = tenant.keys.create;
+      tenant.keys.create = async () => {
+        throw new Error("disk full");
+      };
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      try {
+        await syncFor(dispatcherToTenant())("acme", {
+          dryRun: false,
+          force: false,
+        });
+      } finally {
+        tenant.keys.create = create;
+        spy.mockRestore();
+      }
+
+      expect((await cp.tenants.get("acme"))?.config_sync_hash).toBeFalsy();
+      expect(await tenantKeys()).toEqual([]);
+    });
+
     it("accepts a push from a control plane that sends no keys", async () => {
       const res = await app.fetch(
         new Request("https://tenant.internal/internal/sync-config", {

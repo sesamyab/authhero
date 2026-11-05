@@ -125,12 +125,27 @@ export function createDispatchSyncConfig(
     // there. Only for a real, clean run: a dry run applied nothing, and a
     // partial run did not reach the block's hash. "up-to-date" means the tenant
     // already holds this hash, which the control plane may not know yet.
+    //
+    // A control plane key the tenant could not store counts as a failure too:
+    // it is reported next to the block, outside the entity results that
+    // `syncErrors` reads, and recording the hash would show the tenant as up to
+    // date while control-plane tokens still fail with "No matching kid found".
+    const keyErrors =
+      (result as { signingKeys?: { errors?: unknown[] } }).signingKeys
+        ?.errors ?? [];
+    if (keyErrors.length > 0) {
+      console.error(
+        `[wfp] "${tenantId}" could not store ${keyErrors.length} control plane signing key(s); the config hash is not recorded, so it shows as drifted:`,
+        keyErrors,
+      );
+    }
     if (
       !dryRun &&
       result.status !== "dry-run" &&
       result.hash &&
       tenant &&
-      syncErrors(result).length === 0
+      syncErrors(result).length === 0 &&
+      keyErrors.length === 0
     ) {
       // Two syncs of one tenant can overlap (an operator and a rollout), and a
       // parent can be edited while a push is in flight. Either way this push
