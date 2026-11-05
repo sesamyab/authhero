@@ -760,9 +760,9 @@ That setup needs two things on the tenant, because the sync carries no users or 
 ```bash
 npx wrangler d1 execute tenant-db --remote --command "
 UPDATE clients SET
-  callbacks = json_insert(callbacks, '\\$[#]', 'https://acme.example.com/admin/auth-callback'),
-  allowed_logout_urls = json_insert(allowed_logout_urls, '\\$[#]', 'https://acme.example.com/admin'),
-  web_origins = json_insert(web_origins, '\\$[#]', 'https://acme.example.com')
+  callbacks = json_insert(callbacks, '\$[#]', 'https://acme.example.com/admin/auth-callback'),
+  allowed_logout_urls = json_insert(allowed_logout_urls, '\$[#]', 'https://acme.example.com/admin'),
+  web_origins = json_insert(web_origins, '\$[#]', 'https://acme.example.com')
 WHERE client_id = 'default';"
 ```
 
