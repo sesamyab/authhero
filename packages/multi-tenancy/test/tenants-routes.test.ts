@@ -920,3 +920,187 @@ describe("build: Hono is not bundled into the output", () => {
     expect(checked).toBeGreaterThan(0);
   });
 });
+
+describe("PATCH /tenants/{id}", () => {
+  let adapters: ReturnType<typeof createAdapters>;
+  let env: { data: ReturnType<typeof createAdapters> };
+
+  const config: MultiTenancyConfig = {
+    accessControl: { controlPlaneTenantId, requireOrganizationMatch: true },
+  };
+
+  const tenantRow = (id: string) => ({
+    id,
+    friendly_name: id,
+    audience: `https://${id}.example.com`,
+    sender_email: `admin@${id}.example.com`,
+    sender_name: id,
+  });
+
+  beforeEach(async () => {
+    const db = await createMigratedDb();
+    adapters = createAdapters(db);
+    env = { data: adapters };
+    await adapters.tenants.create(tenantRow(controlPlaneTenantId));
+    await adapters.tenants.create(tenantRow("acme"));
+  });
+
+  function appAs(user: TestUser, extra: Partial<AppOptions> = {}) {
+    const { hooks } = setupMultiTenancy(config);
+    return createHostApp({ config, hooks, user, ...extra });
+  }
+
+  const controlPlaneUser: TestUser = {
+    sub: "auth0|operator",
+    tenant_id: controlPlaneTenantId,
+  };
+
+  const patch = (
+    app: ReturnType<typeof createHostApp>,
+    id: string,
+    body: unknown,
+  ) =>
+    app.request(
+      `/management/tenants/${id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+
+  it("switches another tenant's sync mode by id, from the control plane", async () => {
+    const response = await patch(appAs(controlPlaneUser), "acme", {
+      config_sync: "synced",
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).config_sync).toBe("synced");
+    expect((await adapters.tenants.get("acme"))!.config_sync).toBe("synced");
+    // The control plane's own record is not the one that changed.
+    expect(
+      (await adapters.tenants.get(controlPlaneTenantId))!.config_sync,
+    ).toBeFalsy();
+  });
+
+  it("writes only what the body names", async () => {
+    await adapters.tenants.update("acme", {
+      deployment_type: "wfp",
+      provisioning_state: "ready",
+      friendly_name: "Acme Inc",
+    });
+
+    const response = await patch(appAs(controlPlaneUser), "acme", {
+      config_sync: "synced",
+    });
+
+    expect(response.status).toBe(200);
+    const stored = await adapters.tenants.get("acme");
+    expect(stored!.config_sync).toBe("synced");
+    expect(stored!.deployment_type).toBe("wfp");
+    expect(stored!.provisioning_state).toBe("ready");
+    expect(stored!.friendly_name).toBe("Acme Inc");
+  });
+
+  it("does not take the tenant's other settings through this route", async () => {
+    await adapters.tenants.update("acme", { deployment_type: "wfp" });
+
+    const response = await patch(appAs(controlPlaneUser), "acme", {
+      config_sync: "synced",
+      friendly_name: "Renamed",
+      deployment_type: "shared",
+    });
+
+    expect(response.status).toBe(200);
+    const stored = await adapters.tenants.get("acme");
+    expect(stored!.friendly_name).toBe("acme");
+    expect(stored!.deployment_type).toBe("wfp");
+  });
+
+  it("refuses a caller that is not the control plane", async () => {
+    const response = await patch(
+      appAs({ sub: "auth0|member", tenant_id: "acme" }),
+      "acme",
+      { config_sync: "synced" },
+    );
+
+    expect(response.status).toBe(403);
+    expect((await adapters.tenants.get("acme"))!.config_sync).toBeFalsy();
+  });
+
+  it("refuses an organization-scoped control plane token", async () => {
+    const response = await patch(
+      appAs(controlPlaneUser, { org_name: "acme" }),
+      "acme",
+      { config_sync: "synced" },
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("answers 404 for a tenant that does not exist", async () => {
+    const response = await patch(appAs(controlPlaneUser), "nope", {
+      config_sync: "synced",
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("sets and clears the parent, and refuses a cycle", async () => {
+    await adapters.tenants.create(tenantRow("child"));
+    const app = appAs(controlPlaneUser);
+
+    expect(
+      (await patch(app, "child", { parent_tenant_id: "acme" })).status,
+    ).toBe(200);
+    expect((await adapters.tenants.get("child"))!.parent_tenant_id).toBe(
+      "acme",
+    );
+
+    const cycle = await patch(app, "acme", { parent_tenant_id: "child" });
+    expect(cycle.status).toBeGreaterThanOrEqual(400);
+    expect((await adapters.tenants.get("acme"))!.parent_tenant_id).toBeFalsy();
+
+    expect((await patch(app, "child", { parent_tenant_id: null })).status).toBe(
+      200,
+    );
+    expect((await adapters.tenants.get("child"))!.parent_tenant_id).toBeFalsy();
+  });
+
+  it("tells the host when the sync mode changed", async () => {
+    const onConfigSyncChange = vi.fn();
+    const withHook: MultiTenancyConfig = { ...config, onConfigSyncChange };
+    const { hooks } = setupMultiTenancy(withHook);
+    const app = createHostApp({
+      config: withHook,
+      hooks,
+      user: controlPlaneUser,
+    });
+
+    await patch(app, "acme", { config_sync: "synced" });
+    expect(onConfigSyncChange).toHaveBeenCalledWith("acme");
+
+    onConfigSyncChange.mockClear();
+    await patch(app, "acme", {});
+    expect(onConfigSyncChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps /tenants/settings meaning the current tenant", async () => {
+    const response = await appAs(controlPlaneUser).request(
+      "/management/tenants/settings",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config_sync: "synced" }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      (await adapters.tenants.get(controlPlaneTenantId))!.config_sync,
+    ).toBe("synced");
+    expect((await adapters.tenants.get("acme"))!.config_sync).toBeFalsy();
+  });
+});
