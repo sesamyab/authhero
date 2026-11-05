@@ -716,7 +716,41 @@ Before 9.28.3, a partial `PATCH /tenants/settings` such as the flip above also r
 
 ## Admin dashboard
 
-Each tenant Worker can serve its own admin UI at `/admin` on the tenant's own host (`https://acme.example.com/admin`). It signs in against that Worker's issuer, so a tenant manages itself and the control plane is not involved. That is the setup for self-serve tenants; the control plane stays an operator tool.
+There are two ways to give people an admin UI on a Workers-for-Platforms setup. Most platforms want the first, which is also how Auth0 works: one dashboard, and customers are members of their tenant.
+
+|                 | Central admin (recommended)                                                                  | Tenant's own admin                                                   |
+| --------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Hosted          | Once, as a static app (for example Cloudflare Pages), next to the control plane              | In every tenant Worker, at `/admin` on the tenant's host             |
+| Sign-in         | An account on the control plane, made a member of the tenant                                 | A user of the tenant itself, against the tenant's issuer             |
+| API calls       | To the control plane with a `tenant-id` header, forwarded to the tenant Worker               | Straight to the tenant Worker, same origin                           |
+| Tenant verifies | A control-plane token, with the control plane's public key synced into its database          | Its own tokens, with its own key                                     |
+| Good for        | A platform that runs its customers' tenants and wants one place for access, logs and support | A single tenant that should be self-contained, with no control plane |
+
+### Central admin
+
+`@authhero/admin` is a static single-page app. Build it once with the control plane as its fixed domain, and host it anywhere that serves static files:
+
+| Variable               | Value                                                                      |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `VITE_AUTH0_DOMAIN`    | The control plane's issuer, for example `https://token.example.com`        |
+| `VITE_AUTH0_API_URL`   | The control plane's management API, for example `https://auth.example.com` |
+| `VITE_AUTH0_CLIENT_ID` | A client on the control plane that the admin signs in with                 |
+
+With the domain fixed, the admin opens on the control plane's tenant list and never asks for a domain. It sends every tenant-scoped call to the control plane with a `tenant-id` header. For that to work:
+
+1. The admin's host is in the control plane's allowed origins, and its `/auth-callback` is an allowed callback of the client above.
+2. The control plane forwards calls for a `wfp` tenant to that tenant's Worker with `createWfpForwardMiddleware`. The control-plane template does not include it yet, so mount it in your own app; see [Control-plane admin tokens](#control-plane-admin-tokens).
+3. The tenant Worker can verify the control plane's token. That needs the control plane's public signing key in the tenant's database, which every [`sync-defaults` operation](#syncing-config-into-a-tenant-worker) delivers, including a key added by a rotation.
+
+Customers then sign in with an account on the control plane that is a member of their tenant, and the token reaches only that tenant. Run a sync after any key rotation, because the template does not schedule rollouts.
+
+::: warning Check that a member's token is limited to its tenant
+Control-plane tokens may cross into a tenant only for the control-plane tenant itself, and a member's token carries an `org_name` for its own tenant. Test that a member of one tenant gets `403` on another before you invite customers.
+:::
+
+### Tenant's own admin
+
+Each tenant Worker can serve its own admin UI at `/admin` on the tenant's own host (`https://acme.example.com/admin`). It signs in against that Worker's issuer, so the control plane is not involved.
 
 Scaffold the tenant Worker with the admin UI:
 
@@ -730,7 +764,7 @@ npx create-authhero@latest tenant-acme --template cloudflare-wfp-tenant --admin-
 Older `cloudflare-wfp-tenant` scaffolds have no admin UI. Add `@authhero/admin`, run `node copy-assets.js`, and pass the generated `admin-index-html.ts` as `adminIndexHtml` to `createWfpTenantApp`'s `configure`.
 :::
 
-### Allow the admin's sign-in on the tenant's client
+#### Allow the admin's sign-in on the tenant's client
 
 The admin UI signs in through the tenant's `default` client, which must allow `https://<tenant host>/admin/auth-callback`. A tenant seeded with the scaffolded seed Worker gets this from `issuer`, which the seed passes (needs the `authhero` release that makes `seed()` allow the issuer's own admin callback). A tenant that was seeded earlier still has only the fixed defaults and stops at `redirect_uri not allowed`. Add the host in the tenant's D1:
 
@@ -745,9 +779,7 @@ WHERE client_id = 'default';"
 
 Check the result with `SELECT client_id, callbacks FROM clients;`. Tenants created through API provisioning go through `provisionDefaultClients`, which does not add the tenant's own host yet, so add it the same way.
 
-### What the control plane gives you
-
-The control-plane template does not serve an admin UI yet. Operate it through the management API as in [4.7](#_4-7-get-a-management-token) and [4.8](#_4-8-sync-a-tenant). The operations and rollouts pages of the admin app are for a control plane that serves `/admin`, which you wire yourself with `adminIndexHtml`.
+The control-plane template does not serve an admin UI. Without a central admin, operate it through the management API as in [4.7](#_4-7-get-a-management-token) and [4.8](#_4-8-sync-a-tenant).
 
 ## Per-tenant routing customization
 
