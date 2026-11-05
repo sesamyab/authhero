@@ -323,7 +323,13 @@ export async function createAuthTokens(
   // fall back to a `sessions.get` when it doesn't.
   // Like Auth0, only emit `amr` (["mfa"]) when an MFA factor was completed;
   // omit it otherwise rather than listing single-factor methods.
-  let amr = params.amr ?? amrFromLoginSession(params.loginSession);
+  // The login session's MFA only counts for the user who completed it:
+  // completeLogin can swap `user` (e.g. impersonation) and keep the session.
+  let amr =
+    params.amr ??
+    (user && params.loginSession?.user_id === user.user_id
+      ? amrFromLoginSession(params.loginSession)
+      : undefined);
   let auth_time = params.auth_time;
   const promptValues = authParams.prompt?.split(" ") ?? [];
   const authTimeRequired =
