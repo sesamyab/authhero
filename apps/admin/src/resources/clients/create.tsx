@@ -107,6 +107,12 @@ export function ClientCreate() {
           </Button>
         </div>
         <TextInput source="name" required />
+        <TextInput
+          source="client_id"
+          label="Client ID (optional)"
+          helperText="Leave empty to generate one. Cannot be changed after creation."
+          parse={(v: string) => v?.trim() || undefined}
+        />
         {!isM2M && (
           <TextInput
             source="callbacks"
