@@ -4,6 +4,7 @@ type ClientLike = {
   app_type?: string;
   client_metadata?: Record<string, unknown> | null;
   grant_types?: string[] | null;
+  token_endpoint_auth_method?: string | null;
   addons?: { samlp?: unknown } | null;
 };
 
@@ -34,6 +35,11 @@ export function getClientShape(record: ClientLike | undefined): ClientShape {
   const hasClientCredentials =
     record?.grant_types?.includes("client_credentials") ?? false;
   const hasSamlAddon = record?.addons?.samlp != null;
+  // An SPA or Native record can still carry a secret-based auth method (e.g.
+  // the old client_secret_basic default); client_credentials then works, so
+  // its grants must stay reviewable.
+  const canUseClientCredentials =
+    hasClientCredentials && record?.token_endpoint_auth_method !== "none";
 
   if (isCimdClient(record)) {
     return {
@@ -52,7 +58,7 @@ export function getClientShape(record: ClientLike | undefined): ClientShape {
         showCallbacks: true,
         isInteractive: true,
         showSso: true,
-        showClientGrants: false,
+        showClientGrants: canUseClientCredentials,
         isExternallyManaged: false,
       };
     case "native":
@@ -61,7 +67,7 @@ export function getClientShape(record: ClientLike | undefined): ClientShape {
         showCallbacks: true,
         isInteractive: true,
         showSso: hasSamlAddon,
-        showClientGrants: false,
+        showClientGrants: canUseClientCredentials,
         isExternallyManaged: false,
       };
     case "non_interactive":

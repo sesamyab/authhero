@@ -45,9 +45,24 @@ describe("getClientShape", () => {
 
   it("does not show client grants for a public client with client_credentials", () => {
     expect(
-      getClientShape({ app_type: "spa", grant_types: ["client_credentials"] })
-        .showClientGrants,
+      getClientShape({
+        app_type: "spa",
+        grant_types: ["client_credentials"],
+        token_endpoint_auth_method: "none",
+      }).showClientGrants,
     ).toBe(false);
+  });
+
+  it("shows client grants for a spa or native client that still has a secret", () => {
+    for (const app_type of ["spa", "native"]) {
+      expect(
+        getClientShape({
+          app_type,
+          grant_types: ["client_credentials"],
+          token_endpoint_auth_method: "client_secret_basic",
+        }).showClientGrants,
+      ).toBe(true);
+    }
   });
 
   it("hides the secret, SSO and client grants for native", () => {

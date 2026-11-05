@@ -50,8 +50,21 @@ function transformClient(data: Record<string, unknown>) {
 // tokens, and only clients with Client Credentials have client grants.
 function ClientTabs() {
   const shape = useClientShape();
+  const availableTabs = [
+    "details",
+    ...(shape.showSso ? ["sso"] : []),
+    ...(shape.showClientGrants ? ["grants"] : []),
+    ...(shape.isInteractive ? ["connections", "organizations"] : []),
+    "advanced",
+    ...(shape.isInteractive ? ["refresh"] : []),
+    "raw",
+  ];
   return (
-    <UrlTabs defaultValue="details" className="w-full">
+    <UrlTabs
+      defaultValue="details"
+      availableValues={availableTabs}
+      className="w-full"
+    >
       <TabsList>
         <TabsTrigger value="details">Details</TabsTrigger>
         {shape.showSso && <TabsTrigger value="sso">SSO</TabsTrigger>}
