@@ -23,6 +23,7 @@ import {
 } from "../helpers/scopes-permissions";
 import { getMissingConsentScopes } from "../helpers/consent";
 import { resolvePrimaryUser } from "../helpers/users";
+import { sessionSatisfiesMfa } from "../helpers/session-mfa";
 
 // OAuth 2.0 Multiple Response Type Encoding Practices §3: the default
 // response_mode is `query` only for `response_type=code`; every other
@@ -141,16 +142,20 @@ export async function silentAuth({
     return new Response(null, { status: 302, headers });
   }
 
-  // OIDC Core 3.1.2.6: emit a consent_required error in the same response
-  // mode the client requested. Does not clear the session cookie — the
-  // session itself is still valid; only the per-client consent is missing.
-  function handleConsentRequired(description: string = "Consent required") {
+  // OIDC Core 3.1.2.6: emit consent_required / interaction_required in the
+  // same response mode the client requested. Does not clear the session
+  // cookie — the session itself is still valid; the user only has to finish
+  // an interactive step (consent, MFA) that prompt=none can't show.
+  function handleInteractionRequired(
+    error: "consent_required" | "interaction_required",
+    description: string,
+  ) {
     if (useIframeResponse) {
       return renderAuthIframe(
         ctx,
         originUrl,
         JSON.stringify({
-          error: "consent_required",
+          error,
           error_description: description,
           state,
         }),
@@ -158,7 +163,7 @@ export async function silentAuth({
     }
 
     const errorParams: Record<string, string> = {
-      error: "consent_required",
+      error,
       error_description: description,
     };
     if (state) errorParams.state = state;
@@ -227,6 +232,22 @@ export async function silentAuth({
   }
 
   ctx.set("user_id", user.user_id);
+
+  // MFA gate (#1668): when the tenant requires MFA, only a session that
+  // completed MFA may get tokens without interaction. This also refuses
+  // sessions from before the tenant turned MFA on.
+  const { checkMfaRequired } = await import("./mfa");
+  const mfaCheck = await checkMfaRequired(ctx, client.tenant.id, user.user_id);
+  if (mfaCheck.required && !sessionSatisfiesMfa(session, session.user_id)) {
+    logMessage(ctx, client.tenant.id, {
+      type: LogTypes.FAILED_SILENT_AUTH,
+      description: "Multi-factor authentication required",
+    });
+    return handleInteractionRequired(
+      "interaction_required",
+      "Multi-factor authentication required",
+    );
+  }
 
   ctx.set("username", user.email);
   ctx.set("connection", user.connection);
@@ -308,7 +329,8 @@ export async function silentAuth({
       requestedScopes,
     });
     if (missing.length > 0) {
-      return handleConsentRequired(
+      return handleInteractionRequired(
+        "consent_required",
         `Consent required for scope(s): ${missing.join(" ")}`,
       );
     }
