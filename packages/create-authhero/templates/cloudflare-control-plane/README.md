@@ -46,7 +46,7 @@ Needs, on the **tenant** Worker (see the `cloudflare-wfp-tenant` template):
 
 An admin UI (the hosted one at `manage.authhero.net`, or `@authhero/admin` hosted yourself) signs in on this control plane and sends every tenant-scoped call here with a `tenant-id` header. For a `wfp` tenant that is `ready`, `tenantDispatch` (`createWfpForwardMiddleware`) hands the call to the tenant's own Worker over the dispatch namespace, so it reads and writes the tenant's database. The control plane tenant, shared tenants and tenants still provisioning are served here.
 
-The tenant Worker must be able to verify the control plane's token, which needs the control plane's public key in the tenant's database. Every `sync-defaults` operation delivers it, so run one for a tenant you onboarded by hand and after a key rotation.
+The tenant Worker must be able to verify the control plane's token, which needs the control plane's public key in the tenant's database. Every `sync-defaults` operation delivers it, so run one for a tenant you onboarded by hand and after a key rotation. A dry run sends the key but does not store it, so finish with a run that is not a dry run.
 
 ## Encryption
 
