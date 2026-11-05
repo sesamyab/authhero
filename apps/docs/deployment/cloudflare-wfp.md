@@ -766,6 +766,8 @@ Older `cloudflare-wfp-tenant` scaffolds have no admin UI. Add `@authhero/admin`,
 
 #### Allow the admin's sign-in on the tenant's client
 
+The tenant also needs an admin user and the `default` client before `/admin` can sign anyone in. They come from the seed in [3.3](#_3-3-seed-initial-data), not from the sync, which carries no users or clients; a tenant that was only provisioned and synced has neither.
+
 The admin UI signs in through the tenant's `default` client, which must allow `https://<tenant host>/admin/auth-callback`. A tenant seeded with the scaffolded seed Worker gets this from `issuer`, which the seed passes (needs the `authhero` release that makes `seed()` allow the issuer's own admin callback). A tenant that was seeded earlier still has only the fixed defaults and stops at `redirect_uri not allowed`. Add the host in the tenant's D1:
 
 ```bash
