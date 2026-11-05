@@ -7,6 +7,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../../helpers/test-server";
 import { generateTOTP } from "../../../src/utils/totp";
+import { verifyTotpCode } from "../../../src/authentication-flows/mfa";
 import {
   MFA_LOCKOUT_REASON,
   MFA_MAX_FAILED_ATTEMPTS,
@@ -27,10 +28,12 @@ async function validTotp(secret = TOTP_SECRET) {
   return generateTOTP(decodeBase32(secret));
 }
 
-/** A 6-digit code that differs from the current valid one. */
+/** A 6-digit code rejected by the full (±1 step) verification window. */
 async function wrongTotp(secret = TOTP_SECRET) {
-  const valid = Number(await validTotp(secret));
-  return String((valid + 500000) % 1000000).padStart(6, "0");
+  for (let candidate = 0; ; candidate++) {
+    const code = String(candidate).padStart(6, "0");
+    if (!(await verifyTotpCode(secret, code))) return code;
+  }
 }
 
 async function createMfaSession(
@@ -439,6 +442,32 @@ describe("MFA failed-attempt limits", () => {
       );
       expect(reopen.status).toBe(200);
       expect(await reopen.text()).toContain(ACCOUNT_TOO_MANY);
+    });
+
+    it("keys the account SMS rate limit by the signed-in user, not the phone number", async () => {
+      const consumed: string[] = [];
+      const server = await getTestServer({
+        testTenantLanguage: "en",
+        rateLimit: {
+          consume: async (_scope, key) => {
+            consumed.push(key);
+            return { allowed: !key.startsWith("mfa-sms:") };
+          },
+        },
+      });
+      const { env, getSentSms } = server;
+      const state = await seedAccountSession(env);
+
+      const res = await post(
+        server,
+        "/account/security/phone-enrollment",
+        state,
+        { action: "submit_phone", phone_number: "+46701234567" },
+        accountHeaders,
+      );
+      expect(await res.text()).toContain("Too many verification codes");
+      expect(consumed).toContain(`mfa-sms:tenantId:${USER_ID}`);
+      expect(getSentSms()).toHaveLength(0);
     });
 
     it("locks phone enrollment after N bad codes and rejects a correct code", async () => {

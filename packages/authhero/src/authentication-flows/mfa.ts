@@ -98,11 +98,18 @@ export async function sendMfaOtp(
   client: EnrichedClient,
   loginSession: LoginSession,
   phoneNumber: string,
+  userId?: string,
 ): Promise<void> {
   const tenant = client.tenant;
 
   // Cap SMS volume per login session and per user before sending anything
-  await enforceMfaSmsSendLimit(ctx, tenant.id, loginSession.id, phoneNumber);
+  await enforceMfaSmsSendLimit(
+    ctx,
+    tenant.id,
+    loginSession.id,
+    phoneNumber,
+    userId,
+  );
 
   const code = generateOTP();
   const codeId = `mfa:${loginSession.id}`;

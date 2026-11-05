@@ -304,7 +304,13 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
 
           // Send OTP
           try {
-            await sendMfaOtp(ctx, client, loginSession, normalizedPhone);
+            await sendMfaOtp(
+              ctx,
+              client,
+              loginSession,
+              normalizedPhone,
+              user.user_id,
+            );
           } catch (otpErr) {
             // Roll back enrollment
             await ctx.env.data.authenticationMethods.remove(

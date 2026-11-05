@@ -187,13 +187,16 @@ export async function enforceMfaSmsSendLimit(
   tenantId: string,
   loginSessionId: string,
   phoneNumber: string,
+  userId?: string,
 ): Promise<void> {
   const current = await ctx.env.data.loginSessions.get(
     tenantId,
     loginSessionId,
   );
   const sent = readLoginSessionData(current?.state_data).mfa_sms_sent ?? 0;
-  const subject = current?.user_id ?? phoneNumber;
+  // Account sessions carry no user_id, so callers pass the resolved user.
+  // The phone number is only the key for genuinely userless flows.
+  const subject = userId ?? current?.user_id ?? phoneNumber;
 
   if (
     sent >= MFA_MAX_SMS_SENDS ||
@@ -202,7 +205,7 @@ export async function enforceMfaSmsSendLimit(
     logMessage(ctx, tenantId, {
       type: LogTypes.ERROR_SENDING_MFA_SMS,
       description: "MFA SMS send limit reached",
-      userId: current?.user_id,
+      userId: userId ?? current?.user_id,
     });
     throw new MfaSmsRateLimitError();
   }
