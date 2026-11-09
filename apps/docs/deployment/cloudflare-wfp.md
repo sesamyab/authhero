@@ -965,6 +965,13 @@ writeFileSync(
 
 Run it before `wrangler deploy` and after upgrading `@authhero/drizzle`. A tenant database gets only this set; the `drizzle-control-plane/` migrations belong to the control plane's own database.
 
+`tenantWorkerScript` is the tenant Worker's built bundle as a string, and it is loaded the same way. Build the `cloudflare-wfp-tenant` template into one self-contained ES module (`esbuild --bundle --format=esm`), then make its text available to the control plane:
+
+- Write it into a generated module as a string literal, exactly as for the migrations. This is the simplest option.
+- The bundle is several megabytes, and a string literal in the Worker is parsed on every cold start even though only provisioning reads it. To avoid that, copy the file into the control plane's static assets and read it through an assets binding when provisioning: add `binding = "ASSETS"` to the `[assets]` block in `wrangler.toml`, which the template does not set, then `await env.ASSETS.fetch(...)` and `.text()`. Assets deploy together with the Worker, so the two stay in step.
+
+Pass the git SHA or release tag of that build as `workerVersion`, so the control plane can tell which tenants lag behind the current bundle.
+
 The hook exposes three entry points:
 
 | Method                    | Purpose                                                                                                                   |
