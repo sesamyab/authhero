@@ -741,6 +741,10 @@ export default (
   // client without an organization gives an operator that, and gives a tenant
   // member a token with no management rights, which is refused as it should be.
   controlPlaneHttpClient = httpClient,
+  // Where those calls are sent. With tenant subdomains `apiUrl` is the tenant's
+  // own host, but the control plane's record of the tenant lives on the control
+  // plane's host, so the base is given separately.
+  controlPlaneApiUrl = apiUrl,
 ): AuthHeroDataProvider => {
   // Get or create management client for SDK calls
   let managementClientPromise: Promise<ManagementClient> | null = null;
@@ -768,7 +772,7 @@ export default (
     if (!tenantId) return null;
     try {
       const res = await controlPlaneHttpClient(
-        `${apiUrl}/api/v2/tenants/${encodeURIComponent(tenantId)}/config-sync`,
+        `${controlPlaneApiUrl}/api/v2/tenants/${encodeURIComponent(tenantId)}/config-sync`,
         { headers: createHeaders() },
       );
       const status = res.json as ApiRecord | undefined;
@@ -799,7 +803,7 @@ export default (
     const headers = createHeaders();
     headers.set("Content-Type", "application/json");
     const res = await controlPlaneHttpClient(
-      `${apiUrl}/api/v2/tenants/${encodeURIComponent(String(tenantId))}`,
+      `${controlPlaneApiUrl}/api/v2/tenants/${encodeURIComponent(String(tenantId))}`,
       { method: "PATCH", headers, body: JSON.stringify(changes) },
     );
     return res.json as ApiRecord;

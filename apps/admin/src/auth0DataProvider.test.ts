@@ -706,6 +706,35 @@ describe("tenant settings and the control plane's sync fields", () => {
     ]);
   });
 
+  it("addresses the control plane's record on the control plane's host when the tenant has its own", async () => {
+    managementClient.tenants.settings.get.mockResolvedValue(tenantRow);
+    managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+    const CONTROL_PLANE_URL = "https://control.example.com";
+    const TENANT_URL = `https://${TENANT_ID}.control.example.com`;
+    const tenantClient = createHttpClient(() => ({}));
+    const controlPlane = controlPlaneClient();
+    const provider = auth0DataProvider(
+      TENANT_URL,
+      tenantClient.client,
+      TENANT_ID,
+      undefined,
+      controlPlane.client,
+      CONTROL_PLANE_URL,
+    );
+
+    const { data } = await provider.getOne("settings", { id: "settings" });
+    await provider.update("settings", {
+      id: "settings",
+      previousData: { ...data },
+      data: { ...data, config_sync: "inherit-on-read" },
+    });
+
+    expect(controlPlane.calls.map((c) => c.url)).toEqual([
+      `${CONTROL_PLANE_URL}/api/v2/tenants/${TENANT_ID}/config-sync`,
+      `${CONTROL_PLANE_URL}/api/v2/tenants/${TENANT_ID}`,
+    ]);
+  });
+
   it("clears the parent with null", async () => {
     managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
     const { client, calls } = controlPlaneClient();

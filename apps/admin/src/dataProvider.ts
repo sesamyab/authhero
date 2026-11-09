@@ -132,8 +132,10 @@ export function getDataproviderForTenant(
     tenantId,
     auth0Domain,
     // The control plane's own record of the tenant (sync mode, parent) is read
-    // and written with a token that has no organization.
+    // and written with a token that has no organization, on the control
+    // plane's own host rather than the tenant's subdomain.
     authorizedHttpClient,
+    resolveApiBase(auth0Domain).replace(/\/$/, ""),
   );
 
   return auth0Provider;
