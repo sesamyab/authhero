@@ -638,6 +638,12 @@ export interface SeedOptions {
    * The issuer URL (used to construct the Management API identifier)
    */
   issuer?: string;
+  /**
+   * Whether to create the "API Explorer Application" machine-to-machine client
+   * authorized against the Management API. Set to `false` to skip it.
+   * @default true
+   */
+  createManagementClient?: boolean;
 }
 
 export interface SeedResult {
@@ -928,6 +934,7 @@ export async function seed(
   await provisionDefaultClients(adapters, tenantId, {
     managementApiIdentifier,
     managementApiScopes: MANAGEMENT_API_SCOPES,
+    createManagementClient: options.createManagementClient,
     debug,
   });
 
