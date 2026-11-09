@@ -100,6 +100,7 @@ describe("createWfpTenantApp: a control plane token for one tenant's organizatio
     tenant = await makeAdapters();
     await tenant.tenants.create(tenantRow(CP));
     await tenant.tenants.create(tenantRow("bob"));
+    await tenant.tenants.create(tenantRow("acme"));
     // The control plane's public key, as a sync projects it: no tenant id.
     await tenant.keys.create({
       kid: controlPlaneKey.kid,
@@ -115,6 +116,7 @@ describe("createWfpTenantApp: a control plane token for one tenant's organizatio
     claims: Record<string, unknown>,
     options: {
       tenantIdVar?: string | undefined;
+      requestTenant?: string;
       path?: string;
       method?: string;
     } = {},
@@ -138,7 +140,7 @@ describe("createWfpTenantApp: a control plane token for one tenant's organizatio
             method: options.method ?? "GET",
             headers: {
               authorization: `Bearer ${token}`,
-              "tenant-id": "bob",
+              "tenant-id": options.requestTenant ?? "bob",
               "content-type": "application/json",
             },
             ...(options.method === "POST" ? { body: "{}" } : {}),
@@ -185,19 +187,27 @@ describe("createWfpTenantApp: a control plane token for one tenant's organizatio
     expect(res.status).toBe(403);
   });
 
-  it("compares with the tenant the request resolved to when the Worker has no TENANT_ID", async () => {
-    // Provisioned before TENANT_ID existed: the request's tenant is `bob`.
-    const other = await callBob(
-      { org_id: "org_acme", org_name: "acme" },
-      { tenantIdVar: undefined },
-    );
-    expect(other.status).toBe(403);
+  it("refuses an organization token when the Worker has no TENANT_ID, whatever the request says", async () => {
+    // The `tenant-id` header is the caller's own, so it cannot name the tenant
+    // this Worker is. An `acme` row exists, so the header resolves.
+    for (const path of ["/api/v2/users", "/api/v2/clients"]) {
+      const res = await callBob(
+        { org_id: "org_acme", org_name: "acme" },
+        { tenantIdVar: undefined, requestTenant: "acme", path },
+      );
+      expect(res.status).toBe(403);
+    }
 
     const own = await callBob(
       { org_id: "org_bob", org_name: "bob" },
       { tenantIdVar: undefined },
     );
-    expect(own.status).toBe(200);
+    expect(own.status).toBe(403);
+  });
+
+  it("still lets an operator token in when the Worker has no TENANT_ID", async () => {
+    const res = await callBob({}, { tenantIdVar: undefined });
+    expect(res.status).toBe(200);
   });
 
   it("is not dropped by a `configure` that replaces the management middleware", async () => {

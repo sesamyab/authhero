@@ -24,8 +24,9 @@ export interface OrgGuardEnv {
  * A token with an organization id but no `org_name` is refused, since it cannot
  * be matched with anything.
  *
- * The tenant is `TENANT_ID`, or the tenant the request resolved to when the
- * Worker was provisioned without one.
+ * The tenant is `TENANT_ID` and nothing else: the request's own tenant comes
+ * from a header the caller controls, so it cannot say which tenant this Worker
+ * is. A Worker without `TENANT_ID` refuses organization-scoped tokens.
  *
  * It answers the refusal itself instead of throwing an `HTTPException`: this
  * package bundles its own copy of Hono, so authhero's error handler would not
@@ -33,9 +34,8 @@ export interface OrgGuardEnv {
  */
 export function controlPlaneOrgGuard(env: OrgGuardEnv): MiddlewareHandler {
   return async (c, next) => {
-    const { user, tenant_id: requestTenantId } = c.var as {
+    const { user } = c.var as {
       user?: { tenant_id?: unknown; org_id?: unknown; org_name?: unknown };
-      tenant_id?: string;
     };
     const fromControlPlane =
       typeof user?.tenant_id === "string" &&
@@ -43,7 +43,7 @@ export function controlPlaneOrgGuard(env: OrgGuardEnv): MiddlewareHandler {
     const hasOrganization = Boolean(user?.org_id || user?.org_name);
 
     if (fromControlPlane && hasOrganization) {
-      const tenant = env.TENANT_ID || requestTenantId;
+      const tenant = env.TENANT_ID;
       if (!tenant || user?.org_name !== tenant) {
         console.error(
           `[wfp-tenant] control plane token for organization "${String(
