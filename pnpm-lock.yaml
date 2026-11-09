@@ -937,6 +937,12 @@ importers:
       hono:
         specifier: ^4.12.30
         version: 4.12.30
+      rollup:
+        specifier: ^4.54.0
+        version: 4.54.0
+      rollup-plugin-dts:
+        specifier: ^6.4.1
+        version: 6.4.1(rollup@4.54.0)(typescript@5.9.3)
       typescript:
         specifier: ^5.5.2
         version: 5.9.3

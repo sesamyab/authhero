@@ -33,7 +33,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && tsc -p tsconfig.types.json && rollup -c rollup.dts.config.mjs",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push"
@@ -53,6 +53,8 @@
     "better-sqlite3": "^11.10.0",
     "drizzle-kit": "^0.31.4",
     "hono": "^4.12.30",
+    "rollup": "^4.54.0",
+    "rollup-plugin-dts": "^6.4.1",
     "typescript": "^5.5.2",
     "vite": "^8.0.14",
     "vitest": "^4.1.7"
