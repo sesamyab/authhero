@@ -1,4 +1,9 @@
-import { Hono, type Context, type ExecutionContext } from "hono";
+import {
+  Hono,
+  type Context,
+  type ExecutionContext,
+  type MiddlewareHandler,
+} from "hono";
 import type { SigningKey } from "@authhero/adapter-interfaces";
 import {
   init,
@@ -194,6 +199,66 @@ function tenantCertificateAuthority(
   };
 }
 
+/**
+ * Keeps a control plane token that is scoped to an organization from reaching a
+ * tenant other than its own.
+ *
+ * A member of a tenant's team holds a control plane token (`tenant_id` is the
+ * control plane's) with the organization the control plane put in it:
+ * `org_name` is the tenant's id. The control plane does not check a call it
+ * forwards here, so this Worker is the only gate, and the core cross-tenant
+ * guard only asks whether the token comes from the control plane. Without this,
+ * a member of one tenant could send `tenant-id: <another>` to that tenant's
+ * Worker and be let in with the permissions of their own organization's role.
+ *
+ * A control plane token with no organization (an operator, or a machine client
+ * such as the one CI uses) passes: it is a platform credential, not a tenant's.
+ * A token with an organization id but no `org_name` is refused, since it cannot
+ * be matched with anything.
+ *
+ * The tenant is `TENANT_ID`, or the tenant the request resolved to when the
+ * Worker was provisioned without one.
+ *
+ * It answers the refusal itself instead of throwing an `HTTPException`: this
+ * package bundles its own copy of Hono, so authhero's error handler would not
+ * recognise the class and turn the `403` into a `500`.
+ */
+export function controlPlaneOrgGuard<Env extends WfpTenantEnv>(
+  env: Env,
+): MiddlewareHandler {
+  return async (c, next) => {
+    const { user, tenant_id: requestTenantId } = c.var as {
+      user?: { tenant_id?: unknown; org_id?: unknown; org_name?: unknown };
+      tenant_id?: string;
+    };
+    const fromControlPlane =
+      typeof user?.tenant_id === "string" &&
+      user.tenant_id === env.CONTROL_PLANE_TENANT_ID;
+    const hasOrganization = Boolean(user?.org_id || user?.org_name);
+
+    if (fromControlPlane && hasOrganization) {
+      const tenant = env.TENANT_ID || requestTenantId;
+      if (!tenant || user?.org_name !== tenant) {
+        console.error(
+          `[wfp-tenant] control plane token for organization "${String(
+            user?.org_name ?? user?.org_id,
+          )}" refused on tenant "${tenant ?? "unknown"}"`,
+        );
+        return c.json(
+          {
+            statusCode: 403,
+            error: "Forbidden",
+            message: "This token is for another tenant's organization",
+          },
+          403,
+        );
+      }
+    }
+
+    return next();
+  };
+}
+
 /** Default additional-issuers resolver: gate the control-plane issuer to control-plane tokens. */
 function gatedControlPlaneIssuer<Env extends WfpTenantEnv>(
   env: Env,
@@ -252,9 +317,18 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
       env,
     ),
   };
-  const config = options.configure
+  const configured = options.configure
     ? options.configure(baseConfig, env)
     : baseConfig;
+  // Added after `configure`, so a host that replaces `managementApiMiddleware`
+  // cannot drop it.
+  const config: AuthHeroConfig = {
+    ...configured,
+    managementApiMiddleware: [
+      controlPlaneOrgGuard(env),
+      ...(configured.managementApiMiddleware ?? []),
+    ],
+  };
   // The effective authority after `configure`: issuance at sync-defaults and
   // the renew route use the same CA as rotation and the JWKS x5c.
   const effectiveCertificateAuthority = config.signingCertificateAuthority;
