@@ -787,6 +787,46 @@ describe("tenant settings and the control plane's sync fields", () => {
     },
   );
 
+  it.each([404, 405])(
+    "falls back when the admin's own client reports %i as httpStatus",
+    async (httpStatus) => {
+      managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+      const client = async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/config-sync")) {
+          return {
+            status: 200,
+            headers: new Headers(),
+            body: "",
+            json: CP_STATUS,
+          };
+        }
+        if (init?.method === "PATCH") {
+          throw Object.assign(new Error("failed"), { httpStatus });
+        }
+        return { status: 200, headers: new Headers(), body: "", json: {} };
+      };
+      const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+      await provider.update("settings", {
+        id: "settings",
+        previousData: {
+          id: "settings",
+          config_sync: "inherit-on-read",
+          _control_plane_sync: true,
+        },
+        data: {
+          id: "settings",
+          config_sync: "synced",
+          _control_plane_sync: true,
+        },
+      });
+
+      expect(
+        managementClient.tenants.settings.update.mock.calls[0]![0],
+      ).toEqual({ config_sync: "synced" });
+    },
+  );
+
   it("does not hide a refusal from the control plane", async () => {
     const { client } = controlPlaneClient({ patchStatus: 403 });
     const provider = auth0DataProvider(API_URL, client, TENANT_ID);

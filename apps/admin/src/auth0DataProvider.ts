@@ -2288,7 +2288,12 @@ export default (
           try {
             saved = await patchControlPlaneTenant(changes);
           } catch (error) {
-            const status = (error as { status?: number } | undefined)?.status;
+            // `httpStatus` is what the admin's own client keeps; `status` is
+            // what react-admin's fetch helper sets.
+            const failure = error as
+              | { httpStatus?: number; status?: number }
+              | undefined;
+            const status = failure?.httpStatus ?? failure?.status;
             // A control plane without the route (older packages): fall back to
             // the tenant's own settings, which is what always happened.
             if (status !== 404 && status !== 405) throw error;
