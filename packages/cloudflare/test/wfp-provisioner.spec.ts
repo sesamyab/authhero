@@ -432,6 +432,36 @@ describe("createCloudflareWfpD1Provisioner", () => {
     });
   });
 
+  it("forwards an analytics_engine extraBinding verbatim", async () => {
+    setupHappyPath();
+    const provisioner = createCloudflareWfpD1Provisioner({
+      accountId: ACCOUNT_ID,
+      apiToken: "token",
+      dispatchNamespace: NAMESPACE,
+      controlPlaneBaseUrl: "https://auth.example.com",
+      tenantWorkerScript: "export default {};",
+      migrations: [{ name: "0.sql", sql: "SELECT 1;" }],
+      secrets: async () => ({ X: "y" }),
+      extraBindings: [
+        { type: "analytics_engine", name: "AUTH_LOGS", dataset: "auth_logs" },
+      ],
+    });
+
+    await provisioner.onProvision("kvartal");
+
+    const upload = captured.find((c) => c.path === "/scripts/kvartal");
+    const metadata = JSON.parse(
+      (upload!.body as Record<string, string>)["metadata"],
+    );
+    expect(
+      metadata.bindings.find((b: { name: string }) => b.name === "AUTH_LOGS"),
+    ).toEqual({
+      type: "analytics_engine",
+      name: "AUTH_LOGS",
+      dataset: "auth_logs",
+    });
+  });
+
   it("re-provision heals an orphaned worker: reuses the existing D1, skips migrations, re-uploads the script", async () => {
     const warn = vi.fn();
     server.use(

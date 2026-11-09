@@ -62,7 +62,8 @@ export type ScriptBinding =
   | { type: "d1"; name: string; id: string }
   | { type: "plain_text"; name: string; text: string }
   | { type: "secret_text"; name: string; text: string }
-  | { type: "service"; name: string; service: string; environment?: string };
+  | { type: "service"; name: string; service: string; environment?: string }
+  | { type: "analytics_engine"; name: string; dataset: string };
 
 export interface ScriptUploadOptions {
   /** Script source (JavaScript ES module). */
