@@ -673,6 +673,68 @@ describe("tenant settings and the control plane's sync fields", () => {
     );
   });
 
+  it("reads and saves the control plane's record with the control plane client, not the tenant's", async () => {
+    managementClient.tenants.settings.get.mockResolvedValue(tenantRow);
+    managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+    // The tenant's client holds a token scoped to the tenant's organization,
+    // which the control plane refuses for the sync mode and the parent.
+    const tenantClient = createHttpClient(() => {
+      throw new Error("the tenant's client must not be used for these calls");
+    });
+    const controlPlane = controlPlaneClient();
+    const provider = auth0DataProvider(
+      API_URL,
+      tenantClient.client,
+      TENANT_ID,
+      undefined,
+      controlPlane.client,
+    );
+
+    const { data } = await provider.getOne("settings", { id: "settings" });
+    expect(data).toMatchObject({ config_sync: "synced" });
+
+    await provider.update("settings", {
+      id: "settings",
+      previousData: { ...data },
+      data: { ...data, config_sync: "inherit-on-read" },
+    });
+
+    expect(tenantClient.calls).toHaveLength(0);
+    expect(controlPlane.calls.map((c) => c.options?.method ?? "GET")).toEqual([
+      "GET",
+      "PATCH",
+    ]);
+  });
+
+  it("addresses the control plane's record on the control plane's host when the tenant has its own", async () => {
+    managementClient.tenants.settings.get.mockResolvedValue(tenantRow);
+    managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+    const CONTROL_PLANE_URL = "https://control.example.com";
+    const TENANT_URL = `https://${TENANT_ID}.control.example.com`;
+    const tenantClient = createHttpClient(() => ({}));
+    const controlPlane = controlPlaneClient();
+    const provider = auth0DataProvider(
+      TENANT_URL,
+      tenantClient.client,
+      TENANT_ID,
+      undefined,
+      controlPlane.client,
+      CONTROL_PLANE_URL,
+    );
+
+    const { data } = await provider.getOne("settings", { id: "settings" });
+    await provider.update("settings", {
+      id: "settings",
+      previousData: { ...data },
+      data: { ...data, config_sync: "inherit-on-read" },
+    });
+
+    expect(controlPlane.calls.map((c) => c.url)).toEqual([
+      `${CONTROL_PLANE_URL}/api/v2/tenants/${TENANT_ID}/config-sync`,
+      `${CONTROL_PLANE_URL}/api/v2/tenants/${TENANT_ID}`,
+    ]);
+  });
+
   it("clears the parent with null", async () => {
     managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
     const { client, calls } = controlPlaneClient();
@@ -703,6 +765,46 @@ describe("tenant settings and the control plane's sync fields", () => {
     async (status) => {
       managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
       const { client } = controlPlaneClient({ patchStatus: status });
+      const provider = auth0DataProvider(API_URL, client, TENANT_ID);
+
+      await provider.update("settings", {
+        id: "settings",
+        previousData: {
+          id: "settings",
+          config_sync: "inherit-on-read",
+          _control_plane_sync: true,
+        },
+        data: {
+          id: "settings",
+          config_sync: "synced",
+          _control_plane_sync: true,
+        },
+      });
+
+      expect(
+        managementClient.tenants.settings.update.mock.calls[0]![0],
+      ).toEqual({ config_sync: "synced" });
+    },
+  );
+
+  it.each([404, 405])(
+    "falls back when the admin's own client reports %i as httpStatus",
+    async (httpStatus) => {
+      managementClient.tenants.settings.update.mockResolvedValue(tenantRow);
+      const client = async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/config-sync")) {
+          return {
+            status: 200,
+            headers: new Headers(),
+            body: "",
+            json: CP_STATUS,
+          };
+        }
+        if (init?.method === "PATCH") {
+          throw Object.assign(new Error("failed"), { httpStatus });
+        }
+        return { status: 200, headers: new Headers(), body: "", json: {} };
+      };
       const provider = auth0DataProvider(API_URL, client, TENANT_ID);
 
       await provider.update("settings", {

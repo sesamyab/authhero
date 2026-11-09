@@ -36,6 +36,7 @@ vi.mock("./authProvider", () => ({
   isSingleTenantForDomain: vi.fn(() => false),
 }));
 
+import { authorizedHttpClient } from "./authProvider";
 import {
   resolveApiBase,
   resolveTenantApiBase,
@@ -169,6 +170,27 @@ describe("getDataproviderForTenant", () => {
     expect(apiUrl).toBe("https://kvartal.api.example.com");
     expect(tenantId).toBe("kvartal");
     expect(domain).toBe("auth.example.com");
+  });
+
+  it("sends the control plane's own record to the control plane's host, not the tenant subdomain", () => {
+    storeDomains([
+      {
+        url: "auth.example.com",
+        connectionMethod: "login",
+        restApiUrl: "api.example.com",
+        useTenantSubdomains: true,
+      },
+    ]);
+
+    getDataproviderForTenant("kvartal", "auth.example.com");
+
+    const [apiUrl, , , , controlPlaneClient, controlPlaneApiUrl] =
+      auth0DataProviderFactory.mock.calls[0];
+    expect(apiUrl).toBe("https://kvartal.api.example.com");
+    // The tenant's own calls use the subdomain; the sync mode and the parent
+    // are addressed on the control plane's host with its own client.
+    expect(controlPlaneApiUrl).toBe("https://api.example.com");
+    expect(controlPlaneClient).toBe(authorizedHttpClient);
   });
 });
 

@@ -486,6 +486,20 @@ export const getAuthProvider = (
 // Create auth provider for the selected domain
 const authProvider = getAuthProvider(getSelectedDomainFromStorage());
 
+/**
+ * An error that keeps the HTTP status of the response it stands for, so a
+ * caller can tell a route the server does not have (404, 405) from a refusal
+ * (403). It is `httpStatus` and not `status` on purpose: react-admin's
+ * `checkError` signs the user out on a `status` of 401 or 403, which these
+ * errors have never done.
+ */
+function httpStatusError(
+  message: string,
+  status: number,
+): Error & { httpStatus: number } {
+  return Object.assign(new Error(message), { httpStatus: status });
+}
+
 // Create a debounced http client to prevent parallel token requests
 type HttpResponse = Awaited<ReturnType<typeof fetchUtils.fetchJson>>;
 const pendingRequests = new Map<string, Promise<HttpResponse>>();
@@ -632,7 +646,7 @@ const authorizedHttpClient = (
             throw new Error("Navigating to Auth0 configuration");
           }
 
-          throw new Error(response.statusText);
+          throw httpStatusError(response.statusText, response.status);
         }
 
         const text = await response.text();
@@ -692,7 +706,7 @@ const authorizedHttpClient = (
             throw new Error("Navigating to Auth0 configuration");
           }
 
-          throw new Error(text || response.statusText);
+          throw httpStatusError(text || response.statusText, response.status);
         }
 
         const text = await response.text();
@@ -731,10 +745,14 @@ const authorizedHttpClient = (
       });
   }
 
-  // Handle cleanup when request is done
-  request.finally(() => {
-    pendingRequests.delete(requestKey);
-  });
+  // Handle cleanup when request is done. `finally` returns a new promise that
+  // rejects with the same error, and nobody awaits it, so it is caught here:
+  // the caller still gets the rejection from `request` itself.
+  request
+    .finally(() => {
+      pendingRequests.delete(requestKey);
+    })
+    .catch(() => {});
 
   // Cache the request
   pendingRequests.set(requestKey, request);

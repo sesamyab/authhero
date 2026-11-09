@@ -734,6 +734,17 @@ export default (
   httpClient = fetchUtils.fetchJson,
   tenantId?: string,
   domain?: string,
+  // Calls about the control plane's own record of this tenant (its sync mode
+  // and parent) go through this client. The tenant's `httpClient` carries a
+  // token scoped to the tenant's organization, which the control plane refuses
+  // for those two settings: only a control-plane credential may change them. A
+  // client without an organization gives an operator that, and gives a tenant
+  // member a token with no management rights, which is refused as it should be.
+  controlPlaneHttpClient = httpClient,
+  // Where those calls are sent. With tenant subdomains `apiUrl` is the tenant's
+  // own host, but the control plane's record of the tenant lives on the control
+  // plane's host, so the base is given separately.
+  controlPlaneApiUrl = apiUrl,
 ): AuthHeroDataProvider => {
   // Get or create management client for SDK calls
   let managementClientPromise: Promise<ManagementClient> | null = null;
@@ -753,15 +764,17 @@ export default (
     return managementClientPromise;
   };
 
-  // The control plane's record of this tenant, read with no `tenant-id` header
-  // so the control plane answers it itself on any version. Null when it cannot
-  // be read: a single-tenant deployment has no such route, and a tenant's own
-  // admin may only read through its own worker.
+  /**
+   * The control plane's record of this tenant, read with no `tenant-id` header
+   * so the control plane answers it itself on any version. Null when it cannot
+   * be read: a single-tenant deployment has no such route, and a tenant's own
+   * admin may only read through its own worker.
+   */
   const readControlPlaneSync = async (): Promise<ApiRecord | null> => {
     if (!tenantId) return null;
     try {
-      const res = await httpClient(
-        `${apiUrl}/api/v2/tenants/${encodeURIComponent(tenantId)}/config-sync`,
+      const res = await controlPlaneHttpClient(
+        `${controlPlaneApiUrl}/api/v2/tenants/${encodeURIComponent(tenantId)}/config-sync`,
         { headers: createHeaders() },
       );
       const status = res.json as ApiRecord | undefined;
@@ -771,6 +784,12 @@ export default (
     }
   };
 
+  /**
+   * The tenant's settings with its sync mode and parent taken from the control
+   * plane's record, marked so a save knows to go there. The record is returned
+   * as it was when the control plane's one cannot be read, and for the control
+   * plane itself, which has nothing to inherit.
+   */
   const withControlPlaneSync = async (
     record: ApiRecord,
   ): Promise<ApiRecord> => {
@@ -786,13 +805,18 @@ export default (
     };
   };
 
+  /**
+   * Changes the control plane's record of this tenant (its sync mode and
+   * parent) by id. Rejects with the response status kept, so a missing route
+   * (404, 405) can be told from a refusal (403).
+   */
   const patchControlPlaneTenant = async (
     changes: ApiRecord,
   ): Promise<ApiRecord> => {
     const headers = createHeaders();
     headers.set("Content-Type", "application/json");
-    const res = await httpClient(
-      `${apiUrl}/api/v2/tenants/${encodeURIComponent(String(tenantId))}`,
+    const res = await controlPlaneHttpClient(
+      `${controlPlaneApiUrl}/api/v2/tenants/${encodeURIComponent(String(tenantId))}`,
       { method: "PATCH", headers, body: JSON.stringify(changes) },
     );
     return res.json as ApiRecord;
@@ -2277,7 +2301,12 @@ export default (
           try {
             saved = await patchControlPlaneTenant(changes);
           } catch (error) {
-            const status = (error as { status?: number } | undefined)?.status;
+            // `httpStatus` is what the admin's own client keeps; `status` is
+            // what react-admin's fetch helper sets.
+            const failure = error as
+              | { httpStatus?: number; status?: number }
+              | undefined;
+            const status = failure?.httpStatus ?? failure?.status;
             // A control plane without the route (older packages): fall back to
             // the tenant's own settings, which is what always happened.
             if (status !== 404 && status !== 405) throw error;
