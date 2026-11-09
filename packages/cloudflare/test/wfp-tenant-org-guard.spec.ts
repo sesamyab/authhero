@@ -197,6 +197,13 @@ describe("createWfpTenantApp: a control plane token for one tenant's organizatio
     }
   });
 
+  it("compares the organization with the tenant id exactly, case included", async () => {
+    // The platform's own access control compares case-insensitively; this guard
+    // is the stricter gate and must not authorize `BOB` as `bob`.
+    const res = await callBob({ org_id: "org_bob", org_name: "BOB" });
+    expect(res.status).toBe(403);
+  });
+
   it("refuses an organization token when the Worker has no TENANT_ID, whatever the request says", async () => {
     // The `tenant-id` header is the caller's own, so it cannot name the tenant
     // this Worker is. An `acme` row exists, so the header resolves.
