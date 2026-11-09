@@ -12,6 +12,11 @@ export interface Env {
   // README.
   ISSUER?: string;
 
+  // Comma-separated origins allowed for CORS on the management API, e.g. the
+  // admin UI's origin. Variable. Unset allows none, so a browser admin served
+  // from another origin cannot call this Worker until it is set.
+  ALLOWED_ORIGINS?: string;
+
   // Base64-encoded 32-byte key for the control plane's own secrets at rest.
   ENCRYPTION_KEY?: string;
 

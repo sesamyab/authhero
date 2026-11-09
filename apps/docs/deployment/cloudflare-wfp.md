@@ -748,7 +748,7 @@ Use the host you gave the control plane in [4.3](#_4-3-choose-the-control-plane-
 
 With the domain fixed, the admin opens on the control plane's tenant list and never asks for a domain. It sends every tenant-scoped call to the control plane with a `tenant-id` header. For that to work:
 
-1. The admin's host is in the control plane's allowed origins, and its `/auth-callback` is an allowed callback of the client above.
+1. The admin's origin is in the control plane's `ALLOWED_ORIGINS` (`[vars] ALLOWED_ORIGINS = "https://admin.example.com"`, comma-separated for several), and its `/auth-callback` is an allowed callback of the client above. The template allows no origin when `ALLOWED_ORIGINS` is unset; a control plane scaffolded before this variable existed allowed whatever origin the request came from, and should switch to the list.
 2. The control plane forwards calls for a `wfp` tenant to that tenant's Worker with `tenantDispatch` (`createWfpForwardMiddleware`). The control-plane template has it from `create-authhero` 0.52.0. A control plane scaffolded earlier needs it added to the `config` in `src/index.ts`, with `createWfpForwardMiddleware` imported from `@authhero/cloudflare-adapter`:
 
    ```typescript

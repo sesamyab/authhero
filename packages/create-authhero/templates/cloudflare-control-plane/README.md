@@ -8,11 +8,11 @@ database.
 
 This is one of three pieces:
 
-| Piece | Template |
-| --- | --- |
+| Piece                                 | Template                    |
+| ------------------------------------- | --------------------------- |
 | Front door (host → tenant → dispatch) | `cloudflare-wfp-dispatcher` |
-| Per-tenant Workers | `cloudflare-wfp-tenant` |
-| **This control plane** | `cloudflare-control-plane` |
+| Per-tenant Workers                    | `cloudflare-wfp-tenant`     |
+| **This control plane**                | `cloudflare-control-plane`  |
 
 ## Syncing a tenant
 
@@ -149,6 +149,20 @@ VALUES ('cd-control-plane', 'control_plane', 'control.example.com', 1, 'ready', 
 The dispatcher never sees this host (it goes straight to this Worker), so the
 row does not affect routing. Tokens the control plane issues carry the custom
 domain as `iss`; point the tenants' `CONTROL_PLANE_ISSUER` at it.
+
+### CORS
+
+A browser admin served from another origin calls this Worker's management API
+cross-origin, so its origin must be allowed. Set it in `wrangler.local.toml`:
+
+```toml
+[vars]
+ALLOWED_ORIGINS = "https://admin.example.com"
+```
+
+It takes several origins, comma-separated. Unset allows none: the template does
+not echo the request's own `Origin`, which would let any site call the API from
+a browser.
 
 ### Dispatch namespace
 

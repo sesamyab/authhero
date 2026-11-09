@@ -350,6 +350,18 @@ describe("control-plane template sync wiring", () => {
     );
   });
 
+  it("allows only the origins it is configured with", () => {
+    // Echoing the request's `Origin` into the allow list would let every site
+    // call the management API from a browser.
+    const { projectPath } = projects["control-plane"];
+    const index = readFile(projectPath, "src/index.ts");
+    expect(index).not.toContain('request.headers.get("Origin")');
+    expect(index).toContain("env.ALLOWED_ORIGINS");
+    expect(readFile(projectPath, "src/types.ts")).toContain(
+      "ALLOWED_ORIGINS?: string",
+    );
+  });
+
   it("lets ISSUER be set apart from the Worker's own host", () => {
     // Hosts under the ISSUER apex are never looked up as custom domains, so a
     // control plane that always used its own host as the apex could only

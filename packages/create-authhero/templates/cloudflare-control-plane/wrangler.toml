@@ -91,6 +91,16 @@ namespace = "authhero-tenants"
 # ISSUER = "https://token.example.com/"
 
 # ════════════════════════════════════════════════════════════════════════════
+# CORS
+# ════════════════════════════════════════════════════════════════════════════
+# The origins that may call the management API from a browser, comma-separated.
+# Set the origin of your admin UI. Unset allows none, and a browser admin served
+# from another origin is then blocked:
+#
+# [vars]
+# ALLOWED_ORIGINS = "https://admin.example.com"
+
+# ════════════════════════════════════════════════════════════════════════════
 # Encryption keys (set as secrets, not here)
 # ════════════════════════════════════════════════════════════════════════════
 #   wrangler secret put ENCRYPTION_KEY                 # control plane's own key
