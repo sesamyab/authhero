@@ -15,7 +15,10 @@ import type {
  * import createAdapters from "@authhero/cloudflare-adapter";
  * import { createCloudflareWfpD1Provisioner } from "@authhero/cloudflare-adapter";
  * import { initMultiTenant } from "@authhero/multi-tenancy";
- * import tenantWorkerScript from "./tenant-worker.dist.js?raw";
+ * // Both generated at build time from the built tenant Worker and the
+ * // `@authhero/drizzle` `drizzle/*.sql` files, as string literals (`?raw` is a
+ * // Vite suffix that esbuild, and so Wrangler, does not resolve).
+ * import { tenantWorkerScript } from "./tenant-worker.generated";
  * import { migrations } from "./migrations.generated";
  *
  * const provisioner = createCloudflareWfpD1Provisioner({
