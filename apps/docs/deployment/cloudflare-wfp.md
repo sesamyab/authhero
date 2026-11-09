@@ -930,28 +930,50 @@ import {
   createCloudflareWfpD1Provisioner,
   createWfpTenantProvisioningHook,
 } from "@authhero/cloudflare-adapter";
-import migration0000 from "@authhero/drizzle/drizzle/sqlite/0000_initial.sql?raw";
+import { migrations } from "./migrations.generated";
 
 const provisioner = createCloudflareWfpD1Provisioner({
   // Cloudflare API credentials, dispatch namespace, the worker bundle,
-  // migrations (imported as raw SQL and bundled into the control plane),
-  // and a per-tenant secrets resolver — see the type for the full options.
-  migrations: [{ name: "0000_initial.sql", sql: migration0000 }],
+  // migrations (generated into a module, below), and a per-tenant secrets
+  // resolver — see the type for the full options.
+  migrations,
   // ...
 });
 
 const hook = createWfpTenantProvisioningHook({ provisioner, tenants });
 ```
 
-The provisioner creates a D1 (for `storage_kind: "own_d1"`), applies the migration bundle through the D1 HTTP query endpoint, uploads the worker script to the dispatch namespace with its bindings and secrets, and maintains `provisioning_state` / `provisioning_error` on the tenant row. Migration bundles ship inside the control-plane worker itself (via `?raw` SQL imports) — no external bundle registry is required.
+The provisioner creates a D1 (for `storage_kind: "own_d1"`), applies the migration bundle through the D1 HTTP query endpoint, uploads the worker script to the dispatch namespace with its bindings and secrets, and maintains `provisioning_state` / `provisioning_error` on the tenant row. Migration bundles ship inside the control-plane worker itself — no external bundle registry is required.
+
+The core schema's migrations are the `drizzle/*.sql` files in `@authhero/drizzle`. They are published with the package but are not importable through its `exports`, and `?raw` is a Vite suffix that Wrangler's bundler does not understand. Read them from disk at build time and generate a module:
+
+```javascript
+// scripts/generate-migrations.mjs
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+
+const dir = "node_modules/@authhero/drizzle/drizzle";
+const migrations = readdirSync(dir)
+  .filter((name) => name.endsWith(".sql"))
+  .sort()
+  .map((name) => ({ name, sql: readFileSync(`${dir}/${name}`, "utf8") }));
+
+writeFileSync(
+  "src/migrations.generated.ts",
+  `export const migrations = ${JSON.stringify(migrations)};\n`,
+);
+```
+
+Run it before `wrangler deploy` and after upgrading `@authhero/drizzle`. A tenant database gets only this set; the `drizzle-control-plane/` migrations belong to the control plane's own database.
 
 The hook exposes three entry points:
 
-| Method                    | Purpose                                                                                                                                                                |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `onProvision(tenantId)`   | Full first-time provisioning of a `deployment_type: "wfp"` tenant                                                                                                      |
-| `onDeprovision(tenantId)` | Tear down the tenant's script (and optionally its D1)                                                                                                                  |
-| `onUpgrade(tenantId)`     | Re-provision an existing tenant onto the current bundle + migrations; backs `POST /api/v2/tenants/{id}/redeploy` when wired via the `tenantUpgrade` option of `init()` |
+| Method                    | Purpose                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `onProvision(tenantId)`   | Full first-time provisioning of a `deployment_type: "wfp"` tenant                                                         |
+| `onDeprovision(tenantId)` | Tear down the tenant's script (and optionally its D1)                                                                     |
+| `onUpgrade(tenantId)`     | Re-provision an existing tenant onto the current bundle + migrations; wired through the `tenantUpgrade` option, see below |
+
+With `init()`, `tenantUpgrade: hook.onUpgrade` backs `POST /api/v2/tenants/{id}/redeploy`. `initMultiTenant` takes over `/tenants`, so that route is not mounted there. Start the same upgrade as a tenant operation instead, with `POST /api/v2/tenants/{id}/operations` and the body `{ "kind": "upgrade" }`; `kind: "upgrade"` is accepted when `tenantUpgrade` is set.
 
 Clients observe provisioning asynchronously: `POST /api/v2/tenants` returns with `provisioning_state: "pending"` and callers poll `GET /api/v2/tenants/:id` (or the operations history) until the state transitions to `ready` or `failed`.
 

@@ -16,7 +16,7 @@ import type {
  * import { createCloudflareWfpD1Provisioner } from "@authhero/cloudflare-adapter";
  * import { initMultiTenant } from "@authhero/multi-tenancy";
  * import tenantWorkerScript from "./tenant-worker.dist.js?raw";
- * import migration0001 from "@authhero/drizzle/drizzle/sqlite/0000_initial.sql?raw";
+ * import { migrations } from "./migrations.generated";
  *
  * const provisioner = createCloudflareWfpD1Provisioner({
  *   accountId: env.CLOUDFLARE_ACCOUNT_ID,
@@ -24,7 +24,7 @@ import type {
  *   dispatchNamespace: "authhero-tenants",
  *   controlPlaneBaseUrl: env.PUBLIC_BASE_URL,
  *   tenantWorkerScript,
- *   migrations: [{ name: "0000_initial.sql", sql: migration0001 }],
+ *   migrations,
  *   secrets: async (tenantId) => ({
  *     ENCRYPTION_KEY: env.SHARED_ENCRYPTION_KEY,
  *     ISSUER: `https://${tenantId}.tokens.example.com`,
