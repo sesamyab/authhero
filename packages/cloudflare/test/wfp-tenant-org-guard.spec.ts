@@ -197,11 +197,19 @@ describe("createWfpTenantApp: a control plane token for one tenant's organizatio
     }
   });
 
-  it("compares the organization with the tenant id exactly, case included", async () => {
-    // The platform's own access control compares case-insensitively; this guard
-    // is the stricter gate and must not authorize `BOB` as `bob`.
-    const res = await callBob({ org_id: "org_bob", org_name: "BOB" });
-    expect(res.status).toBe(403);
+  it("matches the issuer's lowercased organization with a tenant id that has capitals", async () => {
+    // The issuer puts `org_name` in lowercase; the tenant's id is `BOB`.
+    const res = await callBob(
+      { org_id: "org_bob", org_name: "bob" },
+      { tenantIdVar: "BOB" },
+    );
+    expect(res.status).toBe(200);
+
+    const other = await callBob(
+      { org_id: "org_acme", org_name: "acme" },
+      { tenantIdVar: "BOB" },
+    );
+    expect(other.status).toBe(403);
   });
 
   it("refuses an organization token when the Worker has no TENANT_ID, whatever the request says", async () => {

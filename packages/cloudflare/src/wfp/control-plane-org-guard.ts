@@ -22,7 +22,14 @@ export interface OrgGuardEnv {
  * A control plane token with no organization (an operator, or a machine client
  * such as the one CI uses) passes: it is a platform credential, not a tenant's.
  * A token with an organization id but no `org_name` is refused, since it cannot
- * be matched with anything.
+ * be matched with anything. The control plane puts `org_name` in a token when
+ * its tenant has `allow_organization_name_in_authentication_api` set, which
+ * `seed()` does for the control plane; this Worker has no way to look an
+ * organization id up, so a control plane without it cannot use organization
+ * tokens here.
+ *
+ * `org_name` is lowercased by the issuer, so it is compared with the tenant id
+ * ignoring case, as the platform's own access control does.
  *
  * The tenant is `TENANT_ID` and nothing else: the request's own tenant comes
  * from a header the caller controls, so it cannot say which tenant this Worker
@@ -48,10 +55,16 @@ export function controlPlaneOrgGuard(env: OrgGuardEnv): MiddlewareHandler {
       // Both halves must hold: the token is for this tenant's organization,
       // and the request resolved to this tenant too. A `tenant-id` header
       // naming another tenant in this database must not be reachable with it.
+      // The issuer lowercases `org_name`, and the platform compares tenant ids
+      // and organizations case-insensitively (tenants with capitals exist), so
+      // this does as well.
+      const sameTenant = (other: unknown) =>
+        typeof other === "string" &&
+        other.toLowerCase() === tenant?.toLowerCase();
       if (
         !tenant ||
-        user?.org_name !== tenant ||
-        (requestTenantId !== undefined && requestTenantId !== tenant)
+        !sameTenant(user?.org_name) ||
+        (requestTenantId !== undefined && !sameTenant(requestTenantId))
       ) {
         console.error(
           `[wfp-tenant] control plane token for organization "${String(
