@@ -187,6 +187,16 @@ describe("createWfpTenantApp: a control plane token for one tenant's organizatio
     expect(res.status).toBe(403);
   });
 
+  it("refuses a member of this tenant when the request resolves to another tenant", async () => {
+    for (const requestTenant of ["acme", CP]) {
+      const res = await callBob(
+        { org_id: "org_bob", org_name: "bob" },
+        { requestTenant },
+      );
+      expect(res.status).toBe(403);
+    }
+  });
+
   it("refuses an organization token when the Worker has no TENANT_ID, whatever the request says", async () => {
     // The `tenant-id` header is the caller's own, so it cannot name the tenant
     // this Worker is. An `acme` row exists, so the header resolves.

@@ -34,8 +34,9 @@ export interface OrgGuardEnv {
  */
 export function controlPlaneOrgGuard(env: OrgGuardEnv): MiddlewareHandler {
   return async (c, next) => {
-    const { user } = c.var as {
+    const { user, tenant_id: requestTenantId } = c.var as {
       user?: { tenant_id?: unknown; org_id?: unknown; org_name?: unknown };
+      tenant_id?: string;
     };
     const fromControlPlane =
       typeof user?.tenant_id === "string" &&
@@ -44,7 +45,14 @@ export function controlPlaneOrgGuard(env: OrgGuardEnv): MiddlewareHandler {
 
     if (fromControlPlane && hasOrganization) {
       const tenant = env.TENANT_ID;
-      if (!tenant || user?.org_name !== tenant) {
+      // Both halves must hold: the token is for this tenant's organization,
+      // and the request resolved to this tenant too. A `tenant-id` header
+      // naming another tenant in this database must not be reachable with it.
+      if (
+        !tenant ||
+        user?.org_name !== tenant ||
+        (requestTenantId !== undefined && requestTenantId !== tenant)
+      ) {
         console.error(
           `[wfp-tenant] control plane token for organization "${String(
             user?.org_name ?? user?.org_id,
