@@ -32,6 +32,10 @@ import { authorizedHttpClient } from "./authProvider";
 
 const DOMAIN = "auth.example.com";
 
+/**
+ * Stores one signed-in domain and selects it, the way the domain selector
+ * does, so `authorizedHttpClient` finds a config for the request.
+ */
 function useDomain(config: Partial<DomainConfig>) {
   const entry: DomainConfig = {
     url: DOMAIN,
@@ -43,6 +47,7 @@ function useDomain(config: Partial<DomainConfig>) {
   localStorage.setItem(SELECTED_DOMAIN_STORAGE_KEY, DOMAIN);
 }
 
+/** Makes every `fetch` answer with the given status and body text. */
 function answerWith(status: number, body: string) {
   vi.stubGlobal(
     "fetch",

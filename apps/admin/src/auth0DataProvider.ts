@@ -764,10 +764,12 @@ export default (
     return managementClientPromise;
   };
 
-  // The control plane's record of this tenant, read with no `tenant-id` header
-  // so the control plane answers it itself on any version. Null when it cannot
-  // be read: a single-tenant deployment has no such route, and a tenant's own
-  // admin may only read through its own worker.
+  /**
+   * The control plane's record of this tenant, read with no `tenant-id` header
+   * so the control plane answers it itself on any version. Null when it cannot
+   * be read: a single-tenant deployment has no such route, and a tenant's own
+   * admin may only read through its own worker.
+   */
   const readControlPlaneSync = async (): Promise<ApiRecord | null> => {
     if (!tenantId) return null;
     try {
@@ -782,6 +784,12 @@ export default (
     }
   };
 
+  /**
+   * The tenant's settings with its sync mode and parent taken from the control
+   * plane's record, marked so a save knows to go there. The record is returned
+   * as it was when the control plane's one cannot be read, and for the control
+   * plane itself, which has nothing to inherit.
+   */
   const withControlPlaneSync = async (
     record: ApiRecord,
   ): Promise<ApiRecord> => {
@@ -797,6 +805,11 @@ export default (
     };
   };
 
+  /**
+   * Changes the control plane's record of this tenant (its sync mode and
+   * parent) by id. Rejects with the response status kept, so a missing route
+   * (404, 405) can be told from a refusal (403).
+   */
   const patchControlPlaneTenant = async (
     changes: ApiRecord,
   ): Promise<ApiRecord> => {
