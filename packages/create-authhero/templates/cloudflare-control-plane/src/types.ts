@@ -13,9 +13,9 @@ export interface Env {
   ISSUER?: string;
 
   // Comma-separated origins allowed for CORS on the management API, e.g. the
-  // admin UI's origin. Variable. The management API also allows an origin that
-  // is in the web_origins of a client of the tenant being called, so unset, only
-  // those origins are allowed.
+  // admin UI's origin. Variable. List the admin UI here: the management API also
+  // checks clients' web_origins, but of different tenants on the preflight and
+  // on the call, so it is not a substitute.
   ALLOWED_ORIGINS?: string;
 
   // Base64-encoded 32-byte key for the control plane's own secrets at rest.

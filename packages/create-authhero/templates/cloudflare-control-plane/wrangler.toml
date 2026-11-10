@@ -94,8 +94,9 @@ namespace = "authhero-tenants"
 # CORS
 # ════════════════════════════════════════════════════════════════════════════
 # The origins that may call the management API from a browser, comma-separated.
-# Set the origin of your admin UI. An origin not listed here is still allowed
-# when it is in the web_origins of a client of the tenant being called:
+# Set the origin of your admin UI. It is checked on the preflight and on the
+# call itself; a client's web_origins is also checked, but for different tenants
+# on the two requests, so do not rely on it:
 #
 # [vars]
 # ALLOWED_ORIGINS = "https://admin.example.com"

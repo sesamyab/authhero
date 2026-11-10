@@ -162,10 +162,14 @@ ALLOWED_ORIGINS = "https://admin.example.com"
 
 It takes several origins, comma-separated. The template does not echo the
 request's own `Origin`, which would let any site call the API from a browser.
-An origin that is not listed is still allowed when it is in the `web_origins`
-of one of the clients of the tenant the call is for: the management API checks
-those as well, so an admin UI whose origin is on its client's `web_origins`
-works without being listed here.
+
+List the admin UI's origin here. The management API also allows an origin that
+is in the `web_origins` of a client, but it looks at different tenants for the
+two requests a browser makes: a preflight carries no `tenant-id` header, so it
+checks the clients of the tenant the host resolves to (the control plane), while
+the call itself checks the clients of the tenant named by `tenant-id`. Relying
+on `web_origins` would mean listing the origin on both. `ALLOWED_ORIGINS` is
+checked first on both requests.
 
 ### Dispatch namespace
 

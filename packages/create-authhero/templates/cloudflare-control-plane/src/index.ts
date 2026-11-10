@@ -81,8 +81,9 @@ export default {
           : [],
       // The origins that may call the management API from a browser (an admin
       // UI). A fixed list from ALLOWED_ORIGINS, not the request's own `Origin`:
-      // echoing that would allow every site. The management API also allows an
-      // origin in the `web_origins` of the called tenant's clients.
+      // echoing that would allow every site. List the admin UI here: the
+      // management API also checks clients' `web_origins`, but of the host's
+      // tenant on the preflight and of the `tenant-id` tenant on the call.
       allowedOrigins: (env.ALLOWED_ORIGINS ?? "")
         .split(",")
         .map((allowed) => allowed.trim())
