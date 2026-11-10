@@ -48,7 +48,11 @@ import {
 } from "./middleware";
 import type { ControlPlaneResolver } from "./middleware";
 import type { InheritanceShadowOptions } from "./inheritance";
-import { TenantEntityHooks, TenantHookContext } from "./types";
+import {
+  DatabaseIsolationConfig,
+  TenantEntityHooks,
+  TenantHookContext,
+} from "./types";
 
 /**
  * Control plane configuration for multi-tenancy.
@@ -81,6 +85,14 @@ export interface MultiTenantConfig extends Omit<
    * - Automatic organization creation when tenants are created
    */
   controlPlane?: ControlPlaneConfig;
+
+  /**
+   * Per-tenant database isolation. `onProvision` runs when a tenant is
+   * created and `onDeprovision` when it is deleted. With `onProvision` set,
+   * the default clients are seeded by it (in the tenant's own database)
+   * rather than written to the control plane's.
+   */
+  databaseIsolation?: DatabaseIsolationConfig;
 
   /**
    * Optional per-tenant override for runtime inheritance lookups
@@ -365,6 +377,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       clientId: controlPlaneClientId,
     } = {},
     resolveControlPlane,
+    databaseIsolation,
     inheritanceShadow,
     syncDefaults,
     storedDataAdapter,
@@ -680,6 +693,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       requireOrganizationMatch,
       defaultPermissions,
     },
+    databaseIsolation,
   });
 
   // Chain provisioning hooks (org creation) with sync hooks (entity syncing)
