@@ -21,6 +21,7 @@ import {
 import { getRequestData } from "../middleware/request-data";
 import { computedTenantFields } from "../utils/tenant-settings";
 import { validateTenantParent } from "../utils/tenant-tree";
+import { findCaseCollidingTenantId } from "../utils/tenant-id-collision";
 
 /**
  * The subset of token claims we read off `ctx.var.user` to make tenant
@@ -401,6 +402,21 @@ export function createTenantsOpenAPIRouter(
         parentTenantId: body.parent_tenant_id,
         getTenant: (id) => getRequestData(ctx).tenants.get(id),
       });
+
+      // An id that differs from an existing one only in letter case would give
+      // two tenants whose members' tokens look the same (organization names are
+      // lowercased in a token), so refuse it like a duplicate id.
+      if (body.id) {
+        const colliding = await findCaseCollidingTenantId(
+          getRequestData(ctx).tenants,
+          body.id,
+        );
+        if (colliding) {
+          throw new HTTPException(409, {
+            message: `Tenant ID '${body.id}' conflicts with the existing tenant '${colliding}': tenant IDs must differ by more than letter case`,
+          });
+        }
+      }
 
       // Create the tenant - adapter will throw HTTPException(409) if tenant ID already exists
       const tenant = await getRequestData(ctx).tenants.create(body);

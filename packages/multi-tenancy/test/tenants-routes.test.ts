@@ -697,6 +697,55 @@ describe("tenant settings: default_client_id validation", () => {
     );
   }
 
+  describe("tenant ids that differ only in letter case", () => {
+    const member: TestUser = { sub: "auth0|member", tenant_id: "some-tenant" };
+
+    beforeEach(async () => {
+      await adapters.tenants.create({
+        id: "acme",
+        friendly_name: "acme",
+        audience: "https://acme.example.com",
+        sender_email: "admin@acme.example.com",
+        sender_name: "acme",
+      });
+    });
+
+    it("refuses a new id that differs from an existing one only in case", async () => {
+      const response = await createTenantAs(member, "ACME");
+
+      expect(response.status).toBe(409);
+      expect(await response.text()).toContain("'acme'");
+      expect(await adapters.tenants.get("ACME")).toBeNull();
+    });
+
+    it("refuses it the other way round too", async () => {
+      await adapters.tenants.create({
+        id: "Globex",
+        friendly_name: "Globex",
+        audience: "https://globex.example.com",
+        sender_email: "admin@globex.example.com",
+        sender_name: "Globex",
+      });
+
+      const response = await createTenantAs(member, "globex");
+
+      expect(response.status).toBe(409);
+      expect(await adapters.tenants.get("globex")).toBeNull();
+    });
+
+    it("still answers an identical id with the adapter's own conflict", async () => {
+      const response = await createTenantAs(member, "acme");
+
+      expect(response.status).toBe(409);
+      expect(await response.text()).toContain("already exists");
+    });
+
+    it("accepts an unrelated id, with capitals as well", async () => {
+      expect((await createTenantAs(member, "initech")).status).toBe(201);
+      expect((await createTenantAs(member, "Umbrella")).status).toBe(201);
+    });
+  });
+
   it("creates a synced tenant only for a control-plane caller", async () => {
     const byControlPlane = await createTenantAs(
       { sub: "auth0|operator", tenant_id: controlPlaneTenantId },
