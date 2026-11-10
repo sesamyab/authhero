@@ -93,7 +93,9 @@ jobs:
     # non-release PRs. (If precheck itself was skipped — non-release PR —
     # this job is skipped too via the needs chain.)
     if: github.event_name == 'workflow_dispatch' || needs.precheck.outputs.already-passed != 'true'
-    runs-on: ubuntu-latest
+    # Pinned: `ubuntu-latest` now resolves to 26.04, which Playwright 1.60 cannot
+    # install Chromium on. Move back to `ubuntu-latest` once it supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
