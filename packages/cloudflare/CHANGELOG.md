@@ -1,5 +1,18 @@
 # @authhero/cloudflare-adapter
 
+## 4.2.1
+
+### Patch Changes
+
+- 04f49e3: `ScriptBinding` accepts `{ type: "analytics_engine"; name: string; dataset: string }`, so a Workers for Platforms tenant Worker can be given an Analytics Engine dataset through `extraBindings`. The upload already forwarded bindings as they were; only the type rejected this one.
+- ea7d2a4: The WFP provisioner's doc comments no longer point at a migration path that does not exist: the `@authhero/drizzle` migrations are the `drizzle/*.sql` files, read from disk at build time.
+- af55620: A tenant Worker built with `createWfpTenantApp` now refuses a control plane token that is scoped to another tenant's organization. The token's `org_name` must be the Worker's `TENANT_ID` (ignoring case: the issuer lowercases `org_name`); a Worker without one refuses organization-scoped tokens, since the request's own tenant is not something to trust, and so does a request that resolved to a tenant other than the Worker's own; a token with an organization id but no name is refused, and a control plane token with no organization (an operator, or a machine client) still passes. The check is added after `configure`, so a host that replaces `managementApiMiddleware` cannot drop it.
+- Updated dependencies [7fca267]
+- Updated dependencies [44293e2]
+- Updated dependencies [af55620]
+  - @authhero/multi-tenancy@15.6.1
+  - authhero@9.30.0
+
 ## 4.2.0
 
 ### Minor Changes

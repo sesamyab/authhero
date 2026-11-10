@@ -1,5 +1,11 @@
 # authhero
 
+## 9.30.0
+
+### Minor Changes
+
+- 44293e2: `seed()` accepts `createManagementClient: false` to skip the "API Explorer Application" machine-to-machine client. It is still created by default.
+
 ## 9.29.0
 
 ### Minor Changes
