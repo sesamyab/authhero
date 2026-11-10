@@ -20,16 +20,21 @@
   ],
   "main": "dist/drizzle-adapter.cjs",
   "module": "dist/drizzle-adapter.mjs",
-  "types": "dist/drizzle-adapter.d.ts",
+  "types": "dist/drizzle-adapter.d.cts",
   "exports": {
     ".": {
-      "require": "./dist/drizzle-adapter.cjs",
-      "import": "./dist/drizzle-adapter.mjs",
-      "types": "./dist/drizzle-adapter.d.ts"
+      "import": {
+        "types": "./dist/drizzle-adapter.d.mts",
+        "default": "./dist/drizzle-adapter.mjs"
+      },
+      "require": {
+        "types": "./dist/drizzle-adapter.d.cts",
+        "default": "./dist/drizzle-adapter.cjs"
+      }
     },
     "./schema/sqlite": {
-      "import": "./src/schema/sqlite/index.ts",
-      "types": "./src/schema/sqlite/index.ts"
+      "types": "./src/schema/sqlite/index.ts",
+      "import": "./src/schema/sqlite/index.ts"
     }
   },
   "scripts": {
