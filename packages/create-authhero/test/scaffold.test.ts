@@ -362,6 +362,33 @@ describe("control-plane template sync wiring", () => {
     );
   });
 
+  it("reads ALLOWED_ORIGINS as a comma-separated list", () => {
+    // Run the generated expression itself, so the test follows the template
+    // rather than a copy of it. The preflight behaviour around the list (a
+    // listed origin allowed, an unknown one given no header) is the core's, and
+    // is covered by authhero's management-api CORS tests.
+    const { projectPath } = projects["control-plane"];
+    const index = readFile(projectPath, "src/index.ts");
+    const expression = index.match(
+      /allowedOrigins:\s*(\(env\.ALLOWED_ORIGINS[\s\S]*?\.filter\(Boolean\)),/,
+    )?.[1];
+    expect(expression, "the allowedOrigins expression").toBeTruthy();
+
+    const allowedOrigins = new Function(
+      "env",
+      `return ${expression};`,
+    ) as (env: { ALLOWED_ORIGINS?: string }) => string[];
+
+    expect(
+      allowedOrigins({
+        ALLOWED_ORIGINS: "https://a.example.com, https://b.example.com ,",
+      }),
+    ).toEqual(["https://a.example.com", "https://b.example.com"]);
+    expect(allowedOrigins({})).toEqual([]);
+    expect(allowedOrigins({ ALLOWED_ORIGINS: "" })).toEqual([]);
+    expect(allowedOrigins({ ALLOWED_ORIGINS: " , ," })).toEqual([]);
+  });
+
   it("lets ISSUER be set apart from the Worker's own host", () => {
     // Hosts under the ISSUER apex are never looked up as custom domains, so a
     // control plane that always used its own host as the apex could only
