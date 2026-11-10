@@ -1,5 +1,16 @@
 # create-authhero
 
+## 0.53.0
+
+### Minor Changes
+
+- b58ac10: The `cloudflare-control-plane` template now serves the admin's Team page (`tenantMembers` with `createLocalTenantMembersBackend`). A tenant's team is an organization on the control plane named like the tenant, so the control plane answers `/tenant-members` from its own database. Without it the call was forwarded to the tenant's Worker, which cannot answer it, and the page showed "Unable to load the team for this tenant".
+
+### Patch Changes
+
+- ede64b9: The `cloudflare-control-plane` template allows the CORS origins listed in `ALLOWED_ORIGINS` instead of the origin of each request, which allowed every site. The management API also checks clients' `web_origins`, but of different tenants on the preflight and on the call, so list the admin UI's origin in `ALLOWED_ORIGINS`.
+- 64a0bdf: Scaffolded projects depend on `drizzle-orm` `^0.45.2` instead of `^0.44.0`, the range `@authhero/drizzle` requires.
+
 ## 0.52.0
 
 ### Minor Changes

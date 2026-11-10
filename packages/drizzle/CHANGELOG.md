@@ -1,5 +1,11 @@
 # @authhero/drizzle
 
+## 1.18.1
+
+### Patch Changes
+
+- 64a0bdf: The build now emits `dist/drizzle-adapter.d.ts`. The package declared it as its `types` entry but did not produce it, so TypeScript consumers got no types for the adapter.
+
 ## 1.18.0
 
 ### Minor Changes

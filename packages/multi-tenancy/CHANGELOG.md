@@ -1,5 +1,14 @@
 # @authhero/multi-tenancy
 
+## 15.6.1
+
+### Patch Changes
+
+- 7fca267: `initMultiTenant` accepts `databaseIsolation` and passes it to its provisioning hooks, so `onProvision` and `onDeprovision` run when a tenant is created or deleted. Before, the option was not part of its config and was never read.
+- af55620: `POST /tenants` refuses an id that differs from an existing tenant's only in letter case (409). An organization name reaches a token in lowercase and is matched against the tenant id ignoring case, so two such tenants cannot be told apart by their members' tokens: a member of `ACME` would also pass for `acme`. An identical id is still refused by the adapter as before, and existing tenants are not touched.
+- Updated dependencies [44293e2]
+  - authhero@9.30.0
+
 ## 15.6.0
 
 ### Minor Changes
