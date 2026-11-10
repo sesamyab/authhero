@@ -748,7 +748,15 @@ Use the host you gave the control plane in [4.3](#_4-3-choose-the-control-plane-
 
 With the domain fixed, the admin opens on the control plane's tenant list and never asks for a domain. It sends every tenant-scoped call to the control plane with a `tenant-id` header. For that to work:
 
-1. The admin's origin is in the control plane's `ALLOWED_ORIGINS`: add `ALLOWED_ORIGINS = "https://admin.example.com"` (comma-separated for several) to the `[vars]` table in `control-plane/wrangler.local.toml`, next to `ISSUER` from [4.3](#_4-3-choose-the-control-plane-s-host-and-issuer), not in a second `[vars]`, and redeploy the control plane as in [4.5](#_4-5-deploy). The admin's `/auth-callback` is an allowed callback of the client above. The management API also checks clients' `web_origins`, but not the same tenant on both requests: a preflight has no `tenant-id` header, so it checks the tenant the host resolves to, and the call itself checks the tenant named by `tenant-id`. List the admin's origin in `ALLOWED_ORIGINS`, which is checked first on both. The template no longer allows whatever origin the request came from; a control plane scaffolded before `ALLOWED_ORIGINS` existed did, and should switch to the list.
+1. The admin's origin is in the control plane's `ALLOWED_ORIGINS`: add `ALLOWED_ORIGINS = "https://admin.example.com"` (comma-separated for several) to the `[vars]` table in `control-plane/wrangler.local.toml`, next to `ISSUER` from [4.3](#_4-3-choose-the-control-plane-s-host-and-issuer), not in a second `[vars]`, and redeploy the control plane as in [4.5](#_4-5-deploy). The admin's `/auth-callback` is an allowed callback of the client above. The management API also checks clients' `web_origins`, but not the same tenant on both requests: a preflight has no `tenant-id` header, so it checks the tenant the host resolves to, and the call itself checks the tenant named by `tenant-id`. List the admin's origin in `ALLOWED_ORIGINS`, which is checked first on both. The template no longer allows whatever origin the request came from. A control plane scaffolded before `ALLOWED_ORIGINS` existed still does, and setting the variable alone changes nothing there, because its code never reads it. In its `src/index.ts`, delete the line `const origin = request.headers.get("Origin") || "";`, replace `allowedOrigins: [origin].filter(Boolean),` with the following, declare `ALLOWED_ORIGINS?: string;` in `Env` in `src/types.ts`, and redeploy as in [4.5](#_4-5-deploy):
+
+   ```typescript
+   allowedOrigins: (env.ALLOWED_ORIGINS ?? "")
+     .split(",")
+     .map((allowed) => allowed.trim())
+     .filter(Boolean),
+   ```
+
 2. The control plane forwards calls for a `wfp` tenant to that tenant's Worker with `tenantDispatch` (`createWfpForwardMiddleware`). The control-plane template has it from `create-authhero` 0.52.0. A control plane scaffolded earlier needs it added to the `config` in `src/index.ts`, with `createWfpForwardMiddleware` imported from `@authhero/cloudflare-adapter`:
 
    ```typescript
