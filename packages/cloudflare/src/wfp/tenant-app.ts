@@ -14,6 +14,7 @@ import {
   type DataAdapters,
   type IssuerResolver,
 } from "authhero";
+import { controlPlaneOrgGuard } from "./control-plane-org-guard";
 import {
   withRuntimeFallback,
   applyControlPlaneDefaultsPayload,
@@ -252,9 +253,18 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
       env,
     ),
   };
-  const config = options.configure
+  const configured = options.configure
     ? options.configure(baseConfig, env)
     : baseConfig;
+  // Added after `configure`, so a host that replaces `managementApiMiddleware`
+  // cannot drop it.
+  const config: AuthHeroConfig = {
+    ...configured,
+    managementApiMiddleware: [
+      controlPlaneOrgGuard(env),
+      ...(configured.managementApiMiddleware ?? []),
+    ],
+  };
   // The effective authority after `configure`: issuance at sync-defaults and
   // the renew route use the same CA as rotation and the JWKS x5c.
   const effectiveCertificateAuthority = config.signingCertificateAuthority;
