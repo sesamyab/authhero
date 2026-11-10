@@ -36,7 +36,6 @@ export default {
     // (e.g. https://token.example.com/) and add a custom_domains row for this
     // host, so the control plane tenant is found however many tenants exist.
     const issuer = env.ISSUER || `${url.protocol}//${url.host}/`;
-    const origin = request.headers.get("Origin") || "";
 
     const {
       db,
@@ -80,7 +79,15 @@ export default {
         tenant_id === CONTROL_PLANE_TENANT_ID
           ? [`${url.protocol}//${url.host}/`]
           : [],
-      allowedOrigins: [origin].filter(Boolean),
+      // The origins that may call the management API from a browser (an admin
+      // UI). A fixed list from ALLOWED_ORIGINS, not the request's own `Origin`:
+      // echoing that would allow every site. List the admin UI here: the
+      // management API also checks clients' `web_origins`, but of the host's
+      // tenant on the preflight and of the `tenant-id` tenant on the call.
+      allowedOrigins: (env.ALLOWED_ORIGINS ?? "")
+        .split(",")
+        .map((allowed) => allowed.trim())
+        .filter(Boolean),
       // An admin UI (the hosted one or your own) sends every tenant-scoped call
       // to this control plane with a `tenant-id` header. For a `wfp` tenant that
       // is ready, hand the call to the tenant's own Worker over the dispatch

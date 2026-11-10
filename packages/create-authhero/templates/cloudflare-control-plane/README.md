@@ -8,11 +8,11 @@ database.
 
 This is one of three pieces:
 
-| Piece | Template |
-| --- | --- |
+| Piece                                 | Template                    |
+| ------------------------------------- | --------------------------- |
 | Front door (host → tenant → dispatch) | `cloudflare-wfp-dispatcher` |
-| Per-tenant Workers | `cloudflare-wfp-tenant` |
-| **This control plane** | `cloudflare-control-plane` |
+| Per-tenant Workers                    | `cloudflare-wfp-tenant`     |
+| **This control plane**                | `cloudflare-control-plane`  |
 
 ## Syncing a tenant
 
@@ -149,6 +149,30 @@ VALUES ('cd-control-plane', 'control_plane', 'control.example.com', 1, 'ready', 
 The dispatcher never sees this host (it goes straight to this Worker), so the
 row does not affect routing. Tokens the control plane issues carry the custom
 domain as `iss`; point the tenants' `CONTROL_PLANE_ISSUER` at it.
+
+### CORS
+
+A browser admin served from another origin calls this Worker's management API
+cross-origin, so its origin must be allowed. Set it in `wrangler.local.toml`,
+in the same `[vars]` table as `ISSUER` (a second `[vars]` table is invalid
+TOML), and redeploy:
+
+```toml
+[vars]
+ISSUER = "https://token.example.com/"
+ALLOWED_ORIGINS = "https://admin.example.com"
+```
+
+It takes several origins, comma-separated. The template does not echo the
+request's own `Origin`, which would let any site call the API from a browser.
+
+List the admin UI's origin here. The management API also allows an origin that
+is in the `web_origins` of a client, but it looks at different tenants for the
+two requests a browser makes: a preflight carries no `tenant-id` header, so it
+checks the clients of the tenant the host resolves to (the control plane), while
+the call itself checks the clients of the tenant named by `tenant-id`. Relying
+on `web_origins` would mean listing the origin on both. `ALLOWED_ORIGINS` is
+checked first on both requests.
 
 ### Dispatch namespace
 
