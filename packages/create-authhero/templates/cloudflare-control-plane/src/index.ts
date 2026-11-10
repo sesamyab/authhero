@@ -81,7 +81,8 @@ export default {
           : [],
       // The origins that may call the management API from a browser (an admin
       // UI). A fixed list from ALLOWED_ORIGINS, not the request's own `Origin`:
-      // echoing that would allow every site. Unset allows none.
+      // echoing that would allow every site. The management API also allows an
+      // origin in the `web_origins` of the called tenant's clients.
       allowedOrigins: (env.ALLOWED_ORIGINS ?? "")
         .split(",")
         .map((allowed) => allowed.trim())

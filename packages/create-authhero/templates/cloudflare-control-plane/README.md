@@ -160,9 +160,12 @@ cross-origin, so its origin must be allowed. Set it in `wrangler.local.toml`:
 ALLOWED_ORIGINS = "https://admin.example.com"
 ```
 
-It takes several origins, comma-separated. Unset allows none: the template does
-not echo the request's own `Origin`, which would let any site call the API from
-a browser.
+It takes several origins, comma-separated. The template does not echo the
+request's own `Origin`, which would let any site call the API from a browser.
+An origin that is not listed is still allowed when it is in the `web_origins`
+of one of the clients of the tenant the call is for: the management API checks
+those as well, so an admin UI whose origin is on its client's `web_origins`
+works without being listed here.
 
 ### Dispatch namespace
 
