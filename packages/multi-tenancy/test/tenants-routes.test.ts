@@ -740,6 +740,31 @@ describe("tenant settings: default_client_id validation", () => {
       expect(await response.text()).toContain("already exists");
     });
 
+    it("finds a collision that is beyond the first page of tenants", async () => {
+      // `zz-acme` sorts after every one of these, so it is on the second page.
+      for (let i = 0; i < 105; i++) {
+        await adapters.tenants.create({
+          id: `t${String(i).padStart(3, "0")}`,
+          friendly_name: `t${i}`,
+          audience: `https://t${i}.example.com`,
+          sender_email: `admin@t${i}.example.com`,
+          sender_name: `t${i}`,
+        });
+      }
+      await adapters.tenants.create({
+        id: "zz-acme",
+        friendly_name: "zz-acme",
+        audience: "https://zz-acme.example.com",
+        sender_email: "admin@zz-acme.example.com",
+        sender_name: "zz-acme",
+      });
+
+      const response = await createTenantAs(member, "ZZ-ACME");
+
+      expect(response.status).toBe(409);
+      expect(await response.text()).toContain("'zz-acme'");
+    });
+
     it("accepts an unrelated id, with capitals as well", async () => {
       expect((await createTenantAs(member, "initech")).status).toBe(201);
       expect((await createTenantAs(member, "Umbrella")).status).toBe(201);

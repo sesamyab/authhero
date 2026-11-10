@@ -15,6 +15,11 @@ const PAGE_SIZE = 100;
  * lowercased ids.
  *
  * An identical id is not a collision here: the adapter refuses that itself.
+ *
+ * This is a check before the insert, not a constraint: two requests creating
+ * `ACME` and `acme` at the same moment, neither existing yet, can both pass.
+ * What it stops is the case that matters, a new id colliding with a tenant that
+ * already exists.
  */
 export async function findCaseCollidingTenantId(
   tenants: Pick<TenantsDataAdapter, "list">,
@@ -22,9 +27,12 @@ export async function findCaseCollidingTenantId(
 ): Promise<string | undefined> {
   const lowered = id.toLowerCase();
   for (let page = 0; ; page++) {
+    // Sorted by id so the pages are stable: without an order a database may
+    // return rows in a different sequence per page and skip some.
     const { tenants: batch } = await tenants.list({
       page,
       per_page: PAGE_SIZE,
+      sort: { sort_by: "id", sort_order: "asc" },
     });
     const hit = batch.find(
       (tenant) => tenant.id !== id && tenant.id.toLowerCase() === lowered,
