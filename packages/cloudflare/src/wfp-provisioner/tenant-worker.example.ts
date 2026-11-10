@@ -32,7 +32,11 @@
  * Wiring into the provisioner (control-plane authhero side):
  *
  * ```ts
- * import tenantWorkerScript from "./tenant-worker.dist.js?raw";
+ * // Generated at build time from dist/tenant-worker.js and the
+ * // `@authhero/drizzle` `drizzle/*.sql` files, as string literals (`?raw` is a
+ * // Vite suffix that esbuild, and so Wrangler, does not resolve).
+ * import { tenantWorkerScript } from "./tenant-worker.generated";
+ * import { migrations } from "./migrations.generated";
  * import { createCloudflareWfpD1Provisioner } from "@authhero/cloudflare-adapter";
  *
  * const provisioner = createCloudflareWfpD1Provisioner({
@@ -41,10 +45,7 @@
  *   dispatchNamespace: "authhero-tenants",
  *   controlPlaneBaseUrl: env.PUBLIC_BASE_URL,
  *   tenantWorkerScript,
- *   migrations: [
- *     { name: "0000_initial.sql", sql: initialMigrationSql },
- *     // ...one entry per @authhero/drizzle migration file, in order
- *   ],
+ *   migrations,
  *   secrets: async (tenantId) => ({
  *     ENCRYPTION_KEY: env.SHARED_ENCRYPTION_KEY,  // byte-stable across all tenants
  *     ISSUER: `https://${tenantId}.tokens.example.com`,

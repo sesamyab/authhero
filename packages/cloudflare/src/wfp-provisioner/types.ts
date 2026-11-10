@@ -22,10 +22,9 @@ import type { ScriptBinding } from "./cf-api";
 /**
  * SQL migration to run on every new tenant D1, in order.
  *
- * Operators bundle these from `@authhero/drizzle`'s `drizzle/sqlite/` files
- * via their build tool of choice (vite's `?raw`, esbuild loader, webpack's
- * raw-loader, etc.) — the provisioner is agnostic about how the SQL gets
- * loaded.
+ * Operators bundle these from the `drizzle/*.sql` files of `@authhero/drizzle`
+ * (read from disk at build time; the package's `exports` do not expose them)
+ * — the provisioner is agnostic about how the SQL gets loaded.
  */
 export interface ProvisionerMigration {
   /** Filename, used only for error messages and audit logging. */
