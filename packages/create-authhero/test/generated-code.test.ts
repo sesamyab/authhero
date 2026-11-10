@@ -202,7 +202,12 @@ async function loadPackageExports(specifier: string): Promise<PackageExports> {
   };
 
   // Runtime exports from the built ESM bundle.
-  const entry = pkg.exports?.["."]?.import ?? pkg.module ?? pkg.main;
+  // A condition is either a path or an object holding `types` and `default`.
+  const condition = (value: unknown): string | undefined =>
+    typeof value === "string"
+      ? value
+      : ((value as { default?: string } | undefined)?.default ?? undefined);
+  const entry = condition(pkg.exports?.["."]?.import) ?? pkg.module ?? pkg.main;
   if (entry) {
     const entryPath = path.join(dir, entry);
     if (fs.existsSync(entryPath)) {
@@ -220,7 +225,13 @@ async function loadPackageExports(specifier: string): Promise<PackageExports> {
 
   // Type exports from the bundled .d.ts (covers type-only names like
   // AuthHeroConfig that have no runtime value).
-  const types = pkg.exports?.["."]?.types ?? pkg.types;
+  const importCondition = pkg.exports?.["."]?.import;
+  const types =
+    pkg.exports?.["."]?.types ??
+    (typeof importCondition === "object"
+      ? importCondition?.types
+      : undefined) ??
+    pkg.types;
   if (types && fs.existsSync(path.join(dir, types))) {
     await scanDts(path.join(dir, types), result, new Set());
   }
