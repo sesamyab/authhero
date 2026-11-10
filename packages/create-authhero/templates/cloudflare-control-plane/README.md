@@ -153,10 +153,13 @@ domain as `iss`; point the tenants' `CONTROL_PLANE_ISSUER` at it.
 ### CORS
 
 A browser admin served from another origin calls this Worker's management API
-cross-origin, so its origin must be allowed. Set it in `wrangler.local.toml`:
+cross-origin, so its origin must be allowed. Set it in `wrangler.local.toml`,
+in the same `[vars]` table as `ISSUER` (a second `[vars]` table is invalid
+TOML), and redeploy:
 
 ```toml
 [vars]
+ISSUER = "https://token.example.com/"
 ALLOWED_ORIGINS = "https://admin.example.com"
 ```
 

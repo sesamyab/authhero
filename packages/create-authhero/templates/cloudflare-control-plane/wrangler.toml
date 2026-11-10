@@ -96,9 +96,9 @@ namespace = "authhero-tenants"
 # The origins that may call the management API from a browser, comma-separated.
 # Set the origin of your admin UI. It is checked on the preflight and on the
 # call itself; a client's web_origins is also checked, but for different tenants
-# on the two requests, so do not rely on it:
+# on the two requests, so do not rely on it. Put it in the same [vars] table as
+# ISSUER above (a second [vars] table is invalid TOML):
 #
-# [vars]
 # ALLOWED_ORIGINS = "https://admin.example.com"
 
 # ════════════════════════════════════════════════════════════════════════════
