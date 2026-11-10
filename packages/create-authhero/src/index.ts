@@ -91,7 +91,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           "@hono/node-server": "latest",
           authhero: v,
           "better-sqlite3": "latest",
-          "drizzle-orm": "^0.44.0",
+          "drizzle-orm": "^0.45.2",
           hono: "^4.12.0",
           ...(multiTenant && { "@authhero/multi-tenancy": v }),
           ...(conformance && { bcryptjs: "latest" }),
@@ -149,7 +149,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           "@hono/swagger-ui": "^0.6.0",
           "@hono/zod-openapi": "^1.4.0",
           authhero: v,
-          "drizzle-orm": "^0.44.0",
+          "drizzle-orm": "^0.45.2",
           hono: "^4.12.0",
           ...(multiTenant && { "@authhero/multi-tenancy": v }),
           ...(conformance && { bcryptjs: "latest" }),
@@ -190,7 +190,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
         dependencies: {
           "@authhero/drizzle": v,
           "@authhero/proxy": v,
-          "drizzle-orm": "^0.44.0",
+          "drizzle-orm": "^0.45.2",
           hono: "^4.12.0",
         },
         devDependencies: {
@@ -242,7 +242,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           "@hono/swagger-ui": "^0.6.0",
           "@hono/zod-openapi": "^1.4.0",
           authhero: v,
-          "drizzle-orm": "^0.44.0",
+          "drizzle-orm": "^0.45.2",
           hono: "^4.12.0",
         },
         devDependencies: {
@@ -304,7 +304,7 @@ const setupConfigs: Record<SetupType, SetupConfig> = {
           "@hono/swagger-ui": "^0.6.0",
           "@hono/zod-openapi": "^1.4.0",
           authhero: v,
-          "drizzle-orm": "^0.44.0",
+          "drizzle-orm": "^0.45.2",
           hono: "^4.12.0",
         },
         devDependencies: {
