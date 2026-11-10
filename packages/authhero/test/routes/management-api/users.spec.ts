@@ -150,6 +150,49 @@ describe("users management API endpoint", () => {
       expect(newUser.email).toBe("azp-user@example.com");
     });
 
+    it("should skip signup validation when the token's azp is a client in the target tenant", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+
+      // The seeded "clientId" has no explicit connections, so it falls back
+      // to every tenant connection — including "email", which now has signups
+      // disabled. Management creation must not run the signup gate even when
+      // the token's azp resolves in the target tenant.
+      await env.data.connections.update("tenantId", "email", {
+        options: { authentication_method: "magic_link", disable_signup: true },
+      });
+      const token = await getAdminToken({ azp: "clientId" });
+
+      const createUserResponse = await managementClient.users.$post(
+        {
+          json: {
+            email: "azp-tenant-client@example.com",
+            email_verified: false,
+            connection: "email",
+            provider: "email",
+          },
+          header: {
+            "tenant-id": "tenantId",
+          },
+        },
+        {
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      expect(createUserResponse.status).toBe(201);
+      const newUser = await createUserResponse.json();
+      expect(newUser.email).toBe("azp-tenant-client@example.com");
+      expect(
+        await env.data.users.get("tenantId", newUser.user_id),
+      ).toMatchObject({
+        email: "azp-tenant-client@example.com",
+        connection: "email",
+      });
+    });
+
     it("should create a new user for an empty tenant", async () => {
       const token = await getAdminToken();
 

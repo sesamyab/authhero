@@ -43,7 +43,9 @@ function createMockCtx(env: TestEnv, hooks?: Hooks): HookContext {
       useragent: "test-agent",
       auth0_client: undefined,
       body: undefined,
-      client_id: "test-client",
+      // A non-token client_id is an auth-flow client and must exist in the
+      // tenant: user creation runs the signup gate against it.
+      client_id: "clientId",
     },
   };
 
