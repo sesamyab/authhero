@@ -397,7 +397,20 @@ export interface RotateSigningKeyOptions {
   graceDays?: number;
 }
 
+export type TenantDeploymentType = "shared" | "wfp";
+
+export interface TenantDeploymentOptions {
+  deployment_types: TenantDeploymentType[];
+  default_deployment_type: TenantDeploymentType;
+}
+
 export interface AuthHeroDataProvider extends DataProvider {
+  /**
+   * The deployment types this cluster can host for new tenants, or `null`
+   * when the server predates the endpoint (it then allows both).
+   */
+  getTenantDeploymentOptions: () => Promise<TenantDeploymentOptions | null>;
+
   rotateSigningKeys: (options?: RotateSigningKeyOptions) => Promise<void>;
   revokeSigningKey: (kid: string, type?: SigningKeyType) => Promise<void>;
   renewSigningKey: (
@@ -3294,6 +3307,26 @@ export default (
         { headers: createHeaders(tenantId) },
       );
       return res.json;
+    },
+
+    getTenantDeploymentOptions: async () => {
+      try {
+        const res = await httpClient(
+          `${apiUrl}/api/v2/tenants/deployment-options`,
+          { headers: createHeaders(tenantId) },
+        );
+        return res.json;
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "status" in error &&
+          error.status === 404
+        ) {
+          return null;
+        }
+        throw error;
+      }
     },
 
     getConfigSyncStatus: async (targetTenantId) => {
