@@ -22,6 +22,21 @@ import { getRequestData } from "../middleware/request-data";
 import { computedTenantFields } from "../utils/tenant-settings";
 import { validateTenantParent } from "../utils/tenant-tree";
 import { findCaseCollidingTenantId } from "../utils/tenant-id-collision";
+import { resolveDeploymentTypes } from "../utils/deployment-types";
+
+const deploymentTypeSchema = z.enum(["shared", "wfp"]);
+
+// The shared insert schema defaults `deployment_type` to "shared", which would
+// hide whether the caller chose it. Without the default, an omitted type takes
+// the cluster's configured default instead.
+const createTenantBodySchema = tenantInsertSchema.extend({
+  deployment_type: deploymentTypeSchema.optional(),
+});
+
+const deploymentOptionsSchema = z.object({
+  deployment_types: z.array(deploymentTypeSchema),
+  default_deployment_type: deploymentTypeSchema,
+});
 
 /**
  * The subset of token claims we read off `ctx.var.user` to make tenant
@@ -96,6 +111,8 @@ export function createTenantsOpenAPIRouter(
     Bindings: MultiTenancyBindings;
     Variables: MultiTenancyVariables;
   }>();
+
+  const deploymentTypes = resolveDeploymentTypes(config.deploymentTypes);
 
   const isControlPlaneCaller = (ctx: {
     var: {
@@ -317,6 +334,41 @@ export function createTenantsOpenAPIRouter(
   );
 
   // --------------------------------
+  // GET /deployment-options - Deployment types new tenants may use
+  // --------------------------------
+  app.openapi(
+    createRoute({
+      tags: ["tenants"],
+      method: "get",
+      path: "/deployment-options",
+      security: [
+        {
+          Bearer: [],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: deploymentOptionsSchema,
+            },
+          },
+          description: "The deployment types this cluster can host",
+        },
+      },
+    }),
+    async (ctx) => {
+      return ctx.json(
+        {
+          deployment_types: deploymentTypes.allowed,
+          default_deployment_type: deploymentTypes.default,
+        },
+        200,
+      );
+    },
+  );
+
+  // --------------------------------
   // POST / - Create a tenant
   // --------------------------------
   app.openapi(
@@ -328,7 +380,7 @@ export function createTenantsOpenAPIRouter(
         body: {
           content: {
             "application/json": {
-              schema: tenantInsertSchema,
+              schema: createTenantBodySchema,
             },
           },
         },
@@ -370,9 +422,24 @@ export function createTenantsOpenAPIRouter(
         config_sync_hash: _hash,
         config_synced_at: _syncedAt,
         config_sync: requestedSync,
+        deployment_type: requestedDeploymentType,
         ...validBody
       } = ctx.req.valid("json");
-      let body: CreateTenantParams = validBody;
+      const deploymentType = requestedDeploymentType ?? deploymentTypes.default;
+      if (!deploymentTypes.allowed.includes(deploymentType)) {
+        throw new HTTPException(400, {
+          message: `Deployment type '${deploymentType}' is not available here. Allowed: ${deploymentTypes.allowed.join(", ")}`,
+        });
+      }
+      let body: CreateTenantParams = {
+        ...validBody,
+        deployment_type: deploymentType,
+        // A dispatch worker tenant gets its own D1 unless the caller names
+        // another backend.
+        ...(deploymentType === "wfp" && !validBody.storage_kind
+          ? { storage_kind: "own_d1" as const }
+          : {}),
+      };
       // Choosing the parent decides whose published config a tenant receives,
       // so a tenant's own admin may not attach it to someone else's tenant.
       if (body.parent_tenant_id && !isControlPlaneCaller(ctx)) {
@@ -827,6 +894,19 @@ export function createTenantsOpenAPIRouter(
         throw new HTTPException(403, {
           message:
             "Only the control plane can change a tenant's config_sync mode",
+        });
+      }
+
+      // A tenant can't be moved onto a deployment type this cluster can't host.
+      // The admin UI sends the whole record, so an unchanged value is fine.
+      if (
+        sanitizedUpdates.deployment_type !== undefined &&
+        sanitizedUpdates.deployment_type !==
+          (existingTenant.deployment_type ?? "shared") &&
+        !deploymentTypes.allowed.includes(sanitizedUpdates.deployment_type)
+      ) {
+        throw new HTTPException(400, {
+          message: `Deployment type '${sanitizedUpdates.deployment_type}' is not available here. Allowed: ${deploymentTypes.allowed.join(", ")}`,
         });
       }
 

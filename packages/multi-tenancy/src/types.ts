@@ -105,6 +105,26 @@ export interface AccessControlConfig {
 }
 
 /**
+ * How a tenant is hosted: `shared` runs in the control plane's worker and
+ * database, `wfp` gets its own dispatch worker and D1 database.
+ */
+export type TenantDeploymentType = "shared" | "wfp";
+
+/**
+ * Which deployment types this cluster can host. A cluster without a shared
+ * database (no PlanetScale) allows only `wfp`.
+ */
+export interface TenantDeploymentTypesConfig {
+  /** The deployment types a new tenant may be created with. Must not be empty. */
+  allowed: TenantDeploymentType[];
+  /**
+   * Used when a create request leaves `deployment_type` out.
+   * @default the first entry of `allowed`
+   */
+  default?: TenantDeploymentType;
+}
+
+/**
  * Configuration for per-tenant database isolation.
  *
  * This enables scenarios where each tenant has its own database instance,
@@ -228,6 +248,13 @@ export interface MultiTenancyConfig {
    * Subdomain-based tenant routing configuration.
    */
   subdomainRouting?: SubdomainRoutingConfig;
+
+  /**
+   * The deployment types new tenants may use, served to the admin UI by
+   * `GET /tenants/deployment-options`. Unset allows `shared` and `wfp`, with
+   * `shared` as the default.
+   */
+  deploymentTypes?: TenantDeploymentTypesConfig;
 
   /**
    * Reads a tenant's config sync status for `GET /tenants/{id}/config-sync`.
