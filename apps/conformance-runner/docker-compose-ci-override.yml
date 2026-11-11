@@ -6,17 +6,7 @@
 # host-gateway is a Docker magic value that resolves to the container's host
 # gateway, letting the suite reach the auth-server bound to 0.0.0.0:3000 on
 # the runner.
-#
-# Both image builds run `apt-get update`. DNS from the default build bridge
-# network is unreliable on GitHub runners (slow lookups, then outright
-# "Could not resolve 'archive.ubuntu.com'" failures), so build on the host
-# network, which uses the runner's own resolver.
 services:
-  nginx:
-    build:
-      network: host
   server:
-    build:
-      network: host
     extra_hosts:
       - "host.docker.internal:host-gateway"
