@@ -202,27 +202,6 @@ jobs:
           restore-keys: |
             conformance-suite-${{ runner.os }}-release-v5.2.4-
 
-      # The runner's /etc/resolv.conf points at systemd-resolved's 127.0.0.53
-      # stub, which containers can't reach, so Docker falls back to public
-      # resolvers (8.8.8.8) — and those lookups fail on runners, breaking every
-      # `apt-get update` in the suite's image builds ("Could not resolve
-      # 'archive.ubuntu.com'"). Point the daemon at the runner's real upstream
-      # resolver instead, merging into any existing daemon.json.
-      - name: Use the runner's upstream DNS for Docker
-        run: |
-          upstream=$(awk '/^nameserver/ {print $2}' /run/systemd/resolve/resolv.conf | jq -R . | jq -s -c .)
-          echo "upstream resolvers: $upstream"
-          existing=$(sudo cat /etc/docker/daemon.json 2>/dev/null || echo '{}')
-          echo "$existing" | jq --argjson dns "$upstream" '. + {dns: $dns}' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-          getent hosts archive.ubuntu.com || echo "host lookup FAILED"
-          for net in bridge host; do
-            for ns in "" 168.63.129.16 8.8.8.8; do
-              echo "--- net=$net ns=${ns:-default}"
-              timeout 15 docker run --rm --network "$net" busybox nslookup archive.ubuntu.com $ns || echo "FAILED"
-            done
-          done
-
       - name: Build conformance suite (cold cache)
         if: steps.suite-cache.outputs.cache-hit != 'true'
         run: |
@@ -236,11 +215,6 @@ jobs:
       # fails with "host.docker.internal: Name or service not known".
       - name: Start conformance suite
         working-directory: /home/runner/conformance-suite
-        # The CI override builds the suite images with `network: host`.
-        # Compose's default Bake builder rejects that without an explicit
-        # `--allow=network.host` entitlement, so use the classic builder.
-        env:
-          COMPOSE_BAKE: "false"
         run: |
           docker compose \
             -f docker-compose-dev-mac.yml \
