@@ -7,20 +7,21 @@
 # gateway, letting the suite reach the auth-server bound to 0.0.0.0:3000 on
 # the runner.
 #
-# The inline Dockerfile replaces upstream server-dev/Dockerfile. GitHub-hosted
-# runners can't resolve archive.ubuntu.com / security.ubuntu.com (the runner's
-# DNS refuses them; the runner itself uses the Azure mirror), so upstream's
-# plain `apt-get update` fails with "Could not resolve 'archive.ubuntu.com'".
-# Same image otherwise: install redir on eclipse-temurin:21, but via
-# azure.archive.ubuntu.com.
+# The inline Dockerfile replaces upstream server-dev/Dockerfile, which runs
+# `apt-get install redir` on eclipse-temurin:21 (Ubuntu). GitHub-hosted runners
+# currently can't resolve *.ubuntu.com hosts (archive, security and the azure
+# mirror all fail with "Could not resolve"), while Debian's mirrors work (the
+# suite's Debian-based nginx image builds fine). So install redir from Debian
+# in a throwaway stage and copy the binary across; it only links against libc,
+# and the Ubuntu target's glibc is newer than Debian's.
 services:
   server:
     build:
       dockerfile_inline: |
+        FROM debian:trixie-slim AS redir
+        RUN apt-get update && apt-get install -y --no-install-recommends redir
         FROM eclipse-temurin:21
-        RUN for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do \
-              [ -f "$$f" ] && sed -i -E 's#https?://(archive|security)\.ubuntu\.com#http://azure.archive.ubuntu.com#g' "$$f"; \
-            done; \
-            apt-get update && apt-get install -y redir && rm -rf /var/lib/apt/lists/*
+        COPY --from=redir /usr/bin/redir /usr/bin/redir
+        RUN test -x /usr/bin/redir && ! ldd /usr/bin/redir | grep -q "not found"
     extra_hosts:
       - "host.docker.internal:host-gateway"
