@@ -335,7 +335,7 @@ export function createTenantsOpenAPIRouter(
       },
       security: [
         {
-          Bearer: [],
+          Bearer: ["create:tenants"],
         },
       ],
       responses: {
