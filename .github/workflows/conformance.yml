@@ -241,13 +241,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
+      # No --with-deps / install-deps: those apt-install Chromium's system
+      # packages, and runners currently can't resolve any *.ubuntu.com mirror
+      # (apt fails after ~7 min of retries). The runner image already ships
+      # Google Chrome, so Chromium's shared libraries are present; only extra
+      # fonts would be missing, which these headless checks don't need.
       - name: Install Playwright Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter @authhero/conformance-runner exec playwright install --with-deps chromium
-
-      - name: Install Playwright system deps (browser cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter @authhero/conformance-runner exec playwright install-deps chromium
+        run: pnpm --filter @authhero/conformance-runner exec playwright install chromium
 
       - name: Run RFC 8628 device authorization browser checks
         run: pnpm conformance:device
