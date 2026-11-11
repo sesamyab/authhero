@@ -1186,6 +1186,9 @@ describe("tenants routes declared scopes", () => {
   function declaredScopes() {
     const config: MultiTenancyConfig = {
       accessControl: { controlPlaneTenantId },
+      // Supplied by initMultiTenant; each mounts a route only when set.
+      configSyncStatus: async () => null,
+      verifyConfigSync: async () => null,
     };
     const router = createTenantsOpenAPIRouter(
       config,
@@ -1207,9 +1210,15 @@ describe("tenants routes declared scopes", () => {
   });
 
   it("requires a scope on every route except the filtered list", () => {
+    const scopes = declaredScopes();
+    // The config-sync routes are only mounted with their callbacks set.
+    expect(scopes.get("GET /{id}/config-sync")).toEqual(["read:tenants"]);
+    expect(scopes.get("GET /{id}/config-sync/verify")).toEqual([
+      "read:tenants",
+    ]);
     // GET / returns only the tenants the caller can access, so it needs no
     // scope of its own.
-    const unscoped = [...declaredScopes()]
+    const unscoped = [...scopes]
       .filter(([, bearer]) => !bearer?.length)
       .map(([route]) => route);
     expect(unscoped).toEqual(["GET /"]);
