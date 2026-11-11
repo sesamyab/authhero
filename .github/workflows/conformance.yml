@@ -215,6 +215,12 @@ jobs:
       # fails with "host.docker.internal: Name or service not known".
       - name: Start conformance suite
         working-directory: /home/runner/conformance-suite
+        # The CI override builds the suite images with `network: host` (DNS
+        # from the build bridge network is unreliable on runners). Compose's
+        # default Bake builder rejects that without an explicit
+        # `--allow=network.host` entitlement, so use the classic builder.
+        env:
+          COMPOSE_BAKE: "false"
         run: |
           docker compose \
             -f docker-compose-dev-mac.yml \
