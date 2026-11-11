@@ -42,6 +42,109 @@ export function escapeSqlLiteral(value: string): string {
   return value.replace(/'/g, "''");
 }
 
+/**
+ * Upper bound (UTF-8 bytes) for one combined migration request body.
+ *
+ * Cloudflare D1 documents "Maximum SQL statement length: 100,000 bytes
+ * (100 KB)" (https://developers.cloudflare.com/d1/platform/limits/). The
+ * docs say that limit applies per statement inside `db.batch()`, but don't
+ * say how it applies to a multi-statement `sql` string sent to the REST
+ * `POST /accounts/:id/d1/database/:id/query` endpoint. So we assume the
+ * worst case, that the whole body counts, and keep each combined request
+ * under 90 KB, leaving headroom for the tracking rows. A single migration
+ * bigger than this is still sent on its own, as before.
+ */
+export const MAX_MIGRATION_BATCH_BYTES = 90_000;
+
+/**
+ * Make a migration's SQL safe to have more SQL appended after it: the
+ * result always ends with a newline, is never inside an open block comment,
+ * and its last statement is terminated with `;`. Without this, a migration
+ * whose last line is a `-- comment`, or whose final statement lacks a `;`,
+ * would swallow or merge with the tracking `INSERT` that follows it.
+ *
+ * Uses a small lexer (string/identifier quotes, line and block comments) to
+ * find the last significant character, so a `;` or `--` inside a string
+ * literal isn't misread.
+ */
+export function terminateSqlForConcat(sql: string): string {
+  let lastSignificant = "";
+  let inBlockComment = false;
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql.charAt(i);
+    const next = sql.charAt(i + 1);
+    if (ch === "-" && next === "-") {
+      const nl = sql.indexOf("\n", i + 2);
+      i = nl === -1 ? sql.length : nl + 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      const end = sql.indexOf("*/", i + 2);
+      if (end === -1) {
+        inBlockComment = true;
+        i = sql.length;
+      } else {
+        i = end + 2;
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`" || ch === "[") {
+      const close = ch === "[" ? "]" : ch;
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql.charAt(j) === close) {
+          // Doubled quote is an escaped quote inside the literal.
+          if (close !== "]" && sql.charAt(j + 1) === close) {
+            j += 2;
+            continue;
+          }
+          break;
+        }
+        j++;
+      }
+      lastSignificant = close;
+      i = j + 1;
+      continue;
+    }
+    if (!/\s/.test(ch)) lastSignificant = ch;
+    i++;
+  }
+
+  let out = sql;
+  if (inBlockComment) out += "\n*/";
+  out += "\n";
+  if (lastSignificant !== "" && lastSignificant !== ";") out += ";\n";
+  return out;
+}
+
+/**
+ * Group whole migration parts into request bodies of at most `maxBytes`
+ * UTF-8 bytes. A part is never split; a single part larger than the limit
+ * becomes its own chunk.
+ */
+export function chunkMigrationParts<T extends { sql: string }>(
+  parts: T[],
+  maxBytes: number = MAX_MIGRATION_BATCH_BYTES,
+): T[][] {
+  const encoder = new TextEncoder();
+  const chunks: T[][] = [];
+  let current: T[] = [];
+  let currentBytes = 0;
+  for (const part of parts) {
+    const bytes = encoder.encode(part.sql).length;
+    if (current.length > 0 && currentBytes + bytes > maxBytes) {
+      chunks.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(part);
+    currentBytes += bytes;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 export interface TenantProvisionNames {
   scriptName: string;
   databaseName: string;
@@ -162,21 +265,49 @@ export function createWfpProvisionerSteps(
     return new Set(collectStringColumn(result, "name"));
   }
 
+  function trackingInsertSql(name: string): string {
+    const appliedAt = new Date().toISOString();
+    return `INSERT OR IGNORE INTO ${MIGRATIONS_TABLE} (name, applied_at) VALUES ('${escapeSqlLiteral(name)}', '${escapeSqlLiteral(appliedAt)}');`;
+  }
+
   async function recordMigration(
     databaseId: string,
     name: string,
   ): Promise<void> {
-    const appliedAt = new Date().toISOString();
-    await client.execD1(
-      databaseId,
-      `INSERT OR IGNORE INTO ${MIGRATIONS_TABLE} (name, applied_at) VALUES ('${escapeSqlLiteral(name)}', '${escapeSqlLiteral(appliedAt)}');`,
-    );
+    await client.execD1(databaseId, trackingInsertSql(name));
+  }
+
+  /** One migration's SQL followed by its tracking row, ready to concatenate. */
+  function migrationPart(migration: { name: string; sql: string }): {
+    name: string;
+    sql: string;
+  } {
+    return {
+      name: migration.name,
+      sql: `${terminateSqlForConcat(migration.sql)}${trackingInsertSql(migration.name)}\n`,
+    };
   }
 
   /**
-   * Apply every migration not yet recorded in the tracking table, recording
-   * each as it lands. Reconciling against the tracking table (rather than a
-   * one-shot flag) is what makes a half-finished provision recoverable.
+   * Apply every migration not yet recorded in the tracking table.
+   * Reconciling against the tracking table (rather than a one-shot flag) is
+   * what makes a half-finished provision recoverable.
+   *
+   * All pending migrations go to D1 in as few `/query` calls as possible
+   * (one, unless the SQL exceeds `MAX_MIGRATION_BATCH_BYTES`). Two calls per
+   * migration pushed a fresh provision past the Workers 50-subrequest limit.
+   * Each migration's SQL is immediately followed by its tracking `INSERT`,
+   * so the tracking table matches what actually landed however D1 runs the
+   * body. Cloudflare documents the REST `sql` field only as "executed as a
+   * batch", and its `batch()` docs describe both per-statement auto-commit
+   * and whole-sequence rollback. If D1 rolls back the whole body, neither
+   * the migrations nor their rows persist. If it stops at the first error,
+   * every migration before the failing one has its row. Either way a retry
+   * resumes at the right migration.
+   *
+   * If a combined call fails, the remaining pending migrations are re-run
+   * one per call (migration + tracking row together), so the thrown error
+   * names the migration that failed.
    *
    * Caveat: D1 has no transactional DDL, so a single migration *file* that
    * fails midway can still leave that one file partly applied. Author
@@ -186,22 +317,46 @@ export function createWfpProvisionerSteps(
    */
   async function applyPendingMigrations(databaseId: string): Promise<void> {
     const applied = await appliedMigrationNames(databaseId);
-    for (const migration of options.migrations) {
-      if (applied.has(migration.name)) continue;
-      try {
-        await client.execD1(databaseId, migration.sql);
-      } catch (err) {
-        // Tag the error with the migration name so the operator can tell
-        // what failed.
-        if (err instanceof Error) {
-          throw new Error(
-            `Failed to apply migration "${migration.name}" to D1 ${databaseId}: ${err.message}`,
-            { cause: err },
-          );
-        }
-        throw err;
+    const pending = options.migrations.filter((m) => !applied.has(m.name));
+    if (pending.length === 0) return;
+
+    const chunks = chunkMigrationParts(pending.map(migrationPart));
+    for (const chunk of chunks) {
+      const [only] = chunk;
+      if (chunk.length === 1 && only) {
+        await applyMigrationPart(databaseId, only);
+        continue;
       }
-      await recordMigration(databaseId, migration.name);
+      try {
+        await client.execD1(databaseId, chunk.map((p) => p.sql).join(""));
+      } catch {
+        // Find out what landed, then retry the rest of this chunk one
+        // migration per call so the error names the failing migration.
+        const nowApplied = await appliedMigrationNames(databaseId);
+        for (const part of chunk) {
+          if (nowApplied.has(part.name)) continue;
+          await applyMigrationPart(databaseId, part);
+        }
+      }
+    }
+  }
+
+  async function applyMigrationPart(
+    databaseId: string,
+    part: { name: string; sql: string },
+  ): Promise<void> {
+    try {
+      await client.execD1(databaseId, part.sql);
+    } catch (err) {
+      // Tag the error with the migration name so the operator can tell
+      // what failed.
+      if (err instanceof Error) {
+        throw new Error(
+          `Failed to apply migration "${part.name}" to D1 ${databaseId}: ${err.message}`,
+          { cause: err },
+        );
+      }
+      throw err;
     }
   }
 
