@@ -159,6 +159,26 @@ async function logTypes(env: Env): Promise<string[]> {
   return logs.map((log) => log.type);
 }
 
+async function successLog(env: Env) {
+  const { logs } = await env.data.logs.list(TENANT_ID, { per_page: 100 });
+  return logs.find(
+    (log) => log.type === LogTypes.SUCCESS_EXCHANGE_CUSTOM_TOKEN,
+  );
+}
+
+// A secondary identity in the exchange connection, linked to the fixture's
+// primary user `email|userId` in the Email connection.
+async function seedLinkedExchangeUser(env: Env, sub: string) {
+  await env.data.users.create(TENANT_ID, {
+    user_id: `auth0|${sub}`,
+    email: `${sub}@acme.test`,
+    provider: "auth0",
+    connection: EXCHANGE_CONNECTION,
+    is_social: false,
+    linked_to: "email|userId",
+  });
+}
+
 async function failureDescriptions(env: Env): Promise<string[]> {
   const { logs } = await env.data.logs.list(TENANT_ID, { per_page: 100 });
   return logs
@@ -800,6 +820,66 @@ describe("custom token exchange with a declarative JWT profile", () => {
       strategy_type: "passwordless",
     });
   });
+
+  it.each([
+    ["sms|u1", "sms", "sms", "passwordless"],
+    ["okta|u2", "okta", "okta", "enterprise"],
+    ["google-oauth2|u3", "google-oauth2", "google-oauth2", "social"],
+    ["auth2|u4", "auth2", PASSWORD_CONNECTION, "database"],
+  ])(
+    "classifies the provider of %s on the secte log",
+    async (userId, provider, connection, strategyType) => {
+      const { oauthApp, env } = await getTestServer();
+      const keypair = await generateKeypair();
+      await seedClient(env);
+      await seedJwtProfile(env, keypair);
+      await env.data.users.create(TENANT_ID, {
+        user_id: userId,
+        email: `${provider}@acme.test`,
+        provider,
+        connection,
+        is_social: strategyType === "social",
+      });
+
+      const { status } = await exchange(oauthApp, env, {
+        subject_token: await signSubjectToken(keypair, { sub: userId }),
+      });
+
+      expect(status).toBe(200);
+      expect(await successLog(env)).toMatchObject({
+        strategy: provider,
+        strategy_type: strategyType,
+      });
+    },
+  );
+
+  it("resolves a linked identity in the profile's connection to its primary", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const keypair = await generateKeypair();
+    await seedClient(env);
+    await seedExchangeConnection(env);
+    await seedJwtProfile(env, keypair, {
+      user_mapping: {
+        type: "connection",
+        connection: EXCHANGE_CONNECTION,
+        create_if_not_exists: true,
+      },
+    });
+    await seedLinkedExchangeUser(env, "linked-1");
+
+    const { status, body } = await exchange(oauthApp, env, {
+      subject_token: await signSubjectToken(keypair, { sub: "linked-1" }),
+    });
+
+    expect(status).toBe(200);
+    expect(parseJWT(body.access_token!)?.payload.sub).toBe("email|userId");
+    expect(await successLog(env)).toMatchObject({
+      user_id: "email|userId",
+      connection: EXCHANGE_CONNECTION,
+      strategy: "auth0",
+      strategy_type: "database",
+    });
+  });
 });
 
 describe("custom token exchange with an action profile", () => {
@@ -941,6 +1021,26 @@ describe("custom token exchange with an action profile", () => {
       expect(status).toBe(200);
       expect(parseJWT(body.access_token!)?.payload.sub).toBe("auth0|ext-8");
     }
+  });
+
+  it("resolves a linked identity to its primary and logs the action's connection", async () => {
+    const { oauthApp, env } = await setUserByConnectionAction({
+      user_id: "linked-2",
+    });
+    await seedExchangeConnection(env);
+    await seedLinkedExchangeUser(env, "linked-2");
+
+    const { status, body } = await exchange(oauthApp, env, {
+      subject_token: "anything",
+    });
+
+    expect(status).toBe(200);
+    expect(parseJWT(body.access_token!)?.payload.sub).toBe("email|userId");
+    expect(await successLog(env)).toMatchObject({
+      connection: EXCHANGE_CONNECTION,
+      strategy: "auth0",
+      strategy_type: "database",
+    });
   });
 
   it("rejects a user with the same id in another connection without updating it", async () => {

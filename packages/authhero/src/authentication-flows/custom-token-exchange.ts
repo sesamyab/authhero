@@ -14,6 +14,7 @@ import {
   isDatabaseConnectionStrategy,
 } from "@authhero/adapter-interfaces";
 import { JSONHTTPException } from "../errors/json-http-exception";
+import { isUniqueConstraintError } from "../errors/is-unique-constraint-error";
 import { Bindings, Variables, GrantFlowUserResult } from "../types";
 import { EnrichedClient } from "../helpers/client";
 import { logMessage } from "../helpers/logging";
@@ -92,13 +93,11 @@ type ResolvedExchangeUser = {
   strategy?: string;
 };
 
-type AuthStrategy = { strategy: string; strategy_type: string };
-
 export async function customTokenExchangeGrant(
   ctx: Ctx,
   params: CustomTokenExchangeParams,
   client: EnrichedClient,
-): Promise<GrantFlowUserResult & { authStrategy: AuthStrategy }> {
+): Promise<GrantFlowUserResult> {
   const tenantId = client.tenant.id;
   const failLog = (description: string) =>
     logMessage(ctx, tenantId, {
@@ -222,7 +221,10 @@ export async function customTokenExchangeGrant(
 // The same classification the interactive flows record: database
 // (ticket.ts), passwordless (passwordless.ts), enterprise/social
 // (connection.ts).
-function authStrategyFor(strategy: string): AuthStrategy {
+function authStrategyFor(strategy: string): {
+  strategy: string;
+  strategy_type: string;
+} {
   const strategy_type = isDatabaseConnectionStrategy(strategy)
     ? StrategyType.DATABASE
     : strategy === Strategy.EMAIL || strategy === Strategy.SMS
@@ -913,12 +915,7 @@ async function findOrCreateConnectionUser(
     });
   } catch (error) {
     // A concurrent exchange for the same subject created the user first.
-    const isConflict =
-      typeof error === "object" &&
-      error !== null &&
-      "status" in error &&
-      error.status === 409;
-    if (!isConflict) throw error;
+    if (!isUniqueConstraintError(error)) throw error;
     const winner = await ctx.env.data.users.get(tenantId, userId);
     if (!winner) {
       // The conflict is on unique_email_provider / unique_username_provider:

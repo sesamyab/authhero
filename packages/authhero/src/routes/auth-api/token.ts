@@ -440,9 +440,6 @@ const postRoot = defineRoute({
 
     let grantResult: GrantFlowResult;
     let isCustomTokenExchange = false;
-    let exchangeAuthStrategy:
-      | { strategy: string; strategy_type: string }
-      | undefined;
 
     switch (body.grant_type) {
       case GrantType.DeviceCode:
@@ -496,13 +493,11 @@ const postRoot = defineRoute({
           grantResult = await tokenExchangeGrant(ctx, parsed.data, client);
         } else {
           isCustomTokenExchange = true;
-          const exchangeResult = await customTokenExchangeGrant(
+          grantResult = await customTokenExchangeGrant(
             ctx,
             customTokenExchangeParamsSchema.parse(params),
             client,
           );
-          grantResult = exchangeResult;
-          exchangeAuthStrategy = exchangeResult.authStrategy;
         }
         break;
       default:
@@ -547,11 +542,9 @@ const postRoot = defineRoute({
       // The connection/strategy actually used to authenticate: the login
       // session's stored auth_connection/auth_strategy when the grant carries
       // one (authorization_code), else the flow's explicit authConnection
-      // (refresh_token, passwordless), else the user's own connection. A
-      // custom token exchange has no login session and reports the strategy
-      // of the connection it resolved the user in.
+      // (refresh_token, passwordless), else the user's own connection.
       const authStrategy =
-        grantResult.loginSession?.auth_strategy ?? exchangeAuthStrategy;
+        grantResult.loginSession?.auth_strategy ?? grantResult.authStrategy;
       logMessage(ctx, grantResult.client.tenant.id, {
         type: successLogType,
         userId: grantUser?.user_id,
