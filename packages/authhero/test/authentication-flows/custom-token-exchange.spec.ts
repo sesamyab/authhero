@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   LogTypes,
   RateLimitAdapter,
@@ -157,6 +157,44 @@ async function exchange(
 async function logTypes(env: Env): Promise<string[]> {
   const { logs } = await env.data.logs.list(TENANT_ID, { per_page: 100 });
   return logs.map((log) => log.type);
+}
+
+async function failureDescriptions(env: Env): Promise<string[]> {
+  const { logs } = await env.data.logs.list(TENANT_ID, { per_page: 100 });
+  return logs
+    .filter((log) => log.type === LogTypes.FAILED_EXCHANGE_CUSTOM_TOKEN)
+    .map((log) => log.description ?? "");
+}
+
+// A dedicated database connection for exchanged users. It shares the "auth0"
+// provider with the tenant's password users, so `auth0|<sub>` can collide
+// with a user that signed up through the login UI.
+const EXCHANGE_CONNECTION = "acme-exchange";
+const PASSWORD_CONNECTION = "Username-Password-Authentication";
+
+async function seedExchangeConnection(env: Env) {
+  await env.data.connections.create(TENANT_ID, {
+    id: EXCHANGE_CONNECTION,
+    name: EXCHANGE_CONNECTION,
+    strategy: "auth0",
+    options: {},
+  });
+}
+
+async function seedPasswordUser(
+  env: Env,
+  overrides: { user_id?: string; email?: string; username?: string } = {},
+) {
+  return env.data.users.create(TENANT_ID, {
+    user_id: overrides.user_id ?? "auth0|victim",
+    email: overrides.email ?? "victim@acme.test",
+    username: overrides.username,
+    email_verified: true,
+    name: "Victim",
+    provider: "auth0",
+    connection: PASSWORD_CONNECTION,
+    is_social: false,
+  });
 }
 
 describe("custom token exchange with a declarative JWT profile", () => {
@@ -544,6 +582,183 @@ describe("custom token exchange with a declarative JWT profile", () => {
       expect(body.error).toBe("invalid_request");
       expect(await env.data.users.get(TENANT_ID, "auth2|acme-45")).toBeNull();
     });
+
+    async function setupExchangeConnection() {
+      const server = await getTestServer();
+      const keypair = await generateKeypair();
+      await seedClient(server.env);
+      await seedExchangeConnection(server.env);
+      await seedJwtProfile(server.env, keypair, {
+        user_mapping: {
+          type: "connection",
+          connection: EXCHANGE_CONNECTION,
+          create_if_not_exists: true,
+        },
+      });
+      return { ...server, keypair };
+    }
+
+    it("resolves an existing user in the profile's connection", async () => {
+      const { oauthApp, env, keypair } = await setupExchangeConnection();
+      await env.data.users.create(TENANT_ID, {
+        user_id: "auth0|acme-70",
+        email: "acme70@acme.test",
+        provider: "auth0",
+        connection: EXCHANGE_CONNECTION,
+        is_social: false,
+      });
+
+      const { status, body } = await exchange(oauthApp, env, {
+        subject_token: await signSubjectToken(keypair, { sub: "acme-70" }),
+      });
+
+      expect(status).toBe(200);
+      expect(parseJWT(body.access_token!)?.payload.sub).toBe("auth0|acme-70");
+    });
+
+    it("rejects a user with the same id in another connection", async () => {
+      const { oauthApp, env, keypair } = await setupExchangeConnection();
+      await seedPasswordUser(env);
+      const victim = await env.data.users.get(TENANT_ID, "auth0|victim");
+
+      const { status, body } = await exchange(oauthApp, env, {
+        subject_token: await signSubjectToken(keypair, {
+          sub: "victim",
+          name: "Attacker",
+        }),
+      });
+
+      expect(status).toBe(400);
+      expect(body).toEqual({
+        error: "invalid_request",
+        error_description: "Subject token user could not be resolved",
+      });
+      expect(body.access_token).toBeUndefined();
+      expect(await failureDescriptions(env)).toContainEqual(
+        expect.stringMatching(
+          /auth0\|victim.*Username-Password-Authentication.*acme-exchange/,
+        ),
+      );
+      expect(await logTypes(env)).not.toContain(
+        LogTypes.SUCCESS_EXCHANGE_CUSTOM_TOKEN,
+      );
+      expect(await env.data.users.get(TENANT_ID, "auth0|victim")).toEqual(
+        victim,
+      );
+    });
+
+    it("rejects a user that has no connection", async () => {
+      const { oauthApp, env, keypair } = await setupExchangeConnection();
+      await seedPasswordUser(env, { user_id: "auth0|legacy" });
+      // Legacy rows can have a NULL connection column, which the adapter
+      // returns as a missing property.
+      const realGet = env.data.users.get;
+      vi.spyOn(env.data.users, "get").mockImplementation(
+        async (tenantId, userId) => {
+          const user = await realGet(tenantId, userId);
+          if (user) Reflect.deleteProperty(user, "connection");
+          return user;
+        },
+      );
+
+      const { status, body } = await exchange(oauthApp, env, {
+        subject_token: await signSubjectToken(keypair, { sub: "legacy" }),
+      });
+
+      expect(status).toBe(400);
+      expect(body.error).toBe("invalid_request");
+      expect(await logTypes(env)).toContain(
+        LogTypes.FAILED_EXCHANGE_CUSTOM_TOKEN,
+      );
+    });
+
+    it("rejects a new user whose email another user already has", async () => {
+      const { oauthApp, env, keypair } = await setupExchangeConnection();
+      await seedPasswordUser(env, { email: "taken@acme.test" });
+
+      const { status, body } = await exchange(oauthApp, env, {
+        subject_token: await signSubjectToken(keypair, {
+          sub: "newcomer",
+          email: "taken@acme.test",
+        }),
+      });
+
+      expect(status).toBe(400);
+      expect(body).toEqual({
+        error: "invalid_request",
+        error_description:
+          "Another user already has the same email or username",
+      });
+      expect(await failureDescriptions(env)).toContainEqual(
+        expect.stringMatching(/auth0\|newcomer.*acme-exchange/),
+      );
+      expect(await env.data.users.get(TENANT_ID, "auth0|newcomer")).toBeNull();
+    });
+
+    it("returns the concurrently created user after a create race", async () => {
+      const { oauthApp, env, keypair } = await setupExchangeConnection();
+      // The other request's user exists, but this request's lookup ran
+      // before it was committed.
+      await env.data.users.create(TENANT_ID, {
+        user_id: "auth0|racer",
+        email: "racer@acme.test",
+        provider: "auth0",
+        connection: EXCHANGE_CONNECTION,
+        is_social: false,
+      });
+      const realGet = env.data.users.get;
+      let hidden = false;
+      vi.spyOn(env.data.users, "get").mockImplementation(
+        async (tenantId, userId) => {
+          if (userId === "auth0|racer" && !hidden) {
+            hidden = true;
+            return null;
+          }
+          return realGet(tenantId, userId);
+        },
+      );
+
+      const { status, body } = await exchange(oauthApp, env, {
+        subject_token: await signSubjectToken(keypair, {
+          sub: "racer",
+          email: "racer@acme.test",
+        }),
+      });
+
+      expect(status).toBe(200);
+      expect(parseJWT(body.access_token!)?.payload.sub).toBe("auth0|racer");
+    });
+
+    it("rejects a race winner from another connection", async () => {
+      const { oauthApp, env, keypair } = await setupExchangeConnection();
+      await seedPasswordUser(env);
+      const realGet = env.data.users.get;
+      let hidden = false;
+      vi.spyOn(env.data.users, "get").mockImplementation(
+        async (tenantId, userId) => {
+          if (userId === "auth0|victim" && !hidden) {
+            hidden = true;
+            return null;
+          }
+          return realGet(tenantId, userId);
+        },
+      );
+
+      // The email makes SQLite report the collision as a unique-index
+      // conflict (409); a bare primary-key collision surfaces as a 500 from
+      // the kysely adapter.
+      const { status, body } = await exchange(oauthApp, env, {
+        subject_token: await signSubjectToken(keypair, {
+          sub: "victim",
+          email: "victim@acme.test",
+        }),
+      });
+
+      expect(status).toBe(400);
+      expect(body.error_description).toBe(
+        "Subject token user could not be resolved",
+      );
+    });
   });
 });
 
@@ -655,6 +870,85 @@ describe("custom token exchange with an action profile", () => {
       error: "invalid_request",
       error_description: "account suspended",
     });
+  });
+
+  function setUserByConnectionAction(
+    attributes: Record<string, string>,
+    updateBehavior = "none",
+  ) {
+    return setup(`
+      exports.onExecuteCustomTokenExchange = async (event, api) => {
+        api.authentication.setUserByConnection(
+          ${JSON.stringify(EXCHANGE_CONNECTION)},
+          ${JSON.stringify(attributes)},
+          { creationBehavior: "create_if_not_exists", updateBehavior: ${JSON.stringify(updateBehavior)} },
+        );
+      };
+    `);
+  }
+
+  it("resolves the same user on a second identical exchange", async () => {
+    const { oauthApp, env } = await setUserByConnectionAction({
+      user_id: "ext-8",
+      email: "ext8@acme.test",
+    });
+    await seedExchangeConnection(env);
+
+    for (let i = 0; i < 2; i++) {
+      const { status, body } = await exchange(oauthApp, env, {
+        subject_token: "anything",
+      });
+      expect(status).toBe(200);
+      expect(parseJWT(body.access_token!)?.payload.sub).toBe("auth0|ext-8");
+    }
+  });
+
+  it("rejects a user with the same id in another connection without updating it", async () => {
+    const { oauthApp, env } = await setUserByConnectionAction(
+      { user_id: "victim", name: "Attacker" },
+      "replace",
+    );
+    await seedExchangeConnection(env);
+    await seedPasswordUser(env);
+    const victim = await env.data.users.get(TENANT_ID, "auth0|victim");
+
+    const { status, body } = await exchange(oauthApp, env, {
+      subject_token: "anything",
+    });
+
+    expect(status).toBe(400);
+    expect(body).toEqual({
+      error: "invalid_request",
+      error_description: "Subject token user could not be resolved",
+    });
+    expect(await failureDescriptions(env)).toContainEqual(
+      expect.stringMatching(
+        /auth0\|victim.*Username-Password-Authentication.*acme-exchange/,
+      ),
+    );
+    expect(await env.data.users.get(TENANT_ID, "auth0|victim")).toEqual(victim);
+  });
+
+  it("rejects a new user whose username another user already has", async () => {
+    const { oauthApp, env } = await setUserByConnectionAction({
+      user_id: "newcomer",
+      username: "taken",
+    });
+    await seedExchangeConnection(env);
+    await seedPasswordUser(env, { username: "taken" });
+
+    const { status, body } = await exchange(oauthApp, env, {
+      subject_token: "anything",
+    });
+
+    expect(status).toBe(400);
+    expect(body).toEqual({
+      error: "invalid_request",
+      error_description: "Another user already has the same email or username",
+    });
+    expect(await failureDescriptions(env)).toContainEqual(
+      expect.stringMatching(/auth0\|newcomer.*acme-exchange/),
+    );
   });
 
   it("fails when the action sets no user", async () => {

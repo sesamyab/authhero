@@ -827,8 +827,23 @@ async function findOrCreateConnectionUser(
   const userId = `${provider}|${params.user_id}`;
   const attributes = params.attributes;
 
+  // Database connections share the provider prefix, so the same id can
+  // belong to a user of another connection (e.g. a password user).
+  const assertInConnection = (user: User) => {
+    if (user.connection === connection.name) return;
+    logMessage(ctx, tenantId, {
+      type: LogTypes.FAILED_EXCHANGE_CUSTOM_TOKEN,
+      description: `User ${user.user_id} belongs to connection ${user.connection || "(none)"}, not ${connection.name}`,
+    });
+    throw new JSONHTTPException(400, {
+      error: "invalid_request",
+      error_description: "Subject token user could not be resolved",
+    });
+  };
+
   const existing = await ctx.env.data.users.get(tenantId, userId);
   if (existing) {
+    assertInConnection(existing);
     if (params.update) {
       const replaceable: ReplaceableAttributes = {
         name: attributes.name,
@@ -878,7 +893,20 @@ async function findOrCreateConnectionUser(
       error.status === 409;
     if (!isConflict) throw error;
     const winner = await ctx.env.data.users.get(tenantId, userId);
-    if (!winner) throw error;
+    if (!winner) {
+      // The conflict is on unique_email_provider / unique_username_provider:
+      // a different user holds the email or username.
+      logMessage(ctx, tenantId, {
+        type: LogTypes.FAILED_EXCHANGE_CUSTOM_TOKEN,
+        description: `Could not create user ${userId} in connection ${connection.name}: another ${provider} user already has the same email or username`,
+      });
+      throw new JSONHTTPException(400, {
+        error: "invalid_request",
+        error_description:
+          "Another user already has the same email or username",
+      });
+    }
+    assertInConnection(winner);
     return winner;
   }
 }
