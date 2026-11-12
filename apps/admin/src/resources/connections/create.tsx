@@ -13,7 +13,7 @@ const strategyChoices = [
   { id: Strategy.OAUTH2, name: "OAuth2" },
   { id: Strategy.OIDC, name: "OpenID Connect" },
   { id: Strategy.OKTA, name: "Okta" },
-  { id: DATABASE_CONNECTION_STRATEGY, name: "Password" },
+  { id: DATABASE_CONNECTION_STRATEGY, name: "Database" },
   { id: Strategy.SMS, name: "SMS" },
   { id: Strategy.SAMLP, name: "SAML" },
 ];

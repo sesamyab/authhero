@@ -17,9 +17,11 @@ import {
   TextArrayInput,
   TextInput,
 } from "@/components/admin";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Strategy, isDatabaseConnectionStrategy } from "@/utils/Strategy";
 import {
   DEFAULT_MAX_LIFETIME_SECONDS,
   TOKEN_EXCHANGE_ALGORITHMS,
@@ -118,17 +120,39 @@ function ConnectionSelect() {
         })),
     [data],
   );
+  const selectedName: unknown = useWatch({
+    name: "jwt_verification.user_mapping.connection",
+  });
+  const strategy = (data ?? []).find((c) => c.name === selectedName)?.strategy;
+  const idPrefix = !strategy
+    ? "<strategy>"
+    : isDatabaseConnectionStrategy(strategy)
+      ? "auth0"
+      : strategy;
 
   return (
-    <SelectInput
-      source="jwt_verification.user_mapping.connection"
-      label="Connection"
-      choices={choices}
-      isPending={isPending}
-      translateChoice={false}
-      validate={required()}
-      helperText="The token's sub becomes the user's id in this connection: the user_id is <strategy>|<sub>."
-    />
+    <>
+      <SelectInput
+        source="jwt_verification.user_mapping.connection"
+        label="Connection"
+        choices={choices}
+        isPending={isPending}
+        translateChoice={false}
+        validate={required()}
+        helperText={`The token's sub becomes the user's id in this connection: the user_id is ${idPrefix}|<sub>.`}
+      />
+      {(strategy === Strategy.EMAIL || strategy === Strategy.SMS) && (
+        <Alert>
+          <AlertTitle>This connection is used for login</AlertTitle>
+          <AlertDescription>
+            Exchanged users would share a namespace (user ids, emails and phone
+            numbers) with the users who log in with this {strategy} connection
+            and can collide with them. Use a dedicated database connection for
+            exchanged users instead.
+          </AlertDescription>
+        </Alert>
+      )}
+    </>
   );
 }
 
