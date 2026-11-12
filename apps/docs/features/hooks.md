@@ -1300,6 +1300,48 @@ Cleanup after user deletion.
 }
 ```
 
+### Account Hooks
+
+#### `onExecutePreAccountAction`
+
+Runs when a user starts a self-service account operation. AuthHero extension;
+see [Account operation Action](#account-operation-action-pre-account-action) for
+the operations and behaviour.
+
+**When it runs**: When the user opens or triggers an account operation, before
+any form, code or write
+
+**Synchronous**: Yes - can redirect the user or stop the operation
+
+**Event Payload**:
+
+```typescript
+{
+  ctx: Context,
+  operation: AccountActionOperation, // "change-email" | "update-profile" | ...
+  user?: User,               // Undefined only for reset-password without a match
+  connection?: { id?: string, name: string, strategy?: string },
+  client?: EnrichedClient,
+  tenant: { id: string },
+  request: HookRequest,
+  details?: Record<string, string> // e.g. { factor: "totp" }
+}
+```
+
+**API Object**:
+
+```typescript
+{
+  redirect: {
+    sendUserTo: (url: string, options?: { query?: Record<string, string> }) => void
+  },
+  access: {
+    deny: (reason?: string) => void  // Shows reason on the error page
+  },
+  token: TokenAPI
+}
+```
+
 ## API Objects
 
 ### Token API

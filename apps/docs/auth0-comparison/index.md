@@ -110,6 +110,7 @@ const auth = init({
 - ✅ `onExecutePostUserDeletion` - **AuthHero-only**: Cleanup after deletion
 - ✅ `onExecutePostLogin` - Post-authentication customization
 - ✅ `onExecuteCredentialsExchange` - Modify tokens before issuance
+- ✅ `onExecutePreAccountAction` - **AuthHero-only**: Redirect or deny self-service account operations (change email, MFA enrollment, delete account, ...). See [Hooks guide](../features/hooks.md#account-operation-action-pre-account-action)
 
 #### User Deletion Hooks
 
