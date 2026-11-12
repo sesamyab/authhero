@@ -1209,7 +1209,7 @@ describe("tenants routes declared scopes", () => {
     expect(declaredScopes().get("POST /")).toEqual(["create:tenants"]);
   });
 
-  it("requires a scope on every route except the filtered list", () => {
+  it("requires a scope on every route except the unscoped reads", () => {
     const scopes = declaredScopes();
     // The config-sync routes are only mounted with their callbacks set.
     expect(scopes.get("GET /{id}/config-sync")).toEqual(["read:tenants"]);
@@ -1217,10 +1217,11 @@ describe("tenants routes declared scopes", () => {
       "read:tenants",
     ]);
     // GET / returns only the tenants the caller can access, so it needs no
-    // scope of its own.
+    // scope of its own. GET /deployment-options returns the cluster's allowed
+    // deployment types for the admin create form, not tenant data.
     const unscoped = [...scopes]
       .filter(([, bearer]) => !bearer?.length)
       .map(([route]) => route);
-    expect(unscoped).toEqual(["GET /"]);
+    expect(unscoped).toEqual(["GET /", "GET /deployment-options"]);
   });
 });
