@@ -328,6 +328,68 @@ though tenant management APIs hide them. Fleet propagation still requires
 synced descendants, the scheduled rollout driver and, for separate workers,
 the configured sync transport. See [fleet rollouts](../customization/multi-tenancy/tenant-operations.md#fleet-rollouts-of-synced-config).
 
+## Account operation Action (`pre-account-action`)
+
+`pre-account-action` is an **AuthHero extension**: Auth0 has no equivalent
+trigger. It runs when a user **starts** a self-service account operation, before
+any form, code or write, and lets you send the user somewhere else or stop the
+operation. The typical use is a tenant whose users' identities are owned by
+another system, for example users who sign in through
+[custom token exchange](./custom-token-exchange.md): changing their email,
+enrolling MFA or deleting their account should happen at that identity provider,
+not in AuthHero.
+
+The trigger is keyed on the operation, not on a screen, so the same Action covers
+every entry point (the `/u` and `/u2` account pages, `/account?screen_hint=...`).
+`event.operation` is one of:
+
+| Operation         | Fires when the user...                                     |
+| ----------------- | ---------------------------------------------------------- |
+| `change-email`    | opens change email (`/u/account/change-email`, or `/account?screen_hint=change-email`) |
+| `update-profile`  | opens the profile page (`/u2/account/profile`)             |
+| `reset-password`  | opens the password reset request page                     |
+| `enroll-mfa`      | opens TOTP or SMS enrollment (`details.factor`)           |
+| `remove-mfa`      | removes an MFA factor (`details.enrollment_id`)           |
+| `enroll-passkey`  | starts adding a passkey                                    |
+| `remove-passkey`  | removes a passkey (`details.enrollment_id`)               |
+| `unlink-identity` | unlinks an identity (`details.provider`, `details.user_id`) |
+| `delete-account`  | opens the delete-account page                              |
+
+```javascript
+exports.onExecutePreAccountAction = async (event, api) => {
+  if (event.connection?.name === "acme-idp") {
+    api.redirect.sendUserTo("https://idp.acme.com/profile", {
+      query: { op: event.operation },
+    });
+  }
+};
+```
+
+- **API:** `api.redirect.sendUserTo(url, { query })` sends the user to `url`
+  (http or https; relative URLs resolve against the current request). Unlike
+  post-login redirects, no `state` is appended: the user is leaving and isn't
+  expected to come back to this transaction. `api.access.deny(reason)` stops the
+  operation and shows `reason` on the error page. Doing nothing lets the
+  operation continue.
+- **Event:** `operation`, `user`, `connection` (`{ id, name, strategy }` of the
+  user's primary identity), `client`, `tenant.id`, `request`, `details` and the
+  Action's `secrets`.
+- **`reset-password`** starts before sign-in. `event.user` is the user matching
+  the identifier entered so far, or undefined when there is none. If your Action
+  only redirects some users, the visible difference can reveal whether an
+  account exists, so prefer rules that don't depend on the user here.
+- **Ordering:** the configured `onExecutePreAccountAction` callback runs first,
+  then bound Actions in descending priority. The first one that redirects or
+  denies decides, and later ones don't run.
+- **Failures fail closed:** an Action that throws, times out or redirects to an
+  invalid URL denies the operation with a generic message.
+- **Not an enforcement point:** this trigger controls the interactive entry
+  points only. To guarantee that a change is never accepted (including through
+  the Management API), also deny it in `pre-user-update` or `pre-user-deletion`.
+
+If nothing is bound to the trigger, the account pages behave as before; the only
+cost is one hook lookup when a gated page opens.
+
 ## Entity Hooks
 
 In addition to user lifecycle hooks, AuthHero provides entity hooks that allow you to execute custom logic when management entities (roles, connections, resource servers, and role permissions) are created, updated, deleted, or modified.

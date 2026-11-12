@@ -47,6 +47,10 @@ const codeHookAllowedTriggers = z.enum([
   "post-user-update",
   "pre-user-deletion",
   "post-user-deletion",
+  // AuthHero extension (no Auth0 equivalent): runs when a user starts a
+  // self-service account operation (change email, MFA enrollment, delete
+  // account, ...) and may redirect the user elsewhere or deny the operation.
+  "pre-account-action",
 ]);
 
 // Page hooks render a built-in universal-login interstitial (e.g. the

@@ -12,17 +12,16 @@ import {
   persistActionExecution,
 } from "./codehooks";
 
-/** Blocking policies run before signup validation or a write, and fail closed. */
-export async function runBlockingActions(
+/**
+ * The enabled code hooks bound to `triggerId`, highest priority first. Reads
+ * through the executor data, so platform-scoped policies hidden from
+ * management reads are included.
+ */
+export async function listEnabledCodeHooks(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   tenantId: string,
-  triggerId:
-    | "validate-registration-username"
-    | "pre-user-update"
-    | "pre-user-deletion",
-  event: CodeHookEventInput,
-): Promise<{ allowed: boolean; reason?: string }> {
-  // This stack includes platform-scoped policies hidden from management reads.
+  triggerId: string,
+) {
   const data = getExecutorData(ctx);
   const hooks: Hook[] = [];
   for (let page = 0; ; page++) {
@@ -34,10 +33,24 @@ export async function runBlockingActions(
     hooks.push(...result.hooks);
     if (result.hooks.length < 100) break;
   }
-  const codeHooks = hooks
+  return hooks
     .filter((h) => h.enabled && h.trigger_id === triggerId)
     .filter(isCodeHook)
     .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+}
+
+/** Blocking policies run before signup validation or a write, and fail closed. */
+export async function runBlockingActions(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  tenantId: string,
+  triggerId:
+    | "validate-registration-username"
+    | "pre-user-update"
+    | "pre-user-deletion",
+  event: CodeHookEventInput,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const data = getExecutorData(ctx);
+  const codeHooks = await listEnabledCodeHooks(ctx, tenantId, triggerId);
   const outcomes: HandleCodeHookOutcome[] = [];
   const defaultDenialReason =
     triggerId === "validate-registration-username"

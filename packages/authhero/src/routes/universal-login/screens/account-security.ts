@@ -6,7 +6,7 @@
 
 import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
-import { resolveAccountUser } from "./account-helpers";
+import { gateAccountOperation, resolveAccountUser } from "./account-helpers";
 import { escapeHtml } from "../sanitization-utils";
 import { PASSKEY_TYPES } from "./passkey-utils";
 import { createTranslation } from "../../../i18n";
@@ -229,6 +229,11 @@ async function handleAccountSecuritySubmit(
   const enrollmentId = data.enrollment_id as string;
 
   if (action === "remove_enrollment" && enrollmentId) {
+    const redirectUrl = await gateAccountOperation(context, "remove-mfa", {
+      user,
+      details: { enrollment_id: enrollmentId },
+    });
+    if (redirectUrl) return { redirect: redirectUrl };
     try {
       // Verify the enrollment belongs to this user
       const enrollment = await ctx.env.data.authenticationMethods.get(

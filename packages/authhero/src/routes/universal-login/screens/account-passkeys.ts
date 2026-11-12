@@ -9,7 +9,7 @@ import { LoginSessionEventType } from "../../../state-machines/login-session";
 import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
-import { resolveAccountUser } from "./account-helpers";
+import { gateAccountOperation, resolveAccountUser } from "./account-helpers";
 import { escapeHtml } from "../sanitization-utils";
 import {
   generateRegistrationOptions,
@@ -284,6 +284,11 @@ async function handleAccountPasskeysSubmit(
 
   // --- Remove passkey ---
   if (action === "remove_passkey" && passkeyId) {
+    const redirectUrl = await gateAccountOperation(context, "remove-passkey", {
+      user,
+      details: { enrollment_id: passkeyId },
+    });
+    if (redirectUrl) return { redirect: redirectUrl };
     try {
       const enrollment = await ctx.env.data.authenticationMethods.get(
         tenant.id,
@@ -351,6 +356,10 @@ async function handleAccountPasskeysSubmit(
 
   // --- Start add passkey (generate WebAuthn options) ---
   if (action === "start_add_passkey" || action === "") {
+    const redirectUrl = await gateAccountOperation(context, "enroll-passkey", {
+      user,
+    });
+    if (redirectUrl) return { redirect: redirectUrl };
     try {
       const enrollments = await ctx.env.data.authenticationMethods.list(
         tenant.id,

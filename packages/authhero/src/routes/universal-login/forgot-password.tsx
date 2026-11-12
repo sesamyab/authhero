@@ -5,6 +5,8 @@ import ForgotPasswordPage from "../../components/ForgotPasswordPage";
 import ForgotPasswordSentPage from "../../components/ForgotPasswordSentPage";
 import { requestPasswordReset } from "../../authentication-flows/password";
 import { defineRoute } from "../../utils/define-route";
+import { enforcePreAccountAction } from "../../hooks/pre-account-action";
+import { getPrimaryUserByEmail } from "../../helpers/users";
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["login"],
@@ -30,6 +32,23 @@ const getRoot = defineRoute({
       ctx,
       state,
     );
+
+    // Password reset starts before sign-in: the user, if any, comes from the
+    // identifier entered so far.
+    const email = loginSession.authParams.username;
+    await enforcePreAccountAction(ctx, {
+      tenantId: client.tenant.id,
+      operation: "reset-password",
+      client,
+      user: email
+        ? () =>
+            getPrimaryUserByEmail({
+              userAdapter: ctx.env.data.users,
+              tenant_id: client.tenant.id,
+              email,
+            })
+        : undefined,
+    });
 
     return ctx.html(
       <ForgotPasswordPage

@@ -126,6 +126,15 @@ const signatureChecks: Record<string, string> = {
     // @ts-expect-error credentials exchange needs an error code
     api.access.deny();
   `,
+  "pre-account-action": `
+    declare const api: ActionAPI;
+    api.redirect.sendUserTo("https://idp.example.com/profile");
+    api.redirect.sendUserTo("https://idp.example.com", { query: { op: "x" } });
+    api.access.deny();
+    api.access.deny("Managed by your organization");
+    // @ts-expect-error query values must be strings
+    api.redirect.sendUserTo("https://example.com", { query: { op: 1 } });
+  `,
   "pre-user-update": `
     declare const api: ActionAPI;
     api.access.deny();
