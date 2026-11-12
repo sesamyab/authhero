@@ -1178,3 +1178,50 @@ describe("PATCH /tenants/{id}", () => {
     expect((await adapters.tenants.get("acme"))!.config_sync).toBeFalsy();
   });
 });
+
+describe("tenants routes declared scopes", () => {
+  // authhero's management auth middleware enforces exactly what a route
+  // declares in `security`, so the declaration is the authorization check.
+  // `createHostApp` stubs that middleware out, so check the declarations here.
+  function declaredScopes() {
+    const config: MultiTenancyConfig = {
+      accessControl: { controlPlaneTenantId },
+      // Supplied by initMultiTenant; each mounts a route only when set.
+      configSyncStatus: async () => null,
+      verifyConfigSync: async () => null,
+    };
+    const router = createTenantsOpenAPIRouter(
+      config,
+      setupMultiTenancy(config).hooks,
+    );
+    const scopes = new Map<string, string[] | undefined>();
+    for (const definition of router.openAPIRegistry.definitions) {
+      if (definition.type !== "route") continue;
+      const { method, path, security } = definition.route;
+      scopes.set(`${method.toUpperCase()} ${path}`, security?.[0]?.Bearer);
+    }
+    return scopes;
+  }
+
+  it("requires create:tenants to create a tenant", () => {
+    // Each tenant is a billable unit of infrastructure, so any authenticated
+    // token being able to create one is a denial-of-wallet vector.
+    expect(declaredScopes().get("POST /")).toEqual(["create:tenants"]);
+  });
+
+  it("requires a scope on every route except the unscoped reads", () => {
+    const scopes = declaredScopes();
+    // The config-sync routes are only mounted with their callbacks set.
+    expect(scopes.get("GET /{id}/config-sync")).toEqual(["read:tenants"]);
+    expect(scopes.get("GET /{id}/config-sync/verify")).toEqual([
+      "read:tenants",
+    ]);
+    // GET / returns only the tenants the caller can access, so it needs no
+    // scope of its own. GET /deployment-options returns the cluster's allowed
+    // deployment types for the admin create form, not tenant data.
+    const unscoped = [...scopes]
+      .filter(([, bearer]) => !bearer?.length)
+      .map(([route]) => route);
+    expect(unscoped).toEqual(["GET /", "GET /deployment-options"]);
+  });
+});
