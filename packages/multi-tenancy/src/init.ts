@@ -50,6 +50,7 @@ import type { ControlPlaneResolver } from "./middleware";
 import type { InheritanceShadowOptions } from "./inheritance";
 import {
   DatabaseIsolationConfig,
+  TenantDeploymentTypesConfig,
   TenantEntityHooks,
   TenantHookContext,
 } from "./types";
@@ -93,6 +94,14 @@ export interface MultiTenantConfig extends Omit<
    * rather than written to the control plane's.
    */
   databaseIsolation?: DatabaseIsolationConfig;
+
+  /**
+   * The deployment types new tenants may use. A cluster without a shared
+   * database passes `{ allowed: ["wfp"] }`: creates then default to `wfp`,
+   * a `shared` request is refused, and the admin UI hides the choice.
+   * Unset allows both, with `shared` as the default.
+   */
+  deploymentTypes?: TenantDeploymentTypesConfig;
 
   /**
    * Optional per-tenant override for runtime inheritance lookups
@@ -378,6 +387,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     } = {},
     resolveControlPlane,
     databaseIsolation,
+    deploymentTypes,
     inheritanceShadow,
     syncDefaults,
     storedDataAdapter,
@@ -731,6 +741,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         requireOrganizationMatch,
         defaultPermissions,
       },
+      deploymentTypes,
       onConfigSyncChange: (tenantId) => forgetConfigSyncMode?.(tenantId),
       configSyncStatus: (tenantId) =>
         getConfigSyncStatus(
