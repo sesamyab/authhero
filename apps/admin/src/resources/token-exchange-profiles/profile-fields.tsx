@@ -124,11 +124,13 @@ function ConnectionSelect() {
     name: "jwt_verification.user_mapping.connection",
   });
   const strategy = (data ?? []).find((c) => c.name === selectedName)?.strategy;
-  const idPrefix = !strategy
-    ? "<strategy>"
-    : isDatabaseConnectionStrategy(strategy)
-      ? "auth0"
-      : strategy;
+  const isPasswordless =
+    strategy === Strategy.EMAIL || strategy === Strategy.SMS;
+  // The connections list carries no enabled clients, so the tenant's
+  // default database connection stands in for "used for login".
+  const isLoginDatabase =
+    isDatabaseConnectionStrategy(strategy) &&
+    selectedName === Strategy.USERNAME_PASSWORD;
 
   return (
     <>
@@ -139,16 +141,16 @@ function ConnectionSelect() {
         isPending={isPending}
         translateChoice={false}
         validate={required()}
-        helperText={`The token's sub becomes the user's id in this connection: the user_id is ${idPrefix}|<sub>.`}
+        helperText={`The token's sub becomes the user's id in this connection: the user_id is ${strategy ?? "<strategy>"}|<sub>.`}
       />
-      {(strategy === Strategy.EMAIL || strategy === Strategy.SMS) && (
+      {(isPasswordless || isLoginDatabase) && (
         <Alert>
           <AlertTitle>This connection is used for login</AlertTitle>
           <AlertDescription>
-            Exchanged users would share a namespace (user ids, emails and phone
-            numbers) with the users who log in with this {strategy} connection
-            and can collide with them. Use a dedicated database connection for
-            exchanged users instead.
+            {isPasswordless
+              ? `Exchanged users would share a namespace (user ids, emails and phone numbers) with the users who log in with this ${strategy} connection and can collide with them.`
+              : "Exchanged users would share user ids and emails with the password users of this connection, and a token whose sub equals a password user's id resolves to that user."}{" "}
+            Use a dedicated database connection for exchanged users instead.
           </AlertDescription>
         </Alert>
       )}
