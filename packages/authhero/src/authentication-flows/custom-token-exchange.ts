@@ -6,9 +6,12 @@ import {
   Connection,
   LogTypes,
   RateLimitDecision,
+  Strategy,
+  StrategyType,
   TokenExchangeJwtVerification,
   TokenExchangeProfile,
   User,
+  isDatabaseConnectionStrategy,
 } from "@authhero/adapter-interfaces";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { Bindings, Variables, GrantFlowUserResult } from "../types";
@@ -26,7 +29,10 @@ import {
 } from "../utils/jws-verify";
 import { ssrfFetchOptionsFromEnv } from "../utils/ssrf-fetch";
 import { getAuthUrl, getIssuer } from "../variables";
-import { getProviderFromConnection } from "../strategies";
+import {
+  ENTERPRISE_STRATEGIES,
+  getProviderFromConnection,
+} from "../strategies";
 import {
   CodeHookApi,
   HandleCodeHookOutcome,
@@ -80,13 +86,19 @@ class InvalidSubjectTokenError extends Error {}
 
 type Ctx = Context<{ Bindings: Bindings; Variables: Variables }>;
 
-type ResolvedExchangeUser = { user: User; connection?: string };
+type ResolvedExchangeUser = {
+  user: User;
+  connection?: string;
+  strategy?: string;
+};
+
+type AuthStrategy = { strategy: string; strategy_type: string };
 
 export async function customTokenExchangeGrant(
   ctx: Ctx,
   params: CustomTokenExchangeParams,
   client: EnrichedClient,
-): Promise<GrantFlowUserResult> {
+): Promise<GrantFlowUserResult & { authStrategy: AuthStrategy }> {
   const tenantId = client.tenant.id;
   const failLog = (description: string) =>
     logMessage(ctx, tenantId, {
@@ -203,7 +215,22 @@ export async function customTokenExchangeGrant(
     authParams,
     organization,
     authConnection: resolved.connection ?? user.connection,
+    authStrategy: authStrategyFor(resolved.strategy ?? user.provider),
   };
+}
+
+// The same classification the interactive flows record: database
+// (ticket.ts), passwordless (passwordless.ts), enterprise/social
+// (connection.ts).
+function authStrategyFor(strategy: string): AuthStrategy {
+  const strategy_type = isDatabaseConnectionStrategy(strategy)
+    ? StrategyType.DATABASE
+    : strategy === Strategy.EMAIL || strategy === Strategy.SMS
+      ? StrategyType.PASSWORDLESS
+      : ENTERPRISE_STRATEGIES.has(strategy)
+        ? "enterprise"
+        : StrategyType.SOCIAL;
+  return { strategy, strategy_type };
 }
 
 async function findProfile(
@@ -349,7 +376,7 @@ async function resolveUserFromJwt(
       `user ${sub} does not exist in connection ${connection.name}`,
     );
   }
-  return { user, connection: connection.name };
+  return { user, connection: connection.name, strategy: connection.strategy };
 }
 
 /**
@@ -736,7 +763,7 @@ async function resolveUserFromAction(
       error_description: "The token exchange action set an unknown user",
     });
   }
-  return { user, connection: connection.name };
+  return { user, connection: connection.name, strategy: connection.strategy };
 }
 
 /** The action called an `api.authentication` setter with unusable input. */

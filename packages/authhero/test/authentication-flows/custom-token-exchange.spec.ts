@@ -616,6 +616,25 @@ describe("custom token exchange with a declarative JWT profile", () => {
       expect(parseJWT(body.access_token!)?.payload.sub).toBe("auth0|acme-70");
     });
 
+    it("records the connection's strategy on the secte log", async () => {
+      const { oauthApp, env, keypair } = await setupExchangeConnection();
+
+      const { status } = await exchange(oauthApp, env, {
+        subject_token: await signSubjectToken(keypair, { sub: "acme-71" }),
+      });
+
+      expect(status).toBe(200);
+      const { logs } = await env.data.logs.list(TENANT_ID, { per_page: 100 });
+      const success = logs.find(
+        (log) => log.type === LogTypes.SUCCESS_EXCHANGE_CUSTOM_TOKEN,
+      );
+      expect(success).toMatchObject({
+        connection: EXCHANGE_CONNECTION,
+        strategy: "auth0",
+        strategy_type: "database",
+      });
+    });
+
     it("rejects a user with the same id in another connection", async () => {
       const { oauthApp, env, keypair } = await setupExchangeConnection();
       await seedPasswordUser(env);
@@ -758,6 +777,27 @@ describe("custom token exchange with a declarative JWT profile", () => {
       expect(body.error_description).toBe(
         "Subject token user could not be resolved",
       );
+    });
+  });
+
+  it("records the user's provider as the strategy for user_id mapping", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const keypair = await generateKeypair();
+    await seedClient(env);
+    await seedJwtProfile(env, keypair);
+
+    const { status } = await exchange(oauthApp, env, {
+      subject_token: await signSubjectToken(keypair),
+    });
+
+    expect(status).toBe(200);
+    const { logs } = await env.data.logs.list(TENANT_ID, { per_page: 100 });
+    const success = logs.find(
+      (log) => log.type === LogTypes.SUCCESS_EXCHANGE_CUSTOM_TOKEN,
+    );
+    expect(success).toMatchObject({
+      strategy: "email",
+      strategy_type: "passwordless",
     });
   });
 });
