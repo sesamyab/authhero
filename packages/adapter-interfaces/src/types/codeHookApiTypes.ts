@@ -35,6 +35,16 @@ export interface ActionRegistrationUserAPI extends ActionLinkAPI {
   setAppMetadata(key: string, value: unknown): void;
 }
 
+export interface ActionRedirectAPI {
+  /** Query values are appended to the URL; they must be strings. */
+  sendUserTo(url: string, options?: { query?: Record<string, string> }): void;
+}
+
+export interface ActionAccountAccessAPI {
+  /** Stop the account operation and show the reason to the user. */
+  deny(reason?: string): void;
+}
+
 export interface ActionMultifactorEnableOptions {
   /** Recorded with the request; remembering the browser is not supported yet. */
   allowRememberBrowser?: boolean;
@@ -81,12 +91,7 @@ export interface CodeHookApiByTrigger {
     prompt: {
       render(formId: string): void;
     };
-    redirect: {
-      sendUserTo(
-        url: string,
-        options?: { query?: Record<string, string> },
-      ): void;
-    };
+    redirect: ActionRedirectAPI;
     user: ActionLinkAPI;
     multifactor: ActionMultifactorAPI;
   };
@@ -111,6 +116,11 @@ export interface CodeHookApiByTrigger {
     access: ActionBlockingAccessAPI;
   };
   "post-user-deletion": {};
+  "pre-account-action": {
+    /** Send the user somewhere else instead of running the operation here. */
+    redirect: ActionRedirectAPI;
+    access: ActionAccountAccessAPI;
+  };
   "custom-token-exchange": {
     /** Validate the subject token, then call exactly one user selector or reject it. */
     authentication: {

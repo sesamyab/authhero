@@ -23,6 +23,7 @@ import {
   OnExecutePreUserDeletion,
   OnExecutePostUserDeletion,
   OnExecuteValidateRegistrationUsername,
+  OnExecutePreAccountAction,
   EntityHooksConfig,
 } from "../../src";
 import { getCertificate } from "./token";
@@ -44,6 +45,7 @@ type getEnvParams = {
     onExecutePreUserDeletion?: OnExecutePreUserDeletion;
     onExecutePostUserDeletion?: OnExecutePostUserDeletion;
     onExecuteValidateRegistrationUsername?: OnExecuteValidateRegistrationUsername;
+    onExecutePreAccountAction?: OnExecutePreAccountAction;
   };
   entityHooks?: EntityHooksConfig;
   usernamePasswordProvider?: (params: {

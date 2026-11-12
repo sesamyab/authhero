@@ -328,6 +328,73 @@ though tenant management APIs hide them. Fleet propagation still requires
 synced descendants, the scheduled rollout driver and, for separate workers,
 the configured sync transport. See [fleet rollouts](../customization/multi-tenancy/tenant-operations.md#fleet-rollouts-of-synced-config).
 
+## Account operation Action (`pre-account-action`)
+
+`pre-account-action` is an **AuthHero extension**: Auth0 has no equivalent
+trigger. It runs when a user **starts** a self-service account operation, before
+any form, code or write, and again when the change is submitted, and lets you
+send the user somewhere else or stop the operation. Because of the second check,
+an Action can run more than once for one operation, so keep it free of side
+effects. Only code Actions and the config callback can bind to it; URL, form and
+page hooks can't. The typical use is a tenant whose users' identities are owned by
+another system, for example users who sign in through
+[custom token exchange](./custom-token-exchange.md): changing their email,
+enrolling MFA or deleting their account should happen at that identity provider,
+not in AuthHero.
+
+The trigger is keyed on the operation, not on a screen, so the same Action covers
+every entry point (the `/u` and `/u2` account pages, `/account?screen_hint=...`).
+`event.operation` is one of:
+
+| Operation         | Fires when the user...                                     |
+| ----------------- | ---------------------------------------------------------- |
+| `change-email`    | opens or submits change email (`/u/account/change-email`, or `/account?screen_hint=change-email`) |
+| `update-profile`  | opens or submits the profile page (`/u2/account/profile`) |
+| `reset-password`  | opens or submits the password reset request page          |
+| `enroll-mfa`      | opens or submits TOTP or SMS enrollment (`details.factor`) |
+| `remove-mfa`      | removes an MFA factor (`details.enrollment_id`, `details.type`) |
+| `enroll-passkey`  | starts or completes adding a passkey                       |
+| `remove-passkey`  | removes a passkey, from the passkeys or the security page (`details.enrollment_id`) |
+| `unlink-identity` | unlinks an identity (`details.provider`, `details.user_id`) |
+| `delete-account`  | opens or submits the delete-account page                   |
+
+```javascript
+exports.onExecutePreAccountAction = async (event, api) => {
+  if (event.connection?.name === "acme-idp") {
+    api.redirect.sendUserTo("https://idp.acme.com/profile", {
+      query: { op: event.operation },
+    });
+  }
+};
+```
+
+- **API:** `api.redirect.sendUserTo(url, { query })` sends the user to `url`
+  (http or https; relative URLs resolve against the current request). Unlike
+  post-login redirects, no `state` is appended: the user is leaving and isn't
+  expected to come back to this transaction. `api.access.deny(reason)` stops the
+  operation and shows `reason` on the error page. Doing nothing lets the
+  operation continue.
+- **Event:** `operation`, `user`, `connection` (`{ id, name, strategy }` of the
+  user's primary identity), `client`, `tenant.id`, `request`, `details` and the
+  Action's `secrets`.
+- **`reset-password`** starts before sign-in. `event.user` is the user matching
+  the identifier entered so far, or undefined when there is none. If your Action
+  only redirects some users, the visible difference can reveal whether an
+  account exists, so prefer rules that don't depend on the user here.
+- **Ordering:** the configured `onExecutePreAccountAction` callback runs first,
+  then bound Actions in descending priority. The first one that redirects or
+  denies decides, and later ones don't run.
+- **Failures fail closed:** an Action that throws, times out or redirects to an
+  invalid URL denies the operation with a generic message. The config callback
+  gets the same five-second limit as code Actions; calls it makes after that
+  are ignored.
+- **Not an enforcement point:** this trigger controls the interactive entry
+  points only. To guarantee that a change is never accepted (including through
+  the Management API), also deny it in `pre-user-update` or `pre-user-deletion`.
+
+If nothing is bound to the trigger, the account pages behave as before; the only
+cost is one hook lookup when a gated page opens or is submitted.
+
 ## Entity Hooks
 
 In addition to user lifecycle hooks, AuthHero provides entity hooks that allow you to execute custom logic when management entities (roles, connections, resource servers, and role permissions) are created, updated, deleted, or modified.
@@ -1235,6 +1302,48 @@ Cleanup after user deletion.
 ```typescript
 {
   token: TokenAPI;
+}
+```
+
+### Account Hooks
+
+#### `onExecutePreAccountAction`
+
+Runs when a user starts a self-service account operation. AuthHero extension;
+see [Account operation Action](#account-operation-action-pre-account-action) for
+the operations and behaviour.
+
+**When it runs**: When the user opens an account operation, before any form,
+code or write, and again when the change is submitted
+
+**Synchronous**: Yes - can redirect the user or stop the operation
+
+**Event Payload**:
+
+```typescript
+{
+  ctx: Context,
+  operation: AccountActionOperation, // "change-email" | "update-profile" | ...
+  user?: User,               // Undefined only for reset-password without a match
+  connection?: { id?: string, name: string, strategy?: string },
+  client?: EnrichedClient,
+  tenant: { id: string },
+  request: HookRequest,
+  details?: Record<string, string> // e.g. { factor: "totp" }
+}
+```
+
+**API Object**:
+
+```typescript
+{
+  redirect: {
+    sendUserTo: (url: string, options?: { query?: Record<string, string> }) => void
+  },
+  access: {
+    deny: (reason?: string) => void  // Shows reason on the error page
+  },
+  token: TokenAPI
 }
 ```
 

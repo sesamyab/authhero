@@ -11,6 +11,7 @@ import { logMessage } from "../../helpers/logging";
 import { LogTypes, escapeLuceneValue } from "@authhero/adapter-interfaces";
 import { normalizeEmail } from "../../utils/email";
 import { defineRoute } from "../../utils/define-route";
+import { enforcePreAccountAction } from "../../hooks/pre-account-action";
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["login"],
@@ -53,6 +54,13 @@ const getRoot = defineRoute({
       state,
       { continuationScope: "change-email" },
     );
+
+    await enforcePreAccountAction(ctx, {
+      tenantId: client.tenant.id,
+      operation: "change-email",
+      user,
+      client,
+    });
 
     return ctx.html(
       <AccountChangeEmailPage
@@ -118,6 +126,15 @@ const postRoot = defineRoute({
       await initJSXRouteWithSession(ctx, state, {
         continuationScope: "change-email",
       });
+
+    // Re-check on submit: gating only the page would let a direct POST skip
+    // a denial and still send the verification code.
+    await enforcePreAccountAction(ctx, {
+      tenantId: client.tenant.id,
+      operation: "change-email",
+      user,
+      client,
+    });
 
     // Check if email is already taken by checking existing users.
     // `page` is 0-indexed, and two rows are enough: only one of them can be
