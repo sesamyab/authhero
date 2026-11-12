@@ -432,6 +432,12 @@ async function handleAccountPasskeysSubmit(
 
   // --- Complete add passkey (verify credential) ---
   if (action === "complete_add_passkey") {
+    // Gate completion too: the stored challenge can come from another flow
+    // on the same login session, so the start-time check alone isn't enough.
+    const redirectUrl = await gateAccountOperation(context, "enroll-passkey", {
+      user,
+    });
+    if (redirectUrl) return { redirect: redirectUrl };
     const credentialJson = data["credential-field"] as string;
     if (!credentialJson) {
       return errorResult(m.missingCredentialText());

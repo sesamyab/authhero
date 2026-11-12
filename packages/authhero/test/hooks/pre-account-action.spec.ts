@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionExecutionInsert } from "@authhero/adapter-interfaces";
 import { LocalCodeExecutor } from "../../src/hooks/code-executor/local";
 import { getTestServer } from "../helpers/test-server";
-import type { PreAccountActionEvent } from "../../src/types/Hooks";
+import type {
+  OnExecutePreAccountActionAPI,
+  PreAccountActionEvent,
+} from "../../src/types/Hooks";
 
 const TENANT = "tenantId";
 const USER_ID = "email|userId";
@@ -88,6 +91,7 @@ async function setup(
           "tenant-id": TENANT,
           cookie: COOKIE,
           "content-type": "application/json",
+          accept: "application/json",
         },
         body: JSON.stringify({ data }),
       },
@@ -96,6 +100,8 @@ async function setup(
 
   return { ...server, state, bind, get, postScreen, executions };
 }
+
+afterEach(() => vi.useRealTimers());
 
 describe("pre-account-action trigger", () => {
   it("leaves the account screens unchanged when nothing is bound", async () => {
@@ -288,5 +294,127 @@ describe("pre-account-action trigger", () => {
 
     expect(response.status).toBe(403);
     expect(await response.text()).toContain("Change your email at Acme");
+  });
+
+  it("re-checks reset-password on submit, resolving the user from the submitted email", async () => {
+    const events: Array<Omit<PreAccountActionEvent, "ctx">> = [];
+    const { postScreen } = await setup({
+      withSession: false,
+      hooks: {
+        onExecutePreAccountAction: async ({ ctx: _ctx, ...event }, api) => {
+          events.push(event);
+          api.access.deny("Reset your password at Acme");
+        },
+      },
+    });
+
+    const response = await postScreen("forgot-password", {
+      email: "Foo@Example.com",
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Reset your password at Acme",
+    });
+    expect(events[0]).toMatchObject({
+      operation: "reset-password",
+      user: { user_id: USER_ID },
+    });
+  });
+
+  it("re-checks the classic change-email form on submit", async () => {
+    const { universalApp, env, state, bind, getSentEmails } = await setup({
+      mockEmail: true,
+    });
+    await bind(`api.access.deny("Change your email at Acme");`);
+
+    const response = await universalApp.request(
+      `/account/change-email?state=${encodeURIComponent(state)}`,
+      {
+        method: "POST",
+        headers: {
+          cookie: COOKIE,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "email=new%40example.com",
+      },
+      env,
+    );
+
+    expect(response.status).toBe(403);
+    expect(getSentEmails()).toHaveLength(0);
+  });
+
+  it("decides passkey removal from the security page as remove-passkey", async () => {
+    const operations: string[] = [];
+    const { postScreen, env } = await setup({
+      hooks: {
+        onExecutePreAccountAction: async (event, api) => {
+          operations.push(event.operation);
+          if (event.operation === "remove-passkey") api.access.deny();
+        },
+      },
+    });
+    const passkey = await env.data.authenticationMethods.create(TENANT, {
+      user_id: USER_ID,
+      type: "passkey",
+      credential_id: "cred-1",
+      public_key: "public-key",
+      confirmed: true,
+    });
+
+    const response = await postScreen("account-security", {
+      action: "remove_enrollment",
+      enrollment_id: passkey.id,
+    });
+
+    expect(response.status).toBe(403);
+    expect(operations).toEqual(["remove-passkey"]);
+    expect(
+      await env.data.authenticationMethods.get(TENANT, passkey.id),
+    ).not.toBeNull();
+  });
+
+  it("gates passkey completion, not only its start", async () => {
+    const operations: string[] = [];
+    const { postScreen } = await setup({
+      hooks: {
+        onExecutePreAccountAction: async (event, api) => {
+          operations.push(event.operation);
+          api.redirect.sendUserTo("https://idp.example.com/passkeys");
+        },
+      },
+    });
+
+    const response = await postScreen("account-passkeys", {
+      action: "complete_add_passkey",
+      "credential-field": "{}",
+    });
+
+    expect(await response.json()).toEqual({
+      redirect: "https://idp.example.com/passkeys",
+    });
+    expect(operations).toEqual(["enroll-passkey"]);
+  });
+
+  it("denies when the config callback never settles, and ignores its late calls", async () => {
+    let lateApi: OnExecutePreAccountActionAPI | undefined;
+    const { get } = await setup({
+      hooks: {
+        onExecutePreAccountAction: (_event, api) => {
+          lateApi = api;
+          return new Promise<void>(() => {});
+        },
+      },
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    const pending = get("/account/profile");
+    await vi.advanceTimersByTimeAsync(5000);
+    const response = await pending;
+
+    expect(response.status).toBe(403);
+    // A call after the deadline must not throw or change the result.
+    lateApi?.redirect.sendUserTo("https://late.example.com");
   });
 });

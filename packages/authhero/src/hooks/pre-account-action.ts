@@ -21,6 +21,13 @@ import { RedirectException } from "../errors/redirect-exception";
 
 export const PRE_ACCOUNT_ACTION_TRIGGER = "pre-account-action";
 
+/**
+ * Host wait for the `onExecutePreAccountAction` config callback, matching the
+ * bound on code Actions. A callback that never settles must not leave account
+ * requests hanging.
+ */
+export const PRE_ACCOUNT_ACTION_TIMEOUT_MS = 5000;
+
 /** Shown when an action denies without a reason, or fails. */
 export const DEFAULT_ACCOUNT_ACTION_DENIAL =
   "This action isn't available for your account.";
@@ -142,11 +149,14 @@ export async function runPreAccountAction(
   // can't undo an explicit denial.
   const createApi = () => {
     let local: PreAccountActionDecision | undefined;
+    // Closed once the host has read the decision, so a late call from a
+    // timed-out callback can't change it.
+    let closed = false;
     return {
       api: {
         redirect: {
           sendUserTo: (url: unknown, options?: unknown) => {
-            if (local) return;
+            if (closed || local) return;
             local = {
               type: "redirect",
               url: buildRedirectUrl(ctx.req.url, url, options),
@@ -155,7 +165,7 @@ export async function runPreAccountAction(
         },
         access: {
           deny: (reason?: unknown) => {
-            if (local?.type === "deny") return;
+            if (closed || local?.type === "deny") return;
             local = {
               type: "deny",
               reason:
@@ -166,7 +176,10 @@ export async function runPreAccountAction(
           },
         },
       },
-      get: () => local,
+      get: () => {
+        closed = true;
+        return local;
+      },
     };
   };
 
@@ -190,8 +203,9 @@ export async function runPreAccountAction(
   if (configHook) {
     const recorder = createApi();
     const started_at = new Date().toISOString();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await configHook(
+      const run = configHook(
         {
           ctx,
           operation,
@@ -204,6 +218,20 @@ export async function runPreAccountAction(
         },
         { ...recorder.api, token: createTokenAPI(ctx, tenantId) },
       );
+      await Promise.race([
+        run,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `onExecutePreAccountAction timed out after ${PRE_ACCOUNT_ACTION_TIMEOUT_MS}ms`,
+                ),
+              ),
+            PRE_ACCOUNT_ACTION_TIMEOUT_MS,
+          );
+        }),
+      ]);
       const result = recorder.get();
       outcomes.push({
         result: {
@@ -217,7 +245,10 @@ export async function runPreAccountAction(
       });
       if (result) decision = result;
     } catch (error) {
+      recorder.get();
       failClosed("onExecutePreAccountAction", error);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 

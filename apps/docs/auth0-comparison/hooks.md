@@ -338,9 +338,9 @@ AuthHero supports the following programmatic hooks that can be configured when i
 | Pre User Deletion      | ✅ `pre-user-deletion`                 | ✅ `onExecutePreUserDeletion`      |
 | Post User Deletion     | ✅ `post-user-deletion`                | ✅ `onExecutePostUserDeletion`     |
 | Credentials Exchange   | ❌ Not Available                       | ✅ `onExecuteCredentialsExchange`  |
-| Pre Account Action¹    | ✅ `pre-account-action` (code Actions) | ✅ `onExecutePreAccountAction`     |
+| Pre Account Action¹    | ❌ Not Available (code Actions only)   | ✅ `onExecutePreAccountAction`     |
 
-¹ AuthHero extension with no Auth0 equivalent: runs when a user starts a self-service account operation and can redirect or deny. See the [Hooks guide](../features/hooks.md#account-operation-action-pre-account-action).
+¹ AuthHero extension with no Auth0 equivalent: runs when a user starts a self-service account operation and can redirect or deny. URL, form and page hooks can't bind to it; use a code Action bound to `pre-account-action` or the config callback. See the [Hooks guide](../features/hooks.md#account-operation-action-pre-account-action).
 
 ```
 

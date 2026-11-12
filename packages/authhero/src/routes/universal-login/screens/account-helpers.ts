@@ -3,7 +3,7 @@
  */
 
 import type { User, Session } from "@authhero/adapter-interfaces";
-import type { ScreenContext, ScreenFactory } from "./types";
+import type { ScreenContext, ScreenFactory, ScreenHandler } from "./types";
 import { getLoginPath } from "./types";
 import { getAuthCookie } from "../../../utils/cookies";
 import { RedirectException } from "../../../errors/redirect-exception";
@@ -89,8 +89,7 @@ export async function gateAccountOperation(
 
 /**
  * Wrap a screen's GET factory so the trigger fires when the user opens the
- * screen. Only the definition's `get` is wrapped: POST handlers that re-render
- * the screen call the unwrapped factory, so the trigger fires once per entry.
+ * screen. POST handlers that re-render the screen call the unwrapped factory.
  */
 export function gatedScreen(
   operation: AccountActionOperation,
@@ -108,5 +107,31 @@ export function gatedScreen(
     });
     if (url) throw new RedirectException(url);
     return factory(context);
+  };
+}
+
+/**
+ * Wrap a screen's POST handler so the trigger also runs where the change
+ * happens. Gating only the GET would let a direct POST skip a denial.
+ */
+export function gatedPost(
+  operation: AccountActionOperation,
+  post: NonNullable<ScreenHandler["post"]>,
+  options: {
+    details?: Record<string, string>;
+    user?: (
+      context: ScreenContext,
+      data: Record<string, unknown>,
+    ) => Promise<User | undefined>;
+  } = {},
+): NonNullable<ScreenHandler["post"]> {
+  const loadUser = options.user;
+  return async (context, data) => {
+    const url = await gateAccountOperation(context, operation, {
+      details: options.details,
+      user: loadUser ? () => loadUser(context, data) : undefined,
+    });
+    if (url) return { redirect: url };
+    return post(context, data);
   };
 }

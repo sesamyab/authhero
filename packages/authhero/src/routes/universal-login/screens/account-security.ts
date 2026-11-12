@@ -229,27 +229,47 @@ async function handleAccountSecuritySubmit(
   const enrollmentId = data.enrollment_id as string;
 
   if (action === "remove_enrollment" && enrollmentId) {
-    const redirectUrl = await gateAccountOperation(context, "remove-mfa", {
-      user,
-      details: { enrollment_id: enrollmentId },
+    const removeFailed = async () => ({
+      error: m.removeFailed(),
+      screen: await accountSecurityScreen({
+        ...context,
+        messages: [{ text: m.removeFailed(), type: "error" as const }],
+      }),
     });
-    if (redirectUrl) return { redirect: redirectUrl };
+
+    // Verify the enrollment belongs to this user
+    let enrollment;
     try {
-      // Verify the enrollment belongs to this user
-      const enrollment = await ctx.env.data.authenticationMethods.get(
+      enrollment = await ctx.env.data.authenticationMethods.get(
         tenant.id,
         enrollmentId,
       );
-      if (!enrollment || enrollment.user_id !== user.user_id) {
-        return {
-          error: m.enrollmentNotFound(),
-          screen: await accountSecurityScreen({
-            ...context,
-            messages: [{ text: m.enrollmentNotFound(), type: "error" }],
-          }),
-        };
-      }
+    } catch {
+      return removeFailed();
+    }
+    if (!enrollment || enrollment.user_id !== user.user_id) {
+      return {
+        error: m.enrollmentNotFound(),
+        screen: await accountSecurityScreen({
+          ...context,
+          messages: [{ text: m.enrollmentNotFound(), type: "error" }],
+        }),
+      };
+    }
 
+    // This action also accepts passkey ids, so decide by the enrollment's
+    // type: a passkey must go through the remove-passkey policy.
+    const isPasskey = PASSKEY_TYPES.some((type) => type === enrollment.type);
+    const redirectUrl = await gateAccountOperation(
+      context,
+      isPasskey ? "remove-passkey" : "remove-mfa",
+      {
+        user,
+        details: { enrollment_id: enrollmentId, type: enrollment.type },
+      },
+    );
+    if (redirectUrl) return { redirect: redirectUrl };
+    try {
       await ctx.env.data.authenticationMethods.remove(tenant.id, enrollmentId);
 
       return {
@@ -264,18 +284,7 @@ async function handleAccountSecuritySubmit(
         }),
       };
     } catch {
-      return {
-        error: m.removeFailed(),
-        screen: await accountSecurityScreen({
-          ...context,
-          messages: [
-            {
-              text: m.removeFailed(),
-              type: "error",
-            },
-          ],
-        }),
-      };
+      return removeFailed();
     }
   }
 

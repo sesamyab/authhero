@@ -4,7 +4,8 @@
 
 import type { ScreenDefinition, ScreenContext, ScreenResult } from "./types";
 import type { AccountActionOperation } from "../../../types/Hooks";
-import { gatedScreen } from "./account-helpers";
+import type { User } from "@authhero/adapter-interfaces";
+import { gatedPost, gatedScreen } from "./account-helpers";
 import { getPrimaryUserByEmail } from "../../../helpers/users";
 import { identifierScreenDefinition } from "./identifier";
 import { loginScreenDefinition } from "./login";
@@ -50,35 +51,56 @@ import {
 
 /**
  * Fire the `pre-account-action` trigger when the user opens a screen that
- * starts an account operation. Operations that are a button on a shared
- * screen (removing an MFA factor or passkey, unlinking an identity) are gated
- * in that screen's POST handler instead.
+ * starts an account operation, and again when they submit it, so a direct
+ * POST can't skip a denial. Operations that are a button on a shared screen
+ * (removing an MFA factor or passkey, unlinking an identity) are gated in that
+ * screen's POST handler instead.
  */
 function withAccountActionGate(
   definition: ScreenDefinition,
   operation: AccountActionOperation,
-  options?: Parameters<typeof gatedScreen>[2],
+  options: {
+    details?: Record<string, string>;
+    getUser?: (context: ScreenContext) => Promise<User | undefined>;
+    postUser?: (
+      context: ScreenContext,
+      data: Record<string, unknown>,
+    ) => Promise<User | undefined>;
+  } = {},
 ): ScreenDefinition {
+  const { post } = definition.handler;
   return {
     ...definition,
     handler: {
-      ...definition.handler,
-      get: gatedScreen(operation, definition.handler.get, options),
+      get: gatedScreen(operation, definition.handler.get, {
+        details: options.details,
+        user: options.getUser,
+      }),
+      ...(post
+        ? {
+            post: gatedPost(operation, post, {
+              details: options.details,
+              user: options.postUser,
+            }),
+          }
+        : {}),
     },
   };
 }
 
 /**
- * Password reset starts before sign-in, so the user comes from the identifier
- * entered so far (if any) rather than the session.
+ * Password reset starts before sign-in, so the user comes from an email
+ * address (the identifier entered so far, or the submitted form) rather than
+ * the session.
  */
-async function resetPasswordUser(context: ScreenContext) {
-  const email = context.prefill?.username;
-  if (typeof email !== "string" || !email) return undefined;
+async function userByEmail(context: ScreenContext, email: unknown) {
+  if (typeof email !== "string") return undefined;
+  const normalized = email.toLowerCase().trim();
+  if (!normalized) return undefined;
   return getPrimaryUserByEmail({
     userAdapter: context.ctx.env.data.users,
     tenant_id: context.tenant.id,
-    email,
+    email: normalized,
   });
 }
 
@@ -95,7 +117,8 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   [
     "forgot-password",
     withAccountActionGate(forgotPasswordScreenDefinition, "reset-password", {
-      user: resetPasswordUser,
+      getUser: (context) => userByEmail(context, context.prefill?.username),
+      postUser: (context, data) => userByEmail(context, data.email),
     }),
   ],
   ["reset-password", resetPasswordScreenDefinition],

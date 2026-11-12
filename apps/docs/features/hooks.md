@@ -332,8 +332,11 @@ the configured sync transport. See [fleet rollouts](../customization/multi-tenan
 
 `pre-account-action` is an **AuthHero extension**: Auth0 has no equivalent
 trigger. It runs when a user **starts** a self-service account operation, before
-any form, code or write, and lets you send the user somewhere else or stop the
-operation. The typical use is a tenant whose users' identities are owned by
+any form, code or write, and again when the change is submitted, and lets you
+send the user somewhere else or stop the operation. Because of the second check,
+an Action can run more than once for one operation, so keep it free of side
+effects. Only code Actions and the config callback can bind to it; URL, form and
+page hooks can't. The typical use is a tenant whose users' identities are owned by
 another system, for example users who sign in through
 [custom token exchange](./custom-token-exchange.md): changing their email,
 enrolling MFA or deleting their account should happen at that identity provider,
@@ -345,15 +348,15 @@ every entry point (the `/u` and `/u2` account pages, `/account?screen_hint=...`)
 
 | Operation         | Fires when the user...                                     |
 | ----------------- | ---------------------------------------------------------- |
-| `change-email`    | opens change email (`/u/account/change-email`, or `/account?screen_hint=change-email`) |
-| `update-profile`  | opens the profile page (`/u2/account/profile`)             |
-| `reset-password`  | opens the password reset request page                     |
-| `enroll-mfa`      | opens TOTP or SMS enrollment (`details.factor`)           |
-| `remove-mfa`      | removes an MFA factor (`details.enrollment_id`)           |
-| `enroll-passkey`  | starts adding a passkey                                    |
-| `remove-passkey`  | removes a passkey (`details.enrollment_id`)               |
+| `change-email`    | opens or submits change email (`/u/account/change-email`, or `/account?screen_hint=change-email`) |
+| `update-profile`  | opens or submits the profile page (`/u2/account/profile`) |
+| `reset-password`  | opens or submits the password reset request page          |
+| `enroll-mfa`      | opens or submits TOTP or SMS enrollment (`details.factor`) |
+| `remove-mfa`      | removes an MFA factor (`details.enrollment_id`, `details.type`) |
+| `enroll-passkey`  | starts or completes adding a passkey                       |
+| `remove-passkey`  | removes a passkey, from the passkeys or the security page (`details.enrollment_id`) |
 | `unlink-identity` | unlinks an identity (`details.provider`, `details.user_id`) |
-| `delete-account`  | opens the delete-account page                              |
+| `delete-account`  | opens or submits the delete-account page                   |
 
 ```javascript
 exports.onExecutePreAccountAction = async (event, api) => {
@@ -382,13 +385,15 @@ exports.onExecutePreAccountAction = async (event, api) => {
   then bound Actions in descending priority. The first one that redirects or
   denies decides, and later ones don't run.
 - **Failures fail closed:** an Action that throws, times out or redirects to an
-  invalid URL denies the operation with a generic message.
+  invalid URL denies the operation with a generic message. The config callback
+  gets the same five-second limit as code Actions; calls it makes after that
+  are ignored.
 - **Not an enforcement point:** this trigger controls the interactive entry
   points only. To guarantee that a change is never accepted (including through
   the Management API), also deny it in `pre-user-update` or `pre-user-deletion`.
 
 If nothing is bound to the trigger, the account pages behave as before; the only
-cost is one hook lookup when a gated page opens.
+cost is one hook lookup when a gated page opens or is submitted.
 
 ## Entity Hooks
 
@@ -1308,8 +1313,8 @@ Runs when a user starts a self-service account operation. AuthHero extension;
 see [Account operation Action](#account-operation-action-pre-account-action) for
 the operations and behaviour.
 
-**When it runs**: When the user opens or triggers an account operation, before
-any form, code or write
+**When it runs**: When the user opens an account operation, before any form,
+code or write, and again when the change is submitted
 
 **Synchronous**: Yes - can redirect the user or stop the operation
 
