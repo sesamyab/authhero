@@ -113,11 +113,13 @@ Until it is used or expires, the token logs its holder in. On the receiving site
 - Send `Referrer-Policy: no-referrer` on the response that handles the token.
 - Leave the token out of request logs, error reports and analytics. Web servers and proxies log full URLs by default.
 
-The redirect does not hide the token from the browser. A browser can keep every URL of a redirect chain in its history, and extensions can read them. The sending site can keep the token out of its own link by handing it over in a form `POST`, but the request to `/authorize` always carries it in the URL. What limits the damage is the token itself: it works once, for 60 seconds, and by default only from the IP address it was created for.
+The redirect does not hide the token from the browser. A browser can keep every URL of a redirect chain in its history, and extensions can read them. The sending site can keep the token out of its own link by handing it over in a form `POST`. The request to `/authorize` still carries the token in its URL when the token is a query parameter or inside a `request` object. It does not when the token is in the cookie, which a website on another domain cannot set for the AuthHero domain, or inside an object passed by reference with `request_uri`. What limits the damage in every case is the token itself: it works once, for 60 seconds, and by default only from the IP address it was created for.
 
 :::
 
-An application that sends a signed Request Object (`request` or `request_uri`) must put `session_transfer_token` inside it. As with every other parameter, a value outside the signed object is ignored. The payload of a signed object is encoded, not encrypted, so an object that carries the token is as sensitive as the token. AuthHero leaves such an object out of its logs, hook events and the stored authorization URL.
+An application that sends a signed Request Object (`request` or `request_uri`) must put `session_transfer_token` inside it. As with every other parameter, a value outside the signed object is ignored. The payload of a signed object is encoded, not encrypted, so an object that carries the token is as sensitive as the token. AuthHero leaves a `request` object that carries the token out of its logs, hook events and the stored authorization URL.
+
+A `request_uri` is a reference, not the object, and AuthHero logs it as it is. Anyone who reads it there can fetch the object for as long as your server serves it. Make the URL hard to guess, and stop serving the object once it has been fetched.
 
 There are two ways to present the token:
 
