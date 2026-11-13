@@ -16,7 +16,7 @@ import { nanoid } from "nanoid";
 import { stringifyAuth0Client } from "../utils/client-info";
 import type { SessionCookieDiagnostics } from "../utils/cookies";
 import { createLoginSessionWithData } from "../state-machines/login-session-data";
-import { SESSION_TRANSFER_TOKEN_PARAM } from "../utils/session-transfer-token";
+import { stripSessionTransferToken } from "../utils/session-transfer-token";
 
 interface UniversalAuthParams {
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>;
@@ -93,8 +93,9 @@ export async function universalAuth({
     url.hostname = ctx.var.custom_domain;
   }
   // The URL is stored on the login session and shown to hooks, logs and log
-  // streams. A session_transfer_token is a credential and must not follow it.
-  url.searchParams.delete(SESSION_TRANSFER_TOKEN_PARAM);
+  // streams. A session_transfer_token is a credential and must not follow it,
+  // as a parameter or inside a Request Object.
+  const authorizationUrl = stripSessionTransferToken(url.toString());
 
   const { ip, auth0_client, useragent } = ctx.var;
 
@@ -129,7 +130,7 @@ export async function universalAuth({
       ).toISOString(),
       authParams,
       csrf_token: nanoid(),
-      authorization_url: url.toString(),
+      authorization_url: authorizationUrl,
       ip,
       useragent,
       auth0Client,

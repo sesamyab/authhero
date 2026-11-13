@@ -1095,6 +1095,52 @@ describe("session transfer tokens", () => {
           await authorize(server, { session_transfer_token: token }),
         );
       });
+
+      it("keeps a request object that carries the token out of logs, hook events and the stored URL", async () => {
+        const server = await setup();
+        const events: HookEvent[] = [];
+        server.env.hooks = {
+          onExecutePostLogin: async (event: HookEvent) => {
+            events.push(event);
+          },
+        };
+        // The payload of a signed object is only base64url: whoever reads the
+        // object reads the token.
+        const payloadOf = (jwt: string) => jwt.split(".")[1] ?? "";
+
+        const used = await signedRequest(server, {
+          session_transfer_token: (await mint(server)).token,
+        });
+        expectLoggedIn(await authorize(server, { request: used }));
+
+        const rejected = await signedRequest(server, {
+          session_transfer_token: (await mint(server)).token,
+        });
+        const loginSessionId = expectLoginPrompt(
+          await authorize(
+            server,
+            { request: rejected },
+            { "x-real-ip": OTHER_IP },
+          ),
+        );
+
+        const logs = JSON.stringify(await logsOf(server));
+        expect(logs).not.toContain(payloadOf(used));
+        expect(logs).not.toContain(payloadOf(rejected));
+
+        expect(events).toHaveLength(1);
+        expect(events[0]?.request?.url).toBeTruthy();
+        expect(events[0]?.request?.url).not.toContain(payloadOf(used));
+
+        const loginSession = await server.env.data.loginSessions.get(
+          TENANT,
+          loginSessionId,
+        );
+        expect(loginSession?.authorization_url).toBeTruthy();
+        expect(loginSession?.authorization_url).not.toContain(
+          payloadOf(rejected),
+        );
+      });
     });
 
     it("refuses a token minted for another organization", async () => {

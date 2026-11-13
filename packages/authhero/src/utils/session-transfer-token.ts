@@ -1,4 +1,8 @@
-import { encodeBase64Url, encodeHex } from "@authhero/adapter-interfaces";
+import {
+  decodeBase64UrlString,
+  encodeBase64Url,
+  encodeHex,
+} from "@authhero/adapter-interfaces";
 
 /**
  * The wire-level pieces of a session_transfer_token (#1710, Auth0 "Native to
@@ -63,10 +67,39 @@ export async function hashSessionTransferToken(token: string): Promise<string> {
   );
 }
 
+/** Query parameter that carries a Request Object (RFC 9101) to /authorize. */
+const REQUEST_OBJECT_PARAM = "request";
+
+const REDACTED = "[REDACTED]";
+
 /**
- * Remove the session_transfer_token parameter from a URL before it is stored
- * or handed to a hook, log or log stream. The token is a bearer credential
- * for a session; a URL that never contained it is returned untouched.
+ * True when `value` is a compact JWT whose payload has a
+ * session_transfer_token claim. A signed Request Object is the other place the
+ * token travels in an /authorize URL, and its payload is only base64url: who
+ * reads the URL reads the token. An encrypted object (JWE) has no readable
+ * payload and is left alone.
+ */
+function requestObjectCarriesToken(value: string): boolean {
+  const payloadSegment = value.split(".")[1];
+  if (!payloadSegment) return false;
+  try {
+    const payload: unknown = JSON.parse(decodeBase64UrlString(payloadSegment));
+    return (
+      typeof payload === "object" &&
+      payload !== null &&
+      SESSION_TRANSFER_TOKEN_PARAM in payload
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Remove the session_transfer_token from a URL before it is stored or handed
+ * to a hook, log or log stream: the parameter itself, and a `request`
+ * parameter whose Request Object carries the token. The token is a bearer
+ * credential for a session; a URL that never contained it is returned
+ * untouched.
  */
 export function stripSessionTransferToken(url: string): string;
 export function stripSessionTransferToken(
@@ -76,22 +109,29 @@ export function stripSessionTransferToken(
   url: string | undefined,
 ): string | undefined {
   // A percent-encoded name ("session%5Ftransfer%5Ftoken") is the same
-  // parameter to every query parser, so only a URL that can hold neither
-  // spelling is skipped without parsing.
+  // parameter to every query parser, so only a URL that can hold no spelling
+  // of either parameter is skipped without parsing.
   if (
     !url ||
-    (!url.includes(SESSION_TRANSFER_TOKEN_PARAM) && !url.includes("%"))
+    (!url.includes(SESSION_TRANSFER_TOKEN_PARAM) &&
+      !url.includes(REQUEST_OBJECT_PARAM) &&
+      !url.includes("%"))
   ) {
     return url;
   }
 
   try {
     const parsed = new URL(url);
-    if (!parsed.searchParams.has(SESSION_TRANSFER_TOKEN_PARAM)) return url;
+    const hasToken = parsed.searchParams.has(SESSION_TRANSFER_TOKEN_PARAM);
+    const hasCarrier = parsed.searchParams
+      .getAll(REQUEST_OBJECT_PARAM)
+      .some(requestObjectCarriesToken);
+    if (!hasToken && !hasCarrier) return url;
     parsed.searchParams.delete(SESSION_TRANSFER_TOKEN_PARAM);
+    if (hasCarrier) parsed.searchParams.delete(REQUEST_OBJECT_PARAM);
     return parsed.toString();
   } catch {
-    // Relative or otherwise unparsable: drop the parameter textually.
+    // Relative or otherwise unparsable: drop the parameters textually.
     return stripFromRawQuery(url);
   }
 }
@@ -103,9 +143,7 @@ function stripFromRawQuery(url: string): string {
   if (queryAt === -1) return url;
 
   const pairs = beforeHash.slice(queryAt + 1).split("&");
-  const kept = pairs.filter(
-    (pair) => decodeQueryName(pair) !== SESSION_TRANSFER_TOKEN_PARAM,
-  );
+  const kept = pairs.filter((pair) => !pairCarriesToken(pair));
   if (kept.length === pairs.length) return url;
 
   const query = kept.length > 0 ? `?${kept.join("&")}` : "";
@@ -113,28 +151,52 @@ function stripFromRawQuery(url: string): string {
   return `${beforeHash.slice(0, queryAt)}${query}${hash}`;
 }
 
-function decodeQueryName(pair: string): string {
+function pairCarriesToken(pair: string): boolean {
   const equalsAt = pair.indexOf("=");
-  const name = (equalsAt === -1 ? pair : pair.slice(0, equalsAt)).replace(
-    /\+/g,
-    " ",
+  const name = decodeQueryPart(
+    equalsAt === -1 ? pair : pair.slice(0, equalsAt),
   );
+  if (name === SESSION_TRANSFER_TOKEN_PARAM) return true;
+  return (
+    name === REQUEST_OBJECT_PARAM &&
+    equalsAt !== -1 &&
+    requestObjectCarriesToken(decodeQueryPart(pair.slice(equalsAt + 1)))
+  );
+}
+
+function decodeQueryPart(part: string): string {
+  const spaced = part.replace(/\+/g, " ");
   try {
-    return decodeURIComponent(name);
+    return decodeURIComponent(spaced);
   } catch {
-    return name;
+    return spaced;
   }
 }
 
 /**
  * Replace the token in a parsed query-string record (as logged with a request)
- * with a placeholder. Returns the input when the parameter is absent.
+ * with a placeholder: the parameter itself, and a `request` parameter whose
+ * Request Object carries the token. Returns the input when neither is there.
  */
 export function redactSessionTransferQuery<T>(
   query: Record<string, T>,
 ): Record<string, T | string> {
-  if (!(SESSION_TRANSFER_TOKEN_PARAM in query)) return query;
-  return { ...query, [SESSION_TRANSFER_TOKEN_PARAM]: "[REDACTED]" };
+  const hasToken = SESSION_TRANSFER_TOKEN_PARAM in query;
+  const hasCarrier = queryValueCarriesToken(query[REQUEST_OBJECT_PARAM]);
+  if (!hasToken && !hasCarrier) return query;
+
+  const redacted: Record<string, T | string> = { ...query };
+  if (hasToken) redacted[SESSION_TRANSFER_TOKEN_PARAM] = REDACTED;
+  if (hasCarrier) redacted[REQUEST_OBJECT_PARAM] = REDACTED;
+  return redacted;
+}
+
+// A logged query value is one string, several joined with a comma, or a list.
+function queryValueCarriesToken(value: unknown): boolean {
+  if (typeof value === "string") {
+    return value.split(",").some(requestObjectCarriesToken);
+  }
+  return Array.isArray(value) && value.some(queryValueCarriesToken);
 }
 
 /**

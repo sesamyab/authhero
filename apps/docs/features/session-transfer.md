@@ -109,13 +109,15 @@ If the token is good, AuthHero creates a session for the user and answers as it 
 ::: warning Treat the token like a password
 Until it is used or expires, the token logs its holder in. On the receiving site:
 
-- Redirect to `/authorize` as soon as the token arrives. Do not render a page at the URL that carries it. This keeps the token out of the browser history, and out of the `Referer` header of anything that page would load.
+- Redirect to `/authorize` as soon as the token arrives. Do not render a page at the URL that carries it. A page that is never rendered runs no scripts that could read the token, and loads nothing that would get it in a `Referer` header.
 - Send `Referrer-Policy: no-referrer` on the response that handles the token.
 - Leave the token out of request logs, error reports and analytics. Web servers and proxies log full URLs by default.
 
+The redirect does not hide the token from the browser. A browser can keep every URL of a redirect chain in its history, and extensions can read them. The sending site can keep the token out of its own link by handing it over in a form `POST`, but the request to `/authorize` always carries it in the URL. What limits the damage is the token itself: it works once, for 60 seconds, and by default only from the IP address it was created for.
+
 :::
 
-An application that sends a signed Request Object (`request` or `request_uri`) must put `session_transfer_token` inside it. As with every other parameter, a value outside the signed object is ignored.
+An application that sends a signed Request Object (`request` or `request_uri`) must put `session_transfer_token` inside it. As with every other parameter, a value outside the signed object is ignored. The payload of a signed object is encoded, not encrypted, so an object that carries the token is as sensitive as the token. AuthHero leaves such an object out of its logs, hook events and the stored authorization URL.
 
 There are two ways to present the token:
 
