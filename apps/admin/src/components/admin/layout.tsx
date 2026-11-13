@@ -13,7 +13,11 @@ import { RefreshButton } from "@/components/admin/refresh-button";
 import { LocalesMenuButton } from "@/components/admin/locales-menu-button";
 import { Error } from "@/components/admin/error";
 import { Loading } from "@/components/admin/loading";
-import { TenantSwitcher } from "@/components/admin/tenant-switcher";
+import {
+  TenantSwitcher,
+  useHasReadyTenant,
+} from "@/components/admin/tenant-switcher";
+import { useTenantId } from "@/TenantContext";
 import { GlobalSearch } from "@/components/admin/global-search";
 import {
   DEFAULT_APP_NAME,
@@ -48,6 +52,13 @@ export const Layout = (props: CoreLayoutProps) => {
     .map((w) => w[0])
     .join("")
     .toUpperCase();
+  // Outside a tenant, a user with no tenant they can open is onboarding: they
+  // create one, wait for it to be set up, or ask for access. Navigation,
+  // search and the switcher would lead nowhere, so they are left out until a
+  // tenant is ready.
+  const tenantId = useTenantId();
+  const hasReadyTenant = useHasReadyTenant(tenantId);
+  const showNavigation = hasReadyTenant === true;
   return (
     <SidebarProvider>
       <div className="flex h-svh w-full flex-col">
@@ -57,7 +68,7 @@ export const Layout = (props: CoreLayoutProps) => {
               Hidden on md+ where the sidebar is always present. Without this
               there's no way to reach the nav on a phone — Cmd/Ctrl+B is the
               only other trigger and that doesn't exist on touch devices. */}
-          <SidebarTrigger className="md:hidden -ml-1" />
+          {showNavigation && <SidebarTrigger className="md:hidden -ml-1" />}
 
           {/* Brand: configured logo if provided, otherwise wordmark/glyph. */}
           <Link
@@ -87,14 +98,18 @@ export const Layout = (props: CoreLayoutProps) => {
             )}
           </Link>
 
-          <span
-            aria-hidden="true"
-            className="text-border text-lg font-light select-none"
-          >
-            /
-          </span>
+          {showNavigation && (
+            <>
+              <span
+                aria-hidden="true"
+                className="text-border text-lg font-light select-none"
+              >
+                /
+              </span>
 
-          <TenantSwitcher />
+              <TenantSwitcher hasReadyTenant={hasReadyTenant} />
+            </>
+          )}
 
           {/* Breadcrumb portal — sits next to the tenant switcher as part
               of the navigation context. flex-1 pushes utilities right. */}
@@ -105,17 +120,17 @@ export const Layout = (props: CoreLayoutProps) => {
 
           {/* Right side utilities */}
           <div className="flex items-center gap-1.5">
-            <GlobalSearch />
+            {showNavigation && <GlobalSearch />}
             <LocalesMenuButton />
             <ThemeModeToggle />
-            <RefreshButton />
+            {showNavigation && <RefreshButton />}
             <UserMenu />
           </div>
         </header>
 
         {/* ============= SIDEBAR + MAIN ROW ============= */}
         <div className="flex flex-1 min-h-0">
-          <AppSidebar />
+          {showNavigation && <AppSidebar />}
           <main
             className={cn(
               "ml-auto w-full max-w-full",

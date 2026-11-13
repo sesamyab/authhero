@@ -257,6 +257,12 @@ export interface MultiTenancyConfig {
   deploymentTypes?: TenantDeploymentTypesConfig;
 
   /**
+   * The hostname a new tenant gets, with `{id}` for the tenant id. Served by
+   * `GET /tenants/deployment-options` as `tenant_host_template`.
+   */
+  tenantHostTemplate?: string;
+
+  /**
    * Reads a tenant's config sync status for `GET /tenants/{id}/config-sync`.
    * Supplied by `initMultiTenant`; the route is not mounted without it.
    */

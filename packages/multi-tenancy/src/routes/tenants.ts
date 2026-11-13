@@ -36,6 +36,8 @@ const createTenantBodySchema = tenantInsertSchema.extend({
 const deploymentOptionsSchema = z.object({
   deployment_types: z.array(deploymentTypeSchema),
   default_deployment_type: deploymentTypeSchema,
+  /** The hostname a new tenant gets, with `{id}` for the tenant id. */
+  tenant_host_template: z.string().optional(),
 });
 
 /**
@@ -362,6 +364,9 @@ export function createTenantsOpenAPIRouter(
         {
           deployment_types: deploymentTypes.allowed,
           default_deployment_type: deploymentTypes.default,
+          ...(config.tenantHostTemplate && {
+            tenant_host_template: config.tenantHostTemplate,
+          }),
         },
         200,
       );

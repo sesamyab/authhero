@@ -37,7 +37,7 @@ function Root() {
     // Control-plane subpages registered as CustomRoutes inside TenantsApp —
     // without these, a full page load of their URLs would fall through to
     // the per-tenant app branch with tenantId="tenants".
-    /^\/tenants\/[^/]+\/(members|operations)(\/|$)/.test(relativePath);
+    /^\/tenants\/[^/]+\/(members|operations|setup)(\/|$)/.test(relativePath);
 
   if (isAuthCallback) {
     return (

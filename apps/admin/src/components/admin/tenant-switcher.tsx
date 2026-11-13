@@ -26,6 +26,7 @@ import {
   getSelectedDomainFromStorage,
 } from "@/utils/domainUtils";
 import getToken from "@/utils/tokenUtils";
+import { isReadyTenant } from "@/utils/tenantState";
 
 /**
  * Tenant switcher pill in the top bar.
@@ -39,7 +40,7 @@ import getToken from "@/utils/tokenUtils";
  * dataProvider closure captures tenantId at mount.
  */
 
-type Tenant = { id: string; name?: string };
+type Tenant = { id: string; name?: string; provisioning_state?: string | null };
 
 const SEARCH_THRESHOLD = 5;
 const PAGE_SIZE = 100;
@@ -53,7 +54,86 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-export function TenantSwitcher() {
+async function fetchTenants(search: string, perPage: number): Promise<unknown> {
+  const domain = getSelectedDomainFromStorage();
+  const apiUrl = resolveApiBase(domain);
+  const formatted = formatDomain(domain);
+  const domainConfig = getDomainFromStorage().find(
+    (d) => formatDomain(d.url) === formatted,
+  );
+  if (!domainConfig) throw new Error("No domain configuration found");
+  const auth0 =
+    domainConfig.connectionMethod === "login"
+      ? createAuth0Client(domain)
+      : undefined;
+  // Bypass the Auth0 SDK token cache (which is keyed on
+  // clientId+audience+scope and would return the org-scoped token left
+  // over from the current tenant page). getToken routes OAuth login
+  // through getNonOrgAccessToken so the tenants list isn't filtered to
+  // a single org.
+  const token = await getToken(domainConfig, auth0);
+  const params = new URLSearchParams({
+    per_page: String(perPage),
+    include_totals: "true",
+  });
+  if (search) params.set("q", search);
+  const res = await fetch(`${apiUrl}/api/v2/tenants?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// Enough to find a ready tenant among the first ones a user sees; a user with
+// more than this many tenants has used the product before.
+const READY_CHECK_PAGE_SIZE = 50;
+
+/**
+ * Whether the user has a tenant they can open. Only asked outside a tenant
+ * (the tenants view): inside one there is always the current tenant. A user
+ * whose only tenants are still being set up, or failed to be, is onboarding:
+ * there is nowhere to navigate to, so the layout leaves navigation out.
+ */
+export function useHasReadyTenant(
+  tenantId: string | undefined,
+): boolean | undefined {
+  const [hasReady, setHasReady] = useState<boolean>();
+  useEffect(() => {
+    if (tenantId) return;
+    let cancelled = false;
+    fetchTenants("", READY_CHECK_PAGE_SIZE)
+      .then((data) => {
+        if (cancelled) return;
+        const list: Tenant[] = Array.isArray(data)
+          ? (data as Tenant[])
+          : isTenantsEnvelope(data)
+            ? data.tenants
+            : [];
+        setHasReady(list.some(isReadyTenant));
+      })
+      .catch(() => {
+        // Keep the navigation: the pill still offers "Manage tenants".
+        if (!cancelled) setHasReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+  return tenantId ? true : hasReady;
+}
+
+/**
+ * `hasReadyTenant` comes from the layout, which also hides the sidebar on the
+ * same answer (see `useHasReadyTenant`).
+ */
+export function TenantSwitcher({
+  hasReadyTenant,
+}: {
+  hasReadyTenant: boolean | undefined;
+}) {
   const tenantId = useTenantId();
   const [open, setOpen] = useState(false);
   const [tenants, setTenants] = useState<Tenant[] | null>(null);
@@ -69,39 +149,7 @@ export function TenantSwitcher() {
     setLoading(true);
     (async () => {
       try {
-        const domain = getSelectedDomainFromStorage();
-        const apiUrl = resolveApiBase(domain);
-        const formatted = formatDomain(domain);
-        const domainConfig = getDomainFromStorage().find(
-          (d) => formatDomain(d.url) === formatted,
-        );
-        if (!domainConfig) throw new Error("No domain configuration found");
-        const auth0 =
-          domainConfig.connectionMethod === "login"
-            ? createAuth0Client(domain)
-            : undefined;
-        // Bypass the Auth0 SDK token cache (which is keyed on
-        // clientId+audience+scope and would return the org-scoped token left
-        // over from the current tenant page). getToken routes OAuth login
-        // through getNonOrgAccessToken so the tenants list isn't filtered to
-        // a single org.
-        const token = await getToken(domainConfig, auth0);
-        const params = new URLSearchParams({
-          per_page: String(PAGE_SIZE),
-          include_totals: "true",
-        });
-        if (debouncedSearch) params.set("q", debouncedSearch);
-        const res = await fetch(
-          `${apiUrl}/api/v2/tenants?${params.toString()}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: unknown = await res.json();
+        const data = await fetchTenants(debouncedSearch, PAGE_SIZE);
         if (cancelled) return;
         const list: Tenant[] = Array.isArray(data)
           ? (data as Tenant[])
@@ -143,6 +191,9 @@ export function TenantSwitcher() {
   const current = tenants?.find((t) => t.id === tenantId);
   const label = current?.name ?? tenantId ?? "Select tenant";
   const initial = (current?.name ?? tenantId ?? "?").charAt(0).toUpperCase();
+
+  // Hidden until the answer is in, so a new user never sees it flash by.
+  if (hasReadyTenant !== true) return null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

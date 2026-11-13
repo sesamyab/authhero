@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { LogIcon } from "@/resources/logs/LogIcon";
 import { getLogTypeDescription } from "@/lib/logs";
 import { DateAgo } from "@/common/DateAgo";
+import { GettingStarted } from "./GettingStarted";
 
 interface DailyStats {
   date: string;
@@ -313,6 +314,7 @@ export function Dashboard() {
           </Button>
         </div>
       </div>
+      <GettingStarted loading={loading} progress={{ users: counts.users }} />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatsCard title="Users" value={counts.users ?? 0} loading={loading} />
         <StatsCard
