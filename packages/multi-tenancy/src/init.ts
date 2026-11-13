@@ -104,6 +104,14 @@ export interface MultiTenantConfig extends Omit<
   deploymentTypes?: TenantDeploymentTypesConfig;
 
   /**
+   * The hostname a new tenant gets, with `{id}` standing for the tenant id,
+   * e.g. `"{id}.auth.example.com"`. Served to the admin UI by
+   * `GET /tenants/deployment-options` so the create form can show it. Unset,
+   * the form shows no hostname.
+   */
+  tenantHostTemplate?: string;
+
+  /**
    * Optional per-tenant override for runtime inheritance lookups
    * (connections, hooks, resource servers, email providers). When provided,
    * this resolver replaces `controlPlane` as the source for inheritance:
@@ -388,6 +396,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     resolveControlPlane,
     databaseIsolation,
     deploymentTypes,
+    tenantHostTemplate,
     inheritanceShadow,
     syncDefaults,
     storedDataAdapter,
@@ -742,6 +751,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         defaultPermissions,
       },
       deploymentTypes,
+      tenantHostTemplate,
       onConfigSyncChange: (tenantId) => forgetConfigSyncMode?.(tenantId),
       configSyncStatus: (tenantId) =>
         getConfigSyncStatus(

@@ -18,6 +18,7 @@ import getToken, {
   recoverFromTokenError,
   getOrganizationToken,
   getOrgAccessToken,
+  readPermissionsClaim,
 } from "./utils/tokenUtils";
 import { getConfigValue, getBasePath } from "./utils/runtimeConfig";
 
@@ -399,6 +400,9 @@ export const getAuthProvider = (
       getPermissions: async () => {
         return Promise.resolve(["admin"]);
       },
+      // A pasted token or client credentials: the screens show everything and
+      // the server still decides.
+      getManagementPermissions: async (): Promise<string[] | null> => null,
     };
   }
 
@@ -420,6 +424,18 @@ export const getAuthProvider = (
   // Enhance the auth provider to signal when auth operations complete
   return {
     ...baseAuthProvider,
+    /**
+     * The management permissions of the signed-in user, read from the
+     * `permissions` claim of their token without an organization (the one
+     * the tenants list uses). Empty when the user has none.
+     */
+    getManagementPermissions: async (): Promise<string[] | null> => {
+      const token = await getToken(
+        domainConfig ?? { url: domain, connectionMethod: "login" },
+        auth0,
+      );
+      return readPermissionsClaim(token);
+    },
     login: async (params: Parameters<AuthProvider["login"]>[0]) => {
       try {
         const result = await baseAuthProvider.login(params);

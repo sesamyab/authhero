@@ -32,6 +32,22 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
   return JSON.parse(atob(padded));
 }
 
+/**
+ * The management permissions an access token carries in its `permissions`
+ * claim. The server leaves the claim out when the list is empty, so a missing
+ * claim means none, as does a token that cannot be read.
+ */
+export function readPermissionsClaim(token: string): string[] {
+  try {
+    const { permissions } = decodeJwtPayload(token);
+    return Array.isArray(permissions)
+      ? permissions.filter((p): p is string => typeof p === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function getTokenExpiryMs(token: string): number {
   const payload = decodeJwtPayload(token);
   return (payload.exp as number) * 1000;
