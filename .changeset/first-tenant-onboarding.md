@@ -7,4 +7,4 @@ Guide a user from no tenants to a ready tenant (issue #1712). The tenants view s
 
 `initMultiTenant` accepts `tenantHostTemplate` (for example `"{id}.auth.example.com"`), served as `tenant_host_template` by `GET /tenants/deployment-options`.
 
-`GET /tenants` with a search (`q`) for an organization-scoped user now searches every tenant they can access and pages the matches. It used to page their memberships first, so only one page of them was searched, and it combined the search with the tenant ids in a query not every adapter could parse.
+`GET /tenants` with a search (`q`) for an organization-scoped user now searches every tenant they can access and pages the matches. It used to page their memberships first, so only one page of them was searched, and it combined the search with the tenant ids in a query not every adapter could parse. A search that matches more than 10,000 tenants is refused with 400 rather than answered in part.

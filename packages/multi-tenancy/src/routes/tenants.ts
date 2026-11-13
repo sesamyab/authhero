@@ -25,6 +25,11 @@ import { validateTenantParent } from "../utils/tenant-tree";
 import { findCaseCollidingTenantId } from "../utils/tenant-id-collision";
 import { resolveDeploymentTypes } from "../utils/deployment-types";
 
+// How an organization-scoped tenant search reads the matches: in batches of
+// this size, up to this many batches before it refuses the search.
+const SEARCH_BATCH_SIZE = 100;
+const SEARCH_MAX_BATCHES = 100;
+
 const deploymentTypeSchema = z.enum(["shared", "wfp"]);
 
 // The shared insert schema defaults `deployment_type` to "shared", which would
@@ -277,16 +282,29 @@ export function createTenantsOpenAPIRouter(
         // Paging the IDs first would search only one page of memberships, so
         // a tenant further down could never be found. The search itself goes
         // to the adapter alone, then is narrowed to the accessible tenants:
-        // not every adapter's query parser takes `(… OR …) AND (…)`.
+        // not every adapter's query parser takes grouped queries such as
+        // `(… OR …) AND (…)`, which also rules out fetchAll's cursor
+        // (`(q) AND id:>…`). So it pages by offset with the search as given.
         if (q) {
           const accessible = new Set(accessibleTenantIds);
-          const matches = (
-            await fetchAll<Tenant>(
-              (params) => getRequestData(ctx).tenants.list(params),
-              "tenants",
-              { cursorField: "id", q },
-            )
-          ).filter((tenant) => accessible.has(tenant.id));
+          const matches: Tenant[] = [];
+          for (let searchPage = 0; ; searchPage++) {
+            if (searchPage >= SEARCH_MAX_BATCHES) {
+              // Better refused than answered as if complete.
+              throw new HTTPException(400, {
+                message: `The search matches more than ${SEARCH_MAX_BATCHES * SEARCH_BATCH_SIZE} tenants; narrow it down`,
+              });
+            }
+            const batch = await getRequestData(ctx).tenants.list({
+              q,
+              page: searchPage,
+              per_page: SEARCH_BATCH_SIZE,
+            });
+            for (const tenant of batch.tenants) {
+              if (accessible.has(tenant.id)) matches.push(tenant);
+            }
+            if (batch.tenants.length < SEARCH_BATCH_SIZE) break;
+          }
           const pageOfMatches = matches.slice(start, start + perPage);
 
           if (include_totals) {
