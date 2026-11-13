@@ -1,8 +1,8 @@
 import { useGetList } from "ra-core";
 import { isReadyTenant } from "@/utils/tenantState";
 
-// Enough to find a ready tenant among the first ones a user sees; a user with
-// more than this many tenants has used the product before.
+// One page of tenants to look for a ready one in. A user with more than that
+// keeps navigation without the rest being read.
 const READY_CHECK_PAGE_SIZE = 50;
 
 /**
@@ -19,7 +19,7 @@ const READY_CHECK_PAGE_SIZE = 50;
 export function useHasReadyTenant(
   tenantId: string | undefined,
 ): boolean | undefined {
-  const { data, error, isPending } = useGetList<{
+  const { data, total, error, isPending } = useGetList<{
     id: string;
     provisioning_state?: string | null;
   }>(
@@ -34,5 +34,9 @@ export function useHasReadyTenant(
   if (tenantId) return true;
   if (error) return true;
   if (isPending) return undefined;
-  return (data ?? []).some(isReadyTenant);
+  const rows = data ?? [];
+  if (rows.some(isReadyTenant)) return true;
+  // Tenants beyond this page may be ready; keep navigation rather than hide
+  // it from someone with more tenants than one page holds.
+  return (total ?? rows.length) > rows.length;
 }

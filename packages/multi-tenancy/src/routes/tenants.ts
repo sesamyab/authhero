@@ -10,6 +10,7 @@ import {
   deepMergePatch,
   isInteractiveClient,
   DataAdapters,
+  Tenant,
 } from "authhero";
 import {
   MultiTenancyBindings,
@@ -268,11 +269,41 @@ export function createTenantsOpenAPIRouter(
           return ctx.json({ tenants: [] });
         }
 
-        // Apply pagination to the accessible tenant IDs
-        const totalAccessible = accessibleTenantIds.length;
         const pageNum = page ?? 0;
         const perPage = per_page ?? 50;
         const start = pageNum * perPage;
+
+        // A search runs over every accessible tenant and pages the matches.
+        // Paging the IDs first would search only one page of memberships, so
+        // a tenant further down could never be found. The search itself goes
+        // to the adapter alone, then is narrowed to the accessible tenants:
+        // not every adapter's query parser takes `(… OR …) AND (…)`.
+        if (q) {
+          const accessible = new Set(accessibleTenantIds);
+          const matches = (
+            await fetchAll<Tenant>(
+              (params) => getRequestData(ctx).tenants.list(params),
+              "tenants",
+              { cursorField: "id", q },
+            )
+          ).filter((tenant) => accessible.has(tenant.id));
+          const pageOfMatches = matches.slice(start, start + perPage);
+
+          if (include_totals) {
+            return ctx.json({
+              tenants: pageOfMatches,
+              start,
+              limit: perPage,
+              length: pageOfMatches.length,
+              total: matches.length,
+            });
+          }
+
+          return ctx.json({ tenants: pageOfMatches });
+        }
+
+        // Without a search, page the accessible tenant IDs
+        const totalAccessible = accessibleTenantIds.length;
         const paginatedIds = accessibleTenantIds.slice(start, start + perPage);
 
         // If this page is beyond the available tenants, return empty array
@@ -292,10 +323,9 @@ export function createTenantsOpenAPIRouter(
         // Fetch only the tenants for this page by ID
         // Construct a query to filter by the paginated IDs
         const idFilter = paginatedIds.map((id) => `id:${id}`).join(" OR ");
-        const combinedQuery = q ? `(${idFilter}) AND (${q})` : idFilter;
 
         const result = await getRequestData(ctx).tenants.list({
-          q: combinedQuery,
+          q: idFilter,
           per_page: perPage,
           include_totals: false, // We calculate totals from accessibleTenantIds
         });

@@ -47,6 +47,16 @@ describe("useHasReadyTenant", () => {
     await waitFor(() => expect(result.current).toBe(true));
   });
 
+  it("keeps navigation when tenants beyond the first page may be ready", async () => {
+    const { result } = renderWithTenants(undefined, () =>
+      Promise.resolve({
+        data: [{ id: "acme", provisioning_state: "pending" }],
+        total: 51,
+      }),
+    );
+    await waitFor(() => expect(result.current).toBe(true));
+  });
+
   it("is true inside a tenant without asking", () => {
     const { result, getList } = renderWithTenants("acme", answer([]));
     expect(result.current).toBe(true);
