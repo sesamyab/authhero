@@ -25,6 +25,7 @@ export interface GrantFlowResult {
   auth_time?: number; // Unix timestamp of when the user was authenticated
   /** The connection name used for authentication (e.g., "email", "google-oauth2") */
   authConnection?: string;
+  authStrategy?: { strategy: string; strategy_type: string };
 }
 
 export interface GrantFlowUserResult extends GrantFlowResult {

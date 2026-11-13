@@ -6,11 +6,15 @@ import {
   Connection,
   LogTypes,
   RateLimitDecision,
+  Strategy,
+  StrategyType,
   TokenExchangeJwtVerification,
   TokenExchangeProfile,
   User,
+  isDatabaseConnectionStrategy,
 } from "@authhero/adapter-interfaces";
 import { JSONHTTPException } from "../errors/json-http-exception";
+import { isUniqueConstraintError } from "../errors/is-unique-constraint-error";
 import { Bindings, Variables, GrantFlowUserResult } from "../types";
 import { EnrichedClient } from "../helpers/client";
 import { logMessage } from "../helpers/logging";
@@ -26,7 +30,10 @@ import {
 } from "../utils/jws-verify";
 import { ssrfFetchOptionsFromEnv } from "../utils/ssrf-fetch";
 import { getAuthUrl, getIssuer } from "../variables";
-import { getProviderFromConnection } from "../strategies";
+import {
+  ENTERPRISE_STRATEGIES,
+  getProviderFromConnection,
+} from "../strategies";
 import {
   CodeHookApi,
   HandleCodeHookOutcome,
@@ -80,7 +87,11 @@ class InvalidSubjectTokenError extends Error {}
 
 type Ctx = Context<{ Bindings: Bindings; Variables: Variables }>;
 
-type ResolvedExchangeUser = { user: User; connection?: string };
+type ResolvedExchangeUser = {
+  user: User;
+  connection?: string;
+  strategy?: string;
+};
 
 export async function customTokenExchangeGrant(
   ctx: Ctx,
@@ -203,7 +214,25 @@ export async function customTokenExchangeGrant(
     authParams,
     organization,
     authConnection: resolved.connection ?? user.connection,
+    authStrategy: authStrategyFor(resolved.strategy ?? user.provider),
   };
+}
+
+// The same classification the interactive flows record: database
+// (ticket.ts), passwordless (passwordless.ts), enterprise/social
+// (connection.ts).
+function authStrategyFor(strategy: string): {
+  strategy: string;
+  strategy_type: string;
+} {
+  const strategy_type = isDatabaseConnectionStrategy(strategy)
+    ? StrategyType.DATABASE
+    : strategy === Strategy.EMAIL || strategy === Strategy.SMS
+      ? StrategyType.PASSWORDLESS
+      : ENTERPRISE_STRATEGIES.has(strategy)
+        ? "enterprise"
+        : StrategyType.SOCIAL;
+  return { strategy, strategy_type };
 }
 
 async function findProfile(
@@ -349,7 +378,7 @@ async function resolveUserFromJwt(
       `user ${sub} does not exist in connection ${connection.name}`,
     );
   }
-  return { user, connection: connection.name };
+  return { user, connection: connection.name, strategy: connection.strategy };
 }
 
 /**
@@ -736,7 +765,7 @@ async function resolveUserFromAction(
       error_description: "The token exchange action set an unknown user",
     });
   }
-  return { user, connection: connection.name };
+  return { user, connection: connection.name, strategy: connection.strategy };
 }
 
 /** The action called an `api.authentication` setter with unusable input. */
@@ -827,8 +856,23 @@ async function findOrCreateConnectionUser(
   const userId = `${provider}|${params.user_id}`;
   const attributes = params.attributes;
 
+  // Database connections share the provider prefix, so the same id can
+  // belong to a user of another connection (e.g. a password user).
+  const assertInConnection = (user: User) => {
+    if (user.connection === connection.name) return;
+    logMessage(ctx, tenantId, {
+      type: LogTypes.FAILED_EXCHANGE_CUSTOM_TOKEN,
+      description: `User ${user.user_id} belongs to connection ${user.connection || "(none)"}, not ${connection.name}`,
+    });
+    throw new JSONHTTPException(400, {
+      error: "invalid_request",
+      error_description: "Subject token user could not be resolved",
+    });
+  };
+
   const existing = await ctx.env.data.users.get(tenantId, userId);
   if (existing) {
+    assertInConnection(existing);
     if (params.update) {
       const replaceable: ReplaceableAttributes = {
         name: attributes.name,
@@ -871,14 +915,22 @@ async function findOrCreateConnectionUser(
     });
   } catch (error) {
     // A concurrent exchange for the same subject created the user first.
-    const isConflict =
-      typeof error === "object" &&
-      error !== null &&
-      "status" in error &&
-      error.status === 409;
-    if (!isConflict) throw error;
+    if (!isUniqueConstraintError(error)) throw error;
     const winner = await ctx.env.data.users.get(tenantId, userId);
-    if (!winner) throw error;
+    if (!winner) {
+      // The conflict is on unique_email_provider / unique_username_provider:
+      // a different user holds the email or username.
+      logMessage(ctx, tenantId, {
+        type: LogTypes.FAILED_EXCHANGE_CUSTOM_TOKEN,
+        description: `Could not create user ${userId} in connection ${connection.name}: another ${provider} user already has the same email or username`,
+      });
+      throw new JSONHTTPException(400, {
+        error: "invalid_request",
+        error_description:
+          "Another user already has the same email or username",
+      });
+    }
+    assertInConnection(winner);
     return winner;
   }
 }

@@ -543,7 +543,8 @@ const postRoot = defineRoute({
       // session's stored auth_connection/auth_strategy when the grant carries
       // one (authorization_code), else the flow's explicit authConnection
       // (refresh_token, passwordless), else the user's own connection.
-      const authStrategy = grantResult.loginSession?.auth_strategy;
+      const authStrategy =
+        grantResult.loginSession?.auth_strategy ?? grantResult.authStrategy;
       logMessage(ctx, grantResult.client.tenant.id, {
         type: successLogType,
         userId: grantUser?.user_id,
