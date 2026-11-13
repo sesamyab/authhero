@@ -117,4 +117,8 @@ export type Variables = {
   // would let users through the identifier step (correctly) only to be
   // rejected at user-creation time.
   is_lazy_migration?: boolean;
+  // Set by the auth middleware when `client_id` was copied from a bearer
+  // token's `azp`. Such a client_id is attribution only, never an auth-flow
+  // signup, so user creation skips the signup gates.
+  client_id_from_token?: boolean;
 };
