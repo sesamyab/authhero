@@ -8,6 +8,7 @@ import { ConnectionsTab } from "./tabs/connections-tab";
 import { OrganizationsTab } from "./tabs/organizations-tab";
 import { AdvancedTab } from "./tabs/advanced-tab";
 import { RefreshTokensTab } from "./tabs/refresh-tokens-tab";
+import { SessionTransferTab } from "./tabs/session-transfer-tab";
 import { RawJsonTab } from "@/common/RawJsonTab";
 import { CimdBanner } from "./cimd";
 import { ClientLoginButton } from "./login-button";
@@ -46,8 +47,9 @@ function transformClient(data: Record<string, unknown>) {
 }
 
 // Tabs that don't apply to the application type are hidden, e.g. a
-// Machine-to-Machine client has no connections, organizations or refresh
-// tokens, and only clients with Client Credentials have client grants.
+// Machine-to-Machine client has no connections, organizations, refresh tokens
+// or session transfer, and only clients with Client Credentials have client
+// grants.
 function ClientTabs() {
   const shape = useClientShape();
   const availableTabs = [
@@ -56,7 +58,7 @@ function ClientTabs() {
     ...(shape.showClientGrants ? ["grants"] : []),
     ...(shape.isInteractive ? ["connections", "organizations"] : []),
     "advanced",
-    ...(shape.isInteractive ? ["refresh"] : []),
+    ...(shape.isInteractive ? ["refresh", "session-transfer"] : []),
     "raw",
   ];
   return (
@@ -79,7 +81,10 @@ function ClientTabs() {
         )}
         <TabsTrigger value="advanced">Advanced</TabsTrigger>
         {shape.isInteractive && (
-          <TabsTrigger value="refresh">Refresh Tokens</TabsTrigger>
+          <>
+            <TabsTrigger value="refresh">Refresh Tokens</TabsTrigger>
+            <TabsTrigger value="session-transfer">Session Transfer</TabsTrigger>
+          </>
         )}
         <TabsTrigger value="raw">Raw JSON</TabsTrigger>
       </TabsList>
@@ -110,9 +115,14 @@ function ClientTabs() {
         <AdvancedTab />
       </TabsContent>
       {shape.isInteractive && (
-        <TabsContent value="refresh" className="mt-4">
-          <RefreshTokensTab />
-        </TabsContent>
+        <>
+          <TabsContent value="refresh" className="mt-4">
+            <RefreshTokensTab />
+          </TabsContent>
+          <TabsContent value="session-transfer" className="mt-4">
+            <SessionTransferTab />
+          </TabsContent>
+        </>
       )}
       <TabsContent value="raw" className="mt-4">
         <RawJsonTab />
