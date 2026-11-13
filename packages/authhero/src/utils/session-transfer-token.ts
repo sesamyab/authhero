@@ -75,7 +75,15 @@ export function stripSessionTransferToken(
 export function stripSessionTransferToken(
   url: string | undefined,
 ): string | undefined {
-  if (!url || !url.includes(SESSION_TRANSFER_TOKEN_PARAM)) return url;
+  // A percent-encoded name ("session%5Ftransfer%5Ftoken") is the same
+  // parameter to every query parser, so only a URL that can hold neither
+  // spelling is skipped without parsing.
+  if (
+    !url ||
+    (!url.includes(SESSION_TRANSFER_TOKEN_PARAM) && !url.includes("%"))
+  ) {
+    return url;
+  }
 
   try {
     const parsed = new URL(url);
@@ -84,12 +92,37 @@ export function stripSessionTransferToken(
     return parsed.toString();
   } catch {
     // Relative or otherwise unparsable: drop the parameter textually.
-    return url
-      .replace(
-        new RegExp(`([?&])${SESSION_TRANSFER_TOKEN_PARAM}=[^&#]*&?`, "g"),
-        "$1",
-      )
-      .replace(/[?&](#|$)/, "$1");
+    return stripFromRawQuery(url);
+  }
+}
+
+function stripFromRawQuery(url: string): string {
+  const hashAt = url.indexOf("#");
+  const beforeHash = hashAt === -1 ? url : url.slice(0, hashAt);
+  const queryAt = beforeHash.indexOf("?");
+  if (queryAt === -1) return url;
+
+  const pairs = beforeHash.slice(queryAt + 1).split("&");
+  const kept = pairs.filter(
+    (pair) => decodeQueryName(pair) !== SESSION_TRANSFER_TOKEN_PARAM,
+  );
+  if (kept.length === pairs.length) return url;
+
+  const query = kept.length > 0 ? `?${kept.join("&")}` : "";
+  const hash = hashAt === -1 ? "" : url.slice(hashAt);
+  return `${beforeHash.slice(0, queryAt)}${query}${hash}`;
+}
+
+function decodeQueryName(pair: string): string {
+  const equalsAt = pair.indexOf("=");
+  const name = (equalsAt === -1 ? pair : pair.slice(0, equalsAt)).replace(
+    /\+/g,
+    " ",
+  );
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
   }
 }
 

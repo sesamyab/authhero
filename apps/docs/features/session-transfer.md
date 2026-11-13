@@ -106,6 +106,17 @@ GET /authorize?
 
 If the token is good, AuthHero creates a session for the user and answers as it would for a user who is already logged in. This also works with `prompt=none` and for applications that have SSO turned off.
 
+::: warning Treat the token like a password
+Until it is used or expires, the token logs its holder in. On the receiving site:
+
+- Redirect to `/authorize` as soon as the token arrives. Do not render a page at the URL that carries it. This keeps the token out of the browser history, and out of the `Referer` header of anything that page would load.
+- Send `Referrer-Policy: no-referrer` on the response that handles the token.
+- Leave the token out of request logs, error reports and analytics. Web servers and proxies log full URLs by default.
+
+:::
+
+An application that sends a signed Request Object (`request` or `request_uri`) must put `session_transfer_token` inside it. As with every other parameter, a value outside the signed object is ignored.
+
 There are two ways to present the token:
 
 | Method   | How                                                          | Use it when                                                                                                            |
@@ -193,7 +204,7 @@ A single-page application that makes the exchange from the browser does not need
 
 ## Cascade revocation
 
-A session created from a session transfer token remembers the refresh token it came from. While the sending application has `enforce_cascade_revocation` on, that session, and the refresh tokens issued in it, end when the parent refresh token is revoked or expires. Rotating the parent does not count: the link follows the whole rotation chain.
+A session created from a session transfer token remembers the refresh token it came from. If the sending application has `enforce_cascade_revocation` on when the session transfer token is issued, that session, and the refresh tokens issued in it, end when the parent refresh token is revoked or expires. Changing the setting later does not affect existing sessions. Rotating the parent does not count: the link follows the whole rotation chain.
 
 The check runs when the session is next used at `/authorize` and when one of its refresh tokens is exchanged. Nothing happens at the moment the parent is revoked, so access tokens that were already issued remain valid until they expire.
 
@@ -207,7 +218,8 @@ Every hop stays tied to the refresh token the chain started from, and once any h
 
 ## What the new session looks like
 
-- It keeps the original login time (`auth_time`) and authentication methods, so a user who passed MFA on the sending application counts as having passed it on the receiving one.
+- It keeps the original login time (`auth_time`).
+- It keeps the authentication methods of the sending application's session, so a user who passed MFA there counts as having passed it on the receiving application. This only applies while that session is still valid when the token is created. If it has been revoked or has expired, the new session starts without a completed MFA.
 - It records where it came from. [Post-login hooks](/features/hooks) see this on the event:
 
 ```js

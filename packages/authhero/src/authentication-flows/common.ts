@@ -687,7 +687,7 @@ export async function createAuthTokens(
           ip: ctx.var.ip || "",
           user_agent: ctx.var.useragent || "",
           method: ctx.req?.method || "",
-          url: ctx.req?.url || "",
+          url: stripSessionTransferToken(ctx.req?.url || ""),
         },
         scope: authParams.scope || "",
         grant_type: grantType ?? "",

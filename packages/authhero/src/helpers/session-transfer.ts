@@ -17,6 +17,10 @@ import { Bindings, Variables } from "../types";
 import { EnrichedClient } from "./client";
 import { logMessage } from "./logging";
 import { revokeSessionRefreshTokens } from "./revoke-session-refresh-tokens";
+import {
+  createLoginSessionWithData,
+  readLoginSessionData,
+} from "../state-machines/login-session-data";
 import { ulid } from "../utils/ulid";
 import {
   SESSION_TRANSFER_CODE_TYPE,
@@ -65,7 +69,7 @@ export const SESSION_TRANSFER_WARNINGS = {
     "Single Sign-On failed: Session Transfer Token user is blocked or no longer exists.",
 } as const;
 
-/** What the carrier login session keeps in `state_data`. */
+/** What the carrier login session keeps in its context (`state_data`). */
 const carrierStateSchema = z.object({
   session_transfer: z.object({
     family_id: z.string(),
@@ -76,7 +80,9 @@ const carrierStateSchema = z.object({
   }),
 });
 
-type CarrierState = z.infer<typeof carrierStateSchema>;
+export type SessionTransferCarrierState = z.infer<
+  typeof carrierStateSchema
+>["session_transfer"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -170,9 +176,13 @@ export async function mintSessionTransferToken(
   // caller. A backend exchanging on the user's behalf sees its own address, so
   // a confidential client that opted in may forward the user's instead. A
   // public client cannot: anyone can call the exchange as one, and letting
-  // them choose the bound address would undo the binding.
+  // them choose the bound address would undo the binding. The client's own
+  // registration is checked as well as the request: a public client that
+  // happens to send a matching secret is still a public client.
   const forwardedIp =
-    settings.trust_forwarded_ip && params.clientAuthenticated
+    settings.trust_forwarded_ip &&
+    params.clientAuthenticated &&
+    client.token_endpoint_auth_method !== "none"
       ? normalizeIp(ctx.req.header(SESSION_TRANSFER_FORWARDED_IP_HEADER))
       : undefined;
   const boundIp = forwardedIp ?? normalizeIp(ctx.var.ip) ?? ctx.var.ip ?? "";
@@ -184,41 +194,50 @@ export async function mintSessionTransferToken(
   const senderSession = params.sessionId
     ? await data.sessions.get(tenantId, params.sessionId)
     : null;
-  const liveSenderSession =
-    senderSession && !senderSession.revoked_at ? senderSession : undefined;
+  // A refresh token outlives its session, so the session may be revoked or
+  // expired by now. A completed MFA is only passed on while the session could
+  // still vouch for it itself. When the user authenticated stays true either
+  // way, and dropping it would make the transferred login look fresher than
+  // it is.
+  const senderAuthentication = isSessionLive(senderSession)
+    ? senderSession.authentication
+    : undefined;
 
-  const state: CarrierState = {
-    session_transfer: {
-      family_id: familyId,
-      cascade_revocation: cascadeRevocation,
-      asn: boundAsn,
-      authentication: liveSenderSession?.authentication,
-      organization: params.organization,
-    },
+  const state: SessionTransferCarrierState = {
+    family_id: familyId,
+    cascade_revocation: cascadeRevocation,
+    asn: boundAsn,
+    authentication: senderAuthentication,
+    organization: params.organization,
   };
 
   const now = Date.now();
   const ttlMs = SESSION_TRANSFER_TOKEN_TTL_SECONDS * 1000;
 
-  const carrier = await data.loginSessions.create(tenantId, {
-    csrf_token: nanoid(),
-    authParams: {
-      client_id: client.client_id,
-      organization: params.organization?.id,
-      scope: refreshToken.resource_servers[0]?.scopes,
+  const carrier = await createLoginSessionWithData(
+    data.loginSessions,
+    tenantId,
+    {
+      csrf_token: nanoid(),
+      authParams: {
+        client_id: client.client_id,
+        organization: params.organization?.id,
+        scope: refreshToken.resource_servers[0]?.scopes,
+      },
+      // Outlives the token by a minute so a redemption in the last second
+      // still finds it. Creating a session on it extends it like any login
+      // session.
+      expires_at: new Date(now + ttlMs + 60_000).toISOString(),
+      ip: boundIp,
+      useragent: ctx.var.useragent,
+      state: LoginSessionState.COMPLETED,
+      user_id: user.user_id,
+      auth_connection: params.authConnection,
+      auth_strategy: params.authStrategy,
+      authenticated_at: senderSession?.authenticated_at,
     },
-    // Outlives the token by a minute so a redemption in the last second still
-    // finds it. Creating a session on it extends it like any login session.
-    expires_at: new Date(now + ttlMs + 60_000).toISOString(),
-    ip: boundIp,
-    useragent: ctx.var.useragent,
-    state: LoginSessionState.COMPLETED,
-    state_data: JSON.stringify(state),
-    user_id: user.user_id,
-    auth_connection: params.authConnection,
-    auth_strategy: params.authStrategy,
-    authenticated_at: liveSenderSession?.authenticated_at,
-  });
+    { session_transfer: state },
+  );
 
   const token = generateSessionTransferToken();
   await data.codes.create(tenantId, {
@@ -308,17 +327,14 @@ export async function redeemSessionTransferToken(
   }
 
   const carrier = await data.loginSessions.get(tenantId, code.login_id);
-  let state: CarrierState["session_transfer"] | undefined;
-  if (carrier?.state_data) {
-    try {
-      const parsed = carrierStateSchema.safeParse(
-        JSON.parse(carrier.state_data),
-      );
-      state = parsed.success ? parsed.data.session_transfer : undefined;
-    } catch {
-      state = undefined;
-    }
-  }
+  // The context is validated, not trusted: a row without a well-formed
+  // session_transfer entry is not a carrier.
+  const parsedState = carrierStateSchema.safeParse(
+    readLoginSessionData(carrier?.state_data),
+  );
+  const state = parsedState.success
+    ? parsedState.data.session_transfer
+    : undefined;
   if (!carrier || !state || !carrier.user_id) {
     return reject(SESSION_TRANSFER_WARNINGS.notFound);
   }
@@ -496,13 +512,20 @@ export function nextOnlineSessionIdleExpiry(
   const idleHours = client.tenant.idle_session_lifetime;
   if (!idleHours || !session.idle_expires_at) return undefined;
 
-  let next = now + idleHours * 60 * 60 * 1000;
+  const idleMs = idleHours * 60 * 60 * 1000;
+  let next = now + idleMs;
   if (session.expires_at) {
     next = Math.min(next, new Date(session.expires_at).getTime());
   }
 
+  // With an idle period shorter than the throttle the expiry could never move
+  // far enough to pass it, and the session would end however active it is.
+  const throttleMs = Math.min(
+    ONLINE_SESSION_IDLE_SLIDE_THROTTLE_MS,
+    idleMs / 2,
+  );
   const current = new Date(session.idle_expires_at).getTime();
-  if (next - current < ONLINE_SESSION_IDLE_SLIDE_THROTTLE_MS) return undefined;
+  if (next - current < throttleMs) return undefined;
   return new Date(next).toISOString();
 }
 

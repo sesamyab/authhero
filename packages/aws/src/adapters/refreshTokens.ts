@@ -48,6 +48,9 @@ interface RefreshTokenItem extends DynamoDBBaseItem {
   session_transfer?: string; // JSON string (SessionTransferProvenance)
 }
 
+/** Rows read per request when `isFamilyActive` walks a tenant's tokens. */
+const FAMILY_SCAN_PAGE_SIZE = 100;
+
 function toRefreshToken(item: RefreshTokenItem): RefreshToken {
   const { tenant_id, device, resource_servers, session_transfer, ...rest } =
     stripDynamoDBFields(item);
@@ -353,16 +356,24 @@ export function createRefreshTokensAdapter(
       const now = Date.now();
       const notPast = (iso: string | undefined) =>
         !iso || new Date(iso).getTime() > now;
-      // No GSI on family_id: scan the tenant's tokens like revokeMatching.
-      // The `id` match covers rows minted before `family_id` was stamped.
-      let page = 0;
-      const per_page = 100;
-      for (;;) {
-        const result = await queryWithPagination<RefreshTokenItem>(
+      // No GSI on family_id: walk the tenant's tokens. The `id` match covers
+      // rows minted before `family_id` was stamped.
+      //
+      // Each page resumes from DynamoDB's own cursor, so a row is read once
+      // however many tokens the tenant has. The read is strongly consistent:
+      // this answer decides whether a transferred session survives, and a
+      // revocation that has just been written must be visible to it.
+      let startKey: Record<string, unknown> | undefined;
+      do {
+        const result = await queryItems<RefreshTokenItem>(
           ctx,
           refreshTokenKeys.pk(tenantId),
-          { page, per_page },
-          { skPrefix: "REFRESH_TOKEN#" },
+          {
+            skPrefix: "REFRESH_TOKEN#",
+            limit: FAMILY_SCAN_PAGE_SIZE,
+            startKey,
+            consistentRead: true,
+          },
         );
         for (const item of result.items) {
           if (item.family_id !== family_id && item.id !== family_id) continue;
@@ -371,9 +382,8 @@ export function createRefreshTokensAdapter(
             return true;
           }
         }
-        if (result.items.length < per_page) break;
-        page++;
-      }
+        startKey = result.lastKey;
+      } while (startKey);
       return false;
     },
   };

@@ -19,6 +19,7 @@ import { isTemplateHook, handleTemplateHook } from "./templatehooks";
 import { builtInUserLinkingEnabled } from "../helpers/user-linking";
 import { compareUsersByAge, linkUserTo } from "../helpers/users";
 import { normalizeEmail, withNormalizedEmail } from "../utils/email";
+import { stripSessionTransferToken } from "../utils/session-transfer-token";
 import {
   buildPostHookEvent,
   relayOutboxEvent,
@@ -93,7 +94,9 @@ export function createUserUpdateHooks(
       method: ctx.req.method,
       ip: ctx.var.ip || ctx.get("ip") || "",
       user_agent: ctx.var.useragent || ctx.get("useragent") || "",
-      url: ctx.req.url,
+      // A profile update during /authorize must not hand the hook a
+      // session_transfer_token that is still in the request URL.
+      url: stripSessionTransferToken(ctx.req.url),
     };
 
     // Call pre-user-update hooks if configured

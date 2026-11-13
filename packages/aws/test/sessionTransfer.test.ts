@@ -202,6 +202,26 @@ describe("session transfer provenance (#1710)", () => {
       expect(await data.refreshTokens.isFamilyActive("t1", "fam")).toBe(false);
     });
 
+    it("finds a live member beyond the first page of the tenant's tokens", async () => {
+      // 230 tokens of other families spread over three pages of 100, sorted
+      // by id. "rt-zzz" sorts last, so it is only reached on the third page.
+      const fillers = Array.from({ length: 230 }, (_, i) =>
+        mkToken("t1", `rt-${String(i).padStart(4, "0")}`, {
+          family_id: `other-${i}`,
+        }),
+      );
+      await Promise.all(fillers);
+      await mkToken("t1", "rt-zzz", { family_id: "fam" });
+
+      expect(await data.refreshTokens.isFamilyActive("t1", "fam")).toBe(true);
+      expect(await data.refreshTokens.isFamilyActive("t1", "nope")).toBe(false);
+
+      await data.refreshTokens.update("t1", "rt-zzz", {
+        revoked_at: new Date().toISOString(),
+      });
+      expect(await data.refreshTokens.isFamilyActive("t1", "fam")).toBe(false);
+    });
+
     it("is false for an unknown family", async () => {
       expect(await data.refreshTokens.isFamilyActive("t1", "nope")).toBe(false);
     });

@@ -114,6 +114,9 @@ const authorizeParamsSchema = z.object({
   // Request Object (RFC 9101 §4) the value is a JSON object, not a string —
   // accept both shapes so verified request payloads pass schema validation.
   claims: z.union([z.string(), z.record(z.string(), z.any())]).optional(),
+  // Session transfer (#1710). Listed here so a client that sends a Request
+  // Object carries the token inside it, like every other parameter.
+  session_transfer_token: z.string().optional(),
 });
 
 // Parse + validate the raw `claims` value. Accepts either a JSON-encoded
@@ -814,14 +817,20 @@ const getRoot = defineRoute({
     );
 
     // Session transfer: a single-use token minted by another application of
-    // this tenant logs the browser in as its user. It is read from the plain
-    // query string, or from a cookie when the client accepts that. The cookie
+    // this tenant logs the browser in as its user. It is read from the request
+    // parameters, or from a cookie when the client accepts that. The cookie
     // is ignored silently otherwise: the browser sends it to every client on
     // this domain, so its presence says nothing about this one.
+    //
+    // With a Request Object the parameter comes from the signed payload only
+    // (RFC 9101 §5). An unsigned token appended to a signed request is how a
+    // login CSRF would be mounted, so it is ignored like any other unsigned
+    // parameter.
     const transferMethods = resolveSessionTransfer(
       client.session_transfer,
     ).allowed_authentication_methods;
-    const queryTransferToken = queryParams.session_transfer_token || undefined;
+    const queryTransferToken =
+      authorizeParams.session_transfer_token || undefined;
     const cookieTransferToken = transferMethods.includes("cookie")
       ? getSessionTransferCookie(ctx.req.header("cookie"))
       : undefined;

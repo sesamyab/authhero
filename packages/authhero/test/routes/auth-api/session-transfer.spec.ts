@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { testClient } from "hono/testing";
-import { parseJWT } from "../../../src/utils/jwt";
+import { parseJWT, signJWT } from "../../../src/utils/jwt";
 import { z } from "@hono/zod-openapi";
 import type {
   RefreshTokenInsert,
@@ -674,10 +674,16 @@ describe("session transfer tokens", () => {
         authorize(server, { session_transfer_token: token }),
       ]);
 
-      const loggedIn = responses.filter((response) =>
-        (response.headers.get("location") ?? "").startsWith(CALLBACK),
-      );
-      expect(loggedIn).toHaveLength(1);
+      const isCallback = (response: Response) =>
+        (response.headers.get("location") ?? "").startsWith(CALLBACK);
+      const winners = responses.filter(isCallback);
+      const losers = responses.filter((response) => !isCallback(response));
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(1);
+      // The winner is a complete login and the loser an ordinary login prompt,
+      // not an error page or a half-finished redirect.
+      for (const winner of winners) expectLoggedIn(winner);
+      for (const loser of losers) expectLoginPrompt(loser);
       expect(await sessionsOf(server)).toHaveLength(1);
     });
 
@@ -885,6 +891,25 @@ describe("session transfer tokens", () => {
         expect(await warnings(server)).toEqual([WARN_DEVICE_BINDING]);
       });
 
+      it("ignores the forwarded IP for a public client, even one that sends a secret", async () => {
+        const server = await setup({ sender: { trust_forwarded_ip: true } });
+        await server.env.data.clients.update(TENANT, SENDER, {
+          token_endpoint_auth_method: "none",
+        });
+
+        // A matching secret does not make a client registered as public a
+        // confidential one.
+        const { token } = await mint(server, {
+          form: { client_secret: SENDER_SECRET },
+          headers: { "x-real-ip": "9.9.9.9", "auth0-forwarded-for": IP },
+        });
+
+        expectLoginPrompt(
+          await authorize(server, { session_transfer_token: token }),
+        );
+        expect(await warnings(server)).toEqual([WARN_DEVICE_BINDING]);
+      });
+
       it("ignores the forwarded IP when the client did not opt in", async () => {
         const server = await setup();
 
@@ -899,6 +924,175 @@ describe("session transfer tokens", () => {
             { session_transfer_token: token },
             { "x-real-ip": "9.9.9.9" },
           ),
+        );
+      });
+    });
+
+    describe("what the sender's session passes on", () => {
+      const AUTHENTICATED_AT = "2026-01-01T00:00:00.000Z";
+      const MFA = {
+        methods: [{ name: "mfa", timestamp: AUTHENTICATED_AT, type: "totp" }],
+      };
+
+      /** A session of the sender that logged in a while ago, with MFA. */
+      async function createSenderSession(server: Server) {
+        const { data } = server.env;
+        const loginSession = await data.loginSessions.create(TENANT, {
+          expires_at: inOneHour(),
+          csrf_token: "csrf",
+          authParams: { client_id: SENDER },
+        });
+        const session = await data.sessions.create(TENANT, {
+          id: "senderSession",
+          user_id: USER,
+          login_session_id: loginSession.id,
+          clients: [SENDER],
+          expires_at: inOneHour(),
+          idle_expires_at: inOneHour(),
+          device,
+          authentication: MFA,
+        });
+        await data.sessions.update(TENANT, session.id, {
+          authenticated_at: AUTHENTICATED_AT,
+        });
+        return session.id;
+      }
+
+      async function transferredSession(server: Server, senderId: string) {
+        const { token } = await mint(server, {
+          refreshToken: { session_id: senderId },
+        });
+        const response = await authorize(server, {
+          session_transfer_token: token,
+        });
+        expectLoggedIn(response);
+        return server.env.data.sessions.get(
+          TENANT,
+          sessionIdOf(response) ?? "",
+        );
+      }
+
+      const authenticatedAtOf = (
+        session: { authenticated_at: string } | null,
+      ) =>
+        session ? new Date(session.authenticated_at).toISOString() : undefined;
+
+      it("carries the login time and a completed MFA from a live session", async () => {
+        const server = await setup();
+        const senderId = await createSenderSession(server);
+
+        const session = await transferredSession(server, senderId);
+
+        expect(session?.authentication).toEqual(MFA);
+        expect(authenticatedAtOf(session)).toBe(AUTHENTICATED_AT);
+      });
+
+      it.each([
+        ["revoked", { revoked_at: new Date().toISOString() }],
+        [
+          "expired",
+          { expires_at: new Date(Date.now() - 60_000).toISOString() },
+        ],
+        [
+          "idle-expired",
+          { idle_expires_at: new Date(Date.now() - 60_000).toISOString() },
+        ],
+      ])(
+        "keeps the login time but not the MFA of a session that is %s",
+        async (_name, ended) => {
+          const server = await setup();
+          const senderId = await createSenderSession(server);
+          await server.env.data.sessions.update(TENANT, senderId, ended);
+
+          const session = await transferredSession(server, senderId);
+
+          // A session that could no longer vouch for the second factor itself
+          // cannot hand it to another application.
+          expect(session?.authentication).toBeUndefined();
+          // When the user logged in is still true, and forgetting it would
+          // make the transferred login look fresher than it is.
+          expect(authenticatedAtOf(session)).toBe(AUTHENTICATED_AT);
+        },
+      );
+    });
+
+    describe("signed request objects (RFC 9101)", () => {
+      async function signedRequest(
+        server: Server,
+        claims: Record<string, string> = {},
+      ) {
+        const keys = await crypto.subtle.generateKey(
+          {
+            name: "RSASSA-PKCS1-v1_5",
+            hash: "SHA-256",
+            publicExponent: new Uint8Array([1, 0, 1]),
+            modulusLength: 2048,
+          },
+          true,
+          ["sign", "verify"],
+        );
+        const publicJwk = await crypto.subtle.exportKey("jwk", keys.publicKey);
+        await server.env.data.clients.update(TENANT, RECEIVER, {
+          registration_metadata: {
+            jwks: {
+              keys: [
+                { ...publicJwk, kid: "receiver-kid", alg: "RS256", use: "sig" },
+              ],
+            },
+          },
+        });
+        return signJWT(
+          "RS256",
+          await crypto.subtle.exportKey("pkcs8", keys.privateKey),
+          {
+            iss: RECEIVER,
+            aud: "http://localhost:3000/",
+            client_id: RECEIVER,
+            redirect_uri: CALLBACK,
+            state: "state",
+            scope: "openid",
+            response_type: "code",
+            ...claims,
+          },
+          {
+            includeIssuedTimestamp: true,
+            expiresInSeconds: 300,
+            headers: { kid: "receiver-kid" },
+          },
+        );
+      }
+
+      it("redeems a token carried inside the request object", async () => {
+        const server = await setup();
+        const { token } = await mint(server);
+
+        expectLoggedIn(
+          await authorize(server, {
+            request: await signedRequest(server, {
+              session_transfer_token: token,
+            }),
+          }),
+        );
+        expect(await warnings(server)).toEqual([]);
+      });
+
+      it("ignores a token added outside the request object, and leaves it unspent", async () => {
+        const server = await setup();
+        const { token } = await mint(server);
+
+        // Anyone can append a query parameter to a signed request; honouring
+        // it would let them choose which user the browser is logged in as.
+        expectLoginPrompt(
+          await authorize(server, {
+            request: await signedRequest(server),
+            session_transfer_token: token,
+          }),
+        );
+        expect(await warnings(server)).toEqual([]);
+        expect(await sessionsOf(server)).toEqual([]);
+
+        expectLoggedIn(
+          await authorize(server, { session_transfer_token: token }),
         );
       });
     });
@@ -980,15 +1174,26 @@ describe("session transfer tokens", () => {
 
     it("keeps an existing session of the same user", async () => {
       const server = await setup();
-      const first = await authorize(server, {
-        session_transfer_token: (await mint(server)).token,
+      const { data } = server.env;
+      // An ordinary session, from a login at the receiver: it must stay one.
+      const loginSession = await data.loginSessions.create(TENANT, {
+        expires_at: inOneHour(),
+        csrf_token: "csrf",
+        authParams: { client_id: RECEIVER },
       });
-      const sessionId = sessionIdOf(first) ?? "";
-      // Make the existing session an ordinary one: it must stay that way.
-      await server.env.data.sessions.update(TENANT, sessionId, {
-        session_transfer: undefined,
+      const { id: sessionId } = await data.sessions.create(TENANT, {
+        id: "ordinarySession",
+        user_id: USER,
+        login_session_id: loginSession.id,
+        clients: [RECEIVER],
+        expires_at: inOneHour(),
+        idle_expires_at: inOneHour(),
+        device,
       });
       const before = await sessionsOf(server);
+      expect(before.map((session) => session.session_transfer)).toEqual([
+        undefined,
+      ]);
 
       const response = await authorize(
         server,
@@ -998,7 +1203,13 @@ describe("session transfer tokens", () => {
 
       expectLoggedIn(response);
       expect(sessionIdOf(response)).toBe(sessionId);
-      expect(await sessionsOf(server)).toHaveLength(before.length);
+      const after = await sessionsOf(server);
+      expect(after).toHaveLength(before.length);
+      // Still an ordinary session: the token's parent does not get a say in
+      // a session that was not created from it.
+      expect(after.map((session) => session.session_transfer)).toEqual([
+        undefined,
+      ]);
       expect(await warnings(server)).toEqual([]);
     });
 
@@ -1089,6 +1300,41 @@ describe("session transfer tokens", () => {
 
       const { body } = await refresh(server, tokens.refresh_token ?? "");
       expect(body.error).toBe("invalid_grant");
+    });
+
+    it("keeps a session with a short idle lifetime alive while its refresh token is used", async () => {
+      const server = await setup({ receiver: { allow_refresh_token: true } });
+      // Three minutes: shorter than the five minutes the idle expiry normally
+      // has to move by before it is written.
+      await server.env.data.tenants.update(TENANT, {
+        idle_session_lifetime: 0.05,
+      });
+      const { tokens, sessionId, parentId } = await transferLogin(server);
+      // The sender keeps using its own refresh token: this test is about the
+      // receiver's session, not about the parent going idle.
+      await server.env.data.refreshTokens.update(TENANT, parentId, {
+        idle_expires_at: inOneHour(),
+      });
+      const start = Date.now();
+      const idleExpiry = async () => {
+        const session = await server.env.data.sessions.get(TENANT, sessionId);
+        return new Date(session?.idle_expires_at ?? 0).getTime();
+      };
+      const firstExpiry = await idleExpiry();
+
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(start + 2 * 60_000);
+      expect((await refresh(server, tokens.refresh_token ?? "")).status).toBe(
+        200,
+      );
+      expect(await idleExpiry()).toBeGreaterThan(firstExpiry);
+
+      // Past the original idle expiry: only the slide keeps the session, and
+      // the refresh token bound to it, alive.
+      vi.setSystemTime(start + 4 * 60_000);
+      expect((await refresh(server, tokens.refresh_token ?? "")).status).toBe(
+        200,
+      );
     });
 
     it("lets the refresh token outlive the session when the receiver turned online tokens off", async () => {
@@ -1228,6 +1474,9 @@ describe("session transfer tokens", () => {
       );
 
       expect(events).toHaveLength(1);
+      // The hook learns that a token was used, never the token itself.
+      expect(events[0]?.request?.url).toBeTruthy();
+      expect(events[0]?.request?.url).not.toContain("session_transfer_token");
       expect(events[0]?.session_transfer_token).toEqual({
         client_id: SENDER,
         scope: "openid profile",
