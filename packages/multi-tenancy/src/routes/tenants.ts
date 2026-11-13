@@ -299,6 +299,9 @@ export function createTenantsOpenAPIRouter(
               q,
               page: searchPage,
               per_page: SEARCH_BATCH_SIZE,
+              // Offset paging needs a stable order, or rows can repeat or be
+              // skipped between batches.
+              sort: { sort_by: "id", sort_order: "asc" },
             });
             for (const tenant of batch.tenants) {
               if (accessible.has(tenant.id)) matches.push(tenant);
