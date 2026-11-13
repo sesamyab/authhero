@@ -162,6 +162,24 @@ export type HookEvent = {
       last_ip?: string;
       last_user_agent?: string;
     };
+    /**
+     * Present when the session was created by redeeming a
+     * session_transfer_token. `parent_refresh_token.id` is the rotation family
+     * of the refresh token the token was minted from.
+     */
+    session_transfer?: {
+      client_id: string;
+      parent_refresh_token: { id: string };
+    };
+  };
+  /**
+   * Present on the login that redeemed a session_transfer_token. `client_id`
+   * is the client that minted it and `request` describes the minting request.
+   */
+  session_transfer_token?: {
+    client_id: string;
+    scope?: string;
+    request: { ip: string; asn?: string; user_agent?: string };
   };
   security_context?: {
     ja3?: string;

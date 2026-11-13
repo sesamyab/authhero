@@ -6,6 +6,7 @@ import {
 import { setup, assign, transition } from "xstate";
 import { LoginSession, LoginSessionState } from "@authhero/adapter-interfaces";
 import type { SessionCookieDiagnostics } from "../utils/cookies";
+import type { SessionTransferCarrierState } from "../helpers/session-transfer";
 
 export interface MfaRequiredByAction {
   /** The provider the (last enabling) action passed, e.g. "any". */
@@ -57,6 +58,9 @@ export interface LoginSessionData {
   try_connection_result?: unknown;
   // What the browser sent on /authorize; copied onto the login log
   session_cookie?: SessionCookieDiagnostics;
+  // Set on the login session behind a session_transfer_token: what the
+  // redeeming /authorize needs to rebuild the login
+  session_transfer?: SessionTransferCarrierState;
 }
 
 /** The on-disk JSON shape stays flat for compatibility with existing sessions. */

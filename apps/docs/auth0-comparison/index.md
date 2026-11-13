@@ -527,6 +527,8 @@ The effect is that Auth0-issued access tokens cannot be presented back to Auth0'
 - **[Custom Token Exchange](/features/custom-token-exchange)** is compatible with Auth0's. It uses tenant-defined `subject_token_type` profiles and `custom-token-exchange` actions, with the same reserved namespaces. AuthHero adds a declarative **Verify JWT** mode, so a profile can verify a JWT signed by your backend against a JWKS without writing an action.
 - **Organization switching** exchanges a self-issued access token for one scoped to a different organization, optionally with a narrower scope set. It **accepts the standard `urn:ietf:params:oauth:token-type:access_token` subject token type**, which Auth0 does not.
 
+Native-to-web SSO is also implemented, as **[Session Transfer](/features/session-transfer)**. It uses the refresh token grant with a `urn:{domain}:session_transfer` audience, as on Auth0, and returns the same response. AuthHero lets any application type create a `session_transfer_token`, not only native ones, so a session can also be passed between websites on different top-level domains.
+
 Organization switching looks like this:
 
 ```http
@@ -549,7 +551,7 @@ The new token records the exchanging client in the RFC 8693 `act` claim (`{ sub,
 - **An extra use case.** Custom Token Exchange covers foreign tokens (foreign token in → AuthHero token out), as on Auth0. Organization switching adds a use case Auth0 has no path for: switching organization context within one IdP (own token in → own token out with a different `org_id`).
 - **Multi-step safety net.** Organization switching is opt-in at three layers — the exchanging client must authenticate as confidential, must have `organization_usage` ≠ `deny` (the default for new and DCR'd clients), and must list the grant in its `grant_types`. A misconfigured tenant cannot accidentally enable the exchange for every client.
 
-**What's not implemented vs. RFC 8693**: Standard `subject_token_type` values other than `access_token`, `actor_token`, `requested_token_type`, RFC 8707 resource indicators, and chained re-exchange are all omitted. Native-to-web SSO (`session_transfer_token`) and Token Vault are not implemented either. These will be added if a real use case appears; for now the surface stays small. See [RFC 8693 — Token Exchange](/standards/rfc-8693) for full details.
+**What's not implemented vs. RFC 8693**: Standard `subject_token_type` values other than `access_token`, `actor_token`, `requested_token_type`, RFC 8707 resource indicators, and chained re-exchange are all omitted. Token Vault is not implemented either. These will be added if a real use case appears; for now the surface stays small. See [RFC 8693 — Token Exchange](/standards/rfc-8693) for full details.
 
 ### Custom Domain Certificate Upload
 

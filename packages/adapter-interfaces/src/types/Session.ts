@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { deviceSchema } from "./Device";
+import { sessionTransferProvenanceSchema } from "./SessionTransfer";
 
 export const sessionAuthenticationMethodSchema = z.object({
   name: z
@@ -44,6 +45,11 @@ export const sessionInsertSchema = z.object({
     .optional()
     .describe(
       "Authentication methods completed in this session (currently MFA only)",
+    ),
+  session_transfer: sessionTransferProvenanceSchema
+    .optional()
+    .describe(
+      "Set when the session was created by redeeming a session_transfer_token",
     ),
 });
 

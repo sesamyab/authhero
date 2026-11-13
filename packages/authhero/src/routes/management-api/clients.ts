@@ -8,6 +8,8 @@ import {
   clientInsertSchema,
   connectionSchema,
   LogTypes,
+  SESSION_TRANSFER_DEFAULTS,
+  SessionTransfer,
 } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { HTTPException } from "hono/http-exception";
@@ -50,6 +52,19 @@ function isCimdClient(
   if (client?.client_metadata?.cimd !== "true") return false;
   if (!client.client_id) return false;
   return isCimdClientId(client.client_id);
+}
+
+// `session_transfer` is written as a whole object, so a write that names only
+// some of its fields is completed from what is stored and then from Auth0's
+// defaults. A client that never configured it keeps its empty object, also
+// when a write sends that empty object back, as the admin UI does on every
+// save of a client.
+function mergeSessionTransfer(
+  update: SessionTransfer | undefined,
+  stored?: SessionTransfer,
+): SessionTransfer | undefined {
+  if (!update || Object.keys(update).length === 0) return undefined;
+  return { ...SESSION_TRANSFER_DEFAULTS, ...stored, ...update };
 }
 
 // External callers must not be able to forge the CIMD marker via
@@ -379,7 +394,17 @@ const patchById = defineRoute({
     if (clientBefore && isSystemClient(clientBefore)) {
       throw notFound.clientOnUpdate();
     }
-    await ctx.env.data.clients.update(tenant_id, id, clientUpdate);
+    const sessionTransfer = mergeSessionTransfer(
+      clientUpdate.session_transfer,
+      clientBefore?.session_transfer,
+    );
+    await ctx.env.data.clients.update(
+      tenant_id,
+      id,
+      sessionTransfer
+        ? { ...clientUpdate, session_transfer: sessionTransfer }
+        : clientUpdate,
+    );
     const client = await ctx.env.data.clients.get(tenant_id, id);
 
     if (!client) {
@@ -457,8 +482,13 @@ const postRoot = defineRoute({
     const withDefaults = applyAppTypeDefaults(body, rawBody);
     const isPublic = withDefaults.token_endpoint_auth_method === "none";
 
+    const sessionTransfer = mergeSessionTransfer(withDefaults.session_transfer);
+
     const clientCreate = {
       ...withDefaults,
+      // `{}` for a client that configures nothing, which is what the adapters
+      // store and what every later read returns.
+      session_transfer: sessionTransfer ?? {},
       client_id: withDefaults.client_id || nanoid(),
       // Public clients (SPA, Native) authenticate via PKCE and have no secret.
       // Only generate a secret when the caller will actually use it.

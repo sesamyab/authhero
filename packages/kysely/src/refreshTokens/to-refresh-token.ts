@@ -24,6 +24,7 @@ export function toRefreshToken(
     rotated_at_ts,
     auth_strategy_strategy,
     auth_strategy_strategy_type,
+    session_transfer,
     ...rest
   } = row;
 
@@ -73,6 +74,9 @@ export function toRefreshToken(
             strategy_type: auth_strategy_strategy_type,
           },
         }
+      : {}),
+    ...(session_transfer
+      ? { session_transfer: JSON.parse(session_transfer) }
       : {}),
   });
 }

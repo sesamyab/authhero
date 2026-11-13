@@ -14,7 +14,8 @@ export type ClientShape = {
   // Whether the client makes user-agent (browser/native) redirects.
   showCallbacks: boolean;
   // Whether users log in through this client: login-screen settings, the
-  // Connections, Organizations and Refresh Tokens tabs, and the Login button.
+  // Connections, Organizations, Refresh Tokens and Session Transfer tabs, and
+  // the Login button.
   isInteractive: boolean;
   // Whether the SAML addon (SSO tab) applies.
   showSso: boolean;

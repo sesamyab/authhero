@@ -21,6 +21,7 @@ export function get(db: Kysely<Database>) {
       device,
       clients,
       authentication,
+      session_transfer,
       created_at_ts,
       updated_at_ts,
       expires_at_ts,
@@ -68,6 +69,9 @@ export function get(db: Kysely<Database>) {
       device: JSON.parse(device),
       clients: JSON.parse(clients),
       ...(authentication ? { authentication: JSON.parse(authentication) } : {}),
+      ...(session_transfer
+        ? { session_transfer: JSON.parse(session_transfer) }
+        : {}),
     };
   };
 }

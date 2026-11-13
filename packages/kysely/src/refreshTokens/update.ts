@@ -20,11 +20,15 @@ export function update(db: Kysely<Database>) {
       device,
       resource_servers,
       rotating,
+      session_transfer,
       ...tokenWithoutDates
     } = refresh_token;
 
     const updateData = {
       ...tokenWithoutDates,
+      session_transfer: session_transfer
+        ? JSON.stringify(session_transfer)
+        : undefined,
       device: device ? JSON.stringify(device) : undefined,
       resource_servers: resource_servers
         ? JSON.stringify(resource_servers)

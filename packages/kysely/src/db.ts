@@ -258,6 +258,7 @@ const sqlSessionSchema = sessionSchema
     device: true,
     clients: true,
     authentication: true,
+    session_transfer: true,
   })
   .extend({
     tenant_id: z.string(),
@@ -265,6 +266,8 @@ const sqlSessionSchema = sessionSchema
     clients: z.string(),
     // JSON-serialized SessionAuthentication (MFA completion, #1668)
     authentication: z.string().nullable().optional(),
+    // JSON-serialized SessionTransferProvenance (#1710)
+    session_transfer: z.string().nullable().optional(),
     // Date fields - bigint timestamps with _ts suffix
     created_at_ts: z.number(),
     updated_at_ts: z.number(),
@@ -289,11 +292,14 @@ const sqlRefreshTokensSchema = refreshTokenSchema
     rotating: true,
     // Nested in the adapter shape; stored as two flat columns.
     auth_strategy: true,
+    session_transfer: true,
   })
   .extend({
     tenant_id: z.string(),
     device: z.string(),
     resource_servers: z.string(),
+    // JSON-serialized SessionTransferProvenance (#1710)
+    session_transfer: z.string().nullable().optional(),
     rotating: z.number(),
     auth_strategy_strategy: z.string().nullable().optional(),
     auth_strategy_strategy_type: z.string().nullable().optional(),
