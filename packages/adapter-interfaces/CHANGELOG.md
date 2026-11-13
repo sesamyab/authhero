@@ -1,5 +1,11 @@
 # @authhero/adapter-interfaces
 
+## 4.27.0
+
+### Minor Changes
+
+- fb6746b: Add the `pre-account-action` trigger (AuthHero extension, issue #1700). It runs when a user starts a self-service account operation (change email, update profile, password reset, MFA or passkey enrollment and removal, unlinking an identity, deleting the account) and lets an Action send the user elsewhere with `api.redirect.sendUserTo(url)` or stop the operation with `api.access.deny(reason)`. Use it for users whose identity is owned by another system, for example users who sign in through custom token exchange. Configure it with code Actions bound to the trigger or the `onExecutePreAccountAction` config hook.
+
 ## 4.26.0
 
 ### Minor Changes

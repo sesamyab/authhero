@@ -1,5 +1,21 @@
 # @authhero/multi-tenancy
 
+## 15.8.0
+
+### Minor Changes
+
+- 57667a9: Guide a user from no tenants to a ready tenant (issue #1712). The tenants view shows an empty state instead of an empty table: with `create:tenants` it welcomes the user and offers to create the first tenant, without it it says who can give access. What the screens offer now follows the `permissions` claim of the user's token, so Create, Rollouts and Retry are only shown to users who may use them, and the tenant settings are no longer requested (and retried) without `read:tenants`. The create form lowercases the id as it is typed and checks it as a DNS label, shows the server's refusal on the id field, shows the tenant's hostname when the server sends one, and hides "Parent tenant" when there is nothing to inherit from. A created tenant opens on a setup page that follows its provisioning, shows the steps and the provisioner's error only to users who may read operations, offers a retry on failure to users who may start one, and opens the tenant once it answers. Until the user has a tenant they can open, the layout leaves out the sidebar, the tenant switcher, search and refresh, and the tenants list takes a user whose only tenants are being set up (or failed) to the setup page. A new tenant's dashboard shows a getting-started checklist (an application of its own, a first login, a user, its own branding), worked out from what the tenant has; the card goes away once every step is done, or when dismissed.
+
+  `initMultiTenant` accepts `tenantHostTemplate` (for example `"{id}.auth.example.com"`), served as `tenant_host_template` by `GET /tenants/deployment-options`.
+
+  `GET /tenants` with a search (`q`) for an organization-scoped user now searches every tenant they can access and pages the matches. It used to page their memberships first, so only one page of them was searched, and it combined the search with the tenant ids in a query not every adapter could parse. A search that matches more than 10,000 tenants is refused with 400 rather than answered in part.
+
+### Patch Changes
+
+- Updated dependencies [fb6746b]
+  - authhero@9.31.0
+  - @authhero/adapter-interfaces@4.27.0
+
 ## 15.7.1
 
 ### Patch Changes
