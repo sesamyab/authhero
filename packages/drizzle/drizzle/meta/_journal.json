@@ -134,6 +134,13 @@
       "when": 1793883216148,
       "tag": "0018_authentication_methods_totp_last_step",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1794496498440,
+      "tag": "0019_session_transfer",
+      "breakpoints": true
     }
   ]
 }

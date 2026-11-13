@@ -45,16 +45,20 @@ interface RefreshTokenItem extends DynamoDBBaseItem {
   rotated_to?: string;
   rotated_at?: string;
   revoked_at?: string;
+  session_transfer?: string; // JSON string (SessionTransferProvenance)
 }
 
 function toRefreshToken(item: RefreshTokenItem): RefreshToken {
-  const { tenant_id, device, resource_servers, ...rest } =
+  const { tenant_id, device, resource_servers, session_transfer, ...rest } =
     stripDynamoDBFields(item);
 
   const data = removeNullProperties({
     ...rest,
     device: JSON.parse(device),
     resource_servers: JSON.parse(resource_servers),
+    ...(session_transfer
+      ? { session_transfer: JSON.parse(session_transfer) }
+      : {}),
   });
 
   return refreshTokenSchema.parse(data);
@@ -166,6 +170,9 @@ export function createRefreshTokensAdapter(
         family_id: refreshToken.family_id,
         rotated_to: refreshToken.rotated_to,
         rotated_at: refreshToken.rotated_at,
+        session_transfer: refreshToken.session_transfer
+          ? JSON.stringify(refreshToken.session_transfer)
+          : undefined,
         created_at: now,
         updated_at: now,
       };
@@ -258,6 +265,11 @@ export function createRefreshTokensAdapter(
           refreshToken.resource_servers,
         );
       }
+      if (refreshToken.session_transfer !== undefined) {
+        updates.session_transfer = JSON.stringify(
+          refreshToken.session_transfer,
+        );
+      }
 
       // Remove id from updates
       delete updates.id;
@@ -332,6 +344,37 @@ export function createRefreshTokensAdapter(
         revoked_at,
         (item) => item.family_id === family_id,
       );
+    },
+
+    async isFamilyActive(
+      tenantId: string,
+      family_id: string,
+    ): Promise<boolean> {
+      const now = Date.now();
+      const notPast = (iso: string | undefined) =>
+        !iso || new Date(iso).getTime() > now;
+      // No GSI on family_id: scan the tenant's tokens like revokeMatching.
+      // The `id` match covers rows minted before `family_id` was stamped.
+      let page = 0;
+      const per_page = 100;
+      for (;;) {
+        const result = await queryWithPagination<RefreshTokenItem>(
+          ctx,
+          refreshTokenKeys.pk(tenantId),
+          { page, per_page },
+          { skPrefix: "REFRESH_TOKEN#" },
+        );
+        for (const item of result.items) {
+          if (item.family_id !== family_id && item.id !== family_id) continue;
+          if (item.revoked_at || item.rotated_to) continue;
+          if (notPast(item.expires_at) && notPast(item.idle_expires_at)) {
+            return true;
+          }
+        }
+        if (result.items.length < per_page) break;
+        page++;
+      }
+      return false;
     },
   };
 }

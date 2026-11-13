@@ -1,4 +1,14 @@
-import { eq, and, lt, isNull, count as countFn, asc, desc } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  lt,
+  gt,
+  isNull,
+  count as countFn,
+  asc,
+  desc,
+} from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
   RefreshToken,
@@ -34,6 +44,7 @@ function sqlToRefreshToken(row: any): RefreshToken {
     rotating,
     auth_strategy_strategy,
     auth_strategy_strategy_type,
+    session_transfer,
     ...rest
   } = row;
 
@@ -62,6 +73,9 @@ function sqlToRefreshToken(row: any): RefreshToken {
     rotating: !!rotating,
     device: parseJsonIfString(device, {}),
     resource_servers: parseJsonIfString(resource_servers, []),
+    ...(session_transfer
+      ? { session_transfer: parseJsonIfString(session_transfer) }
+      : {}),
     // Stored as two flat columns; the adapter shape nests them. Only present
     // when both halves are set — a half-populated strategy is meaningless.
     ...(auth_strategy_strategy && auth_strategy_strategy_type
@@ -110,6 +124,9 @@ export function createRefreshTokensAdapter(db: DrizzleDb) {
         expires_at_ts: isoToDbDate(token.expires_at),
         idle_expires_at_ts: isoToDbDate(token.idle_expires_at),
         last_exchanged_at_ts: isoToDbDate(token.last_exchanged_at),
+        session_transfer: token.session_transfer
+          ? JSON.stringify(token.session_transfer)
+          : null,
       };
 
       // Insert the refresh token and keep the parent login_session alive
@@ -207,6 +224,8 @@ export function createRefreshTokensAdapter(db: DrizzleDb) {
         updateData.last_exchanged_at_ts = isoToDbDate(token.last_exchanged_at);
       if (token.revoked_at !== undefined)
         updateData.revoked_at_ts = isoToDbDate(token.revoked_at);
+      if (token.session_transfer !== undefined)
+        updateData.session_transfer = JSON.stringify(token.session_transfer);
 
       const results = await db
         .update(refreshTokens)
@@ -396,6 +415,44 @@ export function createRefreshTokensAdapter(db: DrizzleDb) {
         .returning();
 
       return results.length;
+    },
+
+    async isFamilyActive(
+      tenant_id: string,
+      family_id: string,
+    ): Promise<boolean> {
+      const now = Date.now();
+
+      // Two keyed probes rather than one OR across family_id/id so each can
+      // use its own index. The `id` probe covers rows minted before
+      // `family_id` was stamped.
+      const live = (column: "family_id" | "id") =>
+        db
+          .select({ id: refreshTokens.id })
+          .from(refreshTokens)
+          .where(
+            and(
+              eq(refreshTokens.tenant_id, tenant_id),
+              eq(refreshTokens[column], family_id),
+              isNull(refreshTokens.revoked_at_ts),
+              isNull(refreshTokens.rotated_to),
+              or(
+                isNull(refreshTokens.expires_at_ts),
+                gt(refreshTokens.expires_at_ts, now),
+              ),
+              or(
+                isNull(refreshTokens.idle_expires_at_ts),
+                gt(refreshTokens.idle_expires_at_ts, now),
+              ),
+            ),
+          )
+          .limit(1)
+          .get();
+
+      if (await live("family_id")) {
+        return true;
+      }
+      return !!(await live("id"));
     },
   };
 }

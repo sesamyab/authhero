@@ -16,6 +16,10 @@ export const codeTypeSchema = z.enum([
   // Same idea for the `jti` of a Custom Token Exchange subject token verified
   // by a declarative token exchange profile.
   "subject_token_jti",
+  // A session_transfer_token (Auth0 Native to Web SSO). `code_id` is the
+  // SHA-256 of the token, never the token itself; `login_id` points at a
+  // login session carrying what the token transfers.
+  "session_transfer_token",
 ]);
 export type CodeType = z.infer<typeof codeTypeSchema>;
 

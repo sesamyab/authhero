@@ -5,6 +5,7 @@ import {
   SILENT_AUTH_MAX_AGE_IN_SECONDS,
   SILENT_COOKIE_NAME,
 } from "../constants";
+import { SESSION_TRANSFER_COOKIE_NAME } from "./session-transfer-token";
 
 function getCookieName(tenant_id: string) {
   return `${tenant_id}-${SILENT_COOKIE_NAME}`;
@@ -309,4 +310,44 @@ export function serializeLastUsedConnectionCookie(
     maxAge: LAST_USED_CONNECTION_MAX_AGE_IN_SECONDS,
     domain: hostname ? getWildcardDomain(hostname) : undefined,
   });
+}
+
+/**
+ * The session_transfer_token an application placed in the
+ * `auth0_session_transfer_token` cookie before sending the browser to
+ * /authorize (Auth0 "Native to Web SSO"). AuthHero never sets this cookie; the
+ * application does, on a domain it shares with the tenant.
+ */
+export function getSessionTransferCookie(
+  cookieHeaders?: string,
+): string | undefined {
+  if (!cookieHeaders) {
+    return undefined;
+  }
+  return parse(cookieHeaders)[SESSION_TRANSFER_COOKIE_NAME] || undefined;
+}
+
+/**
+ * Expire the session transfer cookie once it has been presented. The token is
+ * single-use, so leaving it in the jar only makes every later /authorize log a
+ * failed transfer. The application chose the cookie's scope, which the request
+ * does not reveal, so both the host-only and the parent-domain variant are
+ * cleared. Returns Set-Cookie header values.
+ */
+export function clearSessionTransferCookie(hostname?: string): string[] {
+  const insecure = isInsecureDevHost(hostname);
+  const baseOptions = {
+    path: "/",
+    secure: !insecure,
+    maxAge: 0,
+  };
+  const domain = hostname ? getWildcardDomain(hostname) : undefined;
+
+  const cleared = [serialize(SESSION_TRANSFER_COOKIE_NAME, "", baseOptions)];
+  if (domain) {
+    cleared.push(
+      serialize(SESSION_TRANSFER_COOKIE_NAME, "", { ...baseOptions, domain }),
+    );
+  }
+  return cleared;
 }

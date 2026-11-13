@@ -25,6 +25,7 @@ export function create(db: Kysely<Database>) {
       resource_servers,
       rotating,
       auth_strategy,
+      session_transfer,
       ...tokenWithoutDates
     } = refreshToken;
     const nowTs = Date.now();
@@ -47,6 +48,9 @@ export function create(db: Kysely<Database>) {
           // Flattened on write, re-nested on read (see list/get).
           auth_strategy_strategy: auth_strategy?.strategy ?? null,
           auth_strategy_strategy_type: auth_strategy?.strategy_type ?? null,
+          session_transfer: session_transfer
+            ? JSON.stringify(session_transfer)
+            : null,
           device: JSON.stringify(device),
           resource_servers: JSON.stringify(resource_servers),
           created_at_ts: nowTs,

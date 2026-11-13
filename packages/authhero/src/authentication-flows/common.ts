@@ -13,9 +13,12 @@ import {
   LogTypes,
   PRESERVE_LOCATION_HEADER,
   RefreshToken,
+  SessionTransferProvenance,
   User,
   TokenResponse,
 } from "@authhero/adapter-interfaces";
+import { resolveTransferredRefreshTokenPolicy } from "../helpers/session-transfer";
+import { stripSessionTransferToken } from "../utils/session-transfer-token";
 import {
   formatRefreshToken,
   generateRefreshTokenParts,
@@ -595,7 +598,7 @@ export async function createAuthTokens(
           ip: ctx.var.ip || "",
           user_agent: ctx.var.useragent || "",
           method: ctx.req.method,
-          url: ctx.req.url,
+          url: stripSessionTransferToken(ctx.req.url),
         },
         scope: authParams.scope || "",
         grant_type: grantType ?? "",
@@ -814,6 +817,17 @@ export interface CreateRefreshTokenParams {
   organization?: string;
   auth_connection?: string;
   auth_strategy?: LoginSessionAuthStrategy;
+  /**
+   * Set when the session came from a session_transfer_token. The token then
+   * carries the same provenance, so it ends with the refresh token the
+   * session was transferred from.
+   */
+  session_transfer?: SessionTransferProvenance;
+  /**
+   * Upper bound for the token's absolute and idle expiry. Used to tie a
+   * refresh token to the lifetime of the session it was issued under.
+   */
+  max_expires_at?: string;
 }
 
 export interface CreatedRefreshToken {
@@ -824,6 +838,16 @@ export interface CreatedRefreshToken {
 function lifetimeToIso(lifetimeHours?: number): string | undefined {
   if (!lifetimeHours) return undefined;
   return new Date(Date.now() + lifetimeHours * 60 * 60 * 1000).toISOString();
+}
+
+/** The earlier of an expiry and a cap; an absent expiry means "never". */
+function capExpiry(
+  expiresAt: string | undefined,
+  cap: string | undefined,
+): string | undefined {
+  if (!cap) return expiresAt;
+  if (!expiresAt) return cap;
+  return Date.parse(expiresAt) <= Date.parse(cap) ? expiresAt : cap;
 }
 
 export async function createRefreshToken(
@@ -855,8 +879,11 @@ export async function createRefreshToken(
     auth_connection: params.auth_connection,
     auth_strategy: params.auth_strategy,
     client_id: client.client_id,
-    idle_expires_at: idleExpiresAt,
-    expires_at: absoluteExpiresAt,
+    idle_expires_at: idleExpiresAt
+      ? capExpiry(idleExpiresAt, params.max_expires_at)
+      : undefined,
+    expires_at: capExpiry(absoluteExpiresAt, params.max_expires_at),
+    session_transfer: params.session_transfer,
     user_id: params.user.user_id,
     device: {
       last_ip: ctx.var.ip,
@@ -2206,22 +2233,36 @@ export async function createFrontChannelAuthResponse(
     !responseTypeIncludesCode &&
     !params.impersonatingUser
   ) {
-    const newRefreshToken = await createRefreshToken(ctx, {
-      user,
+    // A session created from a session_transfer_token only yields a refresh
+    // token when this client allows it; the login still succeeds without one.
+    // The lookup is paid only here, where a refresh token is about to be
+    // minted outside the code exchange.
+    const refreshTokenPolicy = resolveTransferredRefreshTokenPolicy(
       client,
-      login_id: params.loginSession?.id || "",
-      session_id,
-      organization: authParams.organization,
-      // `currentLoginSession`, not `params.loginSession`: authenticateLoginSession
-      // writes auth_connection and auth_strategy onto the row, so the object
-      // passed in from before authentication is stale. `session_id` above is
-      // already read from the refreshed row for the same reason.
-      auth_connection: currentLoginSession.auth_connection,
-      auth_strategy: currentLoginSession.auth_strategy,
-      scope: authParams.scope,
-      audience: authParams.audience,
-    });
-    refresh_token = newRefreshToken.wireToken;
+      session_id
+        ? await ctx.env.data.sessions.get(client.tenant.id, session_id)
+        : null,
+    );
+    if (refreshTokenPolicy.allowed) {
+      const newRefreshToken = await createRefreshToken(ctx, {
+        user,
+        client,
+        login_id: params.loginSession?.id || "",
+        session_id,
+        organization: authParams.organization,
+        // `currentLoginSession`, not `params.loginSession`: authenticateLoginSession
+        // writes auth_connection and auth_strategy onto the row, so the object
+        // passed in from before authentication is stale. `session_id` above is
+        // already read from the refreshed row for the same reason.
+        auth_connection: currentLoginSession.auth_connection,
+        auth_strategy: currentLoginSession.auth_strategy,
+        scope: authParams.scope,
+        audience: authParams.audience,
+        session_transfer: refreshTokenPolicy.session_transfer,
+        max_expires_at: refreshTokenPolicy.max_expires_at,
+      });
+      refresh_token = newRefreshToken.wireToken;
+    }
   }
 
   if (responseMode === AuthorizationResponseMode.SAML_POST) {

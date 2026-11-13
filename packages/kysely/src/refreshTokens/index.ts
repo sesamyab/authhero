@@ -8,6 +8,7 @@ import { revokeByLoginSession } from "./revokeByLoginSession";
 import { revokeBySession } from "./revokeBySession";
 import { revokeByUser } from "./revokeByUser";
 import { revokeFamily } from "./revokeFamily";
+import { isFamilyActive } from "./isFamilyActive";
 import { update } from "./update";
 import { list } from "./list";
 import { Database } from "../db";
@@ -25,6 +26,7 @@ export function createRefreshTokensAdapter(
     revokeBySession: revokeBySession(db),
     revokeByUser: revokeByUser(db),
     revokeFamily: revokeFamily(db),
+    isFamilyActive: isFamilyActive(db),
     update: update(db),
   };
 }

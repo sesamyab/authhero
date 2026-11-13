@@ -13,6 +13,7 @@ import {
 } from "./webhooks";
 import { createTokenAPI } from "./helpers/token-api";
 import { runBlockingActions } from "./lifecycle-codehooks";
+import { stripSessionTransferToken } from "../utils/session-transfer-token";
 
 // Matches WebhookDestination's default delivery timeout.
 const VALIDATE_SIGNUP_WEBHOOK_TIMEOUT_MS = 10_000;
@@ -107,7 +108,7 @@ export async function validateSignupEmail(
       method: ctx.req.method,
       ip: ctx.var.ip || ctx.get("ip") || "",
       user_agent: ctx.var.useragent || ctx.get("useragent") || "",
-      url: ctx.req.url,
+      url: stripSessionTransferToken(ctx.req.url),
     };
 
     let denied = false;
@@ -157,7 +158,7 @@ export async function validateSignupEmail(
         method: ctx.req.method,
         ip: ctx.var.ip || "",
         user_agent: ctx.var.useragent || "",
-        url: ctx.req.url,
+        url: stripSessionTransferToken(ctx.req.url),
       },
     },
   );

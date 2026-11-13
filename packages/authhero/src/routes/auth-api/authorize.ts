@@ -13,15 +13,25 @@ import {
   Strategy,
   claimsRequestSchema,
   isDatabaseConnectionStrategy,
+  resolveSessionTransfer,
+  type SessionTransferAuthenticationMethod,
   tokenResponseSchema,
 } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
 import {
+  clearSessionTransferCookie,
   getAllAuthCookies,
   getSessionCookieDiagnostics,
+  getSessionTransferCookie,
   type SessionCookieDiagnostics,
 } from "../../utils/cookies";
+import {
+  isSessionTransferParentActive,
+  redeemSessionTransferToken,
+} from "../../helpers/session-transfer";
+import { revokeSessionRefreshTokens } from "../../helpers/revoke-session-refresh-tokens";
+import { toMutableResponse } from "../../helpers/mutable-response";
 import { universalAuth } from "../../authentication-flows/universal";
 import { ticketAuth } from "../../authentication-flows/ticket";
 import { silentAuth } from "../../authentication-flows/silent";
@@ -209,6 +219,13 @@ const getRoot = defineRoute({
             .openapi({
               description:
                 "URL referencing a Request Object JWT (OpenID Connect Core Section 6.2). The URL is fetched with SSRF protection.",
+            })
+            .optional(),
+          session_transfer_token: z
+            .string()
+            .openapi({
+              description:
+                "Single-use token from a refresh token exchange with the `urn:{domain}:session_transfer` audience. Logs the browser in as the token's user when the client allows the `query` authentication method. An unusable token is ignored and the normal login flow continues.",
             })
             .optional(),
         })
@@ -754,6 +771,34 @@ const getRoot = defineRoute({
       }
     }
 
+    // A session created from a session_transfer_token ends with the refresh
+    // token it was minted from, when the sending client asked for that. The
+    // check runs here, where the session is used, and only for such sessions.
+    if (
+      validSession?.session_transfer?.cascade_revocation &&
+      !(await isSessionTransferParentActive(
+        env.data,
+        client.tenant.id,
+        validSession.session_transfer,
+      ))
+    ) {
+      const revokedAt = new Date().toISOString();
+      await env.data.sessions.update(client.tenant.id, validSession.id, {
+        revoked_at: revokedAt,
+      });
+      await revokeSessionRefreshTokens(
+        env.data,
+        client.tenant.id,
+        validSession,
+        revokedAt,
+      );
+      validSession = undefined;
+      sessionLookup = "revoked";
+    }
+
+    // The session the browser holds, whether or not this client uses it.
+    const browserSession = validSession;
+
     // If SSO is disabled for this client, ignore any existing session
     if (client.sso_disabled) {
       validSession = undefined;
@@ -768,6 +813,81 @@ const getRoot = defineRoute({
       sessionLookup,
     );
 
+    // Session transfer: a single-use token minted by another application of
+    // this tenant logs the browser in as its user. It is read from the plain
+    // query string, or from a cookie when the client accepts that. The cookie
+    // is ignored silently otherwise: the browser sends it to every client on
+    // this domain, so its presence says nothing about this one.
+    const transferMethods = resolveSessionTransfer(
+      client.session_transfer,
+    ).allowed_authentication_methods;
+    const queryTransferToken = queryParams.session_transfer_token || undefined;
+    const cookieTransferToken = transferMethods.includes("cookie")
+      ? getSessionTransferCookie(ctx.req.header("cookie"))
+      : undefined;
+    let presentedTransfer:
+      | { token: string; method: SessionTransferAuthenticationMethod }
+      | undefined;
+    if (
+      queryTransferToken &&
+      (transferMethods.includes("query") || !cookieTransferToken)
+    ) {
+      presentedTransfer = { token: queryTransferToken, method: "query" };
+    } else if (cookieTransferToken) {
+      presentedTransfer = { token: cookieTransferToken, method: "cookie" };
+    }
+
+    // A request that asks for a fresh login, or for one specific way of logging
+    // in, would not use the session. The token is left unspent in that case.
+    const promptValues = prompt?.split(" ") ?? [];
+    const wantsFreshLogin =
+      promptValues.includes("login") ||
+      promptValues.includes("select_account") ||
+      screen_hint === "login" ||
+      (!!connection && connection !== Strategy.EMAIL) ||
+      !!login_ticket;
+
+    let transferLoggedIn = false;
+    let clearTransferCookie = false;
+    if (presentedTransfer && !wantsFreshLogin) {
+      clearTransferCookie = presentedTransfer.method === "cookie";
+      const redemption = await redeemSessionTransferToken(ctx, {
+        client,
+        token: presentedTransfer.token,
+        method: presentedTransfer.method,
+        existingSession: browserSession,
+        organization,
+      });
+      if (redemption.outcome === "session_created") {
+        validSession = redemption.session;
+        transferLoggedIn = true;
+      } else if (redemption.outcome === "session_kept") {
+        // Already logged in as the token's user. A valid transfer logs in even
+        // for a client that otherwise ignores the browser's session.
+        validSession = browserSession;
+        transferLoggedIn = true;
+      } else if (redemption.outcome === "session_revoked") {
+        validSession = undefined;
+      }
+    }
+
+    // Post-login hooks see where the session came from on every login that
+    // uses it, not only the one that redeemed the token.
+    if (validSession?.session_transfer) {
+      ctx.set("session_transfer", validSession.session_transfer);
+    }
+
+    // A token that arrived in a cookie works once, so the cookie is expired on
+    // the way out whatever the response is.
+    const finish = (response: Response): Response => {
+      if (!clearTransferCookie) return response;
+      const mutable = toMutableResponse(response);
+      for (const cookie of clearSessionTransferCookie(ctx.var.host)) {
+        mutable.headers.append("set-cookie", cookie);
+      }
+      return mutable;
+    };
+
     // Silent authentication with iframe
     if (prompt == "none") {
       if (!sanitizedRedirectUri || !state || !response_type) {
@@ -776,7 +896,7 @@ const getRoot = defineRoute({
             "Missing required parameters for silent auth: redirect_uri, state, and response_type",
         });
       }
-      return silentAuth({
+      const silentAuthResponse = await silentAuth({
         ctx,
         session: validSession ?? expiredSession,
         redirect_uri: sanitizedRedirectUri,
@@ -792,25 +912,31 @@ const getRoot = defineRoute({
         organization,
         max_age: max_age ? parseInt(max_age, 10) : undefined,
       });
+      return finish(silentAuthResponse);
     }
 
     // If there's only one connection and it's a OIDC provider, we can redirect
     // to that provider directly. Database connections are excluded via
     // isDatabaseConnectionStrategy since their strategy field can be any of
     // the "auth0"/"auth2"/"Username-Password-Authentication" spellings.
+    // A session transfer that just logged the user in completes with that
+    // session instead: sending them to the provider would discard it.
     if (
+      !transferLoggedIn &&
       client.connections.length === 1 &&
       client.connections[0] &&
       !UI_STRATEGIES.includes(client.connections[0].strategy || "") &&
       !isDatabaseConnectionStrategy(client.connections[0].strategy)
     ) {
-      return connectionAuth(
-        ctx,
-        client,
-        client.connections[0].name,
-        authParams,
-        existingSession,
-        sessionCookie,
+      return finish(
+        await connectionAuth(
+          ctx,
+          client,
+          client.connections[0].name,
+          authParams,
+          existingSession,
+          sessionCookie,
+        ),
       );
     }
 
@@ -854,9 +980,9 @@ const getRoot = defineRoute({
     });
 
     if (universalAuthResult instanceof Response) {
-      return universalAuthResult;
+      return finish(universalAuthResult);
     } else {
-      return ctx.json(universalAuthResult);
+      return finish(ctx.json(universalAuthResult));
     }
   },
 });
