@@ -26,7 +26,6 @@ import {
   getSelectedDomainFromStorage,
 } from "@/utils/domainUtils";
 import getToken from "@/utils/tokenUtils";
-import { isReadyTenant } from "@/utils/tenantState";
 
 /**
  * Tenant switcher pill in the top bar.
@@ -40,7 +39,7 @@ import { isReadyTenant } from "@/utils/tenantState";
  * dataProvider closure captures tenantId at mount.
  */
 
-type Tenant = { id: string; name?: string; provisioning_state?: string | null };
+type Tenant = { id: string; name?: string };
 
 const SEARCH_THRESHOLD = 5;
 const PAGE_SIZE = 100;
@@ -87,47 +86,9 @@ async function fetchTenants(search: string, perPage: number): Promise<unknown> {
   return res.json();
 }
 
-// Enough to find a ready tenant among the first ones a user sees; a user with
-// more than this many tenants has used the product before.
-const READY_CHECK_PAGE_SIZE = 50;
-
-/**
- * Whether the user has a tenant they can open. Only asked outside a tenant
- * (the tenants view): inside one there is always the current tenant. A user
- * whose only tenants are still being set up, or failed to be, is onboarding:
- * there is nowhere to navigate to, so the layout leaves navigation out.
- */
-export function useHasReadyTenant(
-  tenantId: string | undefined,
-): boolean | undefined {
-  const [hasReady, setHasReady] = useState<boolean>();
-  useEffect(() => {
-    if (tenantId) return;
-    let cancelled = false;
-    fetchTenants("", READY_CHECK_PAGE_SIZE)
-      .then((data) => {
-        if (cancelled) return;
-        const list: Tenant[] = Array.isArray(data)
-          ? (data as Tenant[])
-          : isTenantsEnvelope(data)
-            ? data.tenants
-            : [];
-        setHasReady(list.some(isReadyTenant));
-      })
-      .catch(() => {
-        // Keep the navigation: the pill still offers "Manage tenants".
-        if (!cancelled) setHasReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId]);
-  return tenantId ? true : hasReady;
-}
-
 /**
  * `hasReadyTenant` comes from the layout, which also hides the sidebar on the
- * same answer (see `useHasReadyTenant`).
+ * same answer (see `useHasReadyTenant` in `@/hooks`).
  */
 export function TenantSwitcher({
   hasReadyTenant,

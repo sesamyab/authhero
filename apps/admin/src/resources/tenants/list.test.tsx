@@ -108,10 +108,9 @@ describe("TenantsList empty state", () => {
       permissions: ["create:tenants"],
       url: `/tenants?filter=${encodeURIComponent(JSON.stringify({ q: "zzz" }))}`,
     });
-    await waitFor(() =>
-      expect(screen.queryByText(/No tenants yet/)).toBeNull(),
-    );
-    expect(screen.queryByText(/Create your first tenant/)).toBeNull();
+    // The list's own empty result, so the list has rendered.
+    expect(await screen.findByText(/No results/)).toBeTruthy();
+    expect(screen.queryByText(/No tenants yet|Welcome to/)).toBeNull();
   });
 });
 
@@ -159,21 +158,30 @@ describe("TenantsList while onboarding", () => {
     expect(await screen.findByText("Setup page for acme")).toBeTruthy();
   });
 
-  it("keeps the list once any tenant is ready", async () => {
+  it("keeps a failed tenant reachable in the list", async () => {
     renderList({
       tenants: [
         { id: "acme", friendly_name: "Acme", provisioning_state: "failed" },
-        { id: "beta", friendly_name: "Beta", provisioning_state: "ready" },
+        { id: "beta", friendly_name: "Beta", provisioning_state: "pending" },
       ],
       permissions: ["create:tenants"],
     });
-    expect(await screen.findByText("Beta")).toBeTruthy();
+    expect(await screen.findByText("Acme")).toBeTruthy();
     expect(screen.queryByText(/Setup page/)).toBeNull();
   });
 });
 
 describe("onboardingTenant", () => {
-  it("prefers a tenant being set up over a failed one", () => {
+  it("is the only tenant while it is being set up", () => {
+    expect(
+      onboardingTenant([{ id: "a", provisioning_state: "pending" }], 1)?.id,
+    ).toBe("a");
+  });
+
+  it("leaves a failed tenant, or more than one, to the list", () => {
+    expect(
+      onboardingTenant([{ id: "a", provisioning_state: "failed" }], 1),
+    ).toBeUndefined();
     expect(
       onboardingTenant(
         [
@@ -181,13 +189,7 @@ describe("onboardingTenant", () => {
           { id: "b", provisioning_state: "pending" },
         ],
         2,
-      )?.id,
-    ).toBe("b");
-  });
-
-  it("is undefined when the page does not hold every tenant", () => {
-    expect(
-      onboardingTenant([{ id: "a", provisioning_state: "pending" }], 5),
+      ),
     ).toBeUndefined();
   });
 });

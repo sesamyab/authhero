@@ -13,10 +13,8 @@ import { RefreshButton } from "@/components/admin/refresh-button";
 import { LocalesMenuButton } from "@/components/admin/locales-menu-button";
 import { Error } from "@/components/admin/error";
 import { Loading } from "@/components/admin/loading";
-import {
-  TenantSwitcher,
-  useHasReadyTenant,
-} from "@/components/admin/tenant-switcher";
+import { TenantSwitcher } from "@/components/admin/tenant-switcher";
+import { useHasReadyTenant } from "@/hooks/useHasReadyTenant";
 import { useTenantId } from "@/TenantContext";
 import { GlobalSearch } from "@/components/admin/global-search";
 import {

@@ -43,7 +43,10 @@ type Row = {
  */
 function renderSetup(
   rows: (Row | null)[],
-  { permissions = [] as string[] } = {},
+  {
+    permissions = [] as string[],
+    deploymentOptions = Promise.resolve(null) as Promise<unknown>,
+  } = {},
 ) {
   let call = 0;
   const getList = vi.fn(() => {
@@ -60,7 +63,7 @@ function renderSetup(
   );
   const dataProvider = testDataProvider({
     getList: getList as never,
-    getTenantDeploymentOptions: vi.fn(() => Promise.resolve(null)),
+    getTenantDeploymentOptions: vi.fn(() => deploymentOptions),
     listTenantOperations: vi.fn(() =>
       Promise.resolve({
         operations: [{ id: "op_1", kind: "provision", status: "running" }],
@@ -124,6 +127,43 @@ describe("TenantSetup", () => {
     renderSetup([null]);
     expect(await screen.findByText("Tenant not found")).toBeTruthy();
     expect(window.location.href).toBe("http://localhost/tenants/acme/setup");
+  });
+
+  it("looks the tenant up by its id", async () => {
+    const { getList } = renderSetup([pending]);
+    await screen.findByText("Setting up Acme");
+    expect(getList).toHaveBeenCalledWith(
+      "tenants",
+      expect.objectContaining({ filter: { q: 'id:"acme"' } }),
+    );
+  });
+
+  it("waits for the tenant's host even when it loads before the options", async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error("not yet")));
+    vi.stubGlobal("fetch", fetchMock);
+    let answerOptions: (value: unknown) => void = () => {};
+    try {
+      renderSetup([ready], {
+        deploymentOptions: new Promise((resolve) => {
+          answerOptions = resolve;
+        }),
+      });
+      await screen.findByText("Acme is ready");
+      answerOptions({
+        deployment_types: ["wfp"],
+        default_deployment_type: "wfp",
+        tenant_host_template: "{id}.auth.example.com",
+      });
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          "https://acme.auth.example.com/.well-known/openid-configuration",
+        ),
+      );
+      expect(screen.getByText("Waiting for it to come online…")).toBeTruthy();
+      expect(window.location.href).toBe("http://localhost/tenants/acme/setup");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("shows the provisioning steps to a user who may read operations", async () => {

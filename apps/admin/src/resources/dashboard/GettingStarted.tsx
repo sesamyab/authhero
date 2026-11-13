@@ -171,8 +171,8 @@ export function gettingStartedSteps(
     },
     {
       key: "users",
-      title: "Add a user or enable sign-up",
-      description: "Create a user, or let people sign up themselves.",
+      title: "Add your first user",
+      description: "Create a user, or sign up through the login page.",
       to: "/users",
       done: (progress.users ?? 0) > 0,
     },

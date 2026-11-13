@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { Building2, Database, Server } from "lucide-react";
 import { Create, SimpleForm, TextInput } from "@/components/admin";
 import { SaveButton } from "@/components/admin/form";
+import { Loading } from "@/components/admin/loading";
 import {
   Card,
   CardContent,
@@ -273,8 +274,8 @@ export function TenantsCreate() {
   );
 
   // Which layout is not known until the list answers; wait rather than
-  // flash one and switch to the other.
-  if (hasOtherTenants === undefined) return null;
+  // flash one and switch to the other. Loading shows only if it takes long.
+  if (hasOtherTenants === undefined) return <Loading />;
 
   // A user with no tenant is onboarding: the form sits in a centred card like
   // the empty state before it and the setup page after it.

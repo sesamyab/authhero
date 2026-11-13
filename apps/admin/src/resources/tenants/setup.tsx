@@ -83,11 +83,15 @@ function useProvisionEvents(
 /**
  * Waits for the tenant's own host to answer discovery before sending the user
  * in. Without a host template there is nothing to ask, so it is ready at once.
+ * `ready` must only turn true once the template is known, or a tenant that
+ * loads first would skip the wait.
  */
 function useReachable(host: string | undefined, ready: boolean): boolean {
   const [reachable, setReachable] = useState(false);
 
   useEffect(() => {
+    // A new host is asked afresh.
+    setReachable(false);
     if (!ready) return;
     if (!host) {
       setReachable(true);
@@ -162,7 +166,8 @@ export function TenantSetup() {
   // Read from the list the user can see rather than with getOne, whose
   // fallback for a tenant it cannot find is a bare record with no state;
   // that would read as "ready" and send the user into a tenant they cannot
-  // open. A tenant missing from the list is reported as not found.
+  // open. Searched by id so it is found however many tenants the user has,
+  // and matched exactly; a tenant missing from the answer is not found.
   const findTenant = (rows: TenantRow[] | undefined) =>
     rows?.find((row) => row.id === tenantId);
   const {
@@ -173,8 +178,9 @@ export function TenantSetup() {
   } = useGetList<TenantRow>(
     "tenants",
     {
-      pagination: { page: 1, perPage: 100 },
+      pagination: { page: 1, perPage: 10 },
       sort: { field: "id", order: "ASC" },
+      filter: { q: `id:"${tenantId}"` },
     },
     {
       refetchInterval: (query) =>
@@ -196,7 +202,10 @@ export function TenantSetup() {
   );
   const template = deploymentOptions?.tenant_host_template;
   const host = template ? tenantHost(template, tenantId) : undefined;
-  const reachable = useReachable(host, state === "ready");
+  const reachable = useReachable(
+    host,
+    state === "ready" && deploymentOptions !== undefined,
+  );
   const tenantUrl = `${getBasePath()}/${encodeURIComponent(tenantId)}`;
 
   useEffect(() => {

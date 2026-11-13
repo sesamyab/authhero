@@ -4,6 +4,7 @@ import { ListBase, useListContext, useRecordContext } from "ra-core";
 import { History, Rocket, Users } from "lucide-react";
 import { BadgeField, DataTable, TextInput } from "@/components/admin";
 import { ListView } from "@/components/admin/list";
+import { Loading } from "@/components/admin/loading";
 import { CreateButton } from "@/components/admin/create-button";
 import { ExportButton } from "@/components/admin/export-button";
 import { JsonActionsButton } from "@/components/JsonActionsButton";
@@ -11,22 +12,21 @@ import { Button } from "@/components/ui/button";
 import { useHasChildren } from "@/hooks/useHasChildren";
 import { useManagementPermissions } from "@/hooks/useManagementPermissions";
 import { getBasePath } from "@/utils/runtimeConfig";
-import { isReadyTenant } from "@/utils/tenantState";
 import { TenantsEmptyState } from "./empty-state";
 
 /**
- * The tenant to show the setup page of, for a user still onboarding: every
- * tenant they have is being set up or failed to be. One being set up wins
- * over a failed one. Undefined once any tenant is ready, or when the page
- * does not hold all of them.
+ * The tenant to show the setup page of: a user's first and only tenant while
+ * it is being set up, which is all there is to look at. Anything else keeps
+ * the list, so a failed tenant, or more than one, stays reachable there with
+ * its operations and Create.
  */
 export function onboardingTenant(
   rows: TenantRecord[],
   total: number | undefined,
 ): TenantRecord | undefined {
-  if (rows.length === 0 || (total ?? rows.length) > rows.length) return;
-  if (rows.some(isReadyTenant)) return;
-  return rows.find((row) => row.provisioning_state === "pending") ?? rows[0];
+  if (rows.length !== 1 || (total ?? 1) !== 1) return;
+  const [only] = rows;
+  return only?.provisioning_state === "pending" ? only : undefined;
 }
 
 type TenantRecord = {
@@ -191,8 +191,9 @@ function TenantsListContent() {
   const isFiltered = Object.keys(filterValues ?? {}).length > 0;
   // Until both answers are in it is not known whether this is the list or
   // the empty state; showing the list meanwhile flashes it at a new user.
-  // A search keeps the list, which renders its own loading state.
-  if ((isPending || loading) && !isFiltered && !error) return null;
+  // A search keeps the list, which renders its own loading state. Loading
+  // shows only if it takes long.
+  if ((isPending || loading) && !isFiltered && !error) return <Loading />;
   const isEmpty = total === 0 || (total === undefined && rowCount === 0);
   if (!error && isEmpty && !isFiltered) {
     return <TenantsEmptyState canCreate={canCreate} />;
