@@ -121,6 +121,8 @@ When a user has an existing session:
 3. Existing session is linked to the new login session
 4. No new session is created - the existing one is reused
 
+The session cookie belongs to one domain, so this only works between applications that reach AuthHero through the same domain. To carry a user to an application on another domain, or from a native app into a browser, use [Session Transfer](/features/session-transfer).
+
 ### Example Flow
 
 #### First Login
