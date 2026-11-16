@@ -55,7 +55,7 @@ import { resolveLanguage, resolveLocale } from "../../utils/locale";
 import { nanoid } from "nanoid";
 import { getEnrichedClient } from "../../helpers/client";
 import { prefetchClientBundle } from "../../helpers/prefetch-client-bundle";
-import { isCimdClientId } from "../../helpers/cimd";
+import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS } from "../../constants";
 
 import { defineRoute } from "../../utils/define-route";
@@ -1073,7 +1073,11 @@ const getAcceptInvitation = defineRoute({
         tenant_id: tenantId,
       }).catch(() => {});
     }
-    const enriched = await getEnrichedClient(ctx.env, invite.client_id);
+    const enriched = await getEnrichedClient(
+      ctx.env,
+      invite.client_id,
+      cimdTenantHint(invite.client_id, tenantId),
+    );
     const redirectUri = enriched.callbacks?.[0];
     if (!redirectUri) {
       throw new HTTPException(400, {
@@ -1508,7 +1512,11 @@ const getPasswordChangeTicket = defineRoute({
         tenant_id: tenantId,
       }).catch(() => {});
     }
-    const enriched = await getEnrichedClient(ctx.env, clientId);
+    const enriched = await getEnrichedClient(
+      ctx.env,
+      clientId,
+      cimdTenantHint(clientId, tenantId),
+    );
     const redirectUri = meta.result_url || enriched.callbacks?.[0];
     if (!redirectUri) {
       await logMessage(ctx, tenantId, {

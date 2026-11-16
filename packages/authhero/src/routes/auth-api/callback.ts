@@ -15,6 +15,7 @@ import { JSONHTTPException } from "../../errors/json-http-exception";
 
 import { getEnrichedClient } from "../../helpers/client";
 import { setTenantId } from "../../helpers/set-tenant-id";
+import { resolveLoginSessionTenant } from "../../helpers/login-session-tenant";
 import { getIssuer } from "../../variables";
 
 function redirectToErrorPage(
@@ -54,7 +55,12 @@ async function returnError(
     ctx.var.tenant_id,
     oauth2code.login_id,
   );
-  if (!loginSession) {
+  // A session of another tenant than the request resolved is treated as
+  // missing (some adapters load the session by id alone).
+  const sessionTenant = loginSession
+    ? resolveLoginSessionTenant(ctx.var.tenant_id, loginSession)
+    : undefined;
+  if (!loginSession || !sessionTenant?.ok) {
     return redirectToErrorPage(ctx, "session_not_found");
   }
 
@@ -63,22 +69,24 @@ async function returnError(
     throw new HTTPException(400, { message: "Redirect uri not found" });
   }
 
+  // /callback is state-keyed, so the tenant middleware leaves tenant_id unset
+  // on a host that doesn't identify the tenant. Take it from the login
+  // session row, as connectionCallback does: a CIMD client_id has a stub row
+  // in every tenant that uses it and can't identify the tenant (#1731).
   let client: Awaited<ReturnType<typeof getEnrichedClient>> | undefined;
   if (loginSession.authParams.client_id) {
     try {
       client = await getEnrichedClient(
         ctx.env,
         loginSession.authParams.client_id,
-        ctx.var.tenant_id,
+        sessionTenant.tenantId,
       );
     } catch {
       // fall back to /u/login/identifier
     }
   }
 
-  // /callback is state-keyed, so the tenant middleware leaves tenant_id unset
-  // on a host that doesn't identify the tenant. Take it from the session's
-  // client, as connectionCallback does, so the log isn't written without one.
+  // Stamp the tenant on the context so the log isn't written without one.
   if (client) {
     setTenantId(ctx, client.tenant.id);
     if (isDeviceLoginSession(loginSession.state_data))

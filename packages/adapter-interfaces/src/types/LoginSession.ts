@@ -77,6 +77,11 @@ export const loginSessionSchema = loginSessionInsertSchema.extend({
   }),
   created_at: z.string(),
   updated_at: z.string(),
+  // The tenant the login session row belongs to. State-keyed routes
+  // (/callback, /authorize/resume, …) load the session before the request
+  // has resolved a tenant, so this is the authoritative source for which
+  // tenant the flow runs in. Set by the adapters on read; ignored on write.
+  tenant_id: z.string().optional(),
 });
 
 export type LoginSession = z.infer<typeof loginSessionSchema>;

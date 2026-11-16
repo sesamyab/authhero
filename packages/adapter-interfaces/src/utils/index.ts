@@ -12,3 +12,4 @@ export * from "./lucene";
 export * from "./session-retention";
 export * from "./username-validation";
 export * from "./feature-not-supported";
+export * from "./client-id";
