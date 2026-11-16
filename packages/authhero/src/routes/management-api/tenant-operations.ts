@@ -359,14 +359,10 @@ const createTenantOperation = defineRoute({
       const recent = await ctx.env.data.tenantOperations?.list({
         tenant_id: tenantId,
         kind: "upgrade",
-        per_page: 20,
+        status: ["pending", "running"],
+        per_page: 1,
       });
-      if (
-        recent?.operations.some(
-          (operation) =>
-            operation.status === "pending" || operation.status === "running",
-        )
-      ) {
+      if (recent && recent.operations.length > 0) {
         throw new HTTPException(409, {
           message: "A retry for this tenant is already in progress",
         });
