@@ -750,6 +750,21 @@ describe("management-api tenant operations: who reaches which tenant", () => {
       expect(response.status).toBe(404);
     });
 
+    it("lets an operator-scope holder outside the tenant's organization enqueue any kind", async () => {
+      const { app, env } = await setup();
+      await env.data.tenants.update(CHILD, { provisioning_state: "ready" });
+      for (const scope of ["create:tenant_operations", "create:rollouts"]) {
+        const token = await createToken({
+          user_id: OUTSIDER,
+          aud: "urn:authhero:management",
+          permissions: ["create:tenant_operations", scope],
+        });
+        for (const kind of ["upgrade", "sync-defaults"]) {
+          expect((await post(app, env, token, kind)).status).toBe(201);
+        }
+      }
+    });
+
     it("keeps create:tenant_operations as the operator scope for every kind", async () => {
       const { app, env } = await setup();
       await env.data.tenants.update(CHILD, { provisioning_state: "ready" });
