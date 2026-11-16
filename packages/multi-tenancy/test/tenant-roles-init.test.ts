@@ -288,6 +288,44 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
     expect(await roleNames("auth2|customer", org.id)).toEqual(["Tenant Owner"]);
   });
 
+  it("reads nothing about the creator after the tenant row exists, including the global admin check", async () => {
+    await newUser("auth2|customer");
+    const creator = await data.roles.create(CP, {
+      name: DEFAULT_SELF_SERVICE_ROLE_NAME,
+    });
+    await data.userRoles.create(CP, "auth2|customer", creator.id, "");
+    // Once the tenant row is written, every read the creator's membership
+    // depends on fails: roles, the creator's roles and their permissions.
+    let tenantWritten = false;
+    const createTenantRow = data.tenants.create.bind(data.tenants);
+    data.tenants.create = (async (
+      ...args: Parameters<typeof createTenantRow>
+    ) => {
+      const tenant = await createTenantRow(...args);
+      tenantWritten = true;
+      return tenant;
+    }) as typeof createTenantRow;
+    const guard = <T extends (...args: never[]) => Promise<unknown>>(fn: T) =>
+      (async (...args: Parameters<T>) => {
+        if (tenantWritten) throw new Error("db down");
+        return fn(...args);
+      }) as unknown as T;
+    data.roles.list = guard(data.roles.list.bind(data.roles));
+    data.userRoles.list = guard(data.userRoles.list.bind(data.userRoles));
+    data.rolePermissions.list = guard(
+      data.rolePermissions.list.bind(data.rolePermissions),
+    );
+
+    const response = await createTenant("auth2|customer", "globex");
+
+    expect(response.status).toBe(201);
+    tenantWritten = false;
+    const org = (await data.organizations.list(CP)).organizations.find(
+      (o) => o.name === "globex",
+    )!;
+    expect(await roleNames("auth2|customer", org.id)).toEqual(["Tenant Owner"]);
+  });
+
   it("leaves an earlier creator on the role they already have", async () => {
     await newUser("auth2|early");
     await createTenant("auth2|early", "first");

@@ -29,6 +29,17 @@ import {
 } from "./tenant-roles";
 
 /**
+ * What `beforeCreate` read for a request, so `afterCreate` reads nothing a
+ * second time after the tenant row exists: a failure then would leave the
+ * tenant behind. The creator's roles, and whether the creator already holds the
+ * global `admin:organizations`. Keyed by the request's context, one create each.
+ */
+type PreflightResult = Awaited<ReturnType<typeof resolveCreatorRoles>> & {
+  hasGlobalOrgAdmin?: boolean;
+};
+const preflight = new WeakMap<object, PreflightResult>();
+
+/**
  * Creates hooks for tenant provisioning and deprovisioning.
  *
  * This handles:
@@ -40,14 +51,6 @@ import {
  * @param config - Multi-tenancy configuration
  * @returns Tenant entity hooks for lifecycle events
  */
-/**
- * The roles `beforeCreate` resolved for a request, so `afterCreate` does not
- * resolve them a second time after the tenant row exists: a failure then would
- * leave the tenant behind. Keyed by the request's context, one create each.
- */
-type ResolvedRoles = Awaited<ReturnType<typeof resolveCreatorRoles>>;
-const resolvedRoles = new WeakMap<object, ResolvedRoles>();
-
 export function createProvisioningHooks(
   config: MultiTenancyConfig,
 ): TenantEntityHooks {
@@ -71,18 +74,25 @@ export function createProvisioningHooks(
       ctx: TenantHookContext,
       params: CreateTenantParams,
     ): Promise<CreateTenantParams> {
-      // Make sure the creator's role can be resolved before anything is
-      // written. The roles are shared and idempotent, so doing it here costs
-      // nothing, and a failure now leaves no tenant or organization behind.
+      // Read what the creator's role depends on before anything is written.
+      // The roles are shared and idempotent, so doing it here costs nothing,
+      // and a failure now leaves no tenant or organization behind.
       if (config.accessControl && ctx.ctx?.var.user?.sub) {
-        resolvedRoles.set(
-          ctx.ctx,
-          await resolveCreatorRoles(
-            ctx,
-            config.accessControl,
-            ctx.ctx.var.user.sub,
-          ),
-        );
+        const userId = ctx.ctx.var.user.sub;
+        const { controlPlaneTenantId, addCreatorToOrganization = true } =
+          config.accessControl;
+        preflight.set(ctx.ctx, {
+          ...(await resolveCreatorRoles(ctx, config.accessControl, userId)),
+          ...(addCreatorToOrganization
+            ? {
+                hasGlobalOrgAdmin: await userHasGlobalOrgAdminPermission(
+                  ctx,
+                  controlPlaneTenantId,
+                  userId,
+                ),
+              }
+            : {}),
+        });
       }
 
       // Set the audience to the tenant-specific URN if not already set
@@ -268,10 +278,10 @@ async function createOrganizationForTenant(
     addCreatorToOrganization = true,
   } = accessControl;
 
-  // The roles `beforeCreate` already resolved, so nothing that can fail runs
-  // after the tenant row exists. Resolved here only when that did not run.
-  const cached = ctx.ctx ? resolvedRoles.get(ctx.ctx) : undefined;
-  if (ctx.ctx) resolvedRoles.delete(ctx.ctx);
+  // What `beforeCreate` already read, so nothing that can fail runs after the
+  // tenant row exists. Read here only when that did not run.
+  const cached = ctx.ctx ? preflight.get(ctx.ctx) : undefined;
+  if (ctx.ctx) preflight.delete(ctx.ctx);
   const { creatorRoleId } =
     cached ??
     (await resolveCreatorRoles(ctx, accessControl, ctx.ctx?.var.user?.sub));
@@ -293,11 +303,13 @@ async function createOrganizationForTenant(
     const user = ctx.ctx.var.user;
     if (user?.sub) {
       // Check if user has admin:organizations at the global level
-      const hasGlobalOrgAdmin = await userHasGlobalOrgAdminPermission(
-        ctx,
-        controlPlaneTenantId,
-        user.sub,
-      );
+      const hasGlobalOrgAdmin =
+        cached?.hasGlobalOrgAdmin ??
+        (await userHasGlobalOrgAdminPermission(
+          ctx,
+          controlPlaneTenantId,
+          user.sub,
+        ));
 
       // Only add user to organization if they don't have global admin:organizations
       if (!hasGlobalOrgAdmin) {
