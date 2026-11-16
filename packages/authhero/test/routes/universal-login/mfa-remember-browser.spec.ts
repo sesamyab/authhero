@@ -501,6 +501,109 @@ describe("remember browser for MFA (#1670)", () => {
     expect(lookups).toBeLessThanOrEqual(12);
   });
 
+  describe("invalidation markers across tenants", () => {
+    /**
+     * Make the codes adapter behave like drizzle's, whose primary key is
+     * (code_id, code_type) without the tenant, and record every invalidation
+     * marker id written.
+     */
+    function enforceTenantlessCodeKeys(env: TestEnv) {
+      const codes = env.data.codes;
+      const create = codes.create.bind(codes);
+      const remove = codes.remove.bind(codes);
+      const owners = new Map<string, string>();
+      const markerIds: string[] = [];
+      codes.create = async (tenantId, code) => {
+        const key = `${code.code_id}\u0000${code.code_type}`;
+        if (owners.has(key)) {
+          throw new Error(`UNIQUE constraint failed: ${code.code_id}`);
+        }
+        const created = await create(tenantId, code);
+        owners.set(key, tenantId);
+        if (code.code_id.startsWith("user:")) markerIds.push(code.code_id);
+        return created;
+      };
+      codes.remove = async (tenantId, codeId) => {
+        for (const [key, owner] of owners) {
+          if (owner === tenantId && key.startsWith(`${codeId}\u0000`)) {
+            owners.delete(key);
+          }
+        }
+        return remove(tenantId, codeId);
+      };
+      return markerIds;
+    }
+
+    const invalidateIn = (
+      server: TestServer,
+      tenantId: string,
+      userId: string,
+      token: string,
+    ) =>
+      server.managementApp.request(
+        `/users/${encodeURIComponent(userId)}/multifactor/actions/invalidate-remember-browser`,
+        {
+          method: "POST",
+          headers: { "tenant-id": tenantId, authorization: `Bearer ${token}` },
+        },
+        server.env,
+      );
+
+    it("invalidates the same user id in two tenants", async () => {
+      const server = await setup({ allowRememberBrowser: true });
+      const admin = await getAdminToken();
+      await server.env.data.tenants.create({
+        id: "otherTenant",
+        friendly_name: "Other Tenant",
+        audience: "https://example.com",
+        sender_email: "login@example.com",
+        sender_name: "SenderName",
+      });
+      await server.env.data.users.create("otherTenant", {
+        user_id: USER_ID,
+        email: "foo@example.com",
+        email_verified: true,
+        provider: "email",
+        connection: "email",
+        is_social: false,
+      });
+      const markerIds = enforceTenantlessCodeKeys(server.env);
+
+      expect(
+        (await invalidateIn(server, "tenantId", USER_ID, admin)).status,
+      ).toBe(204);
+      expect(
+        (await invalidateIn(server, "otherTenant", USER_ID, admin)).status,
+      ).toBe(204);
+      expect(markerIds).toHaveLength(2);
+      expect(new Set(markerIds).size).toBe(2);
+    });
+
+    it("keeps marker ids short enough for a 255-character user id", async () => {
+      const server = await setup({ allowRememberBrowser: true });
+      const admin = await getAdminToken();
+      const longUserId = `auth0|${"x".repeat(249)}`;
+      expect(longUserId).toHaveLength(255);
+      await server.env.data.users.create("tenantId", {
+        user_id: longUserId,
+        email: "long@example.com",
+        email_verified: true,
+        provider: "auth0",
+        connection: "Username-Password-Authentication",
+        is_social: false,
+      });
+      const markerIds = enforceTenantlessCodeKeys(server.env);
+
+      expect(
+        (await invalidateIn(server, "tenantId", longUserId, admin)).status,
+      ).toBe(204);
+      expect(markerIds).toHaveLength(1);
+      // kysely's code_id is varchar(255).
+      expect(markerIds[0]!.length).toBeLessThanOrEqual(255);
+      expect(markerIds[0]).not.toContain(longUserId);
+    });
+  });
+
   describe("replacing the invalidation marker", () => {
     const invalidate = (server: TestServer, token: string) =>
       server.managementApp.request(

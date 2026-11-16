@@ -59,11 +59,21 @@ const INVALIDATION_SLOTS = ["a", "b"] as const;
 type InvalidationSlot = (typeof INVALIDATION_SLOTS)[number];
 
 /**
- * `code_id` of a user's invalidation marker. Token rows are keyed by a hex
- * digest, so the prefix can never collide with one.
+ * `code_id` of a user's invalidation marker: `user:` + the SHA-256 hex of the
+ * tenant and user id + `:<slot>`. Some adapters key codes by (code_id,
+ * code_type) without the tenant, and user ids can repeat across tenants, so
+ * the tenant must be part of the id; hashing also keeps it at 71 characters
+ * whatever the user id's length. Token rows are keyed by a bare hex digest,
+ * so the prefix can never collide with one.
  */
-function invalidationCodeId(userId: string, slot: InvalidationSlot) {
-  return `user:${userId}:${slot}`;
+async function invalidationCodeId(
+  tenantId: string,
+  userId: string,
+  slot: InvalidationSlot,
+) {
+  // JSON keeps the pair unambiguous even when an id contains a separator.
+  const key = await hashToken(JSON.stringify([tenantId, userId]));
+  return `user:${key}:${slot}`;
 }
 
 /** Each marker slot of the user, with its `created_at` (ms) when written. */
@@ -76,7 +86,7 @@ async function readInvalidationMarkers(
     INVALIDATION_SLOTS.map(async (slot) => {
       const code = await ctx.env.data.codes.get(
         tenantId,
-        invalidationCodeId(userId, slot),
+        await invalidationCodeId(tenantId, userId, slot),
         CODE_TYPE,
       );
       const createdAt = code ? Date.parse(code.created_at) : NaN;
@@ -304,7 +314,7 @@ export async function invalidateRememberedBrowsers(
     markers.reduce((older, marker) =>
       (marker.createdAt ?? 0) < (older.createdAt ?? 0) ? marker : older,
     );
-  const codeId = invalidationCodeId(userId, target.slot);
+  const codeId = await invalidationCodeId(tenantId, userId, target.slot);
   if (target.exists) {
     await ctx.env.data.codes.remove(tenantId, codeId);
   }
