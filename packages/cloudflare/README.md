@@ -647,20 +647,19 @@ const logsAdapter = createPassthroughAdapter({
 
 Analytics Engine stores logs using blob and double fields:
 
-| Field     | Type   | Description                              |
-| --------- | ------ | ---------------------------------------- |
-| blob1     | string | log_id                                   |
-| blob2     | string | tenant_id                                |
-| blob3     | string | type (e.g., "s", "f")                    |
-| blob4     | string | date (ISO string)                        |
-| blob5     | string | description                              |
-| blob6     | string | ip                                       |
-| blob7     | string | user_agent                               |
-| blob8-18  | string | user_id, connection, client_id, etc.     |
-| blob19-20 | string | JSON stringified (details, auth0_client) |
-| double1   | number | isMobile (0 or 1)                        |
-| double2   | number | timestamp (epoch ms)                     |
-| index1    | string | tenant_id (for efficient filtering)      |
+| Field     | Type   | Description                                        |
+| --------- | ------ | -------------------------------------------------- |
+| blob1     | string | log_id                                             |
+| blob2     | string | tenant_id                                          |
+| blob3     | string | type (e.g., "s", "f")                              |
+| blob4     | string | description                                        |
+| blob5     | string | ip                                                 |
+| blob6     | string | user_agent                                         |
+| blob7-17  | string | user_id, user_name, connection, client_id, etc.    |
+| blob18-20 | string | JSON stringified (details, auth0_client, location) |
+| double1   | number | isMobile (0 or 1)                                  |
+| double2   | number | timestamp (epoch ms)                               |
+| index1    | string | tenant_id (for efficient filtering)                |
 
 #### Querying with SQL API
 
@@ -673,8 +672,15 @@ curl "https://api.cloudflare.com/client/v4/accounts/{account_id}/analytics_engin
 # Count logins by type
 curl "https://api.cloudflare.com/client/v4/accounts/{account_id}/analytics_engine/sql" \
   -H "Authorization: Bearer $API_TOKEN" \
-  -d "SELECT blob3 as type, count() as count FROM authhero_logs WHERE index1 = 'tenant-123' GROUP BY blob3"
+  -d "SELECT blob3 as type, SUM(_sample_interval) as count FROM authhero_logs WHERE index1 = 'tenant-123' GROUP BY blob3"
 ```
+
+Analytics Engine samples high-volume datasets, so count events with
+`SUM(_sample_interval)` rather than `count()`. The adapter's stats and
+analytics queries already do. Distinct-user metrics (`stats.getActiveUsers`
+and the `active-users` analytics resource) use `COUNT(DISTINCT user_id)`,
+which can't be weighted. They are exact while the dataset is unsampled and
+a lower bound once sampling kicks in.
 
 ## Outbox Metrics Sink (Analytics Engine)
 
