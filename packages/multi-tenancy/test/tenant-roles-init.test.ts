@@ -256,6 +256,38 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
     error.mockRestore();
   });
 
+  it("resolves the creator's roles once, so nothing that can fail runs after the tenant row exists", async () => {
+    await newUser("auth2|customer");
+    const creator = await data.roles.create(CP, {
+      name: DEFAULT_SELF_SERVICE_ROLE_NAME,
+    });
+    await data.userRoles.create(CP, "auth2|customer", creator.id, "");
+    // Once the tenant row is written, reading roles fails: a second resolution
+    // there would leave the tenant behind with no organization.
+    let tenantWritten = false;
+    const createTenantRow = data.tenants.create.bind(data.tenants);
+    data.tenants.create = (async (
+      ...args: Parameters<typeof createTenantRow>
+    ) => {
+      const tenant = await createTenantRow(...args);
+      tenantWritten = true;
+      return tenant;
+    }) as typeof createTenantRow;
+    const list = data.roles.list.bind(data.roles);
+    data.roles.list = (async (...args: Parameters<typeof list>) => {
+      if (tenantWritten) throw new Error("db down");
+      return list(...args);
+    }) as typeof list;
+
+    const response = await createTenant("auth2|customer", "globex");
+
+    expect(response.status).toBe(201);
+    const org = (await data.organizations.list(CP)).organizations.find(
+      (o) => o.name === "globex",
+    )!;
+    expect(await roleNames("auth2|customer", org.id)).toEqual(["Tenant Owner"]);
+  });
+
   it("leaves an earlier creator on the role they already have", async () => {
     await newUser("auth2|early");
     await createTenant("auth2|early", "first");

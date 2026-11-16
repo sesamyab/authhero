@@ -15,8 +15,8 @@ import { collectSyncDefaultsErrors } from "./sync-defaults-errors";
  *     show real status, and so a redeploy / re-provision knows which
  *     resource ids to operate on.
  *  4. On failure, marking `provisioning_state = "failed"` with the error
- *     message, then re-throwing — the multi-tenancy hook treats the throw
- *     as a signal to roll back the tenant row.
+ *     message, then re-throwing. The multi-tenancy hook does not roll the
+ *     tenant row back: it stays as `failed` so provisioning can be retried.
  *
  * Typical wiring on the control-plane authhero:
  *

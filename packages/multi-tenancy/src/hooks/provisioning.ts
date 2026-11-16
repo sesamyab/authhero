@@ -40,6 +40,14 @@ import {
  * @param config - Multi-tenancy configuration
  * @returns Tenant entity hooks for lifecycle events
  */
+/**
+ * The roles `beforeCreate` resolved for a request, so `afterCreate` does not
+ * resolve them a second time after the tenant row exists: a failure then would
+ * leave the tenant behind. Keyed by the request's context, one create each.
+ */
+type ResolvedRoles = Awaited<ReturnType<typeof resolveCreatorRoles>>;
+const resolvedRoles = new WeakMap<object, ResolvedRoles>();
+
 export function createProvisioningHooks(
   config: MultiTenancyConfig,
 ): TenantEntityHooks {
@@ -67,10 +75,13 @@ export function createProvisioningHooks(
       // written. The roles are shared and idempotent, so doing it here costs
       // nothing, and a failure now leaves no tenant or organization behind.
       if (config.accessControl && ctx.ctx?.var.user?.sub) {
-        await resolveCreatorRoles(
-          ctx,
-          config.accessControl,
-          ctx.ctx.var.user.sub,
+        resolvedRoles.set(
+          ctx.ctx,
+          await resolveCreatorRoles(
+            ctx,
+            config.accessControl,
+            ctx.ctx.var.user.sub,
+          ),
         );
       }
 
@@ -257,13 +268,13 @@ async function createOrganizationForTenant(
     addCreatorToOrganization = true,
   } = accessControl;
 
-  // Resolve the roles before anything is written for this tenant, so a
-  // failure leaves no organization behind.
-  const { creatorRoleId } = await resolveCreatorRoles(
-    ctx,
-    accessControl,
-    ctx.ctx?.var.user?.sub,
-  );
+  // The roles `beforeCreate` already resolved, so nothing that can fail runs
+  // after the tenant row exists. Resolved here only when that did not run.
+  const cached = ctx.ctx ? resolvedRoles.get(ctx.ctx) : undefined;
+  if (ctx.ctx) resolvedRoles.delete(ctx.ctx);
+  const { creatorRoleId } =
+    cached ??
+    (await resolveCreatorRoles(ctx, accessControl, ctx.ctx?.var.user?.sub));
 
   // Create organization with tenant ID as the name (let the adapter generate the ID)
   // The org name is used for access control - tokens include org_name which matches tenant ID
