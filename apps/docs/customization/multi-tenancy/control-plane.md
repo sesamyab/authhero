@@ -504,6 +504,17 @@ After the user creates a tenant they become admin of the tenant's organization, 
 
 Provisioning progress is shown to the new user, but the step list, the failure reason and the retry button need `read:tenant_operations` and `create:tenant_operations`. The role does not carry them, since a global permission would let one user read other tenants' operations. A self-service user whose provisioning fails sees a generic error.
 
+## The role a tenant's creator gets
+
+Creating a tenant makes an organization on the control plane (named after the tenant id), adds the creator to it and gives them a role scoped to that organization. That role is what the creator's token carries when they work in the tenant.
+
+- **Tenant Admin** (`adminRoleName`): every management scope. This is what an operator who creates a tenant gets.
+- **Tenant Owner** (`ownerRoleName`): every management scope except the operator-only ones: `create:tenants`, `delete:tenants`, `admin:organizations`, `access:all_organizations`, the rollout scopes and the tenant-operation scopes. A creator who holds the global self-service role from `selfServiceSignup` (`Tenant Creator`) gets this one, so a customer can run their own tenant but not create or delete tenants, reach other organizations or start fleet rollouts. They cannot delete their own tenant for now.
+
+`initMultiTenant` creates and assigns these roles on every tenant creation (`provisionRoles`). `setupMultiTenancy` keeps its older rule of only creating roles when `accessControl.issuer` is set. A role that already exists is kept up to date: scopes added to the Management API since it was created are added to it, and permissions an operator put on it are never removed. A creator who already has a role is not moved to another one.
+
+A management scope added later reaches tenant owners unless it is listed as operator-only. A test freezes the owner's scope list, so adding a scope to the Management API means deciding which side it belongs on.
+
 ## Example: Complete Multi-Tenant Setup
 
 ```typescript

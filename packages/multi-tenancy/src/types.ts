@@ -102,6 +102,36 @@ export interface AccessControlConfig {
    * @default true
    */
   addCreatorToOrganization?: boolean;
+
+  /**
+   * Create and assign the tenant roles even when no `issuer` is set.
+   * `initMultiTenant` turns this on; `setupMultiTenancy` keeps the older rule
+   * that roles are only created when `issuer` is set.
+   */
+  provisionRoles?: boolean;
+
+  /**
+   * Name of the role a self-service creator gets in their tenant instead of the
+   * admin role. It carries every management scope except the operator-only ones
+   * (creating or deleting tenants, `admin:organizations`, rollouts, tenant
+   * operations).
+   * @default "Tenant Owner"
+   */
+  ownerRoleName?: string;
+
+  /**
+   * Description for the owner role.
+   * @default "Manages the tenant's own configuration, users and applications"
+   */
+  ownerRoleDescription?: string;
+
+  /**
+   * Name of the global role that marks a creator as self-service (see
+   * `selfServiceSignup` on `initMultiTenant`). A creator who holds it gets the
+   * owner role, anyone else the admin role.
+   * @default "Tenant Creator"
+   */
+  selfServiceRoleName?: string;
 }
 
 /**

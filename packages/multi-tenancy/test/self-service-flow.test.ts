@@ -125,7 +125,7 @@ describe("self-service sign-up to a created tenant", () => {
     );
     expect(response.status).toBe(201);
 
-    // 4. They are a member of the tenant's organization with the admin role.
+    // 4. They are a member of the tenant's organization with the owner role.
     const { organizations } = await data.organizations.list(CP);
     const org = organizations.find((o) => o.name === "acme")!;
     expect(org).toBeDefined();
@@ -135,7 +135,8 @@ describe("self-service sign-up to a created tenant", () => {
     );
     expect(memberships.organizations.map((o) => o.name)).toContain("acme");
     const orgRoles = await data.userRoles.list(CP, userId, undefined, org.id);
-    expect(orgRoles.map((role) => role.name)).toEqual(["Tenant Admin"]);
+    // A self-service creator gets the owner role, not the operators' admin role.
+    expect(orgRoles.map((role) => role.name)).toEqual(["Tenant Owner"]);
 
     // The global role is still only create:tenants.
     expect(await globalPermissions(userId)).toEqual(["create:tenants"]);

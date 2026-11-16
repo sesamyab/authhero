@@ -1,0 +1,220 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import createAdapters from "@authhero/kysely-adapter";
+import { encodeBase64Url } from "@authhero/adapter-interfaces";
+import { init, MANAGEMENT_API_AUDIENCE, MANAGEMENT_API_SCOPES } from "authhero";
+import { initMultiTenant } from "../src/init";
+import {
+  OPERATOR_ONLY_SCOPES,
+  tenantOwnerScopes,
+} from "../src/hooks/tenant-roles";
+import { DEFAULT_SELF_SERVICE_ROLE_NAME } from "../src/hooks/self-service-signup";
+import { createMigratedDb } from "./helpers/migrated-db";
+
+const CP = "control_plane";
+const ISSUER = "https://auth.example.com/";
+
+function pemToDer(pem: string): ArrayBuffer {
+  const base64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s/g, "");
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)).buffer;
+}
+
+async function signRs256(
+  pkcs8Pem: string,
+  kid: string,
+  claims: Record<string, unknown>,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    pemToDer(pkcs8Pem),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const encode = (value: unknown) =>
+    encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
+  const input = `${encode({ alg: "RS256", typ: "JWT", kid })}.${encode(claims)}`;
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(input),
+  );
+  return `${input}.${encodeBase64Url(new Uint8Array(signature))}`;
+}
+
+/**
+ * What a creator can do in their new tenant is decided by the role they get in
+ * its organization. Through `initMultiTenant` that role used to not exist at
+ * all (the provisioning hook was built without an issuer), so these go through
+ * the real app.
+ */
+describe("the role a tenant's creator gets, through initMultiTenant", () => {
+  let data: ReturnType<typeof createAdapters>;
+  let createTenant: (userId: string, id: string) => Promise<Response>;
+
+  const roleNames = async (userId: string, organizationId: string) =>
+    (await data.userRoles.list(CP, userId, undefined, organizationId))
+      .map((role) => role.name)
+      .sort();
+
+  const orgOf = async (tenantId: string) =>
+    (await data.organizations.list(CP)).organizations.find(
+      (org) => org.name === tenantId,
+    )!;
+
+  const permissionsOf = async (roleName: string) => {
+    const role = (await data.roles.list(CP, {})).roles.find(
+      (r) => r.name === roleName,
+    )!;
+    return (await data.rolePermissions.list(CP, role.id, { per_page: 1000 }))
+      .map((p) => p.permission_name)
+      .sort();
+  };
+
+  const newUser = (id: string) =>
+    data.users.create(CP, {
+      user_id: id,
+      email: `${id.replace("|", "-")}@example.com`,
+      email_verified: true,
+      provider: "auth2",
+      connection: "Username-Password-Authentication",
+      is_social: false,
+    });
+
+  beforeEach(async () => {
+    data = createAdapters(await createMigratedDb());
+    await data.tenants.create({
+      id: CP,
+      friendly_name: CP,
+      audience: "https://control-plane.example.com",
+      sender_email: "admin@example.com",
+      sender_name: CP,
+    });
+    const { createX509Certificate } = init({ dataAdapter: data });
+    const signingKey = await createX509Certificate({ name: "CN=test" });
+    await data.keys.create({ ...signingKey, type: "jwt_signing" });
+
+    const { app } = initMultiTenant({
+      dataAdapter: data,
+      controlPlane: { tenantId: CP, clientId: "control-plane-client" },
+    });
+    const env = {
+      ISSUER,
+      AUTH_URL: "https://auth.example.com",
+      ENVIRONMENT: "test",
+    };
+    createTenant = async (userId, id) => {
+      const now = Math.floor(Date.now() / 1000);
+      const token = await signRs256(signingKey.pkcs7!, signingKey.kid, {
+        iss: ISSUER,
+        aud: MANAGEMENT_API_AUDIENCE,
+        sub: userId,
+        tenant_id: CP,
+        permissions: ["create:tenants"],
+        iat: now,
+        exp: now + 3600,
+      });
+      return app.request(
+        "/api/v2/tenants",
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "tenant-id": CP,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ id, friendly_name: id }),
+        },
+        env,
+      );
+    };
+  });
+
+  it("gives an ordinary creator the Tenant Admin role with every management scope", async () => {
+    await newUser("auth2|operator");
+    const response = await createTenant("auth2|operator", "acme");
+    expect(response.status).toBe(201);
+
+    const org = await orgOf("acme");
+    expect(await roleNames("auth2|operator", org.id)).toEqual(["Tenant Admin"]);
+    expect(await permissionsOf("Tenant Admin")).toEqual(
+      MANAGEMENT_API_SCOPES.map((scope) => scope.value).sort(),
+    );
+  });
+
+  it("gives a self-service creator the Tenant Owner role, without the operator-only scopes", async () => {
+    await newUser("auth2|customer");
+    const creator = await data.roles.create(CP, {
+      name: DEFAULT_SELF_SERVICE_ROLE_NAME,
+    });
+    await data.userRoles.create(CP, "auth2|customer", creator.id, "");
+
+    const response = await createTenant("auth2|customer", "globex");
+    expect(response.status).toBe(201);
+
+    const org = await orgOf("globex");
+    expect(await roleNames("auth2|customer", org.id)).toEqual(["Tenant Owner"]);
+    const owner = await permissionsOf("Tenant Owner");
+    expect(owner).toEqual([...tenantOwnerScopes()].sort());
+    for (const scope of OPERATOR_ONLY_SCOPES) {
+      expect(owner).not.toContain(scope);
+    }
+    // The owner can do what the getting-started checklist asks for.
+    expect(owner).toEqual(
+      expect.arrayContaining([
+        "create:clients",
+        "create:users",
+        "update:branding",
+        "read:logs",
+      ]),
+    );
+  });
+
+  it("tops up an existing Tenant Admin role with scopes added since it was created", async () => {
+    await newUser("auth2|operator");
+    const role = await data.roles.create(CP, { name: "Tenant Admin" });
+    await data.rolePermissions.assign(CP, role.id, [
+      {
+        role_id: role.id,
+        resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+        permission_name: "read:users",
+      },
+      {
+        role_id: role.id,
+        resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+        permission_name: "custom:permission",
+      },
+    ]);
+
+    const response = await createTenant("auth2|operator", "acme");
+    expect(response.status).toBe(201);
+
+    const permissions = await permissionsOf("Tenant Admin");
+    expect(permissions).toEqual(
+      [
+        ...MANAGEMENT_API_SCOPES.map((scope) => scope.value),
+        "custom:permission",
+      ].sort(),
+    );
+    const roles = (await data.roles.list(CP, {})).roles.filter(
+      (r) => r.name === "Tenant Admin",
+    );
+    expect(roles).toHaveLength(1);
+  });
+
+  it("leaves an earlier creator on the role they already have", async () => {
+    await newUser("auth2|early");
+    await createTenant("auth2|early", "first");
+    const firstOrg = await orgOf("first");
+
+    await newUser("auth2|customer");
+    const creator = await data.roles.create(CP, {
+      name: DEFAULT_SELF_SERVICE_ROLE_NAME,
+    });
+    await data.userRoles.create(CP, "auth2|customer", creator.id, "");
+    await createTenant("auth2|customer", "second");
+
+    expect(await roleNames("auth2|early", firstOrg.id)).toEqual([
+      "Tenant Admin",
+    ]);
+  });
+});

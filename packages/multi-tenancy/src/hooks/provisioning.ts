@@ -20,6 +20,12 @@ import {
   TenantHookContext,
 } from "../types";
 import { runRecordedTenantOperation } from "../operations";
+import { DEFAULT_SELF_SERVICE_ROLE_NAME } from "./self-service-signup";
+import {
+  DEFAULT_OWNER_ROLE_NAME,
+  ensureRoleWithScopes,
+  tenantOwnerScopes,
+} from "./tenant-roles";
 
 /**
  * Creates hooks for tenant provisioning and deprovisioning.
@@ -167,6 +173,10 @@ async function createOrganizationForTenant(
     adminRoleName = "Tenant Admin",
     adminRoleDescription = "Full access to all tenant management operations",
     addCreatorToOrganization = true,
+    provisionRoles = false,
+    ownerRoleName = DEFAULT_OWNER_ROLE_NAME,
+    ownerRoleDescription = "Manages the tenant's own configuration, users and applications",
+    selfServiceRoleName = DEFAULT_SELF_SERVICE_ROLE_NAME,
   } = accessControl;
 
   // Create organization with tenant ID as the name (let the adapter generate the ID)
@@ -180,15 +190,19 @@ async function createOrganizationForTenant(
     },
   );
 
-  // Get or create the admin role with all Management API permissions
-  // Only create admin role if issuer is provided (per documentation)
+  // Get or create the admin role with all Management API permissions, and top
+  // it up with scopes added since it was created. Roles are only managed when
+  // an issuer is set or `provisionRoles` is on.
   let adminRoleId: string | undefined;
-  if (issuer) {
-    adminRoleId = await getOrCreateAdminRole(
-      ctx,
+  if (issuer || provisionRoles) {
+    adminRoleId = await ensureRoleWithScopes(
+      ctx.adapters,
       controlPlaneTenantId,
-      adminRoleName,
-      adminRoleDescription,
+      {
+        name: adminRoleName,
+        description: adminRoleDescription,
+        scopes: MANAGEMENT_API_SCOPES.map((scope) => scope.value),
+      },
     );
   }
 
@@ -213,12 +227,30 @@ async function createOrganizationForTenant(
             organization_id: organization.id,
           });
 
-          // Assign admin role to the user for this organization (only if role was created)
+          // Assign a role to the user for this organization (only if roles
+          // are managed). A self-service creator, who holds the global
+          // self-service role, gets the narrower owner role.
           if (adminRoleId) {
+            const globalRoles = await ctx.adapters.userRoles.list(
+              controlPlaneTenantId,
+              user.sub,
+              undefined,
+              "",
+            );
+            const isSelfService = globalRoles.some(
+              (role) => role.name === selfServiceRoleName,
+            );
+            const roleId = isSelfService
+              ? await ensureRoleWithScopes(ctx.adapters, controlPlaneTenantId, {
+                  name: ownerRoleName,
+                  description: ownerRoleDescription,
+                  scopes: tenantOwnerScopes(),
+                })
+              : adminRoleId;
             await ctx.adapters.userRoles.create(
               controlPlaneTenantId,
               user.sub,
-              adminRoleId,
+              roleId,
               organization.id, // organizationId
             );
           }
@@ -292,48 +324,4 @@ async function userHasGlobalOrgAdminPermission(
   }
 
   return false;
-}
-
-/**
- * Gets or creates the admin role with all Management API permissions.
- * Returns the role ID.
- */
-async function getOrCreateAdminRole(
-  ctx: TenantHookContext,
-  controlPlaneTenantId: string,
-  roleName: string,
-  roleDescription: string,
-): Promise<string> {
-  // Check if the role already exists
-  const existingRoles = await ctx.adapters.roles.list(controlPlaneTenantId, {});
-  const existingRole = existingRoles.roles.find((r) => r.name === roleName);
-
-  if (existingRole) {
-    return existingRole.id;
-  }
-
-  // Create the admin role
-  const role = await ctx.adapters.roles.create(controlPlaneTenantId, {
-    name: roleName,
-    description: roleDescription,
-  });
-
-  // Assign all Management API permissions to the role
-  // Use the standard management API audience as the identifier
-  const managementApiIdentifier = MANAGEMENT_API_AUDIENCE;
-
-  // Convert MANAGEMENT_API_SCOPES to the format expected by rolePermissions.assign
-  const permissions = MANAGEMENT_API_SCOPES.map((scope) => ({
-    role_id: role.id,
-    resource_server_identifier: managementApiIdentifier,
-    permission_name: scope.value,
-  }));
-
-  await ctx.adapters.rolePermissions.assign(
-    controlPlaneTenantId,
-    role.id,
-    permissions,
-  );
-
-  return role.id;
 }
