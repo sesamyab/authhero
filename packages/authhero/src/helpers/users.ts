@@ -51,6 +51,34 @@ export async function getAllUsersByEmail(
   tenantId: string,
   email: string,
 ): Promise<User[]> {
+  return listAllUsers(
+    userAdapter,
+    tenantId,
+    `email:${escapeLuceneValue(email)}`,
+  );
+}
+
+/**
+ * Every user sharing `username`, across all pages. The username counterpart
+ * of {@link getAllUsersByEmail}, for the same uniqueness checks.
+ */
+export async function getAllUsersByUsername(
+  userAdapter: UserDataAdapter,
+  tenantId: string,
+  username: string,
+): Promise<User[]> {
+  return listAllUsers(
+    userAdapter,
+    tenantId,
+    `username:${escapeLuceneValue(username)}`,
+  );
+}
+
+async function listAllUsers(
+  userAdapter: UserDataAdapter,
+  tenantId: string,
+  q: string,
+): Promise<User[]> {
   const pageSize = 100;
   const users: User[] = [];
   let page = 0;
@@ -60,7 +88,7 @@ export async function getAllUsersByEmail(
       page,
       per_page: pageSize,
       include_totals: false,
-      q: `email:${escapeLuceneValue(email)}`,
+      q,
     });
     users.push(...response.users);
     if (response.users.length < pageSize) break;
@@ -580,11 +608,21 @@ interface EmailConflictParams {
    * of its linked secondaries (when the caller passed `connection`).
    */
   clusterRootId: string;
+  /**
+   * The target's database connection scope, when the tenant has several
+   * database connections (see `resolveDatabaseConnectionScope`). Between two
+   * database users, "same connection" then means what the login lookups see:
+   * a legacy row whose `connection` names no database connection counts as
+   * part of every connection. Without a scope it is a plain name comparison.
+   */
+  connectionScope?: DatabaseConnectionScope;
 }
 
 /**
  * Find the user, if any, that genuinely blocks changing `target`'s email to an
- * address already present on other rows.
+ * address already present on other rows. The same rules apply to a username
+ * change, with candidates from {@link getAllUsersByUsername}: usernames have
+ * the same `(tenant_id, provider, username)` unique index.
  *
  * Two rows sharing an email is only a *conflict* when it makes a login ambiguous,
  * and login lookups are always provider-scoped (`getUserByProvider` filters on
@@ -615,7 +653,11 @@ export function findEmailConflict({
   candidates,
   target,
   clusterRootId,
+  connectionScope,
 }: EmailConflictParams): User | undefined {
+  const bothDatabaseUsers = (candidate: User) =>
+    isUsernamePasswordProvider(candidate.provider) &&
+    isUsernamePasswordProvider(target.provider);
   return candidates.find((candidate) => {
     if (candidate.user_id === target.user_id) return false;
     if (candidate.provider === target.provider) return true;
@@ -623,6 +665,9 @@ export function findEmailConflict({
       candidate.user_id === clusterRootId ||
       candidate.linked_to === clusterRootId;
     if (isClusterMate) return false;
+    if (connectionScope && bothDatabaseUsers(candidate)) {
+      return isUserInConnectionScope(candidate, connectionScope);
+    }
     return candidate.connection === target.connection;
   });
 }
