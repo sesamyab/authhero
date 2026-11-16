@@ -7,7 +7,7 @@ import { clearAuthCookie, getAuthCookie } from "../../utils/cookies";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { getEnrichedClient } from "../../helpers/client";
 import { prefetchClientBundle } from "../../helpers/prefetch-client-bundle";
-import { isCimdClientId } from "../../helpers/cimd";
+import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { validateJwtToken } from "../../utils/jwt";
 import { sendBackchannelLogout } from "../../helpers/backchannel-logout";
 
@@ -115,7 +115,11 @@ const getRoot = defineRoute({
         );
       }
       try {
-        client = await getEnrichedClient(ctx.env, resolvedClientId);
+        client = await getEnrichedClient(
+          ctx.env,
+          resolvedClientId,
+          cimdTenantHint(resolvedClientId, ctx.var.tenant_id),
+        );
         ctx.set("client_id", resolvedClientId);
         setTenantId(ctx, client.tenant.id);
       } catch {

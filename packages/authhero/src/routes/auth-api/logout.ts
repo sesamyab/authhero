@@ -7,7 +7,7 @@ import { clearAuthCookie, getAllAuthCookies } from "../../utils/cookies";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { getEnrichedClient } from "../../helpers/client";
 import { prefetchClientBundle } from "../../helpers/prefetch-client-bundle";
-import { isCimdClientId } from "../../helpers/cimd";
+import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { sendBackchannelLogout } from "../../helpers/backchannel-logout";
 import { defineRoute } from "../../utils/define-route";
 import { renderInvalidLogoutUrlPage } from "../universal-login/branded-error-response";
@@ -43,7 +43,11 @@ const getRoot = defineRoute({
 
     let client;
     try {
-      client = await getEnrichedClient(ctx.env, client_id);
+      client = await getEnrichedClient(
+        ctx.env,
+        client_id,
+        cimdTenantHint(client_id, ctx.var.tenant_id),
+      );
     } catch {
       return ctx.text("OK");
     }

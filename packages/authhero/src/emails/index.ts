@@ -18,6 +18,7 @@ import { getAuthUrl, getIssuer, getUniversalLoginUrl } from "../variables";
 import { getConnectionFromIdentifier } from "../utils/username";
 import { resolveTenantLanguage } from "../utils/locale";
 import { getEnrichedClient } from "../helpers/client";
+import { cimdTenantHint } from "../helpers/cimd";
 import { getLiquid, renderEmailTemplate } from "./render";
 import { getDefaultTemplate } from "./defaults";
 import { MailgunEmailService } from "../email-services/mailgun";
@@ -139,7 +140,11 @@ export async function sendSms(
     throw new HTTPException(500, { message: "Client not found" });
   }
 
-  const client = await getEnrichedClient(ctx.env, ctx.var.client_id);
+  const client = await getEnrichedClient(
+    ctx.env,
+    ctx.var.client_id,
+    cimdTenantHint(ctx.var.client_id, ctx.var.tenant_id),
+  );
 
   const smsProvider = client.connections.find(
     (c) => c.strategy === Strategy.SMS,

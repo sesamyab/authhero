@@ -4,6 +4,7 @@ import {
   ClientsAdapter,
   Client,
   ListParams,
+  isUrlClientId,
 } from "@authhero/adapter-interfaces";
 import { clients } from "../schema/sqlite";
 import {
@@ -197,13 +198,18 @@ export function createClientsAdapter(db: DrizzleDb): ClientsAdapter {
     },
 
     async getByClientId(client_id: string) {
-      const result = await db
+      // A URL (CIMD) client_id has one stub row per tenant that uses it.
+      // Fetch two rows so an ambiguous id returns null instead of an
+      // arbitrary tenant's row.
+      const rows = await db
         .select()
         .from(clients)
         .where(eq(clients.client_id, client_id))
-        .get();
+        .limit(isUrlClientId(client_id) ? 2 : 1)
+        .all();
 
-      if (!result) return null;
+      const result = rows[0];
+      if (!result || rows.length > 1) return null;
 
       return {
         ...sqlToClient(result),

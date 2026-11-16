@@ -102,6 +102,32 @@ Forward all three to your data adapters. If you forward only `logs`, the
 `analytics` and `stats` calls stay on your SQL database adapter and query a
 `logs` table that no longer receives writes, so the dashboards read zero.
 
+### Sampling and approximate metrics
+
+Analytics Engine samples high-volume datasets: past a certain write rate it
+stores only a fraction of the data points and records on each stored row how
+many original events it stands for in `_sample_interval` (see Cloudflare's
+[sampling docs](https://developers.cloudflare.com/analytics/analytics-engine/sampling/)).
+
+- **Event counts are sampling-aware.** `/stats/daily` (logins, signups, leaked
+  passwords) and every `/analytics/*` count (logins, signups, refresh tokens,
+  sessions, logouts, password changes and migrations, MFA, email
+  verifications, codes sent) sum `_sample_interval` instead of counting rows,
+  so they estimate the true number of events whether or not the dataset is
+  sampled.
+- **Distinct-user metrics are approximate under sampling.**
+  `/stats/active-users` and `/analytics/active-users` use
+  `COUNT(DISTINCT user_id)`, which can't be corrected by weighting: a user whose
+  events were all dropped by the sampler is not counted. These values are exact
+  for unsampled (low-volume) datasets and a lower bound once sampling kicks in.
+- **Log listing is unaffected in kind but not in completeness.** `/logs`
+  returns stored rows only, so under sampling some events have no log entry,
+  and `include_totals` counts stored rows (it sizes pagination over what the
+  list can return).
+
+If you need exact active-user counts for a high-volume tenant, compute them
+from a store that isn't sampled (e.g. the SQL database adapter or R2 SQL).
+
 `analytics.sessionRetention` is **not** implemented here — it is computed from
 the `sessions` table rather than from log events, so the retention route
 responds `501` when the Analytics Engine adapter is in use.
@@ -207,13 +233,13 @@ curl "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/analytics_engi
 curl "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/analytics_engine/sql" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: text/plain" \
-  -d "SELECT blob3 as type, count() as count FROM authhero_logs WHERE index1 = 'tenant-123' GROUP BY blob3"
+  -d "SELECT blob3 as type, SUM(_sample_interval) as count FROM authhero_logs WHERE index1 = 'tenant-123' GROUP BY blob3"
 
 # Get logs for specific user
 curl "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/analytics_engine/sql" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: text/plain" \
-  -d "SELECT * FROM authhero_logs WHERE index1 = 'tenant-123' AND blob8 = 'user-456' ORDER BY timestamp DESC"
+  -d "SELECT * FROM authhero_logs WHERE index1 = 'tenant-123' AND blob7 = 'user-456' ORDER BY timestamp DESC"
 
 # Example with all fields
 curl "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/analytics_engine/sql" \
@@ -230,6 +256,9 @@ curl "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/analytics_engi
 - The dataset name in queries is what you defined in `wrangler.toml` (e.g., `authhero_logs` or `auth_logs`)
 - Results are returned as JSON
 - Query language is ClickHouse-like SQL dialect
+- Count events with `SUM(_sample_interval)`, not `count()`: `count()` counts
+  stored rows and under-counts once the dataset is sampled (see
+  [Sampling and approximate metrics](#sampling-and-approximate-metrics))
 
 **Common Query Patterns:**
 
@@ -243,7 +272,7 @@ ORDER BY timestamp DESC;
 -- Aggregate by hour
 SELECT
   toStartOfHour(timestamp) as hour,
-  count() as login_count
+  SUM(_sample_interval) as login_count
 FROM authhero_logs
 WHERE index1 = 'tenant-123'
   AND blob3 = 's'
@@ -252,14 +281,14 @@ ORDER BY hour DESC;
 
 -- Failed login attempts by user
 SELECT
-  blob8 as user_id,
-  blob9 as user_name,
-  count() as failed_attempts
+  blob7 as user_id,
+  blob8 as user_name,
+  SUM(_sample_interval) as failed_attempts
 FROM authhero_logs
 WHERE index1 = 'tenant-123'
   AND blob3 = 'f'
   AND timestamp >= NOW() - INTERVAL 7 DAY
-GROUP BY blob8, blob9
+GROUP BY blob7, blob8
 ORDER BY failed_attempts DESC;
 ```
 
@@ -272,26 +301,29 @@ Analytics Engine stores logs using blob and double fields:
 | blob1   | string | log_id                              |
 | blob2   | string | tenant_id                           |
 | blob3   | string | type (e.g., "s", "f")               |
-| blob4   | string | date (ISO string)                   |
-| blob5   | string | description                         |
-| blob6   | string | ip                                  |
-| blob7   | string | user_agent                          |
-| blob8   | string | user_id                             |
-| blob9   | string | user_name                           |
-| blob10  | string | connection                          |
-| blob11  | string | connection_id                       |
-| blob12  | string | client_id                           |
-| blob13  | string | client_name                         |
-| blob14  | string | audience                            |
-| blob15  | string | scope                               |
-| blob16  | string | strategy                            |
-| blob17  | string | strategy_type                       |
-| blob18  | string | hostname                            |
-| blob19  | string | details (JSON stringified)          |
-| blob20  | string | auth0_client (JSON stringified)     |
+| blob4   | string | description                         |
+| blob5   | string | ip                                  |
+| blob6   | string | user_agent                          |
+| blob7   | string | user_id                             |
+| blob8   | string | user_name                           |
+| blob9   | string | connection                          |
+| blob10  | string | connection_id                       |
+| blob11  | string | client_id                           |
+| blob12  | string | client_name                         |
+| blob13  | string | audience                            |
+| blob14  | string | scope                               |
+| blob15  | string | strategy                            |
+| blob16  | string | strategy_type                       |
+| blob17  | string | hostname                            |
+| blob18  | string | details (JSON stringified)          |
+| blob19  | string | auth0_client (JSON stringified)     |
+| blob20  | string | location_info (JSON stringified)    |
 | double1 | number | isMobile (0 or 1)                   |
 | double2 | number | timestamp (epoch ms)                |
 | index1  | string | tenant_id (for efficient filtering) |
+
+`_sample_interval` is added by Analytics Engine itself: the number of original
+events each stored row represents (1 when the dataset isn't sampled).
 
 ## Passthrough Mode
 

@@ -204,7 +204,9 @@ export function createTenantsOpenAPIRouter(
       // admin:organizations permission they carry came from an org-scoped role — not a
       // global one — and must not bypass per-org tenant filtering.
       const userPermissions = user?.permissions || [];
-      const tokenIsOrgScoped = Boolean(user?.org_id ?? ctx.var.organization_id);
+      const tokenIsOrgScoped = Boolean(
+        user?.org_id ?? ctx.var.organization_id ?? ctx.var.org_name,
+      );
       const hasFullAccess =
         !tokenIsOrgScoped && userPermissions.includes("admin:organizations");
 
@@ -626,10 +628,10 @@ export function createTenantsOpenAPIRouter(
         // Mirrors the "full access" path on the list route. Org-scoped tokens
         // are excluded: their privileges came from an org-scoped role and must
         // not bypass per-organization filtering.
+        const tokenIsOrgScoped = Boolean(
+          caller.org_id ?? ctx.var.organization_id ?? tokenOrgName,
+        );
         if (!hasAccess) {
-          const tokenIsOrgScoped = Boolean(
-            caller.org_id ?? ctx.var.organization_id ?? tokenOrgName,
-          );
           const isControlPlaneToken =
             !caller.tenant_id || caller.tenant_id === controlPlaneTenantId;
           if (
@@ -642,8 +644,10 @@ export function createTenantsOpenAPIRouter(
         }
 
         // Fallback: look up org memberships on the control plane. Covers
-        // tokens issued without an org_name claim (e.g. legacy tokens).
-        if (!hasAccess) {
+        // tokens issued without an org claim (e.g. legacy tokens). Never for an
+        // organization-scoped token: its privileges belong to the organization it
+        // was minted for, and membership of another one must not widen them.
+        if (!hasAccess && !tokenIsOrgScoped) {
           const userOrgs = await fetchAll<{ id: string; name: string }>(
             (params) =>
               getRequestData(ctx).userOrganizations.listUserOrganizations(

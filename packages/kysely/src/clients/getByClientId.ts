@@ -1,17 +1,25 @@
 import { Kysely } from "kysely";
 import { removeNullProperties } from "../helpers/remove-nulls";
-import { ClientWithTenantId } from "@authhero/adapter-interfaces";
+import {
+  ClientWithTenantId,
+  isUrlClientId,
+} from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 
 export function getByClientId(db: Kysely<Database>) {
   return async (client_id: string): Promise<ClientWithTenantId | null> => {
-    const client = await db
+    // A URL (CIMD) client_id has one stub row per tenant that uses it. Fetch
+    // two rows so an ambiguous id returns null instead of an arbitrary
+    // tenant's row.
+    const rows = await db
       .selectFrom("clients")
       .where("clients.client_id", "=", client_id)
       .selectAll()
-      .executeTakeFirst();
+      .limit(isUrlClientId(client_id) ? 2 : 1)
+      .execute();
 
-    if (!client) {
+    const client = rows[0];
+    if (!client || rows.length > 1) {
       return null;
     }
 

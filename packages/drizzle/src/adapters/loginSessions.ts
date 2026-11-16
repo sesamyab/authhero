@@ -34,7 +34,6 @@ function ulid(): string {
 
 function sqlToLoginSession(row: any): LoginSession {
   const {
-    tenant_id: _,
     created_at_ts,
     updated_at_ts,
     expires_at_ts,

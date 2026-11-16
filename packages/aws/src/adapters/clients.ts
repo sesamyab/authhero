@@ -6,6 +6,7 @@ import {
   Totals,
   ListParams,
   clientSchema,
+  isUrlClientId,
 } from "@authhero/adapter-interfaces";
 import { nanoid } from "nanoid";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
@@ -271,6 +272,12 @@ export function createClientsAdapter(ctx: DynamoDBContext): ClientsAdapter {
     },
 
     async getByClientId(clientId: string): Promise<ClientWithTenantId | null> {
+      // A URL (CIMD) client_id can have a row in several tenants, and the
+      // legacy pointer below holds a single tenant, so it can't tell an
+      // ambiguous id from a unique one. Never resolve a tenant from it: the
+      // caller has to supply the tenant (see ClientsAdapter.getByClientId).
+      if (isUrlClientId(clientId)) return null;
+
       // Lookup the client from the legacy clients table which stores
       // a reference by client_id only
       const legacyItem = await getItem<{ tenant_id: string }>(

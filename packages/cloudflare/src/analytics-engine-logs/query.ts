@@ -70,6 +70,31 @@ export async function executeAnalyticsEngineQuery(
 }
 
 /**
+ * Event-count aggregate that stays correct when Analytics Engine samples the
+ * dataset.
+ *
+ * Once a dataset sees enough writes, Analytics Engine keeps only a sample of
+ * them and records on each stored row how many original events it stands for
+ * in `_sample_interval` (1 for unsampled rows). `count()` counts stored rows,
+ * so it under-counts by roughly that factor; summing `_sample_interval` counts
+ * events instead. See
+ * https://developers.cloudflare.com/analytics/analytics-engine/sampling/
+ *
+ * With a `condition`, only rows matching it contribute, which replaces the
+ * `SUM(CASE WHEN <condition> THEN 1 ELSE 0 END)` pattern.
+ *
+ * Distinct counts (`COUNT(DISTINCT ...)`) cannot be corrected this way: a
+ * value that only appears in rows the sampler dropped is simply missing. Those
+ * metrics are approximate (a lower bound) once sampling kicks in.
+ */
+export function sampledCount(condition?: string): string {
+  if (condition === undefined) {
+    return "SUM(_sample_interval)";
+  }
+  return `SUM(CASE WHEN ${condition} THEN _sample_interval ELSE 0 END)`;
+}
+
+/**
  * Escape a string value for SQL
  */
 export function escapeSQLString(value: string): string {

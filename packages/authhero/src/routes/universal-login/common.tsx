@@ -18,6 +18,7 @@ import {
 import { Bindings, Variables } from "../../types";
 import { getAuthCookie } from "../../utils/cookies";
 import { setTenantId } from "../../helpers/set-tenant-id";
+import { resolveLoginSessionTenant } from "../../helpers/login-session-tenant";
 import { ssrfFetchOptionsFromEnv } from "../../utils/ssrf-fetch";
 import { hasValidContinuationScope } from "../../authentication-flows/common";
 import { DEFAULT_THEME } from "../../constants/defaultTheme";
@@ -58,7 +59,14 @@ export async function initJSXRoute(
     state,
   );
 
-  if (!loginSession) {
+  // A session of another tenant than the request resolved is treated as
+  // missing: never render one tenant's login screens on another tenant's
+  // domain (some adapters load the session by id alone).
+  const sessionTenant = loginSession
+    ? resolveLoginSessionTenant(ctx.var.tenant_id, loginSession)
+    : undefined;
+
+  if (!loginSession || !sessionTenant?.ok) {
     // Typically a bookmarked or restored login page whose session has been
     // cleaned up. Like Auth0, send page navigations to the tenant's default
     // login route when one is configured; otherwise render the error page.
@@ -71,23 +79,26 @@ export async function initJSXRoute(
 
   ctx.set("loginSession", loginSession);
 
+  // Without a request tenant, the login session row decides the flow's
+  // tenant: a CIMD client_id can't identify it (#1731).
+  const sessionTenantId = sessionTenant.tenantId;
+
   // Warm the bundle once for this (tenant, client) so both getEnrichedClient
   // and the parallel theme/branding fetch below hit a single cache key.
   const sessionClientId = loginSession.authParams.client_id;
   if (sessionClientId && !isCimdClientId(sessionClientId)) {
-    // The login session is already scoped to ctx.var.tenant_id — pass it so
-    // the bundle is warmed for the active tenant instead of resolving the
-    // tenant via an extra clients.getByClientId lookup.
+    // Pass the session's tenant so the bundle is warmed for it instead of
+    // resolving the tenant via an extra clients.getByClientId lookup.
     await prefetchClientBundle(ctx, {
       client_id: sessionClientId,
-      tenant_id: ctx.var.tenant_id,
+      tenant_id: sessionTenantId,
     }).catch(() => {});
   }
 
   const client = await getEnrichedClient(
     env,
     loginSession.authParams.client_id,
-    ctx.var.tenant_id,
+    sessionTenantId,
     ssrfFetchOptionsFromEnv(env),
   );
   if (readLoginSessionData(loginSession.state_data).deviceFlow) {
