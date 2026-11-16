@@ -55,9 +55,12 @@ async function ensureSelfServiceRole(
 
   let role = await find();
   if (!role) {
-    let created: Role | undefined;
     try {
-      created = await data.roles.create(controlPlaneTenantId, {
+      // `roles` has no unique (tenant, name), so two first sign-ups can both
+      // get here and create the role. That leaves a duplicate, and both copies
+      // carry `create:tenants` (each caller adds it to the role it assigns).
+      // Neither is deleted: another sign-up may already hold it.
+      role = await data.roles.create(controlPlaneTenantId, {
         name: roleName,
         description:
           "Can create tenants. Granted to verified self-service sign-ups.",
@@ -66,14 +69,6 @@ async function ensureSelfServiceRole(
       // A concurrent sign-up may have created it first.
       role = await find();
       if (!role) throw error;
-    }
-    if (created) {
-      // `roles` has no unique (tenant, name), so two first sign-ups can both
-      // create it. Settle on the lowest id and drop our copy if it lost.
-      role = (await find()) ?? created;
-      if (role.id !== created.id) {
-        await data.roles.remove(controlPlaneTenantId, created.id);
-      }
     }
   }
   if (!role) {

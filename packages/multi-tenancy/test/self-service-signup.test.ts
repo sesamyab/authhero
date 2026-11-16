@@ -182,21 +182,43 @@ describe("self-service sign-up hooks", () => {
   });
 
   it("finds the role when it is past the first page of roles", async () => {
-    // Adapters return 50 roles a page by default; the role sorts last here.
-    for (let i = 0; i < 120; i++) {
-      await data.roles.create(CP, { name: `a-role-${i}` });
-    }
+    // The adapter's order is not guaranteed, so control the pages: a full
+    // first page of other roles, the role only on the second.
     const existing = await data.roles.create(CP, {
       name: DEFAULT_SELF_SERVICE_ROLE_NAME,
     });
+    const others = Array.from({ length: 100 }, (_, i) => ({
+      ...existing,
+      id: `other-${i}`,
+      name: `a-role-${i}`,
+    }));
+    const pages: Record<number, (typeof existing)[]> = {
+      0: others,
+      1: [existing],
+    };
+    const create = vi.spyOn(data.roles, "create");
+    const paged = {
+      ...data,
+      roles: {
+        ...data.roles,
+        list: async (_tenant: string, params?: { page?: number }) => ({
+          roles: pages[params?.page ?? 0] ?? [],
+        }),
+      },
+    };
 
     const userId = await createUser(CP, "social", true);
-    await registration(CP, { user_id: userId, email_verified: true });
-
-    const named = (await data.roles.list(CP, { per_page: 500 })).roles.filter(
-      (r) => r.name === DEFAULT_SELF_SERVICE_ROLE_NAME,
+    await hooks().onExecutePostUserRegistration!(
+      {
+        ctx: { var: {}, env: { data: paged } },
+        tenant: { id: CP },
+        user: { user_id: userId, email_verified: true },
+        request: {},
+      } as any,
+      {} as any,
     );
-    expect(named.map((r) => r.id)).toEqual([existing.id]);
+
+    expect(create).not.toHaveBeenCalled();
     expect(
       (await data.userRoles.list(CP, userId, undefined, "")).map((r) => r.id),
     ).toEqual([existing.id]);
