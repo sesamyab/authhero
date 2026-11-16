@@ -729,11 +729,14 @@ describe("management-api tenant operations: who reaches which tenant", () => {
     });
     // The user is a member of CHILD only, holds every operator scope through
     // that organization's role, and names CHILD in tenant-id.
+    const childOrg = (
+      await env.data.organizations.list(CONTROL_PLANE, { q: `name:${CHILD}` })
+    ).organizations.find((o) => o.name === CHILD)!;
     const token = await createToken({
       user_id: MEMBER,
       tenant_id: CONTROL_PLANE,
       aud: "urn:authhero:management",
-      org_id: "org_child",
+      org_id: childOrg.id,
       permissions: [
         "read:tenant_operations",
         "create:tenant_operations",
@@ -757,6 +760,24 @@ describe("management-api tenant operations: who reaches which tenant", () => {
     expect((await asChild(`/api/v2/operations/${operation.id}`)).status).toBe(
       200,
     );
+  });
+
+  it("refuses an organization token in the control plane's own context with 403", async () => {
+    // Layering with the org->tenant binding: it runs before the reach check.
+    const { app, env, operation } = await setup();
+    const childOrg = (
+      await env.data.organizations.list(CONTROL_PLANE, { q: `name:${CHILD}` })
+    ).organizations.find((o) => o.name === CHILD)!;
+    const token = await createToken({
+      user_id: MEMBER,
+      tenant_id: CONTROL_PLANE,
+      aud: "urn:authhero:management",
+      org_id: childOrg.id,
+      permissions: ["read:tenant_operations"],
+    });
+    expect(
+      (await get(app, env, `/api/v2/operations/${operation.id}`, token)).status,
+    ).toBe(403);
   });
 
   it("does not let an organization-scoped admin:organizations act globally", async () => {
