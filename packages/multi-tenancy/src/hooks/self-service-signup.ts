@@ -1,5 +1,5 @@
 import { MANAGEMENT_API_AUDIENCE } from "authhero";
-import type { DataAdapters, Hooks } from "authhero";
+import type { DataAdapters, Hooks, Role } from "authhero";
 
 /**
  * Name of the role that lets a user create tenants.
@@ -37,15 +37,27 @@ async function ensureSelfServiceRole(
   controlPlaneTenantId: string,
   roleName: string,
 ): Promise<string> {
-  const find = async () =>
-    (await data.roles.list(controlPlaneTenantId, {})).roles.find(
-      (role) => role.name === roleName,
-    );
+  // Every role with the name, across all pages (adapters default to 50 a
+  // page). With duplicates, the lowest id wins so concurrent callers agree.
+  const find = async () => {
+    const perPage = 100;
+    const matches: Role[] = [];
+    for (let page = 0; ; page++) {
+      const { roles } = await data.roles.list(controlPlaneTenantId, {
+        page,
+        per_page: perPage,
+      });
+      matches.push(...roles.filter((role) => role.name === roleName));
+      if (roles.length < perPage) break;
+    }
+    return matches.sort((a, b) => a.id.localeCompare(b.id))[0];
+  };
 
   let role = await find();
   if (!role) {
+    let created: Role | undefined;
     try {
-      role = await data.roles.create(controlPlaneTenantId, {
+      created = await data.roles.create(controlPlaneTenantId, {
         name: roleName,
         description:
           "Can create tenants. Granted to verified self-service sign-ups.",
@@ -55,6 +67,17 @@ async function ensureSelfServiceRole(
       role = await find();
       if (!role) throw error;
     }
+    if (created) {
+      // `roles` has no unique (tenant, name), so two first sign-ups can both
+      // create it. Settle on the lowest id and drop our copy if it lost.
+      role = (await find()) ?? created;
+      if (role.id !== created.id) {
+        await data.roles.remove(controlPlaneTenantId, created.id);
+      }
+    }
+  }
+  if (!role) {
+    throw new Error(`Could not find or create the "${roleName}" role`);
   }
 
   const permissions = await data.rolePermissions.list(
@@ -107,6 +130,13 @@ export function createSelfServiceSignupHooks(
     if (event.tenant?.id !== controlPlaneTenantId || !userId) return;
     try {
       const data = event.ctx.var.data ?? event.ctx.env.data;
+      // Always make sure the role carries create:tenants, also for a user
+      // who already holds it, so a role that lost the permission is repaired.
+      const roleId = await ensureSelfServiceRole(
+        data,
+        controlPlaneTenantId,
+        roleName,
+      );
       // "" selects the global (tenant-level) roles.
       const held = await data.userRoles.list(
         controlPlaneTenantId,
@@ -114,13 +144,8 @@ export function createSelfServiceSignupHooks(
         undefined,
         "",
       );
-      if (held.some((role) => role.name === roleName)) return;
+      if (held.some((role) => role.id === roleId)) return;
 
-      const roleId = await ensureSelfServiceRole(
-        data,
-        controlPlaneTenantId,
-        roleName,
-      );
       await data.userRoles.create(controlPlaneTenantId, userId, roleId, "");
     } catch (error) {
       console.error(

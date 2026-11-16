@@ -161,6 +161,47 @@ describe("self-service sign-up hooks", () => {
     ]);
   });
 
+  it("repairs the permission for a user who already holds the role", async () => {
+    const role = await data.roles.create(CP, {
+      name: DEFAULT_SELF_SERVICE_ROLE_NAME,
+    });
+    const userId = await createUser(CP, "social", true);
+    await data.userRoles.create(CP, userId, role.id, "");
+
+    await registration(CP, { user_id: userId, email_verified: true });
+
+    const permissions = await data.rolePermissions.list(CP, role.id, {
+      per_page: 100,
+    });
+    expect(permissions.map((p) => p.permission_name)).toEqual([
+      "create:tenants",
+    ]);
+    expect(await globalRoles(CP, userId)).toEqual([
+      DEFAULT_SELF_SERVICE_ROLE_NAME,
+    ]);
+  });
+
+  it("finds the role when it is past the first page of roles", async () => {
+    // Adapters return 50 roles a page by default; the role sorts last here.
+    for (let i = 0; i < 120; i++) {
+      await data.roles.create(CP, { name: `a-role-${i}` });
+    }
+    const existing = await data.roles.create(CP, {
+      name: DEFAULT_SELF_SERVICE_ROLE_NAME,
+    });
+
+    const userId = await createUser(CP, "social", true);
+    await registration(CP, { user_id: userId, email_verified: true });
+
+    const named = (await data.roles.list(CP, { per_page: 500 })).roles.filter(
+      (r) => r.name === DEFAULT_SELF_SERVICE_ROLE_NAME,
+    );
+    expect(named.map((r) => r.id)).toEqual([existing.id]);
+    expect(
+      (await data.userRoles.list(CP, userId, undefined, "")).map((r) => r.id),
+    ).toEqual([existing.id]);
+  });
+
   it("uses a custom role name", async () => {
     const userId = await createUser(CP, "social", true);
     await createSelfServiceSignupHooks({
