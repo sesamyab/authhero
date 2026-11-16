@@ -320,8 +320,9 @@ export function createAuthMiddleware(
               isTenantsRouterPath(relativePath);
             if (!isBound && !isTenantsRouter) {
               throw new JSONHTTPException(403, {
+                // The wording matches the WFP tenant worker's own guard.
                 message: boundTenantId
-                  ? `An organization token for "${boundTenantId}" cannot act on tenant "${requestTenantId}"`
+                  ? `This token is for another tenant's organization ("${boundTenantId}"), not "${requestTenantId}"`
                   : "An organization token must belong to a tenant's organization",
               });
             }
