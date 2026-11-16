@@ -1,0 +1,16 @@
+---
+"authhero": minor
+"@authhero/multi-tenancy": minor
+---
+
+Bind an organization-scoped control-plane token to the tenant its organization names. Such a token carries the permissions of that organization's roles, and on the control plane an organization is a tenant, but the management API let it act on any tenant by naming it in `tenant-id`, including the control plane itself. A member of one tenant's organization who held a role with `update:users` or `update:roles` could change the control plane's users and roles and make themselves an operator, and any Tenant Admin could manage other tenants' users and clients.
+
+The management API now answers `403` when the token's tenant is the control plane, the token carries an organization (`org_name`, or `org_id`, resolved to the organization's name on the control plane) and the request's tenant is not that tenant. The match ignores case. An `org_id` that names no organization is refused, and a failing organization lookup is a `500`.
+
+The tenants router in the control plane's own context stays reachable (`/tenants`, `/tenants/{id}` and what hangs off it), since it checks access per organization itself. `/tenants/settings`, `/tenants/{id}/operations` and `/tenants/{id}/config-sync` are not exempt: the first acts on the tenant the request is in, the others do no per-organization check. Tokens without an organization claim, and tokens issued by a child tenant, are not affected. A caller who needs to work on the control plane or across tenants has to use a token that is not scoped to an organization.
+
+Deleting a tenant with an organization-scoped token no longer falls back to the user's membership of the target organization: an organization-scoped token can now delete only the tenant its own organization names. A token that carries only `org_id` has its organization's name resolved, so it can still delete its own tenant. `/tenants/{id}/operations` and `/tenants/{id}/config-sync` are no longer exempt from the binding in the control plane's context.
+
+`GET /tenants` now treats a token that carries only `org_name` as organization-scoped, like one with `org_id`. Before, a name-only organization token holding `admin:organizations` received every tenant; it now gets only the tenants of the organizations it belongs to.
+
+An organization that cannot be resolved (an `org_id` that names no organization) is now refused on the tenants router too, not only elsewhere.
