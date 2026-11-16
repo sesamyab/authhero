@@ -49,12 +49,43 @@ const TOKEN_BYTES = 32;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * `code_id` of the row whose `created_at` is when the user's remembered
- * browsers were last invalidated. Token rows are keyed by a hex digest, so the
- * prefix can never collide with one.
+ * A user's invalidations are recorded in two alternating marker rows; the
+ * newer one's `created_at` is when the user's remembered browsers were last
+ * invalidated. An invalidation only ever replaces the older row, so the marker
+ * in force is never deleted: there is no moment in which it is gone and its
+ * replacement not yet written, and a failed write leaves it in place.
  */
-function invalidationCodeId(userId: string) {
-  return `user:${userId}`;
+const INVALIDATION_SLOTS = ["a", "b"] as const;
+type InvalidationSlot = (typeof INVALIDATION_SLOTS)[number];
+
+/**
+ * `code_id` of a user's invalidation marker. Token rows are keyed by a hex
+ * digest, so the prefix can never collide with one.
+ */
+function invalidationCodeId(userId: string, slot: InvalidationSlot) {
+  return `user:${userId}:${slot}`;
+}
+
+/** Each marker slot of the user, with its `created_at` (ms) when written. */
+async function readInvalidationMarkers(
+  ctx: RememberBrowserContext,
+  tenantId: string,
+  userId: string,
+): Promise<{ slot: InvalidationSlot; exists: boolean; createdAt?: number }[]> {
+  return Promise.all(
+    INVALIDATION_SLOTS.map(async (slot) => {
+      const code = await ctx.env.data.codes.get(
+        tenantId,
+        invalidationCodeId(userId, slot),
+        CODE_TYPE,
+      );
+      const createdAt = code ? Date.parse(code.created_at) : NaN;
+      const exists = code !== null;
+      return Number.isNaN(createdAt)
+        ? { slot, exists }
+        : { slot, exists, createdAt };
+    }),
+  );
 }
 
 async function hashToken(token: string): Promise<string> {
@@ -205,14 +236,13 @@ export async function isBrowserRememberedForMfa(
     return false;
   }
 
-  const invalidation = await ctx.env.data.codes.get(
-    tenant.id,
-    invalidationCodeId(userId),
-    CODE_TYPE,
+  const markerTimes = (
+    await readInvalidationMarkers(ctx, tenant.id, userId)
+  ).flatMap((marker) =>
+    marker.createdAt === undefined ? [] : [marker.createdAt],
   );
-  const invalidatedAt = invalidation
-    ? Date.parse(invalidation.created_at)
-    : undefined;
+  const invalidatedAt =
+    markerTimes.length > 0 ? Math.max(...markerTimes) : undefined;
   const now = Date.now();
   const lifetimeMs = rememberBrowserLifetimeInDays(tenant) * DAY_MS;
 
@@ -258,14 +288,26 @@ export async function isBrowserRememberedForMfa(
  * `POST /users/{id}/multifactor/actions/invalidate-remember-browser`). Records
  * the time instead of deleting rows, because codes can't be listed by user in
  * every adapter. The marker outlives every token issued before it.
+ *
+ * The new marker goes into an empty slot, or replaces the older of the two.
+ * The newer marker, the one in force, is left alone, so validation never sees
+ * an earlier invalidation undone, not even while this runs or if it fails.
  */
 export async function invalidateRememberedBrowsers(
   ctx: RememberBrowserContext,
   tenantId: string,
   userId: string,
 ): Promise<void> {
-  const codeId = invalidationCodeId(userId);
-  await ctx.env.data.codes.remove(tenantId, codeId);
+  const markers = await readInvalidationMarkers(ctx, tenantId, userId);
+  const target =
+    markers.find((marker) => marker.createdAt === undefined) ??
+    markers.reduce((older, marker) =>
+      (marker.createdAt ?? 0) < (older.createdAt ?? 0) ? marker : older,
+    );
+  const codeId = invalidationCodeId(userId, target.slot);
+  if (target.exists) {
+    await ctx.env.data.codes.remove(tenantId, codeId);
+  }
   await ctx.env.data.codes.create(tenantId, {
     code_id: codeId,
     code_type: CODE_TYPE,

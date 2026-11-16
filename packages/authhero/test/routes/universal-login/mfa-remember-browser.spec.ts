@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { testClient } from "hono/testing";
 import {
   AuthorizationResponseMode,
@@ -193,6 +194,11 @@ function rememberedTokens(response: Response): string[] {
   return getMfaRememberBrowserTokens("tenantId", header);
 }
 
+/** A token in the generated format (43 base64url characters), named for readability. */
+function tok(name: string) {
+  return createHash("sha256").update(name).digest("base64url");
+}
+
 async function hashToken(token: string) {
   return encodeHex(
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)),
@@ -315,7 +321,7 @@ describe("remember browser for MFA (#1670)", () => {
 
   it("does not emit amr for a login that skipped MFA on a remembered browser", async () => {
     const server = await setup({ allowRememberBrowser: true });
-    const token = "remembered-token";
+    const token = tok("remembered-token");
     await storeToken(server.env, token);
 
     const response = await laterLogin(server, token);
@@ -380,8 +386,8 @@ describe("remember browser for MFA (#1670)", () => {
     expect(rememberedTokens(response)).toEqual([]);
 
     // A token left from when the tenant allowed it doesn't skip MFA either.
-    await storeToken(server.env, "old-token");
-    expectChallenged(await laterLogin(server, "old-token"));
+    await storeToken(server.env, tok("old-token"));
+    expectChallenged(await laterLogin(server, tok("old-token")));
   });
 
   it("uses the tenant's lifetime, also for tokens issued under a longer one", async () => {
@@ -408,35 +414,35 @@ describe("remember browser for MFA (#1670)", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() - 8 * DAY_MS);
     try {
-      await storeToken(server.env, "issued-under-30-days");
+      await storeToken(server.env, tok("issued-under-30-days"));
     } finally {
       vi.useRealTimers();
     }
-    expectChallenged(await laterLogin(server, "issued-under-30-days"));
+    expectChallenged(await laterLogin(server, tok("issued-under-30-days")));
 
     // One issued within the lifetime still works.
-    await storeToken(server.env, "fresh");
-    expectSkippedMfa(await laterLogin(server, "fresh"));
+    await storeToken(server.env, tok("fresh"));
+    expectSkippedMfa(await laterLogin(server, tok("fresh")));
   });
 
   it("does not skip MFA for an expired token or another user's token", async () => {
     const server = await setup({ allowRememberBrowser: true });
-    await storeToken(server.env, "expired", { expiresInMs: -1000 });
+    await storeToken(server.env, tok("expired"), { expiresInMs: -1000 });
     await createOtherUser(server.env);
-    await storeToken(server.env, "someone-else", {
+    await storeToken(server.env, tok("someone-else"), {
       userId: OTHER_USER_ID,
     });
 
-    expectChallenged(await laterLogin(server, "expired"));
-    expectChallenged(await laterLogin(server, "someone-else"));
-    expectChallenged(await laterLogin(server, "never-issued"));
+    expectChallenged(await laterLogin(server, tok("expired")));
+    expectChallenged(await laterLogin(server, tok("someone-else")));
+    expectChallenged(await laterLogin(server, tok("never-issued")));
   });
 
   it("never skips enrollment for a user without a confirmed enrollment", async () => {
     const server = await setup({ allowRememberBrowser: true, enroll: false });
-    await storeToken(server.env, "token");
+    await storeToken(server.env, tok("token"));
 
-    const response = await laterLogin(server, "token");
+    const response = await laterLogin(server, tok("token"));
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toContain("/mfa/totp-enrollment");
   });
@@ -444,10 +450,10 @@ describe("remember browser for MFA (#1670)", () => {
   it("keeps other users' tokens and replaces the user's own when remembering again", async () => {
     const server = await setup({ allowRememberBrowser: true });
     await createOtherUser(server.env);
-    await storeToken(server.env, "other-user-token", {
+    await storeToken(server.env, tok("other-user-token"), {
       userId: OTHER_USER_ID,
     });
-    await storeToken(server.env, "own-old-token");
+    await storeToken(server.env, tok("own-old-token"));
     const loginSession = await seedLoginAwaitingMfa(server.env);
 
     const code = await generateTOTP(decodeBase32(TOTP_SECRET));
@@ -458,7 +464,7 @@ describe("remember browser for MFA (#1670)", () => {
         headers: {
           "tenant-id": "tenantId",
           "content-type": "application/x-www-form-urlencoded",
-          cookie: `${COOKIE_NAME}=own-old-token.other-user-token`,
+          cookie: `${COOKIE_NAME}=${tok("own-old-token")}.${tok("other-user-token")}`,
         },
         body: new URLSearchParams({
           code,
@@ -470,14 +476,130 @@ describe("remember browser for MFA (#1670)", () => {
 
     const tokens = rememberedTokens(response);
     expect(tokens).toHaveLength(2);
-    expect(tokens[1]).toBe("other-user-token");
-    expect(tokens).not.toContain("own-old-token");
+    expect(tokens[1]).toBe(tok("other-user-token"));
+    expect(tokens).not.toContain(tok("own-old-token"));
+  });
+
+  it("bounds the tokens a padded cookie can make it look up", async () => {
+    const server = await setup({ allowRememberBrowser: true });
+    const padded = Array.from({ length: 200 }, (_, i) => tok(`junk-${i}`));
+
+    const codes = server.env.data.codes;
+    const get = codes.get.bind(codes);
+    let lookups = 0;
+    codes.get = async (tenantId, codeId, type) => {
+      if (type === "mfa_remember_browser") lookups++;
+      return get(tenantId, codeId, type);
+    };
+    try {
+      expectChallenged(await laterLogin(server, padded.join(".")));
+    } finally {
+      codes.get = get;
+    }
+    // At most 10 candidate tokens plus the two invalidation marker slots.
+    expect(lookups).toBeGreaterThan(0);
+    expect(lookups).toBeLessThanOrEqual(12);
+  });
+
+  describe("replacing the invalidation marker", () => {
+    const invalidate = (server: TestServer, token: string) =>
+      server.managementApp.request(
+        `/users/${encodeURIComponent(USER_ID)}/multifactor/actions/invalidate-remember-browser`,
+        {
+          method: "POST",
+          headers: {
+            "tenant-id": "tenantId",
+            authorization: `Bearer ${token}`,
+          },
+        },
+        server.env,
+      );
+
+    /** Tick past the millisecond so the next marker is strictly newer. */
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+    it("keeps an earlier invalidation in force when writing the next marker fails", async () => {
+      const server = await setup({ allowRememberBrowser: true });
+      const admin = await getAdminToken();
+      const revoked = tok("revoked-by-first-invalidation");
+      await storeToken(server.env, revoked);
+
+      expect((await invalidate(server, admin)).status).toBe(204);
+      expectChallenged(await laterLogin(server, revoked));
+
+      // The next invalidation can't write its marker.
+      await tick();
+      const codes = server.env.data.codes;
+      const create = codes.create.bind(codes);
+      codes.create = async (tenantId, code) => {
+        if (code.code_id.startsWith("user:")) {
+          throw new Error("write failed");
+        }
+        return create(tenantId, code);
+      };
+      try {
+        // The failure surfaces (thrown here; a 5xx behind the error handler).
+        const outcome = await invalidate(server, admin).then(
+          (response) => response.status,
+          () => "threw",
+        );
+        expect(outcome === "threw" || Number(outcome) >= 500).toBe(true);
+      } finally {
+        codes.create = create;
+      }
+
+      // The first invalidation must still reject the token.
+      expectChallenged(await laterLogin(server, revoked));
+    });
+
+    it("never leaves a window without the effective marker while replacing it", async () => {
+      const server = await setup({ allowRememberBrowser: true });
+      const admin = await getAdminToken();
+
+      // Fill both marker slots, with a token issued between the two
+      // invalidations: only the newer marker rejects it.
+      expect((await invalidate(server, admin)).status).toBe(204);
+      await tick();
+      const revoked = tok("revoked-only-by-newer-marker");
+      await storeToken(server.env, revoked);
+      await tick();
+      expect((await invalidate(server, admin)).status).toBe(204);
+      expectChallenged(await laterLogin(server, revoked));
+
+      // While the next marker is being written, a login with the revoked
+      // token must still be challenged.
+      await tick();
+      const codes = server.env.data.codes;
+      const create = codes.create.bind(codes);
+      const duringWrite: Response[] = [];
+      let probing = false;
+      codes.create = async (tenantId, code) => {
+        if (code.code_id.startsWith("user:") && !probing) {
+          probing = true;
+          try {
+            duringWrite.push(await laterLogin(server, revoked));
+          } finally {
+            probing = false;
+          }
+        }
+        return create(tenantId, code);
+      };
+      try {
+        expect((await invalidate(server, admin)).status).toBe(204);
+      } finally {
+        codes.create = create;
+      }
+
+      expect(duringWrite).toHaveLength(1);
+      expectChallenged(duringWrite[0]!);
+      expectChallenged(await laterLogin(server, revoked));
+    });
   });
 
   it("invalidates remembered browsers through the management API", async () => {
     const server = await setup({ allowRememberBrowser: true });
-    await storeToken(server.env, "token");
-    expectSkippedMfa(await laterLogin(server, "token"));
+    await storeToken(server.env, tok("token"));
+    expectSkippedMfa(await laterLogin(server, tok("token")));
 
     const token = await getAdminToken();
     const headers = {
@@ -490,12 +612,12 @@ describe("remember browser for MFA (#1670)", () => {
       server.env,
     );
     expect(response.status).toBe(204);
-    expectChallenged(await laterLogin(server, "token"));
+    expectChallenged(await laterLogin(server, tok("token")));
 
     // A browser remembered after the invalidation works again.
     await new Promise((resolve) => setTimeout(resolve, 5));
-    await storeToken(server.env, "new-token");
-    expectSkippedMfa(await laterLogin(server, "new-token"));
+    await storeToken(server.env, tok("new-token"));
+    expectSkippedMfa(await laterLogin(server, tok("new-token")));
 
     // Invalidating again is fine (replaces the marker).
     const again = await server.managementApp.request(
@@ -504,7 +626,7 @@ describe("remember browser for MFA (#1670)", () => {
       server.env,
     );
     expect(again.status).toBe(204);
-    expectChallenged(await laterLogin(server, "new-token"));
+    expectChallenged(await laterLogin(server, tok("new-token")));
 
     const missing = await server.managementApp.request(
       `/users/${encodeURIComponent("email|nobody")}/multifactor/actions/invalidate-remember-browser`,
@@ -559,7 +681,7 @@ describe("remember browser for MFA (#1670)", () => {
       expires_at: new Date(Date.now() + 3600_000).toISOString(),
       idle_expires_at: new Date(Date.now() + 3600_000).toISOString(),
     });
-    await storeToken(server.env, "token");
+    await storeToken(server.env, tok("token"));
 
     const silent = (cookie: string) =>
       testClient(server.oauthApp, server.env).authorize.$get(
@@ -580,7 +702,7 @@ describe("remember browser for MFA (#1670)", () => {
     expect(await refused.text()).toContain("interaction_required");
 
     const allowed = await silent(
-      `tenantId-auth-token=${session.id}; ${COOKIE_NAME}=token`,
+      `tenantId-auth-token=${session.id}; ${COOKIE_NAME}=${tok("token")}`,
     );
     expect(allowed.status).toBe(200);
     const body = await allowed.text();
@@ -609,8 +731,8 @@ describe("remember browser for MFA (#1670)", () => {
         "remember_browser",
       );
 
-      await storeToken(server.env, "token");
-      const response = await laterLogin(server, "token");
+      await storeToken(server.env, tok("token"));
+      const response = await laterLogin(server, tok("token"));
       expectSkippedMfa(response);
     });
 
@@ -635,8 +757,8 @@ describe("remember browser for MFA (#1670)", () => {
         "remember_browser",
       );
 
-      await storeToken(server.env, "token");
-      const response = await laterLogin(server, "token");
+      await storeToken(server.env, tok("token"));
+      const response = await laterLogin(server, tok("token"));
       expect(response.status).toBe(302);
       expect(response.headers.get("location")).not.toContain(
         "https://example.com/callback",
@@ -684,10 +806,28 @@ describe("remember browser helpers", () => {
     expect(wantsRememberBrowser(undefined)).toBe(false);
   });
 
+  it("reads only generated-format tokens, and at most 10", () => {
+    const many = Array.from({ length: 30 }, (_, i) => tok(`t${i}`));
+    expect(
+      getMfaRememberBrowserTokens(
+        "tenantId",
+        `${COOKIE_NAME}=${many.join(".")}`,
+      ),
+    ).toEqual(many.slice(0, 10));
+
+    const valid = tok("valid");
+    expect(
+      getMfaRememberBrowserTokens(
+        "tenantId",
+        `${COOKIE_NAME}=short.${valid}.${"x".repeat(44)}.${valid.slice(0, 42)}!`,
+      ),
+    ).toEqual([valid]);
+  });
+
   it("round-trips several tokens through the cookie, from both jars", () => {
     const [plain, partitioned] = serializeMfaRememberBrowserCookie(
       "tenantId",
-      ["a", "b"],
+      [tok("a"), tok("b")],
       60,
       "auth.example.com",
     );
@@ -695,9 +835,15 @@ describe("remember browser helpers", () => {
     const header = [plain, partitioned]
       .map((cookie) => cookie!.split(";")[0])
       .join("; ");
-    expect(getMfaRememberBrowserTokens("tenantId", header)).toEqual(["a", "b"]);
+    expect(getMfaRememberBrowserTokens("tenantId", header)).toEqual([
+      tok("a"),
+      tok("b"),
+    ]);
     expect(
-      getMfaRememberBrowserTokens("tenantId", `${COOKIE_NAME}=c; other=x`),
-    ).toEqual(["c"]);
+      getMfaRememberBrowserTokens(
+        "tenantId",
+        `${COOKIE_NAME}=${tok("c")}; other=x`,
+      ),
+    ).toEqual([tok("c")]);
   });
 });
