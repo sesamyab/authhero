@@ -331,7 +331,9 @@ export function createAuthMiddleware(
             if (isTenantsRouter && boundTenantId && !ctx.var.org_name) {
               ctx.set("org_name", boundTenantId);
             }
-            if (!isBound && !isTenantsRouter) {
+            // An organization that cannot be resolved is refused everywhere,
+            // the tenants router included.
+            if (!isBound && (!isTenantsRouter || !boundTenantId)) {
               throw new JSONHTTPException(403, {
                 // The wording matches the WFP tenant worker's own guard.
                 message: boundTenantId

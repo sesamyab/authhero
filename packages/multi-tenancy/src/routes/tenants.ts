@@ -204,7 +204,9 @@ export function createTenantsOpenAPIRouter(
       // admin:organizations permission they carry came from an org-scoped role — not a
       // global one — and must not bypass per-org tenant filtering.
       const userPermissions = user?.permissions || [];
-      const tokenIsOrgScoped = Boolean(user?.org_id ?? ctx.var.organization_id);
+      const tokenIsOrgScoped = Boolean(
+        user?.org_id ?? ctx.var.organization_id ?? ctx.var.org_name,
+      );
       const hasFullAccess =
         !tokenIsOrgScoped && userPermissions.includes("admin:organizations");
 

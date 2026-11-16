@@ -191,6 +191,28 @@ describe("tenants routes authorization", () => {
     expect(await adapters.tenants.get("other-tenant")).not.toBeNull();
   });
 
+  it("does not give an org_name-only token the full tenant list through admin:organizations", async () => {
+    await createChildTenant("acme");
+    await createChildTenant("globex");
+
+    const { hooks } = setupMultiTenancy(accessControlConfig);
+    const app = createHostApp({
+      config: accessControlConfig,
+      hooks,
+      user: {
+        sub: "auth0|acme-admin",
+        tenant_id: controlPlaneTenantId,
+        permissions: ["admin:organizations", "read:tenants"],
+      },
+      org_name: "acme",
+    });
+
+    const response = await app.request("/management/tenants", {}, env);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { tenants: { id: string }[] };
+    expect(body.tenants.map((t) => t.id)).not.toContain("globex");
+  });
+
   it("lets an org_id-only token delete its own tenant", async () => {
     await createChildTenant("acme");
 

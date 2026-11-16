@@ -1050,6 +1050,11 @@ describe("createAuthMiddleware", () => {
       expect(await call("acme", { org_id: "org_missing" })).toBe("403");
     });
 
+    it("refuses an unresolvable organization id on the tenants router too", async () => {
+      route("get", "/tenants");
+      expect(await call("controlPlane", { org_id: "org_missing" })).toBe("403");
+    });
+
     it("surfaces a failing organization lookup as a 500", async () => {
       route("get", "/users");
       const middleware = createAuthMiddleware(app, {
