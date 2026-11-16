@@ -36,7 +36,7 @@ interface LoginSessionItem extends DynamoDBBaseItem {
 }
 
 function toLoginSession(item: LoginSessionItem): LoginSession {
-  const { tenant_id, authParams, ...rest } = stripDynamoDBFields(item);
+  const { authParams, ...rest } = stripDynamoDBFields(item);
 
   const data = removeNullProperties({
     ...rest,
@@ -117,8 +117,9 @@ export function createLoginSessionsAdapter(
         updates.authParams = JSON.stringify(session.authParams);
       }
 
-      // Remove id from updates
+      // Remove id and tenant_id from updates: the row's tenant is its key.
       delete updates.id;
+      delete updates.tenant_id;
 
       return updateItem(
         ctx,

@@ -138,12 +138,12 @@ export async function getEnrichedClient(
   // `login_sessions` (see migration 2025-09-16T12:30:00); runtime values still
   // come from the freshly-fetched document, not the stub.
   if (isCimdClientId(clientId)) {
-    // The tenant is normally passed in, resolved from the request host/domain.
-    // State-keyed routes (the social-login /callback and /authorize/resume)
-    // carry no host-derived tenant, so fall back to the CIMD stub row that was
-    // upserted under the tenant on the first /authorize (ensureCimdStubClient).
-    // Without this, social login and resume throw for CIMD clients even though
-    // the tenant is unambiguously fixed by the login session in flight.
+    // The tenant is normally passed in: resolved from the request host/domain,
+    // or on state-keyed routes (/callback, /authorize/resume) from the login
+    // session row. As a last resort fall back to the CIMD stub row upserted on
+    // the first /authorize (ensureCimdStubClient). The URL is shared by every
+    // tenant that uses the client, so getByClientId returns null when more
+    // than one tenant has a stub: never guess a tenant (#1731).
     let cimdTenantId = tenantId;
     if (!cimdTenantId) {
       const stub = await env.data.clients.getByClientId(clientId);

@@ -152,22 +152,29 @@ export async function connectionCallback(
   // browser back to the original authorization host if needed. This avoids
   // the fragile 307-POST re-dispatch the old code used.
 
+  // /callback is state-keyed: the login session row is the authoritative
+  // record of the flow's tenant. A CIMD client_id (https URL) has a stub row
+  // in every tenant that uses it, so it can't identify the tenant (#1731).
+  // Fall back to the request's tenant (the session was loaded scoped to it)
+  // only for adapters that don't return the session's tenant.
+  const sessionTenantId =
+    loginSession.tenant_id || ctx.var.tenant_id || undefined;
+
   // Warm the bundle before getEnrichedClient so its parallel config fetch
   // collapses to a single cache key.
   const sessionClientId = loginSession.authParams.client_id;
   if (sessionClientId && !isCimdClientId(sessionClientId)) {
-    // Pass the tenant when the request already resolved one (tenant
-    // subdomain / header); otherwise the prefetch discovers it via
-    // clients.getByClientId.
+    // Without a tenant the prefetch discovers it via clients.getByClientId.
     await prefetchClientBundle(ctx, {
       client_id: sessionClientId,
-      tenant_id: ctx.var.tenant_id || undefined,
+      tenant_id: sessionTenantId,
     }).catch(() => {});
   }
 
   const client = await getEnrichedClient(
     env,
     loginSession.authParams.client_id,
+    sessionTenantId,
   );
 
   if (isDeviceLoginSession(loginSession.state_data))

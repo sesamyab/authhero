@@ -3,6 +3,7 @@ import { testClient } from "hono/testing";
 import { openIDConfigurationSchema } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../../helpers/test-server";
 import {
+  cimdTenantHint,
   isCimdClientId,
   resolveCimdClient,
   cimdDocumentSchema,
@@ -52,6 +53,15 @@ describe("isCimdClientId", () => {
     expect(isCimdClientId("http://localhost:8080/cimd.json")).toBe(true);
     expect(isCimdClientId("clientId")).toBe(false);
     expect(isCimdClientId("not a url")).toBe(false);
+  });
+});
+
+describe("cimdTenantHint", () => {
+  it("passes the request tenant only for CIMD client_ids", () => {
+    expect(cimdTenantHint(CIMD_URL, "tenantId")).toBe("tenantId");
+    expect(cimdTenantHint(CIMD_URL, undefined)).toBeUndefined();
+    expect(cimdTenantHint(CIMD_URL, "")).toBeUndefined();
+    expect(cimdTenantHint("clientId", "tenantId")).toBeUndefined();
   });
 });
 
@@ -571,6 +581,189 @@ describe("connect continuation validation", () => {
     expect(response.status).toBe(403);
     expect(await response.text()).toContain(
       "Origin https://unregistered.example not allowed",
+    );
+  });
+});
+
+// #1731: a CIMD client_id is a URL shared by every tenant that uses the
+// client, so `clients` holds one stub row per tenant. State-keyed hops
+// (/login/callback, /authorize/resume) must take the tenant from the login
+// session, never from an unscoped `getByClientId` that picks an arbitrary
+// tenant's stub.
+describe("CIMD state-keyed hops with stubs in several tenants (#1731)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const OTHER_TENANT = "otherTenant";
+
+  async function setupTwoTenants(otherFlagEnabled: boolean) {
+    const server = await getTestServer();
+    const { env } = server;
+    env.ALLOW_PRIVATE_OUTBOUND_FETCH = true;
+    mockFetchJson(validDocument());
+
+    await env.data.tenants.create({
+      id: OTHER_TENANT,
+      friendly_name: "Other Tenant",
+      audience: "https://other.example.com",
+      sender_email: "login@other.example.com",
+      sender_name: "Other",
+      flags: otherFlagEnabled
+        ? { client_id_metadata_document_registration: true }
+        : undefined,
+    });
+    await env.data.connections.create(OTHER_TENANT, {
+      id: "mock-strategy",
+      name: "mock-strategy",
+      strategy: "mock-strategy",
+      options: {
+        client_id: "otherMockClientId",
+        client_secret: "otherMockClientSecret",
+      },
+    });
+    // The other tenant's stub is inserted FIRST, so an unscoped
+    // `SELECT … WHERE client_id = ? LIMIT 1` returns it.
+    await env.data.clients.create(OTHER_TENANT, {
+      client_id: CIMD_URL,
+      name: "Example MCP Client",
+      app_type: "regular_web",
+      client_metadata: { cimd: "true" },
+    });
+    await enableCimd(env);
+
+    return server;
+  }
+
+  async function runSocialLogin(
+    server: Awaited<ReturnType<typeof getTestServer>>,
+  ) {
+    const { oauthApp, env } = server;
+
+    // /authorize carries the tenant (here via the header, in production via
+    // the host). It upserts the session tenant's own stub row.
+    const authorize = await oauthApp.request(
+      `/authorize?${new URLSearchParams({
+        client_id: CIMD_URL,
+        redirect_uri: "https://rp.example.com/callback",
+        response_type: "code",
+        scope: "openid",
+        code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        code_challenge_method: "S256",
+        state: "xyz",
+        connection: "mock-strategy",
+      })}`,
+      { headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(authorize.status, await authorize.text()).toBe(302);
+    expect(authorize.headers.get("location")).toBe(
+      "https://example.com/authorize",
+    );
+    expect(await env.data.clients.get("tenantId", CIMD_URL)).not.toBeNull();
+
+    const stateCode = await env.data.codes.get(
+      "tenantId",
+      "code",
+      "oauth2_state",
+    );
+    const loginId = stateCode?.login_id;
+    if (!loginId) throw new Error("oauth2_state code missing");
+
+    // The IdP returns to the state-keyed callback with no tenant on the
+    // request: no header, issuer host, and more than one tenant.
+    const callback = await oauthApp.request(
+      "/login/callback?state=code&code=foo@example.com",
+      {},
+      env,
+    );
+    expect(callback.status, await callback.text()).toBe(302);
+    const callbackLocation = new URL(
+      callback.headers.get("location") ?? "",
+      "http://localhost:3000",
+    );
+    expect(callbackLocation.pathname).toBe("/authorize/resume");
+    expect(callbackLocation.searchParams.get("state")).toBe(loginId);
+
+    const resume = await oauthApp.request(
+      `/authorize/resume?state=${loginId}`,
+      {},
+      env,
+    );
+    expect(resume.status, await resume.text()).toBe(302);
+    const resumeLocation = new URL(resume.headers.get("location") ?? "");
+    expect(resumeLocation.origin + resumeLocation.pathname).toBe(
+      "https://rp.example.com/callback",
+    );
+    expect(resumeLocation.searchParams.get("state")).toBe("xyz");
+    const code = resumeLocation.searchParams.get("code");
+    if (!code) throw new Error("authorization code missing");
+
+    return { code, loginId };
+  }
+
+  async function expectFlowInSessionTenant(
+    env: Awaited<ReturnType<typeof getTestServer>>["env"],
+    code: string,
+    loginId: string,
+  ) {
+    // The code and the user belong to the session's tenant only.
+    const codeRow = await env.data.codes.get(
+      "tenantId",
+      code,
+      "authorization_code",
+    );
+    expect(codeRow?.login_id).toBe(loginId);
+    expect(
+      await env.data.users.get("tenantId", "mock-strategy|foo"),
+    ).not.toBeNull();
+    expect(await env.data.users.get(OTHER_TENANT, "mock-strategy|foo")).toBe(
+      null,
+    );
+    const { users: otherUsers } = await env.data.users.list(OTHER_TENANT);
+    expect(otherUsers.length).toBe(0);
+    // The login is logged under the session's tenant, never the other one.
+    const logs = await env.data.logs.list("tenantId");
+    expect(logs.logs.map((log) => log.type)).toContain("s");
+    const otherLogs = await env.data.logs.list(OTHER_TENANT);
+    expect(otherLogs.logs.length).toBe(0);
+  }
+
+  it("resumes in the session's tenant when only it has the CIMD flag", async () => {
+    const server = await setupTwoTenants(false);
+    const { code, loginId } = await runSocialLogin(server);
+    await expectFlowInSessionTenant(server.env, code, loginId);
+  });
+
+  it("resumes in the session's tenant when both tenants have the CIMD flag", async () => {
+    const server = await setupTwoTenants(true);
+    const { code, loginId } = await runSocialLogin(server);
+    await expectFlowInSessionTenant(server.env, code, loginId);
+  });
+
+  it("getEnrichedClient resolves the tenant it is given", async () => {
+    const { env } = await setupTwoTenants(true);
+    await env.data.clients.create("tenantId", {
+      client_id: CIMD_URL,
+      name: "Example MCP Client",
+      app_type: "regular_web",
+      client_metadata: { cimd: "true" },
+    });
+
+    const client = await getEnrichedClient(env, CIMD_URL, "tenantId");
+    expect(client.tenant.id).toBe("tenantId");
+    expect(client.connections.map((c) => c.id)).toContain("email");
+  });
+
+  it("getEnrichedClient refuses to guess between several tenants' stubs", async () => {
+    const { env } = await setupTwoTenants(true);
+    await env.data.clients.create("tenantId", {
+      client_id: CIMD_URL,
+      name: "Example MCP Client",
+      app_type: "regular_web",
+      client_metadata: { cimd: "true" },
+    });
+
+    await expect(getEnrichedClient(env, CIMD_URL)).rejects.toThrow(
+      /tenant_id is required/,
     );
   });
 });

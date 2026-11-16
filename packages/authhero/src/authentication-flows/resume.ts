@@ -112,17 +112,26 @@ export async function resumeLoginSession(
   // BEFORE fetching the enriched client: the client-bundle wrapper routes
   // reads by ctx.var, so without this every resume pays per-entity
   // round-trips for tenant/connections/clientConnections instead of one
-  // bundle cache hit. CIMD client_ids (https URLs) aren't looked up here;
-  // getEnrichedClient recovers their tenant from the CIMD stub row instead.
+  // bundle cache hit.
+  //
+  // The login session row is the authoritative record of the flow's tenant.
+  // A CIMD client_id (https URL) has a stub row in every tenant that uses it,
+  // so a lookup by client_id alone can't identify the tenant (#1731). Only an
+  // adapter that doesn't return the session's tenant falls back to the
+  // request's tenant (the session was loaded scoped to it) or, for a
+  // registered client, the global client lookup.
   const sessionClientId = loginSession.authParams.client_id;
-  let resolvedTenantId: string | undefined;
-  if (!isCimdClientId(sessionClientId)) {
+  let resolvedTenantId =
+    loginSession.tenant_id || ctx.var.tenant_id || undefined;
+  if (!resolvedTenantId && !isCimdClientId(sessionClientId)) {
     const clientWithTenant =
       await ctx.env.data.clients.getByClientId(sessionClientId);
     if (!clientWithTenant) {
       throw new JSONHTTPException(403, { message: "Client not found" });
     }
     resolvedTenantId = clientWithTenant.tenant_id;
+  }
+  if (resolvedTenantId) {
     setTenantId(ctx, resolvedTenantId);
     ctx.set("client_id", sessionClientId);
   }

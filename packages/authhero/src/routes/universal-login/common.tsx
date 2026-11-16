@@ -71,23 +71,30 @@ export async function initJSXRoute(
 
   ctx.set("loginSession", loginSession);
 
+  // The login session row is the authoritative record of the flow's tenant.
+  // A CIMD client_id (https URL) has a stub row in every tenant that uses it,
+  // so it can't identify the tenant on its own (#1731). Fall back to the
+  // request's tenant (the session was loaded scoped to it) only for adapters
+  // that don't return the session's tenant.
+  const sessionTenantId =
+    loginSession.tenant_id || ctx.var.tenant_id || undefined;
+
   // Warm the bundle once for this (tenant, client) so both getEnrichedClient
   // and the parallel theme/branding fetch below hit a single cache key.
   const sessionClientId = loginSession.authParams.client_id;
   if (sessionClientId && !isCimdClientId(sessionClientId)) {
-    // The login session is already scoped to ctx.var.tenant_id — pass it so
-    // the bundle is warmed for the active tenant instead of resolving the
-    // tenant via an extra clients.getByClientId lookup.
+    // Pass the session's tenant so the bundle is warmed for it instead of
+    // resolving the tenant via an extra clients.getByClientId lookup.
     await prefetchClientBundle(ctx, {
       client_id: sessionClientId,
-      tenant_id: ctx.var.tenant_id,
+      tenant_id: sessionTenantId,
     }).catch(() => {});
   }
 
   const client = await getEnrichedClient(
     env,
     loginSession.authParams.client_id,
-    ctx.var.tenant_id,
+    sessionTenantId,
     ssrfFetchOptionsFromEnv(env),
   );
   if (readLoginSessionData(loginSession.state_data).deviceFlow) {

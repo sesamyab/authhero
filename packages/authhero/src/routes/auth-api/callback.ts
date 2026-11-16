@@ -63,22 +63,24 @@ async function returnError(
     throw new HTTPException(400, { message: "Redirect uri not found" });
   }
 
+  // /callback is state-keyed, so the tenant middleware leaves tenant_id unset
+  // on a host that doesn't identify the tenant. Take it from the login
+  // session row, as connectionCallback does: a CIMD client_id has a stub row
+  // in every tenant that uses it and can't identify the tenant (#1731).
   let client: Awaited<ReturnType<typeof getEnrichedClient>> | undefined;
   if (loginSession.authParams.client_id) {
     try {
       client = await getEnrichedClient(
         ctx.env,
         loginSession.authParams.client_id,
-        ctx.var.tenant_id,
+        loginSession.tenant_id || ctx.var.tenant_id || undefined,
       );
     } catch {
       // fall back to /u/login/identifier
     }
   }
 
-  // /callback is state-keyed, so the tenant middleware leaves tenant_id unset
-  // on a host that doesn't identify the tenant. Take it from the session's
-  // client, as connectionCallback does, so the log isn't written without one.
+  // Stamp the tenant on the context so the log isn't written without one.
   if (client) {
     setTenantId(ctx, client.tenant.id);
     if (isDeviceLoginSession(loginSession.state_data))

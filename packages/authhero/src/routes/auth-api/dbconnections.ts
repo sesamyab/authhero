@@ -25,6 +25,7 @@ import { nanoid } from "nanoid";
 import { stringifyAuth0Client } from "../../utils/client-info";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { getEnrichedClient } from "../../helpers/client";
+import { cimdTenantHint } from "../../helpers/cimd";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
 const postSignup = defineRoute({
@@ -66,7 +67,11 @@ const postSignup = defineRoute({
   handler: async (ctx) => {
     const { email, password, client_id } = ctx.req.valid("json");
 
-    const client = await getEnrichedClient(ctx.env, client_id);
+    const client = await getEnrichedClient(
+      ctx.env,
+      client_id,
+      cimdTenantHint(client_id, ctx.var.tenant_id),
+    );
     ctx.set("client_id", client.client_id);
     setTenantId(ctx, client.tenant.id);
 
@@ -185,7 +190,11 @@ const postChangePassword = defineRoute({
   handler: async (ctx) => {
     const { email, client_id } = ctx.req.valid("json");
 
-    const client = await getEnrichedClient(ctx.env, client_id);
+    const client = await getEnrichedClient(
+      ctx.env,
+      client_id,
+      cimdTenantHint(client_id, ctx.var.tenant_id),
+    );
     ctx.set("client_id", client.client_id);
     setTenantId(ctx, client.tenant.id);
 
