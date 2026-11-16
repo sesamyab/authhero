@@ -63,11 +63,12 @@ function callerGrants(user: CallerToken | undefined): Set<string> {
  *   a control-plane token may point at any tenant. A token without a
  *   `tenant_id` is not a child's token and is treated like a control-plane one.
  * - On the control plane, an operator reaches every tenant: a machine token
- *   (its scopes are explicit grants), a caller holding `create:tenant_operations` or
- *   `create:rollouts`,
- *   or a user token that is not scoped to an organization and holds
- *   `admin:organizations`. Anyone else reaches only the
- *   tenants whose organization they belong to, the same rule as `GET /tenants`.
+ *   (its scopes are explicit grants), or a caller holding
+ *   `create:tenant_operations`, `create:rollouts` or `admin:organizations`.
+ *   Only with a token that is not scoped to an organization: such a token
+ *   carries the permissions of its organization's roles, which say nothing
+ *   about being an operator. Anyone else reaches only the tenants whose
+ *   organization they belong to, the same rule as `GET /tenants`.
  * - Without a configured control plane there is one tenant and no filter.
  */
 async function callerReachesTenant(
@@ -91,22 +92,34 @@ async function callerReachesTenant(
     return targetTenantId === user.tenant_id;
   }
   if (!user?.sub) return false;
-  if (
-    user.sub.endsWith("@clients") ||
-    (user.azp && user.sub === user.azp) ||
-    user.gty
-  ) {
-    return true;
-  }
-  const grants = callerGrants(user);
-  // Operator scopes: `create:tenant_operations` starts any kind of operation
-  // and `create:rollouts` runs one across the fleet, so their holders already
-  // reach every tenant.
-  if (grants.has("create:tenant_operations") || grants.has("create:rollouts")) {
-    return true;
-  }
+
+  // Operators reach every tenant, but only with a token that is not scoped to
+  // an organization. An organization-scoped token carries the permissions of
+  // that organization's roles, and the stock "Tenant Admin" role holds every
+  // management scope, so its permissions say nothing about being an operator.
+  // A real operator can always mint a token without an organization.
   const orgScoped = Boolean(user.org_id ?? ctx.var.organization_id);
-  if (!orgScoped && grants.has("admin:organizations")) return true;
+  if (!orgScoped) {
+    // A machine token: its scopes are explicit grants.
+    if (
+      user.sub.endsWith("@clients") ||
+      (user.azp && user.sub === user.azp) ||
+      user.gty
+    ) {
+      return true;
+    }
+    const grants = callerGrants(user);
+    // `create:tenant_operations` starts any kind of operation and
+    // `create:rollouts` runs one across the fleet, so their holders already
+    // reach every tenant; `admin:organizations` is the global admin.
+    if (
+      grants.has("create:tenant_operations") ||
+      grants.has("create:rollouts") ||
+      grants.has("admin:organizations")
+    ) {
+      return true;
+    }
+  }
 
   // An operation with no tenant (fleet-wide) is for operators only.
   if (!targetTenantId) return false;
@@ -167,7 +180,15 @@ const getOperation = defineRoute({
     // Only operators on the control plane may read arbitrary operations;
     // other callers are limited to the tenants they can reach. Respond 404
     // (not 403) so foreign operation ids don't leak their existence.
-    if (!operation || !(await callerReachesTenant(ctx, operation.tenant_id))) {
+    // A request made in a child tenant's context (a child token, or a
+    // control-plane token naming the child in `tenant-id`) sees only that
+    // tenant's operations, the same rule as the history route below.
+    if (
+      !operation ||
+      (!isControlPlaneTenant(ctx, ctx.var.tenant_id) &&
+        operation.tenant_id !== ctx.var.tenant_id) ||
+      !(await callerReachesTenant(ctx, operation.tenant_id))
+    ) {
       throw notFound.tenantOperation();
     }
 

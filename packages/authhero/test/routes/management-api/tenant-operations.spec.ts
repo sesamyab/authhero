@@ -676,6 +676,83 @@ describe("management-api tenant operations: who reaches which tenant", () => {
     }
   });
 
+  it("does not honour the operator scopes on an organization-scoped token", async () => {
+    // The stock "Tenant Admin" org role holds every management scope, so an
+    // org-scoped token carries them without its holder being an operator.
+    const { app, env, operation } = await setup();
+    const orgScoped = (permissions: string[]) =>
+      createToken({
+        user_id: OUTSIDER,
+        aud: "urn:authhero:management",
+        org_id: "org_other",
+        permissions: ["read:tenant_operations", ...permissions],
+      });
+
+    for (const scope of ["create:tenant_operations", "create:rollouts"]) {
+      const token = await orgScoped([scope]);
+      expect(
+        (await get(app, env, `/api/v2/tenants/${CHILD}/operations`, token))
+          .status,
+      ).toBe(404);
+      expect(
+        (await get(app, env, `/api/v2/operations/${operation.id}`, token))
+          .status,
+      ).toBe(404);
+    }
+
+    const poster = await orgScoped(["create:tenant_operations"]);
+    for (const kind of ["upgrade", "sync-defaults", "detach"]) {
+      expect((await post(app, env, poster, kind)).status).toBe(404);
+    }
+  });
+
+  it("does not let a Tenant Admin of one tenant read another tenant's operations through a child context", async () => {
+    const { app, env, operation } = await setup();
+    // Another tenant, with an operation of its own.
+    await env.data.tenants.create({
+      id: "other",
+      friendly_name: "Other",
+      audience: "https://other.example.com",
+      sender_email: "support@other.example.com",
+      sender_name: "Other",
+    });
+    const foreign = await env.data.tenantOperations!.create({
+      tenant_id: "other",
+      kind: "upgrade",
+      engine: "inline",
+    });
+    // The user is a member of CHILD only, holds every operator scope through
+    // that organization's role, and names CHILD in tenant-id.
+    const token = await createToken({
+      user_id: MEMBER,
+      tenant_id: CONTROL_PLANE,
+      aud: "urn:authhero:management",
+      org_id: "org_child",
+      permissions: [
+        "read:tenant_operations",
+        "create:tenant_operations",
+        "create:rollouts",
+      ],
+    });
+    const asChild = (path: string) =>
+      app.request(
+        path,
+        { headers: { "tenant-id": CHILD, authorization: `Bearer ${token}` } },
+        env as never,
+      );
+
+    expect((await asChild(`/api/v2/operations/${foreign.id}`)).status).toBe(
+      404,
+    );
+    expect((await asChild(`/api/v2/tenants/other/operations`)).status).toBe(
+      403,
+    );
+    // Its own tenant still works.
+    expect((await asChild(`/api/v2/operations/${operation.id}`)).status).toBe(
+      200,
+    );
+  });
+
   it("does not let an organization-scoped admin:organizations act globally", async () => {
     const { app, env, operation } = await setup();
     const token = await createToken({
