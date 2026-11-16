@@ -1,5 +1,7 @@
 import { Kysely } from "kysely";
+import { HTTPException } from "hono/http-exception";
 import {
+  isUniqueViolation,
   ResourceServer,
   ResourceServerInsert,
   resourceServerSchema,
@@ -60,7 +62,19 @@ export function create(db: Kysely<Database>) {
       updated_at,
     };
 
-    await db.insertInto("resource_servers").values(dbResourceServer).execute();
+    try {
+      await db
+        .insertInto("resource_servers")
+        .values(dbResourceServer)
+        .execute();
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new HTTPException(409, {
+          message: "Resource server already exists",
+        });
+      }
+      throw err;
+    }
 
     return removeNullProperties(resourceServer);
   };

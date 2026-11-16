@@ -15,7 +15,10 @@ import {
   inviteInsertSchema,
   LogTypes,
   escapeLuceneValue,
+  DataAdapters,
+  Organization,
 } from "@authhero/adapter-interfaces";
+import { isUniqueConstraintError } from "../../errors/is-unique-constraint-error";
 import { Bindings, Variables } from "../../types";
 import { HTTPException } from "hono/http-exception";
 import {
@@ -33,7 +36,33 @@ import { defineRoute } from "../../utils/define-route";
 import { scopeForms } from "../../middlewares/authentication";
 import { ACCESS_ALL_ORGANIZATIONS_PERMISSION } from "../../helpers/scopes-permissions";
 import { JSONHTTPException } from "../../errors/json-http-exception";
-import { requireTenantId, withTotals, listResponse } from "./helpers";
+import {
+  requireTenantId,
+  withTotals,
+  listResponse,
+  findInPagedList,
+} from "./helpers";
+
+// Exact, case-sensitive name lookup across every page (names are unique per
+// tenant). The `name:` filter narrows the scan; the comparison is redone here
+// because adapters differ in how exact that filter is.
+async function findOrganizationByName(
+  data: DataAdapters,
+  tenantId: string,
+  name: string,
+): Promise<Organization | undefined> {
+  return findInPagedList(
+    async (page, per_page) =>
+      (
+        await data.organizations.list(tenantId, {
+          q: `name:${escapeLuceneValue(name)}`,
+          page,
+          per_page,
+        })
+      ).organizations,
+    (org) => org.name === name,
+  );
+}
 // Query schema for invitations list endpoint
 const invitationsQuerySchema = z.object({
   page: z
@@ -414,11 +443,28 @@ const patchById = defineRoute({
       throw notFound.organization();
     }
 
-    const updated = await ctx.env.data.organizations.update(
-      tenant_id,
-      id,
-      body,
-    );
+    if (body.name !== undefined && body.name !== beforeOrg.name) {
+      const clash = await findOrganizationByName(
+        ctx.env.data,
+        tenant_id,
+        body.name,
+      );
+      if (clash && clash.id !== beforeOrg.id) {
+        throw conflict.organizationName();
+      }
+    }
+
+    let updated: boolean;
+    try {
+      updated = await ctx.env.data.organizations.update(tenant_id, id, body);
+    } catch (err) {
+      // The (tenant_id, name) unique index is the only one an update can
+      // trip: a concurrent request took the name after the check above.
+      if (isUniqueConstraintError(err) && body.name !== undefined) {
+        throw conflict.organizationName();
+      }
+      throw err;
+    }
 
     if (!updated) {
       throw notFound.organization();
@@ -480,11 +526,7 @@ const postRoot = defineRoute({
     const tenant_id = requireTenantId(ctx);
     const body = ctx.req.valid("json");
 
-    const { organizations: sameName } = await ctx.env.data.organizations.list(
-      tenant_id,
-      { q: `name:${escapeLuceneValue(body.name)}` },
-    );
-    if (sameName.some((org) => org.name === body.name)) {
+    if (await findOrganizationByName(ctx.env.data, tenant_id, body.name)) {
       throw conflict.organizationName();
     }
 
@@ -493,10 +535,24 @@ const postRoot = defineRoute({
       id: body.id || generateOrganizationId(),
     };
 
-    const organization = await ctx.env.data.organizations.create(
-      tenant_id,
-      organizationData,
-    );
+    let organization: Organization;
+    try {
+      organization = await ctx.env.data.organizations.create(
+        tenant_id,
+        organizationData,
+      );
+    } catch (err) {
+      // A concurrent create took the name after the check above. Only report
+      // it as a name conflict if that is what it was: a caller-supplied `id`
+      // that already exists is a different 409.
+      if (
+        isUniqueConstraintError(err) &&
+        (await findOrganizationByName(ctx.env.data, tenant_id, body.name))
+      ) {
+        throw conflict.organizationName();
+      }
+      throw err;
+    }
 
     await logMessage(ctx, tenant_id, {
       type: LogTypes.SUCCESS_API_OPERATION,

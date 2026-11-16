@@ -1,6 +1,11 @@
 import { eq, and, count as countFn, asc, desc, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
-import type { ResourceServer, ListParams } from "@authhero/adapter-interfaces";
+import { HTTPException } from "hono/http-exception";
+import {
+  isUniqueViolation,
+  type ResourceServer,
+  type ListParams,
+} from "@authhero/adapter-interfaces";
 import { resourceServers } from "../schema/sqlite";
 import { removeNullProperties, parseJsonIfString } from "../helpers/transform";
 import { buildLuceneFilter, sanitizeLuceneQuery } from "../helpers/filter";
@@ -114,7 +119,16 @@ export function createResourceServersAdapter(db: DrizzleDb) {
         values.is_system = 0;
       }
 
-      await db.insert(resourceServers).values(values);
+      try {
+        await db.insert(resourceServers).values(values);
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          throw new HTTPException(409, {
+            message: "Resource server already exists",
+          });
+        }
+        throw error;
+      }
 
       return sqlToResourceServer({ ...values, tenant_id });
     },
@@ -175,16 +189,26 @@ export function createResourceServersAdapter(db: DrizzleDb) {
         }
       }
 
-      const results = await db
-        .update(resourceServers)
-        .set(updateData)
-        .where(
-          and(
-            eq(resourceServers.tenant_id, tenant_id),
-            eq(resourceServers.id, id),
-          ),
-        )
-        .returning();
+      let results: unknown[];
+      try {
+        results = await db
+          .update(resourceServers)
+          .set(updateData)
+          .where(
+            and(
+              eq(resourceServers.tenant_id, tenant_id),
+              eq(resourceServers.id, id),
+            ),
+          )
+          .returning();
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          throw new HTTPException(409, {
+            message: "Resource server already exists",
+          });
+        }
+        throw error;
+      }
 
       return results.length > 0;
     },

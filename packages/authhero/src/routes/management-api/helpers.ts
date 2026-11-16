@@ -87,3 +87,25 @@ export function listResponse<T extends { length: number }, K extends keyof T>(
     ? withTotalsEnvelope(result, result[key] as unknown as readonly unknown[])
     : result[key];
 }
+
+/**
+ * Pages through a list until an item satisfies `match`, so a uniqueness check
+ * or lookup is not limited to the first page.
+ *
+ * Adapter `q` filters are not uniformly exact (drizzle matches resource-server
+ * identifiers with a substring LIKE, for one), so callers pass a filter that
+ * returns a superset and do the exact comparison in `match`. Stops at the
+ * first page shorter than the page size.
+ */
+export async function findInPagedList<T>(
+  fetchPage: (page: number, per_page: number) => Promise<T[]>,
+  match: (item: T) => boolean,
+): Promise<T | undefined> {
+  const per_page = 50;
+  for (let page = 0; ; page++) {
+    const items = await fetchPage(page, per_page);
+    const found = items.find(match);
+    if (found) return found;
+    if (items.length < per_page) return undefined;
+  }
+}

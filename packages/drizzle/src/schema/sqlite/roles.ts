@@ -4,6 +4,7 @@ import {
   integer,
   primaryKey,
   index,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { configInheritanceColumns } from "./configInheritance";
 
@@ -145,5 +146,10 @@ export const resourceServers = sqliteTable(
       columns: [table.tenant_id, table.id],
       name: "resource_servers_pk",
     }),
+    // Same name as kysely's index so both adapters report the same constraint.
+    uniqueIndex("resource_servers_tenant_identifier_uq").on(
+      table.tenant_id,
+      table.identifier,
+    ),
   ],
 );

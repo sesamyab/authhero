@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX `idx_organizations_tenant_name_unique` ON `organizations` (`tenant_id`,`name`);--> statement-breakpoint
+CREATE UNIQUE INDEX `resource_servers_tenant_identifier_uq` ON `resource_servers` (`tenant_id`,`identifier`);

@@ -1,7 +1,11 @@
 import { eq, and, count as countFn, asc, desc } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { HTTPException } from "hono/http-exception";
-import type { Organization, ListParams } from "@authhero/adapter-interfaces";
+import {
+  isUniqueViolation,
+  type Organization,
+  type ListParams,
+} from "@authhero/adapter-interfaces";
 import { organizations } from "../schema/sqlite";
 import { removeNullProperties, parseJsonIfString } from "../helpers/transform";
 import { buildLuceneFilter, sanitizeLuceneQuery } from "../helpers/filter";
@@ -62,11 +66,8 @@ export function createOrganizationsAdapter(db: DrizzleDb) {
 
       try {
         await db.insert(organizations).values(values);
-      } catch (error: any) {
-        if (
-          error?.message?.includes("UNIQUE constraint failed") ||
-          error?.message?.includes("AlreadyExists")
-        ) {
+      } catch (error) {
+        if (isUniqueViolation(error)) {
           throw new HTTPException(409, {
             message: "Organization already exists",
           });
@@ -128,13 +129,26 @@ export function createOrganizationsAdapter(db: DrizzleDb) {
       if (params.token_quota !== undefined)
         updateData.token_quota = JSON.stringify(params.token_quota);
 
-      const results = await db
-        .update(organizations)
-        .set(updateData)
-        .where(
-          and(eq(organizations.tenant_id, tenantId), eq(organizations.id, id)),
-        )
-        .returning();
+      let results: unknown[];
+      try {
+        results = await db
+          .update(organizations)
+          .set(updateData)
+          .where(
+            and(
+              eq(organizations.tenant_id, tenantId),
+              eq(organizations.id, id),
+            ),
+          )
+          .returning();
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          throw new HTTPException(409, {
+            message: "Organization already exists",
+          });
+        }
+        throw error;
+      }
 
       return results.length > 0;
     },

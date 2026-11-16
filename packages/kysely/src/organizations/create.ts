@@ -2,6 +2,7 @@ import { Kysely } from "kysely";
 import { HTTPException } from "hono/http-exception";
 import { Database } from "../db";
 import {
+  isUniqueViolation,
   Organization,
   OrganizationInsert,
   CreateOptions,
@@ -32,12 +33,8 @@ export function create(db: Kysely<Database>) {
 
     try {
       await db.insertInto("organizations").values(sqlOrganization).execute();
-    } catch (err: any) {
-      if (
-        err.code === "SQLITE_CONSTRAINT_UNIQUE" ||
-        err.code === "ER_DUP_ENTRY" ||
-        err.message.includes("AlreadyExists")
-      ) {
+    } catch (err) {
+      if (isUniqueViolation(err)) {
         throw new HTTPException(409, {
           message: "Organization already exists",
         });
