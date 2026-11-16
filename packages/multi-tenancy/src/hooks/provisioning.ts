@@ -241,6 +241,17 @@ async function resolveCreatorRoles(
       scopes: MANAGEMENT_API_SCOPES.map((scope) => scope.value),
     },
   );
+  // The owner role is kept up to date on every creation too, whoever the
+  // creator is, so an existing one picks up scopes added since it was created.
+  const ownerRoleId = await ensureRoleWithScopes(
+    ctx.adapters,
+    controlPlaneTenantId,
+    {
+      name: ownerRoleName,
+      description: ownerRoleDescription,
+      scopes: tenantOwnerScopes(),
+    },
+  );
   if (!addCreatorToOrganization || !userId) return { adminRoleId };
 
   // The admin role only for a creator who already holds the operator scopes
@@ -253,13 +264,7 @@ async function resolveCreatorRoles(
     userId,
   );
   const isOperator = ADMIN_REQUIRES_SCOPES.every((scope) => held.has(scope));
-  const creatorRoleId = isOperator
-    ? adminRoleId
-    : await ensureRoleWithScopes(ctx.adapters, controlPlaneTenantId, {
-        name: ownerRoleName,
-        description: ownerRoleDescription,
-        scopes: tenantOwnerScopes(),
-      });
+  const creatorRoleId = isOperator ? adminRoleId : ownerRoleId;
   return { adminRoleId, creatorRoleId };
 }
 

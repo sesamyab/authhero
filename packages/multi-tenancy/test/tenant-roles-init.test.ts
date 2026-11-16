@@ -374,6 +374,26 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
     expect(await roleNames("auth2|customer", org.id)).toEqual(["Tenant Owner"]);
   });
 
+  it("tops up an existing Tenant Owner role too, when an operator creates the tenant", async () => {
+    await makeOperator("auth2|operator");
+    const owner = await data.roles.create(CP, { name: "Tenant Owner" });
+    await data.rolePermissions.assign(CP, owner.id, [
+      {
+        role_id: owner.id,
+        resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+        permission_name: "read:users",
+      },
+    ]);
+
+    expect((await createTenant("auth2|operator", "acme")).status).toBe(201);
+
+    expect(await permissionsOf("Tenant Owner")).toEqual(
+      [...tenantOwnerScopes()].sort(),
+    );
+    const org = await orgOf("acme");
+    expect(await roleNames("auth2|operator", org.id)).toEqual(["Tenant Admin"]);
+  });
+
   it("leaves an earlier creator on the role they already have", async () => {
     await makeOperator("auth2|early");
     await createTenant("auth2|early", "first");

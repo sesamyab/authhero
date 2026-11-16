@@ -108,12 +108,13 @@ export interface AccessControlConfig {
    * `initMultiTenant` turns this on; `setupMultiTenancy` keeps the older rule
    * that roles are only created when `issuer` is set.
    *
-   * The roles are kept up to date by adding the scopes they lack every time a
-   * tenant is created. Nothing is ever removed, so a scope an operator took off
-   * the admin role on purpose (say `delete:tenants`, to keep customers from
-   * deleting their tenant) is added back on the next tenant creation. To keep a
-   * scope off a creator, use the owner role, or a role of your own under
-   * another `adminRoleName`.
+   * Both roles (admin and owner) are kept up to date by adding the scopes they
+   * lack every time a tenant is created, under whatever name they have.
+   * Nothing is ever removed, so a scope an operator took off one of them on
+   * purpose (say `delete:tenants` off the admin role) is added back on the next
+   * tenant creation, and renaming a role changes nothing about that. Which
+   * scopes a creator never gets is fixed: the owner role leaves out the
+   * operator-only scopes.
    */
   provisionRoles?: boolean;
 
