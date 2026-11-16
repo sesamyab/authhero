@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { testClient } from "hono/testing";
 import { getAdminToken } from "../helpers/token";
 import { getTestServer } from "../helpers/test-server";
 
@@ -18,7 +19,7 @@ const USER_EXISTS_BODY = {
 };
 
 async function setup({ secondConnection = true } = {}) {
-  const { managementApp, env } = await getTestServer();
+  const { managementApp, oauthApp, env } = await getTestServer();
   const token = await getAdminToken();
   if (secondConnection) {
     await env.data.connections.create("tenantId", {
@@ -44,7 +45,7 @@ async function setup({ secondConnection = true } = {}) {
       env,
     );
 
-  return { env, request };
+  return { env, request, oauthApp };
 }
 
 describe("POST /api/v2/users in a named database connection", () => {
@@ -247,6 +248,67 @@ describe("PATCH /api/v2/users within the user's own connection", () => {
 
     const password = await env.data.passwords.get("tenantId", created.user_id);
     expect(password).toBeTruthy();
+  });
+
+  it("sets the password on the identity stored in the named connection, not a legacy secondary", async () => {
+    const { request, env, oauthApp } = await setup();
+
+    // Primary in cte-store, plus a linked legacy auth2 secondary whose
+    // connection names no database connection, so it is in every scope.
+    await env.data.users.create("tenantId", {
+      user_id: "auth0|primary",
+      email: "cluster@example.com",
+      email_verified: true,
+      provider: "auth0",
+      connection: CTE,
+      is_social: false,
+    });
+    await env.data.users.create("tenantId", {
+      user_id: "auth2|legacy",
+      email: "cluster@example.com",
+      email_verified: true,
+      provider: "auth2",
+      connection: "auth2",
+      is_social: false,
+      linked_to: "auth0|primary",
+    });
+
+    const patch = await request(
+      "PATCH",
+      `/users/${encodeURIComponent("auth0|primary")}`,
+      { connection: CTE, password: "NewPassword123!" },
+    );
+    expect(patch.status).toBe(200);
+    expect(
+      await env.data.passwords.get("tenantId", "auth0|primary"),
+    ).toBeTruthy();
+    expect(
+      await env.data.passwords.get("tenantId", "auth2|legacy"),
+    ).toBeFalsy();
+
+    // A client on cte-store logs in with the new password.
+    await env.data.clients.create("tenantId", {
+      client_id: "cteClient",
+      client_secret: "cteClientSecret",
+      name: "CTE Client",
+      callbacks: ["https://example.com/callback"],
+      allowed_logout_urls: ["https://example.com/callback"],
+      web_origins: ["https://example.com"],
+      client_metadata: { email_validation: "disabled" },
+    });
+    await env.data.clientConnections.updateByClient("tenantId", "cteClient", [
+      CTE_ID,
+    ]);
+    const login = await testClient(oauthApp, env).co.authenticate.$post({
+      json: {
+        client_id: "cteClient",
+        credential_type: "http://auth0.com/oauth/grant-type/password-realm",
+        realm: MAIN,
+        password: "NewPassword123!",
+        username: "cluster@example.com",
+      },
+    });
+    expect(login.status).toBe(200);
   });
 
   it("does not target a database identity of another connection", async () => {

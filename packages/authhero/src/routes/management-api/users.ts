@@ -30,6 +30,7 @@ import {
   Identity,
   LogTypes,
   Strategy,
+  User,
   auth0UserResponseSchema,
   identitySchema,
   logSchema,
@@ -846,27 +847,50 @@ const patchByUser_id = defineRoute({
             isUserInConnectionScope(u, passwordConnectionScope)
           : u.connection === connection;
 
+      let linkedUsersPage: { users: User[] } | undefined;
+      const listLinkedUsers = async () => {
+        linkedUsersPage ??= await data.users.list(tenantId, {
+          page: 0,
+          per_page: 100,
+          include_totals: false,
+          q: `linked_to:${escapeLuceneValue(user_id)}`,
+        });
+        return linkedUsersPage.users;
+      };
+
+      // With several database connections, an identity stored exactly in the
+      // named connection wins over an unattributed legacy row that is merely
+      // in scope, the same rule the login lookups apply (#1702). Otherwise the
+      // write could land on a legacy secondary that a login scoped to this
+      // connection never reads. auth2 first among exact matches, as there.
+      let exactMatch: User | undefined;
+      if (passwordConnectionScope) {
+        const cluster = [userToPatch, ...(await listLinkedUsers())];
+        const exact = cluster.filter(
+          (u) =>
+            isUsernamePasswordProvider(u.provider) &&
+            u.connection === passwordConnectionScope.name,
+        );
+        exactMatch = exact.find((u) => u.provider === "auth2") ?? exact[0];
+      }
+
       // For password connections, prefer a linked "auth2" identity over an
       // "auth0" primary so the bcrypt password row lands where login reads
       // it from. See username-password-provider.ts for the same auth2-first
       // rule applied at READ sites.
       const preferAuth2Linked =
-        isPasswordConnection && userToPatch.provider === "auth0";
+        !exactMatch && isPasswordConnection && userToPatch.provider === "auth0";
 
-      const linkedUsers = preferAuth2Linked
-        ? await data.users.list(tenantId, {
-            page: 0,
-            per_page: 100,
-            include_totals: false,
-            q: `linked_to:${escapeLuceneValue(user_id)}`,
-          })
-        : null;
+      const auth2Linked = preferAuth2Linked
+        ? (await listLinkedUsers()).find(
+            (u) => u.provider === "auth2" && matchesTarget(u),
+          )
+        : undefined;
 
-      const auth2Linked = linkedUsers?.users.find(
-        (u) => u.provider === "auth2" && matchesTarget(u),
-      );
-
-      if (auth2Linked) {
+      if (exactMatch) {
+        targetUserId = exactMatch.user_id;
+        targetUser = exactMatch;
+      } else if (auth2Linked) {
         targetUserId = auth2Linked.user_id;
         targetUser = auth2Linked;
       } else if (matchesTarget(userToPatch)) {
@@ -875,16 +899,9 @@ const patchByUser_id = defineRoute({
         targetUser = userToPatch;
       } else {
         // Look for a linked user with this connection
-        const linkedList =
-          linkedUsers ??
-          (await data.users.list(tenantId, {
-            page: 0,
-            per_page: 100,
-            include_totals: false,
-            q: `linked_to:${escapeLuceneValue(user_id)}`,
-          }));
-
-        const linkedUserWithConnection = linkedList.users.find(matchesTarget);
+        const linkedUserWithConnection = (await listLinkedUsers()).find(
+          matchesTarget,
+        );
 
         if (!linkedUserWithConnection) {
           throw notFound.identity();
