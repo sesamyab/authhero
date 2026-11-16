@@ -43,7 +43,16 @@ export function isUniqueViolation(err: unknown): boolean {
       "message" in current && typeof current.message === "string"
         ? current.message
         : "";
-    if (UNIQUE_VIOLATION_MESSAGES.some((m) => message.includes(m))) {
+    // drizzle's DrizzleQueryError message embeds the SQL and its bound
+    // params, so a value such as a name of "AlreadyExists" would match.
+    // Classify the wrapper only by its cause.
+    const isQueryWrapper =
+      ("query" in current && "params" in current) ||
+      message.startsWith("Failed query:");
+    if (
+      !isQueryWrapper &&
+      UNIQUE_VIOLATION_MESSAGES.some((m) => message.includes(m))
+    ) {
       return true;
     }
 

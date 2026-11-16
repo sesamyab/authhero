@@ -40,6 +40,31 @@ describe("isUniqueViolation", () => {
     expect(isUniqueViolation(err)).toBe(false);
   });
 
+  it("ignores a query wrapper whose params match but whose cause does not", () => {
+    // Shape of drizzle's DrizzleQueryError: the message carries the params.
+    const wrapped = Object.assign(
+      new Error(
+        "Failed query: insert into resource_servers values (?, ?)\nparams: AlreadyExists,UNIQUE constraint failed",
+        { cause: new Error("D1_ERROR: Network connection lost.") },
+      ),
+      {
+        query: "insert into resource_servers values (?, ?)",
+        params: ["AlreadyExists", "UNIQUE constraint failed"],
+      },
+    );
+    expect(isUniqueViolation(wrapped)).toBe(false);
+
+    // Same wrapper without the query/params fields is still recognized by
+    // its message prefix.
+    expect(
+      isUniqueViolation(
+        new Error("Failed query: insert ...\nparams: Duplicate entry", {
+          cause: new Error("SQLITE_BUSY: database is locked"),
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it("stops on a self-referencing cause", () => {
     const err: { message: string; cause?: unknown } = { message: "boom" };
     err.cause = err;
