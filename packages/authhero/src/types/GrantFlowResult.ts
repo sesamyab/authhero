@@ -25,6 +25,12 @@ export interface GrantFlowResult {
   auth_time?: number; // Unix timestamp of when the user was authenticated
   /** The connection name used for authentication (e.g., "email", "google-oauth2") */
   authConnection?: string;
+  /**
+   * Set when the refresh-token grant was asked for a session_transfer_token
+   * (`audience=urn:{domain}:session_transfer`). The token endpoint returns
+   * `token` in place of an access token; `audience` is what the request named.
+   */
+  session_transfer?: { token: string; audience: string };
 }
 
 export interface GrantFlowUserResult extends GrantFlowResult {

@@ -45,16 +45,23 @@ interface RefreshTokenItem extends DynamoDBBaseItem {
   rotated_to?: string;
   rotated_at?: string;
   revoked_at?: string;
+  session_transfer?: string; // JSON string (SessionTransferProvenance)
 }
 
+/** Rows read per request when `isFamilyActive` walks a tenant's tokens. */
+const FAMILY_SCAN_PAGE_SIZE = 100;
+
 function toRefreshToken(item: RefreshTokenItem): RefreshToken {
-  const { tenant_id, device, resource_servers, ...rest } =
+  const { tenant_id, device, resource_servers, session_transfer, ...rest } =
     stripDynamoDBFields(item);
 
   const data = removeNullProperties({
     ...rest,
     device: JSON.parse(device),
     resource_servers: JSON.parse(resource_servers),
+    ...(session_transfer
+      ? { session_transfer: JSON.parse(session_transfer) }
+      : {}),
   });
 
   return refreshTokenSchema.parse(data);
@@ -166,6 +173,9 @@ export function createRefreshTokensAdapter(
         family_id: refreshToken.family_id,
         rotated_to: refreshToken.rotated_to,
         rotated_at: refreshToken.rotated_at,
+        session_transfer: refreshToken.session_transfer
+          ? JSON.stringify(refreshToken.session_transfer)
+          : undefined,
         created_at: now,
         updated_at: now,
       };
@@ -258,6 +268,11 @@ export function createRefreshTokensAdapter(
           refreshToken.resource_servers,
         );
       }
+      if (refreshToken.session_transfer !== undefined) {
+        updates.session_transfer = JSON.stringify(
+          refreshToken.session_transfer,
+        );
+      }
 
       // Remove id from updates
       delete updates.id;
@@ -332,6 +347,44 @@ export function createRefreshTokensAdapter(
         revoked_at,
         (item) => item.family_id === family_id,
       );
+    },
+
+    async isFamilyActive(
+      tenantId: string,
+      family_id: string,
+    ): Promise<boolean> {
+      const now = Date.now();
+      const notPast = (iso: string | undefined) =>
+        !iso || new Date(iso).getTime() > now;
+      // No GSI on family_id: walk the tenant's tokens. The `id` match covers
+      // rows minted before `family_id` was stamped.
+      //
+      // Each page resumes from DynamoDB's own cursor, so a row is read once
+      // however many tokens the tenant has. The read is strongly consistent:
+      // this answer decides whether a transferred session survives, and a
+      // revocation that has just been written must be visible to it.
+      let startKey: Record<string, unknown> | undefined;
+      do {
+        const result = await queryItems<RefreshTokenItem>(
+          ctx,
+          refreshTokenKeys.pk(tenantId),
+          {
+            skPrefix: "REFRESH_TOKEN#",
+            limit: FAMILY_SCAN_PAGE_SIZE,
+            startKey,
+            consistentRead: true,
+          },
+        );
+        for (const item of result.items) {
+          if (item.family_id !== family_id && item.id !== family_id) continue;
+          if (item.revoked_at || item.rotated_to) continue;
+          if (notPast(item.expires_at) && notPast(item.idle_expires_at)) {
+            return true;
+          }
+        }
+        startKey = result.lastKey;
+      } while (startKey);
+      return false;
     },
   };
 }

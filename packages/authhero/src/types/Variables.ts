@@ -2,6 +2,7 @@ import {
   DataAdapters,
   LoginSession,
   RequestAuth,
+  SessionTransferProvenance,
 } from "@authhero/adapter-interfaces";
 import { CountryCode } from "libphonenumber-js";
 import { Auth0Client } from "./Auth0Client";
@@ -117,4 +118,17 @@ export type Variables = {
   // would let users through the identifier step (correctly) only to be
   // rejected at user-creation time.
   is_lazy_migration?: boolean;
+  // Set when this /authorize request established a session by redeeming a
+  // session_transfer_token. Surfaced to post-login hooks as
+  // `event.session_transfer_token`; `request` describes the request that
+  // minted the token, not this one.
+  session_transfer_token?: {
+    client_id: string;
+    scope?: string;
+    request: { ip: string; asn?: string; user_agent?: string };
+  };
+  // Set when the session this /authorize request logs in with was created from
+  // a session_transfer_token, on this request or an earlier one. Surfaced to
+  // post-login hooks as `event.session.session_transfer`.
+  session_transfer?: SessionTransferProvenance;
 };

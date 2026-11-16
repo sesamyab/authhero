@@ -15,6 +15,7 @@ function toSession(session: Selectable<Database["sessions"]>) {
     device,
     clients,
     authentication,
+    session_transfer,
     created_at_ts,
     updated_at_ts,
     expires_at_ts,
@@ -62,6 +63,9 @@ function toSession(session: Selectable<Database["sessions"]>) {
     device: JSON.parse(device),
     clients: JSON.parse(clients),
     ...(authentication ? { authentication: JSON.parse(authentication) } : {}),
+    ...(session_transfer
+      ? { session_transfer: JSON.parse(session_transfer) }
+      : {}),
   };
 }
 

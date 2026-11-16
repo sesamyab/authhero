@@ -116,4 +116,21 @@ export interface RefreshTokensAdapter {
     family_id: string,
     revoked_at: string,
   ) => Promise<number>;
+  /**
+   * Whether the rotation family still has a usable token: a row that is not
+   * revoked, not rotated away and not past either expiry. Matches on
+   * `family_id`, and on `id` for rows minted before `family_id` was stamped.
+   *
+   * This is the liveness check behind session transfer cascade revocation: a
+   * session created from a session_transfer_token ends when the refresh token
+   * it was minted from is gone.
+   *
+   * Expiry counts as gone. That departs from "lifetime does not couple;
+   * revocation does" (see `revokeBySession`), and it has to: expired rows are
+   * hard-deleted by cleanup, after which an expired family cannot be told
+   * apart from one that never existed, and treating a missing family as live
+   * would let a transferred session outlive a parent that was revoked and
+   * then cleaned up.
+   */
+  isFamilyActive: (tenant_id: string, family_id: string) => Promise<boolean>;
 }

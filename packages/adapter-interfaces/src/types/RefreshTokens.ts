@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { deviceSchema } from "./Device";
 import { loginSessionAuthStrategySchema } from "./LoginSession";
+import { sessionTransferProvenanceSchema } from "./SessionTransfer";
 
 export const refreshTokenInsertSchema = z.object({
   // Internal primary key (ULID). Never sent to clients in the new wire format.
@@ -28,6 +29,12 @@ export const refreshTokenInsertSchema = z.object({
   organization: z.string().optional(),
   auth_connection: z.string().optional(),
   auth_strategy: loginSessionAuthStrategySchema.optional(),
+
+  // Set when the token was issued under a session that was created by
+  // redeeming a session_transfer_token. Copied from the session at mint time
+  // and carried across rotation, so cascade revocation from the parent refresh
+  // token keeps working after the session row has been cleaned up.
+  session_transfer: sessionTransferProvenanceSchema.optional(),
 
   // Link to user (foreign key)
   user_id: z.string(),

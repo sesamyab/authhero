@@ -25,6 +25,7 @@ import { builtInUserLinkingEnabled } from "../helpers/user-linking";
 import { withNormalizedEmail } from "../utils/email";
 import { SignupValidationError } from "../errors/signup-validation-error";
 import { getExecutorData } from "../helpers/request-data";
+import { stripSessionTransferToken } from "../utils/session-transfer-token";
 
 function setMetadata(
   user: User,
@@ -96,7 +97,9 @@ export function createUserHooks(
       method: ctx.req.method,
       ip: ctx.req.query("x-real-ip") || "",
       user_agent: ctx.req.query("user-agent"),
-      url: ctx.var.loginSession?.authorization_url || ctx.req.url,
+      url:
+        ctx.var.loginSession?.authorization_url ||
+        stripSessionTransferToken(ctx.req.url),
       body: ctx.var.signup_body,
     };
 
