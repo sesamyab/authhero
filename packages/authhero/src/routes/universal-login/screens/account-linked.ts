@@ -6,7 +6,7 @@
 
 import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
-import { resolveAccountUser } from "./account-helpers";
+import { gateAccountOperation, resolveAccountUser } from "./account-helpers";
 import { escapeHtml } from "../sanitization-utils";
 import { createTranslation } from "../../../i18n";
 
@@ -142,6 +142,11 @@ async function handleAccountLinkedSubmit(
   if (unlinkMatch) {
     const provider = unlinkMatch[1]!;
     const linkedUserId = unlinkMatch[2]!;
+    const redirectUrl = await gateAccountOperation(context, "unlink-identity", {
+      user,
+      details: { provider, user_id: linkedUserId },
+    });
+    if (redirectUrl) return { redirect: redirectUrl };
     try {
       const success = await ctx.env.data.users.unlink(
         tenant.id,

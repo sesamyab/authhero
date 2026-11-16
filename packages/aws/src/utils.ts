@@ -119,6 +119,11 @@ export async function queryItems<T>(
     limit?: number;
     startKey?: Record<string, unknown>;
     scanIndexForward?: boolean;
+    /**
+     * Strongly consistent read. Base table only: DynamoDB rejects it on a
+     * global secondary index, so it is ignored when `indexName` is set.
+     */
+    consistentRead?: boolean;
   },
 ): Promise<{ items: T[]; lastKey?: Record<string, unknown> }> {
   const {
@@ -128,6 +133,7 @@ export async function queryItems<T>(
     limit,
     startKey,
     scanIndexForward = true,
+    consistentRead,
   } = options || {};
 
   let keyConditionExpression = indexName ? `${indexName}PK = :pk` : "PK = :pk";
@@ -154,6 +160,7 @@ export async function queryItems<T>(
       Limit: limit,
       ExclusiveStartKey: startKey,
       ScanIndexForward: scanIndexForward,
+      ConsistentRead: consistentRead && !indexName ? true : undefined,
     }),
   );
 

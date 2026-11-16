@@ -40,6 +40,7 @@ function sqlToSession(row: any): Session {
     device,
     clients: clientsJson,
     authentication,
+    session_transfer,
     ...rest
   } = row;
 
@@ -64,6 +65,9 @@ function sqlToSession(row: any): Session {
     device: parseJsonIfString(device, {}),
     clients: parseJsonIfString(clientsJson, []),
     authentication: parseJsonIfString(authentication),
+    ...(session_transfer
+      ? { session_transfer: parseJsonIfString(session_transfer) }
+      : {}),
   });
 }
 
@@ -88,6 +92,9 @@ export function createSessionsAdapter(db: DrizzleDb) {
         clients: JSON.stringify(session.clients || []),
         authentication: session.authentication
           ? JSON.stringify(session.authentication)
+          : null,
+        session_transfer: session.session_transfer
+          ? JSON.stringify(session.session_transfer)
           : null,
         created_at_ts: now,
         updated_at_ts: now,
@@ -168,6 +175,8 @@ export function createSessionsAdapter(db: DrizzleDb) {
         updateData.clients = JSON.stringify(session.clients);
       if (session.authentication !== undefined)
         updateData.authentication = JSON.stringify(session.authentication);
+      if (session.session_transfer !== undefined)
+        updateData.session_transfer = JSON.stringify(session.session_transfer);
       if (session.expires_at !== undefined)
         updateData.expires_at_ts = isoToDbDate(session.expires_at);
       if (session.idle_expires_at !== undefined)

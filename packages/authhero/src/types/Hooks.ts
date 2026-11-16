@@ -162,6 +162,24 @@ export type HookEvent = {
       last_ip?: string;
       last_user_agent?: string;
     };
+    /**
+     * Present when the session was created by redeeming a
+     * session_transfer_token. `parent_refresh_token.id` is the rotation family
+     * of the refresh token the token was minted from.
+     */
+    session_transfer?: {
+      client_id: string;
+      parent_refresh_token: { id: string };
+    };
+  };
+  /**
+   * Present on the login that redeemed a session_transfer_token. `client_id`
+   * is the client that minted it and `request` describes the minting request.
+   */
+  session_transfer_token?: {
+    client_id: string;
+    scope?: string;
+    request: { ip: string; asn?: string; user_agent?: string };
   };
   security_context?: {
     ja3?: string;
@@ -311,6 +329,59 @@ export type OnExecutePostUserDeletion = (
   api: OnExecutePostUserDeletionAPI,
 ) => Promise<void>;
 
+/**
+ * Self-service account operations that fire the `pre-account-action` trigger
+ * (an AuthHero extension; Auth0 has no equivalent). The trigger runs once when
+ * the user starts the operation, before any form, code or write.
+ */
+export type AccountActionOperation =
+  | "change-email"
+  | "update-profile"
+  | "reset-password"
+  | "enroll-mfa"
+  | "remove-mfa"
+  | "enroll-passkey"
+  | "remove-passkey"
+  | "unlink-identity"
+  | "delete-account";
+
+export type PreAccountActionEvent = {
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>;
+  operation: AccountActionOperation;
+  /**
+   * The signed-in user. Undefined only for `reset-password` when the
+   * identifier entered so far doesn't match a user (or none was entered).
+   */
+  user?: User;
+  /** Connection of the user's primary identity. */
+  connection?: { id?: string; name: string; strategy?: string };
+  client?: EnrichedClient;
+  tenant: { id: string };
+  request: HookRequest;
+  /** Operation-specific detail, e.g. `{ factor: "totp" }` for `enroll-mfa`. */
+  details?: Record<string, string>;
+};
+
+export type OnExecutePreAccountActionAPI = {
+  redirect: {
+    /** Send the user to `url` instead of running the operation here. */
+    sendUserTo: (
+      url: string,
+      options?: { query?: Record<string, string> },
+    ) => void;
+  };
+  access: {
+    /** Stop the operation and show `reason` to the user. */
+    deny: (reason?: string) => void;
+  };
+  token: TokenAPI;
+};
+
+export type OnExecutePreAccountAction = (
+  event: PreAccountActionEvent,
+  api: OnExecutePreAccountActionAPI,
+) => Promise<void>;
+
 export type OnExecuteValidateRegistrationUsernameAPI = {
   deny: (reason?: string) => void;
   token: TokenAPI;
@@ -362,6 +433,8 @@ export type Hooks = {
   onExecutePreUserDeletion?: OnExecutePreUserDeletion;
   onExecutePostUserDeletion?: OnExecutePostUserDeletion;
   onExecuteValidateRegistrationUsername?: OnExecuteValidateRegistrationUsername;
+  /** Called when a user starts a self-service account operation (AuthHero extension) */
+  onExecutePreAccountAction?: OnExecutePreAccountAction;
   /** Called when /userinfo endpoint is accessed to add custom claims */
   onFetchUserInfo?: OnFetchUserInfo;
 };

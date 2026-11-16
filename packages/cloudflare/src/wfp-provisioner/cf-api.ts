@@ -125,10 +125,9 @@ export class CloudflareApiClient {
 
   /**
    * Execute a single SQL statement (or batch of `;`-separated statements
-   * permitted by D1) against the given database. Use for applying
-   * migrations one file at a time — the per-call response size cap means
-   * very large single calls can fail; splitting per file keeps each call
-   * bounded by the migration author.
+   * permitted by D1) against the given database. The provisioner batches
+   * pending migrations into as few calls as possible (see
+   * `MAX_MIGRATION_BATCH_BYTES`) to stay under the Workers subrequest limit.
    */
   async execD1(databaseId: string, sql: string): Promise<D1QueryResult[]> {
     const path = `/accounts/${encodeURIComponent(this.accountId)}/d1/database/${encodeURIComponent(databaseId)}/query`;

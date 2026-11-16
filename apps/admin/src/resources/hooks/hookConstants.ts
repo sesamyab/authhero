@@ -69,6 +69,7 @@ export const triggerChoices = [
   { id: "post-user-update", name: "Post User Update" },
   { id: "pre-user-deletion", name: "Pre User Deletion" },
   { id: "post-user-deletion", name: "Post User Deletion" },
+  { id: "pre-account-action", name: "Pre Account Action" },
 ];
 
 /** Display names shared by hooks and Actions, including Auth0's post-login alias. */
@@ -170,6 +171,7 @@ export const codeHookTriggerChoices = triggerChoices.filter((c) =>
     "post-user-update",
     "pre-user-deletion",
     "post-user-deletion",
+    "pre-account-action",
   ].includes(c.id),
 );
 
@@ -193,6 +195,7 @@ export const triggerHandlerNames: Record<string, string> = {
   "post-user-update": "onExecutePostUserUpdate",
   "pre-user-deletion": "onExecutePreUserDeletion",
   "post-user-deletion": "onExecutePostUserDeletion",
+  "pre-account-action": "onExecutePreAccountAction",
   "custom-token-exchange": "onExecuteCustomTokenExchange",
 };
 
@@ -275,6 +278,24 @@ export function getDefaultCodeTemplate(triggerId?: string): string {
   }
   if (triggerId === "custom-token-exchange") {
     return CUSTOM_TOKEN_EXCHANGE_TEMPLATE;
+  }
+  if (triggerId === "pre-account-action") {
+    return `/**
+ * Runs when a user starts a self-service account operation, before any form
+ * or code is shown. event.operation is one of: change-email, update-profile,
+ * reset-password, enroll-mfa, remove-mfa, enroll-passkey, remove-passkey,
+ * unlink-identity, delete-account.
+ *
+ * Call api.redirect.sendUserTo(url) to send the user elsewhere (for example
+ * the identity provider that owns their profile), or api.access.deny(reason)
+ * to stop the operation. Do nothing to let it continue.
+ */
+exports.onExecutePreAccountAction = async (event, api) => {
+  // if (event.connection?.name === "my-external-idp") {
+  //   api.redirect.sendUserTo("https://idp.example.com/profile");
+  // }
+};
+`;
   }
   const handlerName = triggerId && triggerHandlerNames[triggerId];
   if (!handlerName) {

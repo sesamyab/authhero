@@ -47,6 +47,7 @@ import {
 import { updateLoginSessionData } from "../state-machines/login-session-data";
 import { sessionSatisfiesMfa } from "../helpers/session-mfa";
 import { getPrivateBrowsingCookie } from "../utils/cookies";
+import { stripSessionTransferToken } from "../utils/session-transfer-token";
 
 // Type guard for webhook hooks
 function isWebHook(hook: any): hook is { url: string; enabled: boolean } {
@@ -148,7 +149,9 @@ async function buildEnhancedEventObject(
       method: ctx.req.method,
       // Authentication may finish on a callback or /authorize/resume request.
       // Keep the original /authorize parameters available to post-login hooks.
-      url: loginSession.authorization_url || ctx.req.url,
+      url:
+        loginSession.authorization_url ||
+        stripSessionTransferToken(ctx.req.url),
       geoip: {
         cityName: undefined,
         continentCode: undefined,
@@ -219,7 +222,18 @@ async function buildEnhancedEventObject(
         last_ip: user.last_ip || ip,
         last_user_agent: userAgent,
       },
+      // Present when the session was created from a session_transfer_token.
+      // The parent is identified by its rotation family, which stays the same
+      // as the refresh token rotates.
+      session_transfer: ctx.var?.session_transfer
+        ? {
+            client_id: ctx.var.session_transfer.client_id,
+            parent_refresh_token: { id: ctx.var.session_transfer.family_id },
+          }
+        : undefined,
     },
+    // Only on the login that redeemed a session_transfer_token.
+    session_transfer_token: ctx.var?.session_transfer_token,
   };
 }
 
@@ -741,7 +755,9 @@ export async function postUserLoginHook(
       user,
       trigger_id: "post-user-login",
       request: {
-        url: loginSession?.authorization_url || ctx.req.url,
+        url:
+          loginSession?.authorization_url ||
+          stripSessionTransferToken(ctx.req.url),
       },
     });
 

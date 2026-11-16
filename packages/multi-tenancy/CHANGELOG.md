@@ -1,5 +1,35 @@
 # @authhero/multi-tenancy
 
+## 15.8.0
+
+### Minor Changes
+
+- 57667a9: Guide a user from no tenants to a ready tenant (issue #1712). The tenants view shows an empty state instead of an empty table: with `create:tenants` it welcomes the user and offers to create the first tenant, without it it says who can give access. What the screens offer now follows the `permissions` claim of the user's token, so Create, Rollouts and Retry are only shown to users who may use them, and the tenant settings are no longer requested (and retried) without `read:tenants`. The create form lowercases the id as it is typed and checks it as a DNS label, shows the server's refusal on the id field, shows the tenant's hostname when the server sends one, and hides "Parent tenant" when there is nothing to inherit from. A created tenant opens on a setup page that follows its provisioning, shows the steps and the provisioner's error only to users who may read operations, offers a retry on failure to users who may start one, and opens the tenant once it answers. Until the user has a tenant they can open, the layout leaves out the sidebar, the tenant switcher, search and refresh, and the tenants list takes a user whose only tenants are being set up (or failed) to the setup page. A new tenant's dashboard shows a getting-started checklist (an application of its own, a first login, a user, its own branding), worked out from what the tenant has; the card goes away once every step is done, or when dismissed.
+
+  `initMultiTenant` accepts `tenantHostTemplate` (for example `"{id}.auth.example.com"`), served as `tenant_host_template` by `GET /tenants/deployment-options`.
+
+  `GET /tenants` with a search (`q`) for an organization-scoped user now searches every tenant they can access and pages the matches. It used to page their memberships first, so only one page of them was searched, and it combined the search with the tenant ids in a query not every adapter could parse. A search that matches more than 10,000 tenants is refused with 400 rather than answered in part.
+
+### Patch Changes
+
+- Updated dependencies [fb6746b]
+  - authhero@9.31.0
+  - @authhero/adapter-interfaces@4.27.0
+
+## 15.7.1
+
+### Patch Changes
+
+- 3a21229: `POST /tenants` requires the `create:tenants` scope. Before, it declared no scope, so any valid management token could create a tenant, while updating and deleting tenants already required `update:tenants` and `delete:tenants`. Under AuthHero's management API, a token without the scope now gets 403 before the `beforeCreate` hook or provisioning runs. A host that mounts `createMultiTenancy()` or `setupMultiTenancy().app` in its own app does not get that check: it has to authenticate the caller and enforce the declared scopes itself. Grant `create:tenants` to the users or clients that create tenants: a self-service flow that lets any signed-in user create a tenant needs it in their roles.
+
+  `GET /tenants` still declares no scope. When a control-plane tenant is configured, it lists only the tenants whose organizations the caller belongs to, unless the caller has a global `admin:organizations` permission. Without a control-plane tenant it lists every tenant. `read:tenants` stays required on the other read routes (`GET /tenants/settings` and the config-sync routes).
+
+## 15.7.0
+
+### Minor Changes
+
+- 8345e52: Let a cluster limit which deployment types new tenants may use. `initMultiTenant({ deploymentTypes: { allowed: ["wfp"] } })` makes `POST /tenants` default to `wfp` (with its own D1), refuses `shared`, and stops `PATCH /tenants/settings` from moving a tenant onto a type the cluster can't host. The new `GET /tenants/deployment-options` endpoint tells the admin UI which types to offer; with a single type the choice is hidden. Without the option both types stay available and `shared` remains the default.
+
 ## 15.6.1
 
 ### Patch Changes

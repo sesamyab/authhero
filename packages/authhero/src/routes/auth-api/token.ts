@@ -2,9 +2,14 @@ import {
   GrantType,
   LogType,
   LogTypes,
+  TokenResponse,
   tokenResponseSchema,
   decodeBase64Url,
 } from "@authhero/adapter-interfaces";
+import {
+  SESSION_TRANSFER_TOKEN_TTL_SECONDS,
+  SESSION_TRANSFER_TOKEN_TYPE,
+} from "../../utils/session-transfer-token";
 import { logMessage } from "../../helpers/logging";
 import { Bindings, Variables } from "../../types";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
@@ -146,6 +151,9 @@ const CreateRequestSchema = z.union([
     refresh_token: z.string(),
     redirect_uri: z.string().optional(),
     organization: z.string().optional(),
+    // `urn:{domain}:session_transfer` asks for a session_transfer_token
+    // instead of an access token. Other values are ignored.
+    audience: z.string().optional(),
     ...optionalClientCredentials.shape,
   }),
   // OTP
@@ -515,7 +523,9 @@ const postRoot = defineRoute({
 
     const passwordlessHeaders = new Headers();
 
-    if (grantResult.session_id) {
+    // Not for a session_transfer_token: that request hands the session to
+    // another browser context, and must not start one in the caller's.
+    if (grantResult.session_id && !grantResult.session_transfer) {
       const passwordlessAuthCookies = serializeAuthCookie(
         grantResult.client.tenant.id,
         grantResult.session_id,
@@ -559,7 +569,9 @@ const postRoot = defineRoute({
         strategy_type: authStrategy?.strategy_type,
         client_name: grantResult.client.name,
         scope: grantResult.authParams.scope,
-        audience: grantResult.authParams.audience,
+        audience:
+          grantResult.session_transfer?.audience ??
+          grantResult.authParams.audience,
         ...(executionId ? { execution_id: executionId } : {}),
       });
     }
@@ -567,7 +579,24 @@ const postRoot = defineRoute({
     passwordlessHeaders.set("Cache-Control", "no-store");
     passwordlessHeaders.set("Pragma", "no-cache");
 
-    return ctx.json(tokens, {
+    // Auth0's Native to Web SSO response: the session_transfer_token travels
+    // in `access_token`, marked by `issued_token_type`. The rotated refresh
+    // token and the ID token are returned as on any refresh; the access token
+    // is not, since the caller asked for the transfer token instead.
+    const responseBody: TokenResponse = grantResult.session_transfer
+      ? {
+          access_token: grantResult.session_transfer.token,
+          issued_token_type: SESSION_TRANSFER_TOKEN_TYPE,
+          token_type: "N_A",
+          expires_in: SESSION_TRANSFER_TOKEN_TTL_SECONDS,
+          ...(tokens.refresh_token
+            ? { refresh_token: tokens.refresh_token }
+            : {}),
+          ...(tokens.id_token ? { id_token: tokens.id_token } : {}),
+        }
+      : tokens;
+
+    return ctx.json(responseBody, {
       headers: passwordlessHeaders,
     });
   },

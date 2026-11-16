@@ -6,6 +6,7 @@ import MessagePage from "../../components/MessagePage";
 import i18next from "i18next";
 import { nanoid } from "nanoid";
 import { defineRoute } from "../../utils/define-route";
+import { enforcePreAccountAction } from "../../hooks/pre-account-action";
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["login"],
@@ -146,6 +147,24 @@ const postRoot = defineRoute({
 
     let error: string | undefined;
     let success: string | undefined;
+
+    // Only run Actions for a request that passes the CSRF check below; a
+    // forged POST falls through to that check and fails there.
+    if (
+      body.action === "unlink_account" &&
+      body.provider &&
+      body.user_id &&
+      body.csrf_token &&
+      body.csrf_token === loginSession.csrf_token
+    ) {
+      await enforcePreAccountAction(ctx, {
+        tenantId: client.tenant.id,
+        operation: "unlink-identity",
+        user,
+        client,
+        details: { provider: body.provider, user_id: body.user_id },
+      });
+    }
 
     try {
       if (body.action === "unlink_account" && body.provider && body.user_id) {

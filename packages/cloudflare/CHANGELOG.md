@@ -1,5 +1,24 @@
 # @authhero/cloudflare-adapter
 
+## 4.2.3
+
+### Patch Changes
+
+- Updated dependencies [57667a9]
+- Updated dependencies [fb6746b]
+  - @authhero/multi-tenancy@15.8.0
+  - authhero@9.31.0
+  - @authhero/adapter-interfaces@4.27.0
+  - @authhero/kysely-adapter@12.19.1
+
+## 4.2.2
+
+### Patch Changes
+
+- cc3046b: Apply pending WFP tenant D1 migrations in one D1 `/query` call (split into ~90 KB chunks of whole migrations) instead of two calls per migration, so a first-time provision stays under the Workers 50-subrequest limit. Each migration's SQL is still followed by its tracking row, and a failed combined call is retried one migration at a time so the error names the failing migration.
+- Updated dependencies [8345e52]
+  - @authhero/multi-tenancy@15.7.0
+
 ## 4.2.1
 
 ### Patch Changes

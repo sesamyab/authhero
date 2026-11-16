@@ -15,6 +15,9 @@ export function update(db: Kysely<Database>) {
       authentication: session.authentication
         ? JSON.stringify(session.authentication)
         : undefined,
+      session_transfer: session.session_transfer
+        ? JSON.stringify(session.session_transfer)
+        : undefined,
     };
 
     // Convert date fields if provided

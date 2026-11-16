@@ -7,6 +7,7 @@
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { RedirectException } from "../../errors/redirect-exception";
+import { AccountActionDeniedError } from "../../hooks/pre-account-action";
 import { ErrorPage } from "./error-page";
 import { resolveErrorPageBranding } from "./branded-error-response";
 import type { Bindings, Variables } from "../../types";
@@ -77,14 +78,23 @@ export function createUniversalLoginErrorHandler() {
       return c.redirect(err.location, err.status);
     }
 
-    const status = err instanceof HTTPException ? err.status : 500;
+    const status =
+      err instanceof HTTPException
+        ? err.status
+        : err instanceof AccountActionDeniedError
+          ? err.status
+          : 500;
 
     // For JSON API requests (e.g. /u2/screen/*), return JSON errors
     const accept = c.req.header("Accept") || "";
     const isScreenApi = c.req.path.includes("/screen/");
     if (isScreenApi && accept.includes("application/json")) {
       const errMessage =
-        err instanceof HTTPException ? err.message : "Internal server error";
+        err instanceof HTTPException
+          ? err.message
+          : err instanceof AccountActionDeniedError
+            ? err.reason
+            : "Internal server error";
       if (status >= 500) {
         console.error(
           `[screen-api] ${c.req.method} ${c.req.path} ${status}:`,
@@ -98,10 +108,14 @@ export function createUniversalLoginErrorHandler() {
       console.error(`[u2] ${c.req.method} ${c.req.path} ${status}:`, err);
     }
 
+    // A pre-account-action denial carries tenant-authored text meant for the
+    // user; everything else is mapped to a friendly message.
     const message =
-      status === 500
-        ? "An unexpected error occurred. Please try again later."
-        : getUserFriendlyMessage(err);
+      err instanceof AccountActionDeniedError
+        ? err.reason
+        : status === 500
+          ? "An unexpected error occurred. Please try again later."
+          : getUserFriendlyMessage(err);
 
     const brandingProps = await resolveErrorPageBranding(c, c.var?.tenant_id);
 

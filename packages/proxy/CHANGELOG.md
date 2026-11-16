@@ -1,5 +1,12 @@
 # @authhero/proxy
 
+## 0.11.14
+
+### Patch Changes
+
+- Updated dependencies [fb6746b]
+  - @authhero/adapter-interfaces@4.27.0
+
 ## 0.11.13
 
 ### Patch Changes

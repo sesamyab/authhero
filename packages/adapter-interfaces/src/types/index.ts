@@ -75,6 +75,7 @@ export * from "./MigrationSource";
 export * from "./AttackProtection";
 export * from "./Password";
 export * from "./Session";
+export * from "./SessionTransfer";
 export * from "./SigningKey";
 export * from "./Tenant";
 export * from "./TenantOperation";

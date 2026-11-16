@@ -17,6 +17,7 @@ import { HTTPException } from "hono/http-exception";
 import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { defineRoute } from "../../utils/define-route";
+import { runPreAccountAction } from "../../hooks/pre-account-action";
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["oauth"],
@@ -167,6 +168,28 @@ const getRoot = defineRoute({
 
       // Redirect based on screen_hint
       if (screen_hint === "change-email") {
+        // Let a pre-account-action Action send the user elsewhere (e.g. the
+        // identity provider that owns their profile) or deny the change.
+        const decision = await runPreAccountAction(ctx, {
+          tenantId: client.tenant.id,
+          operation: "change-email",
+          client,
+          user: async () =>
+            (await env.data.users.get(
+              client.tenant.id,
+              validSession.user_id,
+            )) ?? undefined,
+        });
+        if (decision.type === "redirect") {
+          return ctx.redirect(decision.url);
+        }
+        if (decision.type === "deny") {
+          const errorUrl = new URL("/u/error", ctx.req.url);
+          errorUrl.searchParams.set("error", "access_denied");
+          errorUrl.searchParams.set("error_description", decision.reason);
+          return ctx.redirect(errorUrl.toString());
+        }
+
         const changeEmailUrl = new URL("/u2/account/profile", ctx.req.url);
         changeEmailUrl.searchParams.set("state", loginSession.id);
         return ctx.redirect(changeEmailUrl.toString());

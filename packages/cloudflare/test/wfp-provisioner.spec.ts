@@ -15,6 +15,11 @@ import {
   createCloudflareWfpD1Provisioner,
   createWfpTenantProvisioningHook,
 } from "../src";
+import {
+  MAX_MIGRATION_BATCH_BYTES,
+  chunkMigrationParts,
+  terminateSqlForConcat,
+} from "../src/wfp-provisioner/provisioner-steps";
 import type { CloudflareWfpD1Provisioner, ProvisionResult } from "../src";
 import type { Tenant, TenantsDataAdapter } from "@authhero/adapter-interfaces";
 
@@ -340,17 +345,14 @@ describe("createCloudflareWfpD1Provisioner", () => {
     await provisioner.onProvision("kvartal");
 
     // Order: D1 create, then migrations reconciled against the tracking table
-    // (create table, read applied set, then per migration: run SQL + record),
-    // then script upload and two secret puts.
+    // (create table, read applied set, then ONE call applying every pending
+    // migration with its tracking row), then script upload and two secret puts.
     const paths = captured.map((c) => c.path);
     expect(paths).toEqual([
       "/d1/database",
       "/d1/exec", // CREATE TABLE _authhero_provisioner_migrations
       "/d1/exec", // SELECT applied migration names
-      "/d1/exec", // run 0000_init.sql
-      "/d1/exec", // record 0000_init.sql
-      "/d1/exec", // run 0001_add_keys.sql
-      "/d1/exec", // record 0001_add_keys.sql
+      "/d1/exec", // 0000_init.sql + record, 0001_add_keys.sql + record
       "/scripts/kvartal",
       "/scripts/kvartal/secrets",
       "/scripts/kvartal/secrets",
@@ -787,6 +789,258 @@ describe("createCloudflareWfpD1Provisioner", () => {
     });
     const result = await provisioner.onProvision("kvartal");
     expect(result.databaseVersion).toBeUndefined();
+  });
+});
+
+describe("WFP provisioner migration batching", () => {
+  const DB = "db_batch";
+  const TRACKING_INSERT =
+    /INSERT OR IGNORE INTO _authhero_provisioner_migrations \(name, applied_at\) VALUES \('([^']+)'/g;
+
+  /**
+   * A fake D1 `/query` endpoint that keeps the tracking table's state.
+   * A body containing `failOn` fails. In "atomic" mode nothing from the
+   * failing body persists (whole-batch rollback); in "stop-at-error" mode
+   * the tracking rows before the failing statement persist.
+   */
+  function setupD1(opts: {
+    created: boolean;
+    tracked?: string[];
+    failOn?: string;
+    mode?: "atomic" | "stop-at-error";
+  }): { queries: string[]; tracked: Set<string> } {
+    const queries: string[] = [];
+    const tracked = new Set(opts.tracked ?? []);
+    server.use(
+      http.get(path(`/accounts/${ACCOUNT_ID}/d1/database`), () =>
+        HttpResponse.json({
+          result: opts.created ? [] : [{ uuid: DB, name: "tenant-kvartal" }],
+          success: true,
+        }),
+      ),
+      http.post(path(`/accounts/${ACCOUNT_ID}/d1/database`), () =>
+        HttpResponse.json({
+          result: { uuid: DB, name: "tenant-kvartal" },
+          success: true,
+        }),
+      ),
+      http.post(
+        path(`/accounts/${ACCOUNT_ID}/d1/database/${DB}/query`),
+        async ({ request }) => {
+          const { sql } = (await request.json()) as { sql: string };
+          queries.push(sql);
+          if (sql.startsWith("SELECT name FROM sqlite_master")) {
+            return HttpResponse.json({
+              result: [
+                { results: [{ name: "_authhero_provisioner_migrations" }] },
+              ],
+              success: true,
+            });
+          }
+          if (sql.startsWith("SELECT name FROM _authhero")) {
+            return HttpResponse.json({
+              result: [{ results: [...tracked].map((name) => ({ name })) }],
+              success: true,
+            });
+          }
+          const failAt =
+            opts.failOn !== undefined ? sql.indexOf(opts.failOn) : -1;
+          if (failAt === -1 || opts.mode === "stop-at-error") {
+            const upTo = failAt === -1 ? sql : sql.slice(0, failAt);
+            for (const m of upTo.matchAll(TRACKING_INSERT)) tracked.add(m[1]!);
+          }
+          if (failAt !== -1) {
+            return HttpResponse.json(
+              {
+                success: false,
+                errors: [{ code: 7500, message: "near BOOM: syntax error" }],
+              },
+              { status: 400 },
+            );
+          }
+          return HttpResponse.json({
+            result: [{ results: [] }],
+            success: true,
+          });
+        },
+      ),
+      http.put(
+        path(
+          `/accounts/${ACCOUNT_ID}/workers/dispatch/namespaces/${NAMESPACE}/scripts/kvartal`,
+        ),
+        () => HttpResponse.json({ result: {}, success: true }),
+      ),
+      http.put(
+        path(
+          `/accounts/${ACCOUNT_ID}/workers/dispatch/namespaces/${NAMESPACE}/scripts/kvartal/secrets`,
+        ),
+        () => HttpResponse.json({ result: {}, success: true }),
+      ),
+    );
+    return { queries, tracked };
+  }
+
+  function provisioner(migrations: { name: string; sql: string }[]) {
+    return createCloudflareWfpD1Provisioner({
+      accountId: ACCOUNT_ID,
+      apiToken: "token",
+      dispatchNamespace: NAMESPACE,
+      controlPlaneBaseUrl: "https://auth.example.com",
+      tenantWorkerScript: "",
+      migrations,
+      secrets: async () => ({}),
+    });
+  }
+
+  const nineteen = Array.from({ length: 19 }, (_, i) => ({
+    name: `${String(i).padStart(4, "0")}_m.sql`,
+    sql: `CREATE TABLE t${i} (id TEXT);`,
+  }));
+
+  it("applies all pending migrations of a fresh D1 in one call, each followed by its tracking row", async () => {
+    const d1 = setupD1({ created: true });
+    await provisioner(nineteen).onProvision("kvartal");
+
+    // CREATE TABLE tracking, SELECT applied, one apply call.
+    expect(d1.queries).toHaveLength(3);
+    const apply = d1.queries[2]!;
+    let cursor = 0;
+    for (const m of nineteen) {
+      const sqlAt = apply.indexOf(m.sql, cursor);
+      const rowAt = apply.indexOf(`VALUES ('${m.name}'`, cursor);
+      expect(sqlAt).toBeGreaterThanOrEqual(cursor);
+      expect(rowAt).toBeGreaterThan(sqlAt);
+      cursor = rowAt;
+    }
+    expect([...d1.tracked].sort()).toEqual(nineteen.map((m) => m.name));
+  });
+
+  it("only includes untracked migrations", async () => {
+    const d1 = setupD1({
+      created: false,
+      tracked: ["0000_m.sql", "0001_m.sql"],
+    });
+    await provisioner(nineteen.slice(0, 4)).onProvision("kvartal");
+
+    // table-exists probe, CREATE TABLE IF NOT EXISTS, SELECT applied, apply.
+    expect(d1.queries).toHaveLength(4);
+    const apply = d1.queries[3]!;
+    expect(apply).not.toContain("t0 (");
+    expect(apply).not.toContain("t1 (");
+    expect(apply).toContain("CREATE TABLE t2 (id TEXT);");
+    expect(apply).toContain("CREATE TABLE t3 (id TEXT);");
+    expect(apply).not.toContain("'0000_m.sql'");
+    expect(apply).not.toContain("'0001_m.sql'");
+  });
+
+  it("makes no apply call when nothing is pending", async () => {
+    const d1 = setupD1({
+      created: false,
+      tracked: nineteen.slice(0, 3).map((m) => m.name),
+    });
+    await provisioner(nineteen.slice(0, 3)).onProvision("kvartal");
+    // table-exists probe, CREATE TABLE IF NOT EXISTS, SELECT applied.
+    expect(d1.queries).toHaveLength(3);
+    expect(d1.queries.some((q) => q.includes("INSERT"))).toBe(false);
+  });
+
+  for (const mode of ["atomic", "stop-at-error"] as const) {
+    it(`a failed combined call still names the failing migration (${mode})`, async () => {
+      const migrations = [
+        { name: "0000_a.sql", sql: "CREATE TABLE a (id TEXT);" },
+        { name: "0001_bad.sql", sql: "BOOM;" },
+        { name: "0002_c.sql", sql: "CREATE TABLE c (id TEXT);" },
+      ];
+      const d1 = setupD1({ created: true, failOn: "BOOM", mode });
+      await expect(
+        provisioner(migrations).onProvision("kvartal"),
+      ).rejects.toThrow(
+        /Failed to apply migration "0001_bad\.sql" to D1 db_batch: .*BOOM/,
+      );
+      // The migration before the failure is tracked; the failing one and the
+      // one after it are not, so a retry resumes at 0001_bad.sql.
+      expect([...d1.tracked]).toEqual(["0000_a.sql"]);
+      // Never re-ran 0002 after 0001 failed.
+      const last = d1.queries[d1.queries.length - 1]!;
+      expect(last).toContain("BOOM;");
+      expect(last).not.toContain("CREATE TABLE c");
+    });
+  }
+
+  it("splits SQL over the size threshold into several calls without splitting a migration", async () => {
+    // ~40 KB each: three of them cannot share one 90 KB request.
+    const big = (i: number) => ({
+      name: `000${i}_big.sql`,
+      sql: `INSERT INTO t VALUES ('${"x".repeat(40_000)}');`,
+    });
+    const migrations = [big(0), big(1), big(2), big(3)];
+    const d1 = setupD1({ created: true });
+    await provisioner(migrations).onProvision("kvartal");
+
+    const applies = d1.queries.slice(2);
+    expect(applies).toHaveLength(2);
+    for (const q of applies) {
+      expect(new TextEncoder().encode(q).length).toBeLessThanOrEqual(
+        MAX_MIGRATION_BATCH_BYTES,
+      );
+      // Every migration body in a request is followed by its own tracking row.
+      const bodies = q.match(/INSERT INTO t VALUES/g)?.length ?? 0;
+      const rows = [...q.matchAll(TRACKING_INSERT)].length;
+      expect(rows).toBe(bodies);
+    }
+    expect([...d1.tracked].sort()).toEqual(migrations.map((m) => m.name));
+  });
+});
+
+describe("terminateSqlForConcat", () => {
+  it("keeps a statement that already ends with ';'", () => {
+    expect(terminateSqlForConcat("SELECT 1;")).toBe("SELECT 1;\n");
+  });
+
+  it("adds a ';' to an unterminated final statement", () => {
+    expect(terminateSqlForConcat("SELECT 1")).toBe("SELECT 1\n;\n");
+  });
+
+  it("ends a trailing line comment so it cannot swallow what follows", () => {
+    const out = terminateSqlForConcat("SELECT 1; -- done");
+    expect(out).toBe("SELECT 1; -- done\n");
+    const out2 = terminateSqlForConcat("SELECT 1 -- no semicolon");
+    expect(out2).toBe("SELECT 1 -- no semicolon\n;\n");
+  });
+
+  it("closes an unterminated block comment", () => {
+    expect(terminateSqlForConcat("SELECT 1; /* open")).toBe(
+      "SELECT 1; /* open\n*/\n",
+    );
+  });
+
+  it("ignores ';' and '--' inside string literals", () => {
+    expect(terminateSqlForConcat("INSERT INTO t VALUES ('a;')")).toBe(
+      "INSERT INTO t VALUES ('a;')\n;\n",
+    );
+    expect(terminateSqlForConcat("INSERT INTO t VALUES ('it''s -- ok');")).toBe(
+      "INSERT INTO t VALUES ('it''s -- ok');\n",
+    );
+  });
+
+  it("leaves comment-only SQL without adding an empty statement", () => {
+    expect(terminateSqlForConcat("-- nothing here")).toBe("-- nothing here\n");
+  });
+});
+
+describe("chunkMigrationParts", () => {
+  it("keeps whole parts together and never splits one", () => {
+    const parts = [
+      { sql: "a".repeat(50) },
+      { sql: "b".repeat(50) },
+      { sql: "c".repeat(200) },
+      { sql: "d".repeat(10) },
+    ];
+    expect(chunkMigrationParts(parts, 100)).toEqual([
+      [parts[0], parts[1]],
+      [parts[2]],
+      [parts[3]],
+    ]);
   });
 });
 

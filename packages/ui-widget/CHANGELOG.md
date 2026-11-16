@@ -1,5 +1,12 @@
 # @authhero/widget
 
+## 0.41.11
+
+### Patch Changes
+
+- Updated dependencies [fb6746b]
+  - @authhero/adapter-interfaces@4.27.0
+
 ## 0.41.10
 
 ### Patch Changes

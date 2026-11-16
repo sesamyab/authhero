@@ -205,6 +205,10 @@ const config: AuthHeroConfig = {
     onExecutePostLogin: async (event, api) => {
       // Perform actions after successful login
     },
+    onExecutePreAccountAction: async (event, api) => {
+      // Redirect (api.redirect.sendUserTo) or deny (api.access.deny) a
+      // self-service account operation such as event.operation === "change-email"
+    },
   },
 };
 ```

@@ -5,6 +5,35 @@ import ForgotPasswordPage from "../../components/ForgotPasswordPage";
 import ForgotPasswordSentPage from "../../components/ForgotPasswordSentPage";
 import { requestPasswordReset } from "../../authentication-flows/password";
 import { defineRoute } from "../../utils/define-route";
+import { enforcePreAccountAction } from "../../hooks/pre-account-action";
+import { getPrimaryUserByEmail } from "../../helpers/users";
+import { Context } from "hono";
+import { EnrichedClient } from "../../helpers/client";
+
+/**
+ * Password reset starts before sign-in: the user, if any, comes from the
+ * identifier entered so far.
+ */
+async function enforceResetPasswordAction(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  client: EnrichedClient,
+  email: string | undefined,
+) {
+  await enforcePreAccountAction(ctx, {
+    tenantId: client.tenant.id,
+    operation: "reset-password",
+    client,
+    user: email
+      ? () =>
+          getPrimaryUserByEmail({
+            userAdapter: ctx.env.data.users,
+            tenant_id: client.tenant.id,
+            email,
+          })
+      : undefined,
+  });
+}
+
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["login"],
@@ -29,6 +58,12 @@ const getRoot = defineRoute({
     const { theme, branding, client, loginSession } = await initJSXRoute(
       ctx,
       state,
+    );
+
+    await enforceResetPasswordAction(
+      ctx,
+      client,
+      loginSession.authParams.username,
     );
 
     return ctx.html(
@@ -67,6 +102,13 @@ const postRoot = defineRoute({
     const { theme, branding, client, loginSession } = await initJSXRoute(
       ctx,
       state,
+    );
+
+    // Re-check on submit so a direct POST can't skip a denial.
+    await enforceResetPasswordAction(
+      ctx,
+      client,
+      loginSession.authParams.username,
     );
 
     await requestPasswordReset(

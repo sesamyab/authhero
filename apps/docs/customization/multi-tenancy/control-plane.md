@@ -479,6 +479,31 @@ const forbidden = await fetch("/api/v2/users", {
 // Response: 403 Forbidden
 ```
 
+## Self-service sign-up: let new users create a tenant
+
+By default nobody can create a tenant except users an operator has given `create:tenants`. A person who signs up on the control plane gets a token with no permissions, so the admin UI can only tell them to ask an administrator. `selfServiceSignup` closes that gap:
+
+```typescript
+initMultiTenant({
+  dataAdapter,
+  controlPlane: { tenantId: "main", clientId: "main_client" },
+  selfServiceSignup: true,
+  // or pick the role name: selfServiceSignup: { roleName: "Tenant Creator" },
+});
+```
+
+Once a user's email is **verified**, they get a global role (default name `Tenant Creator`) on the control plane. The role carries `create:tenants` on the Management API and nothing else: not `read:tenants`, `delete:tenants` or `admin:organizations`. The role is created the first time it is needed, and `create:tenants` is added to it if it is missing. Permissions an operator adds to the role are never removed.
+
+- Users who arrive with a verified email (social, passwordless) get the role at registration. Password sign-ups get it when they verify their email.
+- Only sign-ups on the control plane get it. Sign-ups on child tenants never do.
+- Existing users are not backfilled. Give them the role yourself if you want them to create tenants.
+- It runs through `onExecutePostUserRegistration` and `onExecutePostUserUpdate`, ahead of any hooks you configure. A failure is logged and never fails the sign-up.
+- The control plane's admin client must put permissions in the access token (turn on RBAC and "add permissions to the access token"), or the admin UI will not see the role.
+
+After the user creates a tenant they become admin of the tenant's organization, as for any creator. Creating a tenant provisions real resources and there is no rate limit or per-user quota yet, so leave this off unless you accept that.
+
+Provisioning progress is shown to the new user, but the step list, the failure reason and the retry button need `read:tenant_operations` and `create:tenant_operations`. The role does not carry them, since a global permission would let one user read other tenants' operations. A self-service user whose provisioning fails sees a generic error.
+
 ## Example: Complete Multi-Tenant Setup
 
 ```typescript

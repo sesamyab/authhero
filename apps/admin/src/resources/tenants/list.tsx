@@ -1,14 +1,33 @@
 import { useId } from "react";
-import { Link } from "react-router-dom";
-import { useRecordContext } from "ra-core";
+import { Link, Navigate } from "react-router-dom";
+import { ListBase, useListContext, useRecordContext } from "ra-core";
 import { History, Rocket, Users } from "lucide-react";
-import { BadgeField, DataTable, List, TextInput } from "@/components/admin";
+import { BadgeField, DataTable, TextInput } from "@/components/admin";
+import { ListView } from "@/components/admin/list";
+import { Loading } from "@/components/admin/loading";
 import { CreateButton } from "@/components/admin/create-button";
 import { ExportButton } from "@/components/admin/export-button";
 import { JsonActionsButton } from "@/components/JsonActionsButton";
 import { Button } from "@/components/ui/button";
 import { useHasChildren } from "@/hooks/useHasChildren";
+import { useManagementPermissions } from "@/hooks/useManagementPermissions";
 import { getBasePath } from "@/utils/runtimeConfig";
+import { TenantsEmptyState } from "./empty-state";
+
+/**
+ * The tenant to show the setup page of: a user's first and only tenant while
+ * it is being set up, which is all there is to look at. Anything else keeps
+ * the list, so a failed tenant, or more than one, stays reachable there with
+ * its operations and Create.
+ */
+export function onboardingTenant(
+  rows: TenantRecord[],
+  total: number | undefined,
+): TenantRecord | undefined {
+  if (rows.length !== 1 || (total ?? 1) !== 1) return;
+  const [only] = rows;
+  return only?.provisioning_state === "pending" ? only : undefined;
+}
 
 type TenantRecord = {
   id: string;
@@ -87,12 +106,13 @@ function OperationsLinkCell() {
   );
 }
 
-function TenantListActions() {
-  // Rollouts sync the tenants below the control plane. Asked of the settings
-  // rather than counted from the list, which only holds the tenants this admin
-  // can see.
-  const hasChildren = useHasChildren();
-
+function TenantListActions({
+  hasChildren,
+  canCreate,
+}: {
+  hasChildren: boolean;
+  canCreate: boolean;
+}) {
   return (
     <div className="flex items-center gap-2">
       {hasChildren && (
@@ -103,7 +123,7 @@ function TenantListActions() {
           </Link>
         </Button>
       )}
-      <CreateButton />
+      {canCreate && <CreateButton />}
       <ExportButton />
       <JsonActionsButton size="default" />
     </div>
@@ -116,9 +136,7 @@ function TenantListActions() {
  * current page, so they stay put across pages and filters and while a child
  * tenant is being set up.
  */
-function TenantsTable() {
-  const showInheritance = useHasChildren();
-
+function TenantsTable({ showInheritance }: { showInheritance: boolean }) {
   return (
     <DataTable
       rowClick={(_id, _resource, record) => {
@@ -150,19 +168,70 @@ function TenantsTable() {
   );
 }
 
-export function TenantsList() {
-  const filters = [
-    <TextInput key="q" source="q" placeholder="Search" label={false} />,
-  ];
+const filters = [
+  <TextInput key="q" source="q" placeholder="Search" label={false} />,
+];
+
+/**
+ * The list, or the empty state when the user has no tenants at all. A search
+ * that matches nothing keeps the list and its "no results".
+ */
+function TenantsListContent() {
+  const { isPending, error, data, total, filterValues } = useListContext();
+  const rowCount: number = data?.length ?? 0;
+  const { loading, can } = useManagementPermissions();
+  const canCreate = can("create:tenants");
+  // Rollouts sync the tenants below the control plane. Asked of the settings
+  // rather than counted from the list, which only holds the tenants this admin
+  // can see. Without `read:tenants` the settings are refused, so not asked.
+  const hasChildren = useHasChildren({
+    enabled: !loading && can("read:tenants"),
+  });
+
+  const isFiltered = Object.keys(filterValues ?? {}).length > 0;
+  // Until both answers are in it is not known whether this is the list or
+  // the empty state; showing the list meanwhile flashes it at a new user.
+  // A search keeps the list, which renders its own loading state. Loading
+  // shows only if it takes long.
+  if ((isPending || loading) && !isFiltered && !error) return <Loading />;
+  const isEmpty = total === 0 || (total === undefined && rowCount === 0);
+  if (!error && isEmpty && !isFiltered) {
+    return <TenantsEmptyState canCreate={canCreate} />;
+  }
+  // A user whose only tenants are not ready has nothing to pick from a list:
+  // take them to where theirs is being set up.
+  const settingUp =
+    !error && !isFiltered
+      ? onboardingTenant((data ?? []) as TenantRecord[], total)
+      : undefined;
+  if (settingUp) {
+    return (
+      <Navigate
+        to={`/tenants/${encodeURIComponent(String(settingUp.id))}/setup`}
+        replace
+      />
+    );
+  }
 
   return (
-    <List
-      resource="tenants"
-      actions={<TenantListActions />}
+    <ListView
+      actions={
+        <TenantListActions hasChildren={hasChildren} canCreate={canCreate} />
+      }
       filters={filters}
+    >
+      <TenantsTable showInheritance={hasChildren} />
+    </ListView>
+  );
+}
+
+export function TenantsList() {
+  return (
+    <ListBase
+      resource="tenants"
       sort={{ field: "friendly_name", order: "ASC" }}
     >
-      <TenantsTable />
-    </List>
+      <TenantsListContent />
+    </ListBase>
   );
 }

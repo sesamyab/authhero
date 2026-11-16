@@ -1,5 +1,13 @@
 # @authhero/drizzle
 
+## 1.18.2
+
+### Patch Changes
+
+- Updated dependencies [fb6746b]
+  - @authhero/adapter-interfaces@4.27.0
+  - @authhero/proxy@0.11.14
+
 ## 1.18.1
 
 ### Patch Changes
