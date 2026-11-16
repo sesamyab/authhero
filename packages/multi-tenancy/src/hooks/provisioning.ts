@@ -20,11 +20,12 @@ import {
   TenantHookContext,
 } from "../types";
 import { runRecordedTenantOperation } from "../operations";
-import { DEFAULT_SELF_SERVICE_ROLE_NAME } from "./self-service-signup";
 import {
+  ADMIN_REQUIRES_SCOPES,
   DEFAULT_ADMIN_ROLE_NAME,
   DEFAULT_OWNER_ROLE_NAME,
   ensureRoleWithScopes,
+  globalManagementPermissions,
   tenantOwnerScopes,
 } from "./tenant-roles";
 
@@ -207,9 +208,9 @@ export function createProvisioningHooks(
 /**
  * Resolves the roles a new tenant's creator needs, creating or topping them up
  * as needed: the admin role (when roles are managed, that is an `issuer` is set
- * or `provisionRoles` is on) and the role the creator will get. A self-service
- * creator, who holds the global self-service role, gets the narrower owner
- * role; anyone else gets the admin role. Safe to call more than once.
+ * or `provisionRoles` is on) and the role the creator will get: the admin role
+ * for a creator who already holds the operator scopes globally, the narrower
+ * owner role for anyone else. Safe to call more than once.
  */
 async function resolveCreatorRoles(
   ctx: TenantHookContext,
@@ -225,7 +226,6 @@ async function resolveCreatorRoles(
     provisionRoles = false,
     ownerRoleName = DEFAULT_OWNER_ROLE_NAME,
     ownerRoleDescription = "Manages the tenant's own configuration, users and applications",
-    selfServiceRoleName = DEFAULT_SELF_SERVICE_ROLE_NAME,
   } = accessControl;
 
   if (!issuer && !provisionRoles) return {};
@@ -243,22 +243,23 @@ async function resolveCreatorRoles(
   );
   if (!addCreatorToOrganization || !userId) return { adminRoleId };
 
-  const globalRoles = await ctx.adapters.userRoles.list(
+  // The admin role only for a creator who already holds the operator scopes
+  // globally, so the role in the tenant's organization never grants more than
+  // they had. Everyone else, a self-service creator included, gets the owner
+  // role.
+  const held = await globalManagementPermissions(
+    ctx.adapters,
     controlPlaneTenantId,
     userId,
-    undefined,
-    "",
   );
-  const isSelfService = globalRoles.some(
-    (role) => role.name === selfServiceRoleName,
-  );
-  const creatorRoleId = isSelfService
-    ? await ensureRoleWithScopes(ctx.adapters, controlPlaneTenantId, {
+  const isOperator = ADMIN_REQUIRES_SCOPES.every((scope) => held.has(scope));
+  const creatorRoleId = isOperator
+    ? adminRoleId
+    : await ensureRoleWithScopes(ctx.adapters, controlPlaneTenantId, {
         name: ownerRoleName,
         description: ownerRoleDescription,
         scopes: tenantOwnerScopes(),
-      })
-    : adminRoleId;
+      });
   return { adminRoleId, creatorRoleId };
 }
 

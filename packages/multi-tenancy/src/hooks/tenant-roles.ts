@@ -28,6 +28,63 @@ export const OPERATOR_ONLY_SCOPES: readonly string[] = [
 ];
 
 /**
+ * The operator-only scopes that only make sense across organizations. A creator
+ * who holds `admin:organizations` is not added to the tenant's organization at
+ * all, so these two cannot be what decides which role a creator gets.
+ */
+const ORGANIZATION_SPANNING_SCOPES: readonly string[] = [
+  "admin:organizations",
+  "access:all_organizations",
+];
+
+/**
+ * What a creator must already hold globally to get the admin role: every
+ * operator-only scope that is not organization-spanning. The admin role is the
+ * owner role plus the operator-only scopes, so this keeps the role in the
+ * tenant's organization from granting more than the creator already had.
+ */
+export const ADMIN_REQUIRES_SCOPES: readonly string[] =
+  OPERATOR_ONLY_SCOPES.filter(
+    (scope) => !ORGANIZATION_SPANNING_SCOPES.includes(scope),
+  );
+
+/**
+ * The Management API permissions a user holds globally (not in an
+ * organization), from their global roles and from permissions given to them
+ * directly.
+ */
+export async function globalManagementPermissions(
+  data: DataAdapters,
+  tenantId: string,
+  userId: string,
+): Promise<Set<string>> {
+  const held = new Set<string>();
+  const roles = await data.userRoles.list(tenantId, userId, undefined, "");
+  for (const role of roles) {
+    const granted = await data.rolePermissions.list(tenantId, role.id, {
+      per_page: 1000,
+    });
+    for (const permission of granted) {
+      if (permission.resource_server_identifier === MANAGEMENT_API_AUDIENCE) {
+        held.add(permission.permission_name);
+      }
+    }
+  }
+  const direct = await data.userPermissions.list(
+    tenantId,
+    userId,
+    { per_page: 1000 },
+    "",
+  );
+  for (const permission of direct) {
+    if (permission.resource_server_identifier === MANAGEMENT_API_AUDIENCE) {
+      held.add(permission.permission_name);
+    }
+  }
+  return held;
+}
+
+/**
  * Every management scope except the operator-only ones. A scope added to
  * `MANAGEMENT_API_SCOPES` later reaches owners unless it is listed above, so
  * a test freezes this list and a new scope has to be placed on purpose.

@@ -5,6 +5,7 @@ import { Database } from "@authhero/kysely-adapter";
 import createAdapters, { migrateToLatest } from "@authhero/kysely-adapter";
 import { setupMultiTenancy, MANAGEMENT_API_SCOPES } from "../src/index";
 import { USERNAME_PASSWORD_PROVIDER } from "../../authhero/src/constants";
+import { ADMIN_REQUIRES_SCOPES } from "../src/hooks/tenant-roles";
 
 import { createMigratedDb } from "./helpers/migrated-db";
 describe("Tenant Provisioning with User Organization Membership", () => {
@@ -58,6 +59,27 @@ describe("Tenant Provisioning with User Organization Membership", () => {
       connection: "Username-Password-Authentication",
       provider: USERNAME_PASSWORD_PROVIDER,
     });
+
+    // An operator: they hold the operator scopes globally, which is what makes
+    // the creator get the admin role rather than the narrower owner role.
+    const operatorRole = await adapters.roles.create("control_plane", {
+      name: "Operator",
+    });
+    await adapters.rolePermissions.assign(
+      "control_plane",
+      operatorRole.id,
+      ADMIN_REQUIRES_SCOPES.map((permission_name) => ({
+        role_id: operatorRole.id,
+        resource_server_identifier: "urn:authhero:management",
+        permission_name,
+      })),
+    );
+    await adapters.userRoles.create(
+      "control_plane",
+      TEST_USER_ID,
+      operatorRole.id,
+      "",
+    );
 
     // Setup multi-tenancy with access control and issuer for admin role creation
     const multiTenancy = setupMultiTenancy({

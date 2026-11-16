@@ -5,6 +5,7 @@ import { init, MANAGEMENT_API_AUDIENCE, MANAGEMENT_API_SCOPES } from "authhero";
 import { initMultiTenant } from "../src/init";
 import { createProvisioningHooks } from "../src/hooks/provisioning";
 import {
+  ADMIN_REQUIRES_SCOPES,
   OPERATOR_ONLY_SCOPES,
   tenantOwnerScopes,
 } from "../src/hooks/tenant-roles";
@@ -81,6 +82,22 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
       is_social: false,
     });
 
+  /** A user who holds the operator scopes globally, through a role. */
+  const makeOperator = async (id: string, scopes = ADMIN_REQUIRES_SCOPES) => {
+    await newUser(id);
+    const role = await data.roles.create(CP, { name: `ops-${id}` });
+    await data.rolePermissions.assign(
+      CP,
+      role.id,
+      scopes.map((permission_name) => ({
+        role_id: role.id,
+        resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+        permission_name,
+      })),
+    );
+    await data.userRoles.create(CP, id, role.id, "");
+  };
+
   beforeEach(async () => {
     data = createAdapters(await createMigratedDb());
     await data.tenants.create({
@@ -130,8 +147,8 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
     };
   });
 
-  it("gives an ordinary creator the Tenant Admin role with every management scope", async () => {
-    await newUser("auth2|operator");
+  it("gives a creator who holds the operator scopes the Tenant Admin role with every management scope", async () => {
+    await makeOperator("auth2|operator");
     const response = await createTenant("auth2|operator", "acme");
     expect(response.status).toBe(201);
 
@@ -140,6 +157,37 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
     expect(await permissionsOf("Tenant Admin")).toEqual(
       MANAGEMENT_API_SCOPES.map((scope) => scope.value).sort(),
     );
+  });
+
+  it("gives a creator without the operator scopes the Owner role, whichever way they got create:tenants", async () => {
+    // A direct permission, a custom role with only create:tenants, and an
+    // operator who lacks one of the scopes: none of them holds what the admin
+    // role would add, so none of them gets it.
+    await newUser("auth2|direct");
+    await data.userPermissions.create(CP, "auth2|direct", {
+      resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+      permission_name: "create:tenants",
+    });
+    await newUser("auth2|custom");
+    const custom = await data.roles.create(CP, { name: "Creators" });
+    await data.rolePermissions.assign(CP, custom.id, [
+      {
+        role_id: custom.id,
+        resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+        permission_name: "create:tenants",
+      },
+    ]);
+    await data.userRoles.create(CP, "auth2|custom", custom.id, "");
+    await makeOperator(
+      "auth2|partial",
+      ADMIN_REQUIRES_SCOPES.filter((scope) => scope !== "delete:tenants"),
+    );
+
+    for (const id of ["direct", "custom", "partial"]) {
+      expect((await createTenant(`auth2|${id}`, `t-${id}`)).status).toBe(201);
+      const org = await orgOf(`t-${id}`);
+      expect(await roleNames(`auth2|${id}`, org.id)).toEqual(["Tenant Owner"]);
+    }
   });
 
   it("gives a self-service creator the Tenant Owner role, without the operator-only scopes", async () => {
@@ -171,7 +219,7 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
   });
 
   it("tops up an existing Tenant Admin role with scopes added since it was created", async () => {
-    await newUser("auth2|operator");
+    await makeOperator("auth2|operator");
     const role = await data.roles.create(CP, { name: "Tenant Admin" });
     await data.rolePermissions.assign(CP, role.id, [
       {
@@ -327,7 +375,7 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
   });
 
   it("leaves an earlier creator on the role they already have", async () => {
-    await newUser("auth2|early");
+    await makeOperator("auth2|early");
     await createTenant("auth2|early", "first");
     const firstOrg = await orgOf("first");
 

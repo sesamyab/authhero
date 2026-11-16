@@ -732,9 +732,6 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       requireOrganizationMatch,
       defaultPermissions,
       provisionRoles: true,
-      ...(typeof selfServiceSignup === "object" && selfServiceSignup.roleName
-        ? { selfServiceRoleName: selfServiceSignup.roleName }
-        : {}),
     },
     databaseIsolation,
   });
