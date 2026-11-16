@@ -165,6 +165,7 @@ export function createAuthMiddleware(
         ctx.set("user", tokenPayload);
         if (tokenPayload.azp) {
           ctx.set("client_id", tokenPayload.azp);
+          ctx.set("client_id_from_token", true);
         }
         if (tokenPayload.org_name) {
           ctx.set("org_name", tokenPayload.org_name);
