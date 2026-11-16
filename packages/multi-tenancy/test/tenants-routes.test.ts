@@ -191,6 +191,35 @@ describe("tenants routes authorization", () => {
     expect(await adapters.tenants.get("other-tenant")).not.toBeNull();
   });
 
+  it("lets an org_id-only token delete its own tenant", async () => {
+    await createChildTenant("acme");
+
+    const { hooks } = setupMultiTenancy(accessControlConfig);
+
+    // The authentication middleware resolves an org_id-only token's organization
+    // name and hands it to the router as org_name.
+    const app = createHostApp({
+      config: accessControlConfig,
+      hooks,
+      user: {
+        sub: "auth0|acme-admin",
+        tenant_id: controlPlaneTenantId,
+        scope: "delete:tenants",
+        org_id: "org_acme",
+      },
+      org_name: "acme",
+    });
+
+    const response = await app.request(
+      "/management/tenants/acme",
+      { method: "DELETE" },
+      env,
+    );
+
+    expect(response.status).toBe(204);
+    expect(await adapters.tenants.get("acme")).toBeNull();
+  });
+
   it("does not let an org-scoped token delete a tenant whose organization the user merely belongs to", async () => {
     await createChildTenant("globex");
     const org = await adapters.organizations.create(controlPlaneTenantId, {

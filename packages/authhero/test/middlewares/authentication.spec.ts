@@ -954,7 +954,10 @@ describe("createAuthMiddleware", () => {
   // the token may act on that tenant only, not on the control plane or on
   // another tenant by naming it in `tenant-id`.
   describe("organization binding of control-plane tokens", () => {
-    const route = (method: "get" | "patch" | "post", path: string) => {
+    const route = (
+      method: "get" | "patch" | "post" | "delete",
+      path: string,
+    ) => {
       app.openapi(
         {
           method,
