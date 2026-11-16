@@ -354,6 +354,23 @@ const createTenantOperation = defineRoute({
             "retry:tenant_provisioning only allows retrying a failed provision",
         });
       }
+      // One retry at a time: enqueueing has no in-flight check, so without
+      // this a self-service user could fan out workflows for a failed tenant.
+      const recent = await ctx.env.data.tenantOperations?.list({
+        tenant_id: tenantId,
+        kind: "upgrade",
+        per_page: 20,
+      });
+      if (
+        recent?.operations.some(
+          (operation) =>
+            operation.status === "pending" || operation.status === "running",
+        )
+      ) {
+        throw new HTTPException(409, {
+          message: "A retry for this tenant is already in progress",
+        });
+      }
     }
 
     if (kind === "provision" || kind === "deprovision") {

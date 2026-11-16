@@ -484,6 +484,12 @@ describe("management-api tenant operations: who reaches which tenant", () => {
       kind: "upgrade",
       engine: "inline",
     });
+    // An earlier operation that is done, so it does not count as a retry in
+    // flight.
+    await env.data.tenantOperations!.update(operation.id, {
+      status: "succeeded",
+      finished_at: new Date().toISOString(),
+    });
     return { app, env, operation };
   }
 
@@ -804,6 +810,38 @@ describe("management-api tenant operations: who reaches which tenant", () => {
         permissions: ["tenant_operations:create"],
       });
       expect((await post(app, env, reversed)).status).toBe(201);
+    });
+
+    it("refuses a second retry while one is pending or running, but not an operator", async () => {
+      const { app, env } = await setup();
+      const inFlight = await env.data.tenantOperations!.create({
+        tenant_id: CHILD,
+        kind: "upgrade",
+        engine: "inline",
+      });
+      expect(inFlight.status).toBe("pending");
+      expect((await post(app, env, await retrier(MEMBER))).status).toBe(409);
+
+      await env.data.tenantOperations!.update(inFlight.id, {
+        status: "running",
+      });
+      expect((await post(app, env, await retrier(MEMBER))).status).toBe(409);
+
+      // An operator is not limited by it.
+      const operator = await createToken({
+        user_id: "client@clients",
+        azp: "client",
+        aud: "urn:authhero:management",
+        permissions: ["create:tenant_operations"],
+      });
+      expect((await post(app, env, operator)).status).toBe(201);
+
+      // Once it is done, a retry is allowed again.
+      await env.data.tenantOperations!.update(inFlight.id, {
+        status: "failed",
+        finished_at: new Date().toISOString(),
+      });
+      expect((await post(app, env, await retrier(MEMBER))).status).toBe(201);
     });
 
     it("refuses every other kind", async () => {
