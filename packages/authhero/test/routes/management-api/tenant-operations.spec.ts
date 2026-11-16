@@ -591,6 +591,41 @@ describe("management-api tenant operations: who reaches which tenant", () => {
     ).toBe(200);
   });
 
+  it("does not take a control-plane token for the child's own caller when it names the child in tenant-id", async () => {
+    const { app, env, operation } = await setup();
+    const asChild = (token: string, path: string) =>
+      app.request(
+        path,
+        {
+          headers: { "tenant-id": CHILD, authorization: `Bearer ${token}` },
+        },
+        env as never,
+      );
+    const controlPlaneToken = (user_id: string) =>
+      createToken({
+        user_id,
+        tenant_id: CONTROL_PLANE,
+        aud: "urn:authhero:management",
+        permissions: ["read:tenant_operations"],
+      });
+
+    const outsider = await controlPlaneToken(OUTSIDER);
+    expect(
+      (await asChild(outsider, `/api/v2/tenants/${CHILD}/operations`)).status,
+    ).toBe(404);
+    expect(
+      (await asChild(outsider, `/api/v2/operations/${operation.id}`)).status,
+    ).toBe(404);
+
+    const member = await controlPlaneToken(MEMBER);
+    expect(
+      (await asChild(member, `/api/v2/tenants/${CHILD}/operations`)).status,
+    ).toBe(200);
+    expect(
+      (await asChild(member, `/api/v2/operations/${operation.id}`)).status,
+    ).toBe(200);
+  });
+
   it("treats holders of the operator scopes as reaching every tenant", async () => {
     const { app, env, operation } = await setup();
     for (const scope of ["create:tenant_operations", "create:rollouts"]) {

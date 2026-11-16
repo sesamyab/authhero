@@ -37,6 +37,7 @@ type CallerToken = {
   scope?: string | string[];
   permissions?: string[];
   org_id?: string;
+  tenant_id?: string;
 };
 
 /**
@@ -57,7 +58,9 @@ function callerGrants(user: CallerToken | undefined): Set<string> {
 /**
  * Whether the caller may reach a tenant's operations.
  *
- * - A caller on a child tenant reaches only that tenant.
+ * - A caller whose token belongs to a child tenant reaches only that tenant.
+ *   The tenant is the token's `tenant_id`, not the `tenant-id` header, which
+ *   a control-plane token may point at any tenant.
  * - On the control plane, an operator reaches every tenant: a machine token
  *   (its scopes are explicit grants), a caller holding `create:tenant_operations` or
  *   `create:rollouts`,
@@ -73,14 +76,18 @@ async function callerReachesTenant(
   },
   targetTenantId: string | null,
 ): Promise<boolean> {
-  if (!isControlPlaneTenant(ctx, ctx.var.tenant_id)) {
-    return targetTenantId === ctx.var.tenant_id;
-  }
   const controlPlaneTenantId =
     ctx.env.data.multiTenancyConfig?.controlPlaneTenantId;
   if (!controlPlaneTenantId) return true;
 
   const user = ctx.var.user as CallerToken | undefined;
+  // Which tenant the caller belongs to is the token's own tenant, not the
+  // `tenant-id` header: a control-plane token may name any tenant there, and
+  // must not be taken for that tenant's own caller.
+  const callerTenantId = user?.tenant_id ?? ctx.var.tenant_id;
+  if (callerTenantId !== controlPlaneTenantId) {
+    return targetTenantId === callerTenantId;
+  }
   if (!user?.sub) return false;
   if (
     user.sub.endsWith("@clients") ||
