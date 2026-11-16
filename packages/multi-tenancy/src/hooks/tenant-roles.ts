@@ -1,6 +1,9 @@
 import { MANAGEMENT_API_AUDIENCE, MANAGEMENT_API_SCOPES } from "authhero";
 import type { DataAdapters, Role } from "authhero";
 
+/** Default name of the role an operator who creates a tenant gets in it. */
+export const DEFAULT_ADMIN_ROLE_NAME = "Tenant Admin";
+
 /** Default name of the role a self-service creator gets in their tenant. */
 export const DEFAULT_OWNER_ROLE_NAME = "Tenant Owner";
 

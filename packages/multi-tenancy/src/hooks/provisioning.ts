@@ -22,6 +22,7 @@ import {
 import { runRecordedTenantOperation } from "../operations";
 import { DEFAULT_SELF_SERVICE_ROLE_NAME } from "./self-service-signup";
 import {
+  DEFAULT_ADMIN_ROLE_NAME,
   DEFAULT_OWNER_ROLE_NAME,
   ensureRoleWithScopes,
   tenantOwnerScopes,
@@ -42,6 +43,21 @@ import {
 export function createProvisioningHooks(
   config: MultiTenancyConfig,
 ): TenantEntityHooks {
+  // The owner role is the admin role minus the operator-only scopes. With the
+  // same name both would be one role, and a self-service creator would get
+  // every scope. Refuse that before any tenant or role is written.
+  if (config.accessControl) {
+    const adminName =
+      config.accessControl.adminRoleName ?? DEFAULT_ADMIN_ROLE_NAME;
+    const ownerName =
+      config.accessControl.ownerRoleName ?? DEFAULT_OWNER_ROLE_NAME;
+    if (adminName === ownerName) {
+      throw new Error(
+        `ownerRoleName and adminRoleName must differ (both are "${adminName}")`,
+      );
+    }
+  }
+
   return {
     async beforeCreate(
       _ctx: TenantHookContext,
@@ -170,7 +186,7 @@ async function createOrganizationForTenant(
     defaultPermissions,
     defaultRoles,
     issuer,
-    adminRoleName = "Tenant Admin",
+    adminRoleName = DEFAULT_ADMIN_ROLE_NAME,
     adminRoleDescription = "Full access to all tenant management operations",
     addCreatorToOrganization = true,
     provisionRoles = false,
@@ -220,6 +236,30 @@ async function createOrganizationForTenant(
 
       // Only add user to organization if they don't have global admin:organizations
       if (!hasGlobalOrgAdmin) {
+        // Resolve the role before the try, like the admin role above, so a
+        // failure here stops tenant creation instead of leaving the creator a
+        // member with no role. A self-service creator, who holds the global
+        // self-service role, gets the narrower owner role.
+        let creatorRoleId: string | undefined;
+        if (adminRoleId) {
+          const globalRoles = await ctx.adapters.userRoles.list(
+            controlPlaneTenantId,
+            user.sub,
+            undefined,
+            "",
+          );
+          const isSelfService = globalRoles.some(
+            (role) => role.name === selfServiceRoleName,
+          );
+          creatorRoleId = isSelfService
+            ? await ensureRoleWithScopes(ctx.adapters, controlPlaneTenantId, {
+                name: ownerRoleName,
+                description: ownerRoleDescription,
+                scopes: tenantOwnerScopes(),
+              })
+            : adminRoleId;
+        }
+
         try {
           // Add user to the organization
           await ctx.adapters.userOrganizations.create(controlPlaneTenantId, {
@@ -227,30 +267,13 @@ async function createOrganizationForTenant(
             organization_id: organization.id,
           });
 
-          // Assign a role to the user for this organization (only if roles
-          // are managed). A self-service creator, who holds the global
-          // self-service role, gets the narrower owner role.
-          if (adminRoleId) {
-            const globalRoles = await ctx.adapters.userRoles.list(
-              controlPlaneTenantId,
-              user.sub,
-              undefined,
-              "",
-            );
-            const isSelfService = globalRoles.some(
-              (role) => role.name === selfServiceRoleName,
-            );
-            const roleId = isSelfService
-              ? await ensureRoleWithScopes(ctx.adapters, controlPlaneTenantId, {
-                  name: ownerRoleName,
-                  description: ownerRoleDescription,
-                  scopes: tenantOwnerScopes(),
-                })
-              : adminRoleId;
+          // Assign the role to the user for this organization (only if roles
+          // are managed)
+          if (creatorRoleId) {
             await ctx.adapters.userRoles.create(
               controlPlaneTenantId,
               user.sub,
-              roleId,
+              creatorRoleId,
               organization.id, // organizationId
             );
           }

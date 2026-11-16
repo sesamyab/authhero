@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import createAdapters from "@authhero/kysely-adapter";
 import { encodeBase64Url } from "@authhero/adapter-interfaces";
 import { init, MANAGEMENT_API_AUDIENCE, MANAGEMENT_API_SCOPES } from "authhero";
 import { initMultiTenant } from "../src/init";
+import { createProvisioningHooks } from "../src/hooks/provisioning";
 import {
   OPERATOR_ONLY_SCOPES,
   tenantOwnerScopes,
@@ -199,6 +200,64 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
       (r) => r.name === "Tenant Admin",
     );
     expect(roles).toHaveLength(1);
+  });
+
+  it("refuses an owner role named like the admin role", () => {
+    expect(() =>
+      createProvisioningHooks({
+        accessControl: {
+          controlPlaneTenantId: CP,
+          ownerRoleName: "Tenant Admin",
+        },
+      }),
+    ).toThrow(/must differ/);
+    expect(() =>
+      createProvisioningHooks({
+        accessControl: {
+          controlPlaneTenantId: CP,
+          adminRoleName: "Owners",
+          ownerRoleName: "Owners",
+        },
+      }),
+    ).toThrow(/must differ/);
+  });
+
+  it("stops tenant creation when the owner role cannot be resolved", async () => {
+    await newUser("auth2|customer");
+    const creator = await data.roles.create(CP, {
+      name: DEFAULT_SELF_SERVICE_ROLE_NAME,
+    });
+    await data.userRoles.create(CP, "auth2|customer", creator.id, "");
+    // Resolving the owner role reads the role's permissions; make that fail.
+    const original = data.rolePermissions.list.bind(data.rolePermissions);
+    let calls = 0;
+    data.rolePermissions.list = (async (
+      ...args: Parameters<typeof original>
+    ) => {
+      // The reads, in order: the admin role's top-up, the creator's global
+      // roles (admin:organizations check), then the owner role's top-up.
+      if (++calls === 3) throw new Error("db down");
+      return original(...args);
+    }) as typeof original;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const response = await createTenant("auth2|customer", "globex");
+
+    expect(response.status).not.toBe(201);
+    // The creator must not be left a member of the tenant without a role.
+    const orgs = (await data.organizations.list(CP)).organizations;
+    const org = orgs.find((o) => o.name === "globex");
+    if (org) {
+      expect(await roleNames("auth2|customer", org.id)).toEqual([]);
+      const memberships = await data.userOrganizations.listUserOrganizations(
+        CP,
+        "auth2|customer",
+      );
+      expect(memberships.organizations.map((o) => o.name)).not.toContain(
+        "globex",
+      );
+    }
+    warn.mockRestore();
   });
 
   it("leaves an earlier creator on the role they already have", async () => {
