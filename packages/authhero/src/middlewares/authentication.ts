@@ -18,7 +18,7 @@ export const MANAGEMENT_API_AUDIENCE = "urn:authhero:management";
  * Routes of the multi-tenancy tenants router (`/tenants`, `/tenants/{id}` and
  * what hangs off it). They run in the control plane's context and check access
  * per organization themselves, so an organization-scoped control-plane token may
- * reach them there. `/tenants/{id}/operations` and `/tenants/settings` are not:
+ * reach them there. `/tenants/{id}/operations`, `/tenants/{id}/config-sync` and `/tenants/settings` are not:
  * the former does no per-organization check; the latter's it reads and writes
  * the settings of the tenant the request is in, which for the control plane's
  * context would be the control plane's own.
@@ -26,10 +26,13 @@ export const MANAGEMENT_API_AUDIENCE = "urn:authhero:management";
 function isTenantsRouterPath(path: string): boolean {
   if (path === "/tenants") return true;
   if (!path.startsWith("/tenants/")) return false;
-  // `/tenants/{id}/operations` is the operations history router: it only checks
-  // that the request is in the control plane's context, not that the caller
-  // belongs to the target tenant's organization, so it must stay bound.
-  if (/^\/tenants\/[^/]+\/operations(\/|$)/.test(path)) return false;
+  // `/tenants/{id}/operations` and `/tenants/{id}/config-sync` (and `/verify`)
+  // only check that the request is in the control plane's context, or that the
+  // id is the request's own tenant, not that the caller belongs to the target
+  // tenant's organization. In the control plane's context that means the control
+  // plane itself, so they stay bound.
+  if (/^\/tenants\/[^/]+\/(operations|config-sync)(\/|$)/.test(path))
+    return false;
   return path !== "/tenants/settings" && !path.startsWith("/tenants/settings/");
 }
 

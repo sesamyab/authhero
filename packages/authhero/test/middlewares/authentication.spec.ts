@@ -1110,9 +1110,16 @@ describe("createAuthMiddleware", () => {
       expect(mockCtx.set).toHaveBeenCalledWith("org_name", "acme");
     });
 
-    it("does not exempt /tenants/{id}/operations, which does no per-organization check", async () => {
-      route("get", "/tenants/{id}/operations");
-      expect(await call("controlPlane", { org_name: "acme" })).toBe("403");
+    it("does not exempt the tenant sub-routes that do no per-organization check", async () => {
+      for (const path of [
+        "/tenants/{id}/operations",
+        "/tenants/{id}/config-sync",
+        "/tenants/{id}/config-sync/verify",
+      ]) {
+        app = new OpenAPIHono<{ Bindings: Bindings; Variables: Variables }>();
+        route("get", path);
+        expect(await call("controlPlane", { org_name: "acme" })).toBe("403");
+      }
     });
 
     it("does not extend the exemption to /tenants/settings, which acts on the request's own tenant", async () => {
