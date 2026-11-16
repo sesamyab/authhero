@@ -402,6 +402,8 @@ export type TenantDeploymentType = "shared" | "wfp";
 export interface TenantDeploymentOptions {
   deployment_types: TenantDeploymentType[];
   default_deployment_type: TenantDeploymentType;
+  /** The hostname a new tenant gets, with `{id}` for the tenant id. */
+  tenant_host_template?: string;
 }
 
 export interface AuthHeroDataProvider extends DataProvider {

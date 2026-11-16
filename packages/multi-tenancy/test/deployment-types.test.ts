@@ -132,6 +132,18 @@ describe("tenant deployment types", () => {
     });
   });
 
+  it("serves the tenant host template when one is configured", async () => {
+    const response = await createHostApp({
+      ...wfpOnly,
+      tenantHostTemplate: "{id}.auth.example.com",
+    }).request("/tenants/deployment-options", {}, env);
+    expect(await response.json()).toEqual({
+      deployment_types: ["wfp"],
+      default_deployment_type: "wfp",
+      tenant_host_template: "{id}.auth.example.com",
+    });
+  });
+
   it("creates a wfp tenant with its own D1 when the type is omitted on a wfp-only cluster", async () => {
     const response = await createTenant(createHostApp(wfpOnly), {
       id: "omitted",

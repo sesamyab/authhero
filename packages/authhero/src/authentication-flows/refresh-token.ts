@@ -5,6 +5,8 @@ import {
   AuthorizationResponseMode,
   LogTypes,
   RefreshToken,
+  Session,
+  resolveSessionTransfer,
 } from "@authhero/adapter-interfaces";
 import { z } from "@hono/zod-openapi";
 import { safeCompare } from "../utils/safe-compare";
@@ -29,6 +31,13 @@ import {
   resolveExchangeExpiryUpdate,
   slideIdleExpiry,
 } from "../helpers/refresh-token-lifetime";
+import {
+  isSessionLive,
+  isSessionTransferParentActive,
+  mintSessionTransferToken,
+  nextOnlineSessionIdleExpiry,
+} from "../helpers/session-transfer";
+import { isSessionTransferAudience } from "../utils/session-transfer-token";
 
 export const refreshTokenParamsSchema = z.object({
   grant_type: z.literal("refresh_token"),
@@ -37,6 +46,11 @@ export const refreshTokenParamsSchema = z.object({
   refresh_token: z.string(),
   client_secret: z.string().optional(),
   organization: z.string().min(1).optional(),
+  // Only `urn:{domain}:session_transfer` is acted on: it asks for a
+  // session_transfer_token in place of an access token (#1710). Any other
+  // value is ignored, as before: the audience of a refresh token is fixed
+  // when it is issued.
+  audience: z.string().optional(),
 });
 
 export async function refreshTokenGrant(
@@ -73,6 +87,12 @@ export async function refreshTokenGrant(
   // Auth0 returns 403 for invalid_grant on the token endpoint; RFC 6749 §5.2
   // mandates 400. Gate on the client's auth0_conformant flag (default true).
   const invalidGrantStatus = client.auth0_conformant === false ? 400 : 403;
+
+  // Set when the caller asked for a session_transfer_token. Such a request
+  // either yields one or fails: it never falls back to an access token.
+  const sessionTransferAudience = isSessionTransferAudience(params.audience)
+    ? params.audience
+    : undefined;
 
   // Resolve the row from either the new `rt_<lookup>.<secret>` format or the
   // legacy id-only format (back-compat window only).
@@ -136,7 +156,11 @@ export async function refreshTokenGrant(
     // migration sources (#833): redeem the RT upstream, learn the user via
     // /userinfo, then mint native authhero tokens. If no source accepts it,
     // fall through to `invalid_grant`.
-    const reminted = await tryUpstreamRemint(ctx, client, params.refresh_token);
+    // A session_transfer_token request skips this: a remint returns ordinary
+    // tokens, and there is no local refresh token to tie the transfer to.
+    const reminted = sessionTransferAudience
+      ? null
+      : await tryUpstreamRemint(ctx, client, params.refresh_token);
     if (reminted) {
       return reminted;
     }
@@ -318,6 +342,100 @@ export async function refreshTokenGrant(
     }
   }
 
+  // Session transfer (#1710). None of this costs a read for a refresh token
+  // that neither came from a transferred session nor is being exchanged for a
+  // session_transfer_token.
+  const sessionTransferSettings = resolveSessionTransfer(
+    client.session_transfer,
+  );
+  const provenance = refreshToken.session_transfer;
+  const ownFamilyId = refreshToken.family_id ?? refreshToken.id;
+
+  // The session behind an "online" refresh token, loaded only for those.
+  let onlineSession: Session | undefined;
+
+  if (provenance) {
+    const revokeFamily = async (description: string) => {
+      await ctx.env.data.refreshTokens.revokeFamily(
+        client.tenant.id,
+        ownFamilyId,
+        new Date().toISOString(),
+      );
+      appendLog(ctx, `${description}; family ${ownFamilyId} revoked`);
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
+        description,
+        ...(await resolveFailureLogFields()),
+      });
+      return new JSONHTTPException(invalidGrantStatus, {
+        error: "invalid_grant",
+        error_description: "Refresh token has been revoked",
+      });
+    };
+
+    // Cascade revocation: this token descends from a session that was created
+    // with a session_transfer_token, and ends when the refresh token that
+    // token was minted from does.
+    if (
+      provenance.cascade_revocation &&
+      !(await isSessionTransferParentActive(
+        ctx.env.data,
+        client.tenant.id,
+        provenance,
+      ))
+    ) {
+      throw await revokeFamily(
+        "Session transfer parent refresh token is no longer active",
+      );
+    }
+
+    // Online refresh token: usable only while its session is.
+    if (sessionTransferSettings.enforce_online_refresh_tokens) {
+      const session = sessionId
+        ? await ctx.env.data.sessions.get(client.tenant.id, sessionId)
+        : null;
+      if (!isSessionLive(session)) {
+        throw await revokeFamily(
+          "Session behind the online refresh token has ended",
+        );
+      }
+      onlineSession = session;
+    }
+  }
+
+  if (sessionTransferAudience) {
+    if (!sessionTransferSettings.can_create_session_transfer_token) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
+        description: "Client is not allowed to create session transfer tokens",
+        ...(await resolveFailureLogFields()),
+        audience: sessionTransferAudience,
+      });
+      throw new JSONHTTPException(403, {
+        error: "unauthorized_client",
+        error_description:
+          "Client is not allowed to create session transfer tokens",
+      });
+    }
+
+    // A login that itself came from a session_transfer_token cannot pass the
+    // session on again unless the client explicitly allows it.
+    if (provenance && !sessionTransferSettings.allow_onward_transfer) {
+      logMessage(ctx, client.tenant.id, {
+        type: LogTypes.FAILED_EXCHANGE_REFRESH_TOKEN_FOR_ACCESS_TOKEN,
+        description:
+          "Session transfer tokens cannot be created from a transferred session",
+        ...(await resolveFailureLogFields()),
+        audience: sessionTransferAudience,
+      });
+      throw new JSONHTTPException(invalidGrantStatus, {
+        error: "invalid_grant",
+        error_description:
+          "Session transfer tokens cannot be created from a transferred session",
+      });
+    }
+  }
+
   // Token rotation decision: rotate if either the stored row says so or, for
   // legacy rows that pre-date the rotating column being honored, the client
   // is configured to rotate.
@@ -396,6 +514,8 @@ export async function refreshTokenGrant(
       token_lookup: childLookup,
       token_hash: childHash,
       family_id: familyId,
+      // A rotated token is still the transferred session's token.
+      session_transfer: provenance,
     });
     // Anchor `rotated_at` to the *first* rotation so leeway-window siblings
     // don't extend the parent's exposure. Always overwrite `rotated_to` to
@@ -476,12 +596,48 @@ export async function refreshTokenGrant(
   // months still looks last-seen in its creation week to retention analytics.
   // Throttled and off the critical path; see `touchSessionUsedAt`.
   if (sessionId) {
-    touchSessionUsedAt(ctx, client.tenant.id, sessionId);
+    touchSessionUsedAt(ctx, client.tenant.id, sessionId, onlineSession);
   }
+
+  // An online refresh token lives and dies with its session, so using it has
+  // to count as activity on that session.
+  if (onlineSession) {
+    const idleExpiresAt = nextOnlineSessionIdleExpiry(client, onlineSession);
+    if (idleExpiresAt) {
+      await ctx.env.data.sessions.update(client.tenant.id, onlineSession.id, {
+        idle_expires_at: idleExpiresAt,
+      });
+    }
+  }
+
+  // Minted last, once the refresh token itself has been exchanged (and
+  // rotated), so a request that fails above leaves no usable token behind.
+  const sessionTransfer = sessionTransferAudience
+    ? {
+        audience: sessionTransferAudience,
+        token: await mintSessionTransferToken(ctx, {
+          client,
+          user,
+          refreshToken,
+          sessionId,
+          organization,
+          authConnection:
+            refreshToken.auth_connection ?? loginSession?.auth_connection,
+          authStrategy:
+            refreshToken.auth_strategy ?? loginSession?.auth_strategy,
+          // The secret was compared at the top of this function; an assertion
+          // was verified by the token endpoint.
+          clientAuthenticated:
+            ctx.var.client_authenticated_via_assertion === true ||
+            (!!params.client_secret && !!client.client_secret),
+        }),
+      }
+    : undefined;
 
   return {
     user,
     client,
+    session_transfer: sessionTransfer,
     refresh_token: outgoingWireToken,
     session_id: sessionId,
     login_id: refreshToken.login_id,

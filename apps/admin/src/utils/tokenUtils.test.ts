@@ -6,6 +6,7 @@ import getToken, {
   clearOrganizationTokenCache,
   getOrgAccessToken,
   getOrganizationToken,
+  readPermissionsClaim,
   recoverFromTokenError,
 } from "./tokenUtils";
 import type { DomainConfig } from "./domainUtils";
@@ -561,5 +562,27 @@ describe("getToken", () => {
     await expect(
       getToken({ url: DOMAIN, connectionMethod: "token" }),
     ).rejects.toThrow("No authentication method available");
+  });
+});
+
+describe("readPermissionsClaim", () => {
+  it("returns the permissions the token carries", () => {
+    expect(
+      readPermissionsClaim(
+        makeJwt({ permissions: ["create:tenants", "read:tenants"] }),
+      ),
+    ).toEqual(["create:tenants", "read:tenants"]);
+  });
+
+  it("treats a missing claim as no permissions", () => {
+    // The server leaves the claim out when the user has none.
+    expect(readPermissionsClaim(makeJwt({ scope: "openid" }))).toEqual([]);
+  });
+
+  it("ignores entries that are not strings and unreadable tokens", () => {
+    expect(
+      readPermissionsClaim(makeJwt({ permissions: ["read:tenants", 1, null] })),
+    ).toEqual(["read:tenants"]);
+    expect(readPermissionsClaim("not-a-jwt")).toEqual([]);
   });
 });

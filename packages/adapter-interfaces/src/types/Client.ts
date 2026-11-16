@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { nanoid } from "nanoid";
+import { sessionTransferSchema } from "./SessionTransfer";
 
 export const clientInsertSchema = z.object({
   client_id: z.string().optional().openapi({
@@ -102,13 +103,12 @@ export const clientInsertSchema = z.object({
     description:
       "Comma-separated list of URLs that are valid to redirect to after logout from Auth0. Wildcards are allowed for subdomains.",
   }),
-  session_transfer: z
-    .record(z.string(), z.any())
-    .default({})
-    .optional()
-    .openapi({
-      description: "Native to Web SSO Configuration",
-    }),
+  // No field-level default: this schema is also used `.partial()` for PATCH,
+  // where a defaulted field would be reset on every update that omits it.
+  session_transfer: sessionTransferSchema.optional().openapi({
+    description:
+      "Session transfer (Auth0 Native to Web SSO) configuration: lets this client mint a session_transfer_token from a refresh token and/or accept one at /authorize.",
+  }),
   oidc_logout: z
     .object({
       backchannel_logout_urls: z.array(z.string()).optional().openapi({

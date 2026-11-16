@@ -8,6 +8,7 @@ import {
   HookEvent,
 } from "../types/Hooks";
 import * as preDefinedHooks from "./pre-defined";
+import { stripSessionTransferToken } from "../utils/session-transfer-token";
 
 // Type guard for template hooks
 export function isTemplateHook(
@@ -62,7 +63,7 @@ async function runTemplateHook(
     tenant: { id: tenant_id },
     request: {
       ip: ctx.get("ip") || "",
-      url: ctx.req.url,
+      url: stripSessionTransferToken(ctx.req.url),
       method: ctx.req.method,
       user_agent: ctx.get("useragent") || "",
     },
@@ -138,7 +139,7 @@ export async function handleCredentialsExchangeTemplateHook(
     tenant: { id: tenant_id },
     request: {
       ip: ctx.get("ip") || "",
-      url: ctx.req.url,
+      url: stripSessionTransferToken(ctx.req.url),
       method: ctx.req.method,
       user_agent: ctx.get("useragent") || "",
     },

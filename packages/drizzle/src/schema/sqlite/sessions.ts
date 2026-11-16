@@ -28,6 +28,8 @@ export const sessions = sqliteTable(
     login_session_id: text("login_session_id", { length: 21 }),
     // JSON: { methods: [{ name, timestamp, type? }] } — MFA completion (#1668)
     authentication: text("authentication"),
+    // JSON: { client_id, family_id, cascade_revocation } — session transfer (#1710)
+    session_transfer: text("session_transfer"),
   },
   (table) => [
     primaryKey({ columns: [table.tenant_id, table.id], name: "sessions_pk" }),
@@ -71,6 +73,8 @@ export const refreshTokens = sqliteTable(
     idle_expires_at_ts: integer("idle_expires_at_ts"),
     last_exchanged_at_ts: integer("last_exchanged_at_ts"),
     revoked_at_ts: integer("revoked_at_ts"),
+    // JSON: { client_id, family_id, cascade_revocation } — session transfer (#1710)
+    session_transfer: text("session_transfer"),
   },
   (table) => [
     primaryKey({

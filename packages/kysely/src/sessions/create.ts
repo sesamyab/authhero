@@ -30,6 +30,7 @@ export function create(db: Kysely<Database>) {
       device,
       clients,
       authentication,
+      session_transfer,
       ...sessionWithoutDates
     } = session;
 
@@ -60,6 +61,9 @@ export function create(db: Kysely<Database>) {
           clients: JSON.stringify(clients),
           authentication: authentication
             ? JSON.stringify(authentication)
+            : null,
+          session_transfer: session_transfer
+            ? JSON.stringify(session_transfer)
             : null,
         })
         .execute();

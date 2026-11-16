@@ -13,6 +13,7 @@ import { waitUntil } from "./wait-until";
 import { instanceToJson } from "../utils/instance-to-json";
 import { getConnectionInfo } from "./connection";
 import { USER_TARGET_TYPES } from "./audit-target-types";
+import { redactSessionTransferQuery } from "../utils/session-transfer-token";
 
 /**
  * Fields fully replaced with [REDACTED] in entity state and request bodies.
@@ -41,6 +42,7 @@ const SENSITIVE_FIELDS = new Set([
   "datadogApiKey",
   "splunk_token",
   "splunkToken",
+  "session_transfer_token",
 ]);
 
 /**
@@ -533,11 +535,13 @@ function buildAuditEvent(
       method: ctx.req.method,
       path: ctx.req.path,
       query: ctx.req.queries()
-        ? Object.fromEntries(
-            Object.entries(ctx.req.queries()).map(([k, v]) => [
-              k,
-              Array.isArray(v) ? v.join(",") : v,
-            ]),
+        ? redactSessionTransferQuery(
+            Object.fromEntries(
+              Object.entries(ctx.req.queries()).map(([k, v]) => [
+                k,
+                Array.isArray(v) ? v.join(",") : v,
+              ]),
+            ),
           )
         : undefined,
       body: redactBody(params.body || ctx.var.body || undefined),
@@ -663,7 +667,7 @@ export async function logMessage(
           request: {
             method: ctx.req.method,
             path: ctx.req.path,
-            qs: ctx.req.queries(),
+            qs: redactSessionTransferQuery(ctx.req.queries()),
             body: redactBody(params.body || ctx.var.body || ""),
             ...(params.redirect_uri
               ? { redirect_uri: params.redirect_uri }

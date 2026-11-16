@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { LogIcon } from "@/resources/logs/LogIcon";
 import { getLogTypeDescription } from "@/lib/logs";
 import { DateAgo } from "@/common/DateAgo";
+import { GettingStarted } from "./GettingStarted";
 
 interface DailyStats {
   date: string;
@@ -234,19 +235,19 @@ export function Dashboard() {
       try {
         const to = new Date();
         const from = subDays(to, 30);
-        const statsRes = await dataProvider.getList("stats/daily", {
-          pagination: { page: 1, perPage: 100 },
-          sort: { field: "date", order: "ASC" },
-          filter: {
-            date_from: from.toISOString().slice(0, 10),
-            date_to: to.toISOString().slice(0, 10),
-          },
-        });
-        if (cancelled) return;
-        setStats((statsRes.data as DailyStats[]) || []);
-
-        const [usersRes, clientsRes, connectionsRes] = await Promise.allSettled(
-          [
+        // Settled together, so a failing statistics request (analytics not
+        // configured, for one) does not cost the counts, which the
+        // getting-started card needs.
+        const [statsRes, usersRes, clientsRes, connectionsRes] =
+          await Promise.allSettled([
+            dataProvider.getList("stats/daily", {
+              pagination: { page: 1, perPage: 100 },
+              sort: { field: "date", order: "ASC" },
+              filter: {
+                date_from: from.toISOString().slice(0, 10),
+                date_to: to.toISOString().slice(0, 10),
+              },
+            }),
             dataProvider.getList("users", {
               pagination: { page: 1, perPage: 1 },
               sort: { field: "user_id", order: "DESC" },
@@ -262,9 +263,13 @@ export function Dashboard() {
               sort: { field: "id", order: "ASC" },
               filter: {},
             }),
-          ],
-        );
+          ]);
         if (cancelled) return;
+        if (statsRes.status === "fulfilled") {
+          setStats((statsRes.value.data as DailyStats[]) || []);
+        } else {
+          console.error("Dashboard statistics failed to load", statsRes.reason);
+        }
         setCounts({
           users:
             usersRes.status === "fulfilled" ? usersRes.value.total : undefined,
@@ -313,6 +318,7 @@ export function Dashboard() {
           </Button>
         </div>
       </div>
+      <GettingStarted loading={loading} progress={{ users: counts.users }} />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatsCard title="Users" value={counts.users ?? 0} loading={loading} />
         <StatsCard

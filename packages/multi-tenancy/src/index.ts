@@ -105,6 +105,7 @@ export {
   createAccessControlHooks,
   createDatabaseHooks,
   createProvisioningHooks,
+  createSelfServiceSignupHooks,
 } from "./hooks";
 export { validateTenantAccess } from "./hooks/access-control";
 export type { DatabaseFactory } from "./hooks/database";

@@ -19,6 +19,9 @@ export const tokenResponseSchema = z.object({
   refresh_token: z.string().optional(),
   token_type: z.string(),
   expires_in: z.number(),
+  // Only set when `access_token` is not an access token, e.g. a
+  // session_transfer_token.
+  issued_token_type: z.string().optional(),
 });
 export type TokenResponse = z.infer<typeof tokenResponseSchema>;
 

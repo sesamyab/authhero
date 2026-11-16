@@ -10,6 +10,7 @@ import {
   deepMergePatch,
   isInteractiveClient,
   DataAdapters,
+  Tenant,
 } from "authhero";
 import {
   MultiTenancyBindings,
@@ -24,6 +25,11 @@ import { validateTenantParent } from "../utils/tenant-tree";
 import { findCaseCollidingTenantId } from "../utils/tenant-id-collision";
 import { resolveDeploymentTypes } from "../utils/deployment-types";
 
+// How an organization-scoped tenant search reads the matches: in batches of
+// this size, up to this many batches before it refuses the search.
+const SEARCH_BATCH_SIZE = 100;
+const SEARCH_MAX_BATCHES = 100;
+
 const deploymentTypeSchema = z.enum(["shared", "wfp"]);
 
 // The shared insert schema defaults `deployment_type` to "shared", which would
@@ -36,6 +42,8 @@ const createTenantBodySchema = tenantInsertSchema.extend({
 const deploymentOptionsSchema = z.object({
   deployment_types: z.array(deploymentTypeSchema),
   default_deployment_type: deploymentTypeSchema,
+  /** The hostname a new tenant gets, with `{id}` for the tenant id. */
+  tenant_host_template: z.string().optional(),
 });
 
 /**
@@ -266,11 +274,57 @@ export function createTenantsOpenAPIRouter(
           return ctx.json({ tenants: [] });
         }
 
-        // Apply pagination to the accessible tenant IDs
-        const totalAccessible = accessibleTenantIds.length;
         const pageNum = page ?? 0;
         const perPage = per_page ?? 50;
         const start = pageNum * perPage;
+
+        // A search runs over every accessible tenant and pages the matches.
+        // Paging the IDs first would search only one page of memberships, so
+        // a tenant further down could never be found. The search itself goes
+        // to the adapter alone, then is narrowed to the accessible tenants:
+        // not every adapter's query parser takes grouped queries such as
+        // `(… OR …) AND (…)`, which also rules out fetchAll's cursor
+        // (`(q) AND id:>…`). So it pages by offset with the search as given.
+        if (q) {
+          const accessible = new Set(accessibleTenantIds);
+          const matches: Tenant[] = [];
+          for (let searchPage = 0; ; searchPage++) {
+            if (searchPage >= SEARCH_MAX_BATCHES) {
+              // Better refused than answered as if complete.
+              throw new HTTPException(400, {
+                message: `The search matches more than ${SEARCH_MAX_BATCHES * SEARCH_BATCH_SIZE} tenants; narrow it down`,
+              });
+            }
+            const batch = await getRequestData(ctx).tenants.list({
+              q,
+              page: searchPage,
+              per_page: SEARCH_BATCH_SIZE,
+              // Offset paging needs a stable order, or rows can repeat or be
+              // skipped between batches.
+              sort: { sort_by: "id", sort_order: "asc" },
+            });
+            for (const tenant of batch.tenants) {
+              if (accessible.has(tenant.id)) matches.push(tenant);
+            }
+            if (batch.tenants.length < SEARCH_BATCH_SIZE) break;
+          }
+          const pageOfMatches = matches.slice(start, start + perPage);
+
+          if (include_totals) {
+            return ctx.json({
+              tenants: pageOfMatches,
+              start,
+              limit: perPage,
+              length: pageOfMatches.length,
+              total: matches.length,
+            });
+          }
+
+          return ctx.json({ tenants: pageOfMatches });
+        }
+
+        // Without a search, page the accessible tenant IDs
+        const totalAccessible = accessibleTenantIds.length;
         const paginatedIds = accessibleTenantIds.slice(start, start + perPage);
 
         // If this page is beyond the available tenants, return empty array
@@ -290,10 +344,9 @@ export function createTenantsOpenAPIRouter(
         // Fetch only the tenants for this page by ID
         // Construct a query to filter by the paginated IDs
         const idFilter = paginatedIds.map((id) => `id:${id}`).join(" OR ");
-        const combinedQuery = q ? `(${idFilter}) AND (${q})` : idFilter;
 
         const result = await getRequestData(ctx).tenants.list({
-          q: combinedQuery,
+          q: idFilter,
           per_page: perPage,
           include_totals: false, // We calculate totals from accessibleTenantIds
         });
@@ -362,6 +415,9 @@ export function createTenantsOpenAPIRouter(
         {
           deployment_types: deploymentTypes.allowed,
           default_deployment_type: deploymentTypes.default,
+          ...(config.tenantHostTemplate && {
+            tenant_host_template: config.tenantHostTemplate,
+          }),
         },
         200,
       );

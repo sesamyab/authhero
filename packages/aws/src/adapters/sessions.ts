@@ -32,10 +32,11 @@ interface SessionItem extends DynamoDBBaseItem {
   device: string; // JSON string
   clients: string; // JSON array string
   authentication?: string; // JSON string (SessionAuthentication)
+  session_transfer?: string; // JSON string (SessionTransferProvenance)
 }
 
 function toSession(item: SessionItem): Session {
-  const { tenant_id, ...rest } = stripDynamoDBFields(item);
+  const { tenant_id, session_transfer, ...rest } = stripDynamoDBFields(item);
 
   const data = removeNullProperties({
     ...rest,
@@ -44,6 +45,9 @@ function toSession(item: SessionItem): Session {
     authentication: item.authentication
       ? JSON.parse(item.authentication)
       : undefined,
+    ...(session_transfer
+      ? { session_transfer: JSON.parse(session_transfer) }
+      : {}),
   });
 
   return sessionSchema.parse(data);
@@ -74,6 +78,9 @@ export function createSessionsAdapter(ctx: DynamoDBContext): SessionsAdapter {
         clients: JSON.stringify(session.clients || []),
         authentication: session.authentication
           ? JSON.stringify(session.authentication)
+          : undefined,
+        session_transfer: session.session_transfer
+          ? JSON.stringify(session.session_transfer)
           : undefined,
         created_at: now,
         updated_at: now,
@@ -142,6 +149,9 @@ export function createSessionsAdapter(ctx: DynamoDBContext): SessionsAdapter {
       }
       if (session.authentication !== undefined) {
         updates.authentication = JSON.stringify(session.authentication);
+      }
+      if (session.session_transfer !== undefined) {
+        updates.session_transfer = JSON.stringify(session.session_transfer);
       }
 
       // Update TTL if expires_at is updated

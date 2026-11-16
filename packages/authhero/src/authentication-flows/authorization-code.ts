@@ -16,6 +16,7 @@ import { logMessage, LogParams } from "../helpers/logging";
 import { getEnrichedClient, EnrichedClient } from "../helpers/client";
 import { ssrfFetchOptionsFromEnv } from "../utils/ssrf-fetch";
 import { resolvePrimaryUser } from "../helpers/users";
+import { resolveTransferredRefreshTokenPolicy } from "../helpers/session-transfer";
 
 // OAuth 2.1 / RFC 7636: client_secret and code_verifier are independent and may co-exist.
 // Proof-of-possession (one of client_secret, code_verifier, or RFC 7523 client_assertion)
@@ -352,13 +353,29 @@ export async function authorizationCodeGrantUser(
 
   await ctx.env.data.codes.used(client.tenant.id, params.code);
 
+  // Loaded once: the refresh-token policy for transferred sessions and
+  // auth_time below both read it.
+  const session = loginSession.session_id
+    ? await ctx.env.data.sessions.get(client.tenant.id, loginSession.session_id)
+    : null;
+
+  // A session created from a session_transfer_token only yields a refresh
+  // token when this client allows it. The login itself still succeeds.
+  const refreshTokenPolicy = resolveTransferredRefreshTokenPolicy(
+    client,
+    session,
+  );
+
   let refreshTokenWire: string | undefined;
   if (
     loginSession.session_id &&
+    refreshTokenPolicy.allowed &&
     loginSession.authParams.scope?.split(" ").includes("offline_access")
   ) {
     // If the offline_access scope is requested, we need to create a refresh token
     const created = await createRefreshToken(ctx, {
+      session_transfer: refreshTokenPolicy.session_transfer,
+      max_expires_at: refreshTokenPolicy.max_expires_at,
       user,
       client,
       login_id: loginSession.id,
@@ -402,16 +419,8 @@ export async function authorizationCodeGrantUser(
   // authorizations and silently fails ("auth_time cannot be checked") when
   // either id_token omits it.
   let auth_time: number | undefined;
-  if (loginSession.session_id) {
-    const session = await ctx.env.data.sessions.get(
-      client.tenant.id,
-      loginSession.session_id,
-    );
-    if (session?.authenticated_at) {
-      auth_time = Math.floor(
-        new Date(session.authenticated_at).getTime() / 1000,
-      );
-    }
+  if (session?.authenticated_at) {
+    auth_time = Math.floor(new Date(session.authenticated_at).getTime() / 1000);
   }
 
   return {

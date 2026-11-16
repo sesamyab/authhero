@@ -325,6 +325,7 @@ gtag('config', 'G-DNZWG3PF2L');`,
               text: "Session Management",
               link: "/features/session-management",
             },
+            { text: "Session Transfer", link: "/features/session-transfer" },
             { text: "RBAC & Scopes", link: "/features/rbac-and-scopes" },
             {
               text: "SCIM Provisioning",

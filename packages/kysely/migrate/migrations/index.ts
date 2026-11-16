@@ -34,6 +34,7 @@ import * as deviceCodes from "./2026-10-29T12:00:00_device_codes";
 import * as tenantMemberRequests from "./2026-10-30T12:00:00_tenant_member_requests";
 import * as sessionAuthentication from "./2026-11-05T12:00:00_session_authentication";
 import * as authenticationMethodsTotpLastStep from "./2026-11-05T13:00:00_authentication_methods_totp_last_step";
+import * as sessionTransfer from "./2026-11-12T12:00:00_session_transfer";
 
 export default {
   "2026-07-16T14:00:00_baseline": baseline,
@@ -59,4 +60,5 @@ export default {
   "2026-11-05T12:00:00_session_authentication": sessionAuthentication,
   "2026-11-05T13:00:00_authentication_methods_totp_last_step":
     authenticationMethodsTotpLastStep,
+  "2026-11-12T12:00:00_session_transfer": sessionTransfer,
 };

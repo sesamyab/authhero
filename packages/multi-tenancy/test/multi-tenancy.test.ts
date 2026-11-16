@@ -168,6 +168,73 @@ describe("Multi-Tenancy", () => {
     expect(data.tenants.map((t: any) => t.id)).toContain("tenant2");
   });
 
+  it("searches every tenant the user has access to, not one page of them", async () => {
+    for (const id of ["member-a", "member-b", "member-c"]) {
+      await adapters.tenants.create({
+        id,
+        friendly_name: id,
+        audience: `https://${id}.example.com`,
+        sender_email: `support@${id}.com`,
+        sender_name: id,
+      });
+      await adapters.organizations.create("control_plane", {
+        id,
+        name: id,
+        display_name: id,
+      });
+      await adapters.userOrganizations.create("control_plane", {
+        user_id: testUserId,
+        organization_id: id,
+      });
+    }
+
+    // One per page: paging the memberships first would only search
+    // "member-a", the first of them.
+    const query = new URLSearchParams({
+      q: 'id:"member-c"',
+      per_page: "1",
+      include_totals: "true",
+    });
+    const response = await app.request(`/management/tenants?${query}`, {}, env);
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.tenants.map((t: { id: string }) => t.id)).toEqual(["member-c"]);
+    expect(data.total).toBe(1);
+  });
+
+  it("finds an accessible tenant past the first batch of matches", async () => {
+    // More matches than one batch the route reads, with the only one the
+    // user may see at the end.
+    for (let i = 0; i < 105; i++) {
+      const id = `bulk-${String(i).padStart(3, "0")}`;
+      await adapters.tenants.create({
+        id,
+        friendly_name: id,
+        audience: `https://${id}.example.com`,
+        sender_email: `support@${id}.com`,
+        sender_name: id,
+      });
+    }
+    await adapters.organizations.create("control_plane", {
+      id: "bulk-104",
+      name: "bulk-104",
+      display_name: "bulk-104",
+    });
+    await adapters.userOrganizations.create("control_plane", {
+      user_id: testUserId,
+      organization_id: "bulk-104",
+    });
+
+    const query = new URLSearchParams({ q: "bulk", include_totals: "true" });
+    const response = await app.request(`/management/tenants?${query}`, {}, env);
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.tenants.map((t: { id: string }) => t.id)).toEqual(["bulk-104"]);
+    expect(data.total).toBe(1);
+  });
+
   it("should only list tenants the user has access to", async () => {
     // Create test tenants
     await adapters.tenants.create({
