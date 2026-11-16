@@ -10,3 +10,7 @@ The management API now answers `403` when the token's tenant is the control plan
 The tenants router in the control plane's own context stays reachable (`/tenants`, `/tenants/{id}` and what hangs off it), since it checks access per organization itself. `/tenants/settings`, `/tenants/{id}/operations` and `/tenants/{id}/config-sync` are not exempt: the first acts on the tenant the request is in, the others do no per-organization check. Tokens without an organization claim, and tokens issued by a child tenant, are not affected. A caller who needs to work on the control plane or across tenants has to use a token that is not scoped to an organization.
 
 Deleting a tenant with an organization-scoped token no longer falls back to the user's membership of the target organization: an organization-scoped token can now delete only the tenant its own organization names. A token that carries only `org_id` has its organization's name resolved, so it can still delete its own tenant. `/tenants/{id}/operations` and `/tenants/{id}/config-sync` are no longer exempt from the binding in the control plane's context.
+
+`GET /tenants` now treats a token that carries only `org_name` as organization-scoped, like one with `org_id`. Before, a name-only organization token holding `admin:organizations` received every tenant; it now gets only the tenants of the organizations it belongs to.
+
+An organization that cannot be resolved (an `org_id` that names no organization) is now refused on the tenants router too, not only elsewhere.

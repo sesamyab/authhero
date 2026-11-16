@@ -18,10 +18,11 @@ export const MANAGEMENT_API_AUDIENCE = "urn:authhero:management";
  * Routes of the multi-tenancy tenants router (`/tenants`, `/tenants/{id}` and
  * what hangs off it). They run in the control plane's context and check access
  * per organization themselves, so an organization-scoped control-plane token may
- * reach them there. `/tenants/{id}/operations`, `/tenants/{id}/config-sync` and `/tenants/settings` are not:
- * the former does no per-organization check; the latter's it reads and writes
- * the settings of the tenant the request is in, which for the control plane's
- * context would be the control plane's own.
+ * reach them there. Three paths under `/tenants` are not part of that:
+ * `/tenants/{id}/operations` and `/tenants/{id}/config-sync` do no
+ * per-organization check, and `/tenants/settings` reads and writes the settings
+ * of the tenant the request is in, which in the control plane's context would be
+ * the control plane's own.
  */
 function isTenantsRouterPath(path: string): boolean {
   if (path === "/tenants") return true;
