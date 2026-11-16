@@ -18,6 +18,7 @@ import {
 import { Bindings, Variables } from "../../types";
 import { getAuthCookie } from "../../utils/cookies";
 import { setTenantId } from "../../helpers/set-tenant-id";
+import { resolveLoginSessionTenant } from "../../helpers/login-session-tenant";
 import { ssrfFetchOptionsFromEnv } from "../../utils/ssrf-fetch";
 import { hasValidContinuationScope } from "../../authentication-flows/common";
 import { DEFAULT_THEME } from "../../constants/defaultTheme";
@@ -58,7 +59,14 @@ export async function initJSXRoute(
     state,
   );
 
-  if (!loginSession) {
+  // A session of another tenant than the request resolved is treated as
+  // missing: never render one tenant's login screens on another tenant's
+  // domain (some adapters load the session by id alone).
+  const sessionTenant = loginSession
+    ? resolveLoginSessionTenant(ctx.var.tenant_id, loginSession)
+    : undefined;
+
+  if (!loginSession || !sessionTenant?.ok) {
     // Typically a bookmarked or restored login page whose session has been
     // cleaned up. Like Auth0, send page navigations to the tenant's default
     // login route when one is configured; otherwise render the error page.
@@ -71,13 +79,9 @@ export async function initJSXRoute(
 
   ctx.set("loginSession", loginSession);
 
-  // The login session row is the authoritative record of the flow's tenant.
-  // A CIMD client_id (https URL) has a stub row in every tenant that uses it,
-  // so it can't identify the tenant on its own (#1731). Fall back to the
-  // request's tenant (the session was loaded scoped to it) only for adapters
-  // that don't return the session's tenant.
-  const sessionTenantId =
-    loginSession.tenant_id || ctx.var.tenant_id || undefined;
+  // Without a request tenant, the login session row decides the flow's
+  // tenant: a CIMD client_id can't identify it (#1731).
+  const sessionTenantId = sessionTenant.tenantId;
 
   // Warm the bundle once for this (tenant, client) so both getEnrichedClient
   // and the parallel theme/branding fetch below hit a single cache key.

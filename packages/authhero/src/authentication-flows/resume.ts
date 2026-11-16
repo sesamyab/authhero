@@ -9,6 +9,7 @@ import { JSONHTTPException } from "../errors/json-http-exception";
 import { getEnrichedClient } from "../helpers/client";
 import { isCimdClientId } from "../helpers/cimd";
 import { setTenantId } from "../helpers/set-tenant-id";
+import { resolveLoginSessionTenant } from "../helpers/login-session-tenant";
 import { createFrontChannelAuthResponse } from "./common";
 
 // Matches the adapter-side truncation applied to authorization_url.
@@ -114,15 +115,22 @@ export async function resumeLoginSession(
   // round-trips for tenant/connections/clientConnections instead of one
   // bundle cache hit.
   //
-  // The login session row is the authoritative record of the flow's tenant.
-  // A CIMD client_id (https URL) has a stub row in every tenant that uses it,
-  // so a lookup by client_id alone can't identify the tenant (#1731). Only an
-  // adapter that doesn't return the session's tenant falls back to the
-  // request's tenant (the session was loaded scoped to it) or, for a
-  // registered client, the global client lookup.
+  // A session of another tenant than the request resolved is an unknown
+  // state here (some adapters load the session by id alone). Without a
+  // request tenant the login session row decides: a CIMD client_id (https
+  // URL) has a stub row in every tenant that uses it, so a lookup by
+  // client_id alone can't identify the tenant (#1731). Only an adapter that
+  // doesn't return the session's tenant falls back, for a registered client,
+  // to the global client lookup.
+  const sessionTenant = resolveLoginSessionTenant(
+    ctx.var.tenant_id,
+    loginSession,
+  );
+  if (!sessionTenant.ok) {
+    throw new JSONHTTPException(403, { message: "State not found" });
+  }
   const sessionClientId = loginSession.authParams.client_id;
-  let resolvedTenantId =
-    loginSession.tenant_id || ctx.var.tenant_id || undefined;
+  let resolvedTenantId = sessionTenant.tenantId;
   if (!resolvedTenantId && !isCimdClientId(sessionClientId)) {
     const clientWithTenant =
       await ctx.env.data.clients.getByClientId(sessionClientId);

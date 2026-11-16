@@ -28,6 +28,7 @@ import { finalizeAuthenticatedSession } from "./common";
 import { isDeviceLoginSession } from "../helpers/device-flow";
 import { isConnectLoginSession } from "../helpers/dcr/connect-state";
 import { setTenantId } from "../helpers/set-tenant-id";
+import { resolveLoginSessionTenant } from "../helpers/login-session-tenant";
 import { writeTryConnectionResult } from "./try-connection";
 import { nanoid } from "nanoid";
 import type { SessionCookieDiagnostics } from "../utils/cookies";
@@ -152,13 +153,19 @@ export async function connectionCallback(
   // browser back to the original authorization host if needed. This avoids
   // the fragile 307-POST re-dispatch the old code used.
 
-  // /callback is state-keyed: the login session row is the authoritative
-  // record of the flow's tenant. A CIMD client_id (https URL) has a stub row
-  // in every tenant that uses it, so it can't identify the tenant (#1731).
-  // Fall back to the request's tenant (the session was loaded scoped to it)
-  // only for adapters that don't return the session's tenant.
-  const sessionTenantId =
-    loginSession.tenant_id || ctx.var.tenant_id || undefined;
+  // A session of another tenant than the request resolved is treated as
+  // missing (some adapters load the session by id alone). /callback is
+  // state-keyed, so without a request tenant the login session row decides:
+  // a CIMD client_id (https URL) has a stub row in every tenant that uses
+  // it and can't identify the tenant (#1731).
+  const sessionTenant = resolveLoginSessionTenant(
+    ctx.var.tenant_id,
+    loginSession,
+  );
+  if (!sessionTenant.ok) {
+    throw new JSONHTTPException(403, { message: "Session not found" });
+  }
+  const sessionTenantId = sessionTenant.tenantId;
 
   // Warm the bundle before getEnrichedClient so its parallel config fetch
   // collapses to a single cache key.

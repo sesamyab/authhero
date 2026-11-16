@@ -15,6 +15,7 @@ import { JSONHTTPException } from "../../errors/json-http-exception";
 
 import { getEnrichedClient } from "../../helpers/client";
 import { setTenantId } from "../../helpers/set-tenant-id";
+import { resolveLoginSessionTenant } from "../../helpers/login-session-tenant";
 import { getIssuer } from "../../variables";
 
 function redirectToErrorPage(
@@ -54,7 +55,12 @@ async function returnError(
     ctx.var.tenant_id,
     oauth2code.login_id,
   );
-  if (!loginSession) {
+  // A session of another tenant than the request resolved is treated as
+  // missing (some adapters load the session by id alone).
+  const sessionTenant = loginSession
+    ? resolveLoginSessionTenant(ctx.var.tenant_id, loginSession)
+    : undefined;
+  if (!loginSession || !sessionTenant?.ok) {
     return redirectToErrorPage(ctx, "session_not_found");
   }
 
@@ -73,7 +79,7 @@ async function returnError(
       client = await getEnrichedClient(
         ctx.env,
         loginSession.authParams.client_id,
-        loginSession.tenant_id || ctx.var.tenant_id || undefined,
+        sessionTenant.tenantId,
       );
     } catch {
       // fall back to /u/login/identifier
