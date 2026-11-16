@@ -738,7 +738,8 @@ const postRoot = defineRoute({
     } catch (err: unknown) {
       // A unique-index violation: the adapter throws a plain HTTPException
       // ("User already exists"), the registration hook a JSON one when it
-      // loses the commit. Either way the caller gets Auth0's 409 body.
+      // loses the commit. Either way the caller gets Auth0's 409 body. No
+      // other 409 is expected from users.create; if one is added, map it here.
       if (err instanceof HTTPException && err.status === 409) {
         throw conflict.userExists();
       }
