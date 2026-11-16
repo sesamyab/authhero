@@ -301,13 +301,16 @@ export async function isBrowserRememberedForMfa(
  *
  * The new marker goes into an empty slot, or replaces the older of the two.
  * The newer marker, the one in force, is left alone, so validation never sees
- * an earlier invalidation undone, not even while this runs or if it fails.
+ * an earlier invalidation undone, not even while this runs or if it fails. Two
+ * invalidations racing for the same slot both succeed: the one that loses the
+ * write finds the winner's marker, which covers it.
  */
 export async function invalidateRememberedBrowsers(
   ctx: RememberBrowserContext,
   tenantId: string,
   userId: string,
 ): Promise<void> {
+  const startedAt = Date.now();
   const markers = await readInvalidationMarkers(ctx, tenantId, userId);
   const target =
     markers.find((marker) => marker.createdAt === undefined) ??
@@ -318,12 +321,28 @@ export async function invalidateRememberedBrowsers(
   if (target.exists) {
     await ctx.env.data.codes.remove(tenantId, codeId);
   }
-  await ctx.env.data.codes.create(tenantId, {
-    code_id: codeId,
-    code_type: CODE_TYPE,
-    user_id: userId,
-    expires_at: new Date(
-      Date.now() + MFA_REMEMBER_BROWSER_MAX_LIFETIME_IN_DAYS * DAY_MS,
-    ).toISOString(),
-  });
+  try {
+    await ctx.env.data.codes.create(tenantId, {
+      code_id: codeId,
+      code_type: CODE_TYPE,
+      user_id: userId,
+      expires_at: new Date(
+        Date.now() + MFA_REMEMBER_BROWSER_MAX_LIFETIME_IN_DAYS * DAY_MS,
+      ).toISOString(),
+    });
+  } catch (error) {
+    // A concurrent invalidation of the same user wrote the slot first. Its
+    // marker is at least as new as this call, so it already revokes every
+    // browser this one would: done. Any other failure is reported.
+    const current = await readInvalidationMarkers(ctx, tenantId, userId);
+    if (
+      current.some(
+        (marker) =>
+          marker.createdAt !== undefined && marker.createdAt >= startedAt,
+      )
+    ) {
+      return;
+    }
+    throw error;
+  }
 }

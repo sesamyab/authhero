@@ -655,6 +655,40 @@ describe("remember browser for MFA (#1670)", () => {
       expectChallenged(await laterLogin(server, revoked));
     });
 
+    it("treats a concurrent invalidation that wrote the same slot as success", async () => {
+      const server = await setup({ allowRememberBrowser: true });
+      const admin = await getAdminToken();
+      const revoked = tok("revoked-by-concurrent-invalidations");
+      await storeToken(server.env, revoked);
+      await tick();
+
+      // A second invalidation runs to completion while the first is about to
+      // write the same slot, so the first one's write hits the duplicate key.
+      const codes = server.env.data.codes;
+      const create = codes.create.bind(codes);
+      let concurrentStatus: number | undefined;
+      codes.create = async (tenantId, code) => {
+        if (
+          code.code_id.startsWith("user:") &&
+          concurrentStatus === undefined
+        ) {
+          concurrentStatus = 0;
+          concurrentStatus = (await invalidate(server, admin)).status;
+        }
+        return create(tenantId, code);
+      };
+      let firstStatus: number;
+      try {
+        firstStatus = (await invalidate(server, admin)).status;
+      } finally {
+        codes.create = create;
+      }
+
+      expect(concurrentStatus).toBe(204);
+      expect(firstStatus).toBe(204);
+      expectChallenged(await laterLogin(server, revoked));
+    });
+
     it("never leaves a window without the effective marker while replacing it", async () => {
       const server = await setup({ allowRememberBrowser: true });
       const admin = await getAdminToken();
