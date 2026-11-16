@@ -15,6 +15,7 @@ import { Bindings, Variables } from "../../types";
 import { defineRoute } from "../../utils/define-route";
 import { logMessage } from "../../helpers/logging";
 import { isControlPlaneTenant } from "./tenants";
+import { scopeForms } from "../../middlewares/authentication";
 
 // Durable tenant lifecycle operations (issue #1026). These are
 // control-plane records: the routes are only mounted when the management
@@ -33,16 +34,24 @@ type CallerToken = {
   sub?: string;
   azp?: string;
   gty?: string;
-  scope?: string;
+  scope?: string | string[];
   permissions?: string[];
   org_id?: string;
 };
 
+/**
+ * What the token grants, read the way the authentication middleware reads it:
+ * `scope` may be a space-separated string or an array, and each grant counts
+ * in both spellings (`create:tenant_operations` and `tenant_operations:create`).
+ */
 function callerGrants(user: CallerToken | undefined): Set<string> {
-  return new Set([
-    ...(user?.permissions ?? []),
-    ...(user?.scope ? user.scope.split(" ").filter(Boolean) : []),
-  ]);
+  const scopes =
+    typeof user?.scope === "string"
+      ? user.scope.split(" ").filter(Boolean)
+      : Array.isArray(user?.scope)
+        ? user.scope
+        : [];
+  return new Set([...(user?.permissions ?? []), ...scopes].flatMap(scopeForms));
 }
 
 /**

@@ -637,6 +637,28 @@ describe("management-api tenant operations: who reaches which tenant", () => {
       });
     });
 
+    it("reads the grants the way the authentication middleware does", async () => {
+      const { app, env } = await setup();
+      // `scope` as an array, with the retry scope only.
+      const arrayScope = await createToken({
+        user_id: MEMBER,
+        aud: "urn:authhero:management",
+        scope: ["retry:tenant_provisioning"] as unknown as string,
+      });
+      expect((await post(app, env, arrayScope)).status).toBe(201);
+
+      // The reversed spelling of the operator scope still counts as one, so
+      // it may upgrade a tenant that did not fail.
+      await env.data.tenants.update(CHILD, { provisioning_state: "ready" });
+      const reversed = await createToken({
+        user_id: "client@clients",
+        azp: "client",
+        aud: "urn:authhero:management",
+        permissions: ["tenant_operations:create"],
+      });
+      expect((await post(app, env, reversed)).status).toBe(201);
+    });
+
     it("refuses every other kind", async () => {
       const { app, env } = await setup();
       for (const kind of ["sync-defaults", "detach"]) {
