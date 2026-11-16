@@ -3,6 +3,7 @@ import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 import { createAnalyticsEngineStatsAdapter } from "../src/analytics-engine-logs";
 import createAdapters from "../src/index";
+import { aggregateRow, StoredRow } from "./helpers/fake-analytics-engine";
 
 const SQL_ENDPOINT =
   "https://api.cloudflare.com/client/v4/accounts/test-account/analytics_engine/sql";
@@ -12,11 +13,18 @@ const SQL_ENDPOINT =
 // epoch milliseconds and not `NaN`.
 let queries: string[] = [];
 let rows: Record<string, unknown>[] = [];
+// When set, the fake evaluates the query's aggregates over these stored rows
+// (each with its `_sample_interval`) instead of returning `rows` verbatim.
+let storedRows: StoredRow[] | undefined;
 
 const server = setupServer(
   http.post(SQL_ENDPOINT, async ({ request }) => {
-    queries.push(await request.text());
-    return HttpResponse.json({ success: true, data: rows });
+    const query = await request.text();
+    queries.push(query);
+    const data = storedRows
+      ? [aggregateRow(query, storedRows, { date: "2026-08-25" })]
+      : rows;
+    return HttpResponse.json({ success: true, data });
   }),
 );
 
@@ -42,6 +50,7 @@ describe("Analytics Engine Stats Adapter", () => {
   afterEach(() => {
     queries = [];
     rows = [];
+    storedRows = undefined;
   });
 
   describe("getDaily", () => {
@@ -159,14 +168,57 @@ describe("Analytics Engine Stats Adapter", () => {
       // Auth0 parity: token exchanges ('seacft') and silent auth ('ssa') must
       // not inflate the login count.
       expect(queries[0]).toContain(
-        "SUM(CASE WHEN blob3 IN ('s') THEN 1 ELSE 0 END) AS logins",
+        "SUM(CASE WHEN blob3 IN ('s') THEN _sample_interval ELSE 0 END) AS logins",
       );
       expect(queries[0]).toContain(
-        "SUM(CASE WHEN blob3 = 'ss' THEN 1 ELSE 0 END) AS signups",
+        "SUM(CASE WHEN blob3 = 'ss' THEN _sample_interval ELSE 0 END) AS signups",
       );
       expect(queries[0]).toContain(
-        "SUM(CASE WHEN blob3 IN ('pwd_leak') THEN 1 ELSE 0 END) AS leaked_passwords",
+        "SUM(CASE WHEN blob3 IN ('pwd_leak') THEN _sample_interval ELSE 0 END) AS leaked_passwords",
       );
+    });
+
+    // #1637: once Analytics Engine samples a dataset, each stored row stands
+    // for `_sample_interval` events. Counting rows (`THEN 1`) under-counts by
+    // that factor; the counts must be weighted.
+    it("weights counts by _sample_interval when the dataset is sampled", async () => {
+      storedRows = [
+        { blob3: "s", _sample_interval: 10 },
+        { blob3: "s", _sample_interval: 10 },
+        { blob3: "s", _sample_interval: 5 },
+        { blob3: "ss", _sample_interval: 10 },
+        { blob3: "pwd_leak", _sample_interval: 4 },
+        // Not a login for Auth0 parity, sampled or not.
+        { blob3: "seacft", _sample_interval: 10 },
+      ];
+
+      const [day] = await createAdapter().getDaily("tenant-1", {
+        from: "2026-08-25",
+        to: "2026-08-25",
+      });
+
+      expect(day).toMatchObject({
+        date: "2026-08-25",
+        logins: 25,
+        signups: 10,
+        leaked_passwords: 4,
+      });
+      expect(queries[0]).not.toMatch(/THEN 1 ELSE 0/);
+    });
+
+    it("matches a plain row count when the dataset is not sampled", async () => {
+      storedRows = [
+        { blob3: "s", _sample_interval: 1 },
+        { blob3: "s", _sample_interval: 1 },
+        { blob3: "ss", _sample_interval: 1 },
+      ];
+
+      const [day] = await createAdapter().getDaily("tenant-1", {
+        from: "2026-08-25",
+        to: "2026-08-25",
+      });
+
+      expect(day).toMatchObject({ logins: 2, signups: 1, leaked_passwords: 0 });
     });
   });
 
@@ -181,6 +233,21 @@ describe("Analytics Engine Stats Adapter", () => {
       expect(queries[0]).toContain(`index1 = 'tenant-1'`);
       expect(queries[0]).toContain("blob3 IN ('s')");
       expect(timestampBounds(queries[0]!).from).not.toBe("NaN");
+    });
+
+    // A distinct count can't be weighted by _sample_interval: users whose
+    // login rows were all dropped by the sampler are simply missing. The value
+    // is documented as approximate (a lower bound) under sampling; this pins
+    // that it is still a distinct count of stored users, not a weighted sum.
+    it("stays an unweighted distinct count under sampling", async () => {
+      storedRows = [
+        { blob3: "s", blob7: "user-1", _sample_interval: 10 },
+        { blob3: "s", blob7: "user-1", _sample_interval: 10 },
+        { blob3: "s", blob7: "user-2", _sample_interval: 10 },
+      ];
+
+      expect(await createAdapter().getActiveUsers("tenant-1")).toBe(2);
+      expect(queries[0]).not.toContain("_sample_interval");
     });
 
     it("returns 0 when the dataset has no matching rows", async () => {

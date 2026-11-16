@@ -14,7 +14,7 @@ import { stringifyAuth0Client } from "../../utils/client-info";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { getEnrichedClient } from "../../helpers/client";
 import { prefetchClientBundle } from "../../helpers/prefetch-client-bundle";
-import { isCimdClientId } from "../../helpers/cimd";
+import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { logMessage } from "../../helpers/logging";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
@@ -69,7 +69,11 @@ const postRoot = defineRoute({
     if (!isCimdClientId(client_id)) {
       await prefetchClientBundle(ctx, { client_id }).catch(() => {});
     }
-    const client = await getEnrichedClient(ctx.env, client_id);
+    const client = await getEnrichedClient(
+      ctx.env,
+      client_id,
+      cimdTenantHint(client_id, ctx.var.tenant_id),
+    );
     ctx.set("client_id", client_id);
     setTenantId(ctx, client.tenant.id);
 

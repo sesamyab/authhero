@@ -30,6 +30,20 @@ export function isCimdClientId(clientId: string): boolean {
   }
 }
 
+/**
+ * Tenant hint for `getEnrichedClient` on a host-scoped route that takes the
+ * client_id from the request. A registered client_id is globally unique and
+ * resolves its own tenant, so it gets no hint (unchanged behavior). A CIMD
+ * client_id (https URL) has a stub row in every tenant that uses it and can't
+ * identify the tenant, so it gets the request's tenant, as /authorize does.
+ */
+export function cimdTenantHint(
+  clientId: string,
+  requestTenantId: string | undefined,
+): string | undefined {
+  return isCimdClientId(clientId) ? requestTenantId || undefined : undefined;
+}
+
 export const cimdDocumentSchema = z.object({
   client_id: z.string().url(),
   client_name: z.string().min(1),

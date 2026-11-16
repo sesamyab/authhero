@@ -21,6 +21,11 @@ export interface ClientsAdapter {
    * Get a client by client_id only (without tenant_id).
    * Returns the client with its tenant_id since the caller needs to know
    * which tenant the client belongs to.
+   *
+   * URL client_ids (CIMD, see `isUrlClientId`) can exist in several tenants.
+   * For those, implementations must return null when more than one tenant has
+   * a row, rather than an arbitrary tenant's row: the caller has to supply the
+   * tenant instead.
    */
   getByClientId(client_id: string): Promise<ClientWithTenantId | null>;
   remove(tenant_id: string, client_id: string): Promise<boolean>;

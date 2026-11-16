@@ -28,6 +28,7 @@ import { finalizeAuthenticatedSession } from "./common";
 import { isDeviceLoginSession } from "../helpers/device-flow";
 import { isConnectLoginSession } from "../helpers/dcr/connect-state";
 import { setTenantId } from "../helpers/set-tenant-id";
+import { resolveLoginSessionTenant } from "../helpers/login-session-tenant";
 import { writeTryConnectionResult } from "./try-connection";
 import { nanoid } from "nanoid";
 import type { SessionCookieDiagnostics } from "../utils/cookies";
@@ -152,22 +153,35 @@ export async function connectionCallback(
   // browser back to the original authorization host if needed. This avoids
   // the fragile 307-POST re-dispatch the old code used.
 
+  // A session of another tenant than the request resolved is treated as
+  // missing (some adapters load the session by id alone). /callback is
+  // state-keyed, so without a request tenant the login session row decides:
+  // a CIMD client_id (https URL) has a stub row in every tenant that uses
+  // it and can't identify the tenant (#1731).
+  const sessionTenant = resolveLoginSessionTenant(
+    ctx.var.tenant_id,
+    loginSession,
+  );
+  if (!sessionTenant.ok) {
+    throw new JSONHTTPException(403, { message: "Session not found" });
+  }
+  const sessionTenantId = sessionTenant.tenantId;
+
   // Warm the bundle before getEnrichedClient so its parallel config fetch
   // collapses to a single cache key.
   const sessionClientId = loginSession.authParams.client_id;
   if (sessionClientId && !isCimdClientId(sessionClientId)) {
-    // Pass the tenant when the request already resolved one (tenant
-    // subdomain / header); otherwise the prefetch discovers it via
-    // clients.getByClientId.
+    // Without a tenant the prefetch discovers it via clients.getByClientId.
     await prefetchClientBundle(ctx, {
       client_id: sessionClientId,
-      tenant_id: ctx.var.tenant_id || undefined,
+      tenant_id: sessionTenantId,
     }).catch(() => {});
   }
 
   const client = await getEnrichedClient(
     env,
     loginSession.authParams.client_id,
+    sessionTenantId,
   );
 
   if (isDeviceLoginSession(loginSession.state_data))

@@ -23,7 +23,11 @@ type HookContext = Context<{ Bindings: Bindings; Variables: Variables }>;
  * single cast keeps that narrow shape at the fixture boundary instead of
  * spreading `any` through every call site.
  */
-function createMockCtx(env: TestEnv, hooks?: Hooks): HookContext {
+function createMockCtx(
+  env: TestEnv,
+  hooks?: Hooks,
+  vars?: Partial<Variables>,
+): HookContext {
   const ctx = {
     req: {
       method: "POST",
@@ -43,7 +47,10 @@ function createMockCtx(env: TestEnv, hooks?: Hooks): HookContext {
       useragent: "test-agent",
       auth0_client: undefined,
       body: undefined,
-      client_id: "test-client",
+      // A non-token client_id is an auth-flow client and must exist in the
+      // tenant: user creation runs the signup gate against it.
+      client_id: "clientId",
+      ...vars,
     },
   };
 
@@ -537,5 +544,46 @@ describe("getOrCreateUserByProvider subject lookup", () => {
     });
 
     expect(resolved.user_id).toBe("email|subject-primary");
+  });
+});
+
+describe("signup gate for a client_id that does not resolve in the tenant", () => {
+  const newUser = {
+    user_id: "email|unresolved-client",
+    email: "unresolved-client@example.com",
+    email_verified: false,
+    provider: "email",
+    connection: "email",
+  };
+
+  it("fails closed for an auth-flow client_id", async () => {
+    const { env } = await getTestServer();
+    const dataWithHooks = addDataHooks(
+      createMockCtx(env, undefined, { client_id: "missing-client" }),
+      env.data,
+    );
+
+    await expect(
+      dataWithHooks.users.create("tenantId", newUser),
+    ).rejects.toThrow("Client not found");
+    expect(await env.data.users.get("tenantId", newUser.user_id)).toBeNull();
+  });
+
+  it("skips the gate for a token-derived client_id", async () => {
+    const { env } = await getTestServer();
+    const dataWithHooks = addDataHooks(
+      createMockCtx(env, undefined, {
+        client_id: "missing-client",
+        client_id_from_token: true,
+      }),
+      env.data,
+    );
+
+    const created = await dataWithHooks.users.create("tenantId", newUser);
+
+    expect(created.user_id).toBe(newUser.user_id);
+    expect(await env.data.users.get("tenantId", newUser.user_id)).toMatchObject(
+      { email: newUser.email },
+    );
   });
 });

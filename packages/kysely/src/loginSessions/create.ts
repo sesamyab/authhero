@@ -50,6 +50,6 @@ export function create(db: Kysely<Database>) {
       })
       .execute();
 
-    return createdLogin;
+    return { ...createdLogin, tenant_id };
   };
 }

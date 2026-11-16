@@ -6,7 +6,7 @@ import {
   AnalyticsGroupBy,
 } from "@authhero/adapter-interfaces";
 import { AnalyticsEngineLogsAdapterConfig } from "./types";
-import { escapeSQLString, escapeSQLIdentifier } from "./query";
+import { escapeSQLString, escapeSQLIdentifier, sampledCount } from "./query";
 
 // Event types per resource. These match the log `type` values we already write
 // via createLog (blob3).
@@ -40,42 +40,49 @@ const FILTER_BLOB = {
   user_id: "blob7",
 } as const;
 
+// Event counts sum `_sample_interval` rather than `count()` so they count
+// events, not stored rows, once Analytics Engine samples the dataset.
+const EVENT_COUNT = sampledCount();
+
 const METRIC_BY_RESOURCE: Record<
   AnalyticsResource,
   { expr: string; alias: string; type: string }
 > = {
   "active-users": {
     // CF Analytics Engine SQL doesn't support uniq/uniqExact; COUNT(DISTINCT) is.
+    // Approximate under sampling: a distinct count can't be weighted by
+    // `_sample_interval`, so users whose events were all dropped by the
+    // sampler are missing and the value is a lower bound.
     expr: "count(DISTINCT blob7)",
     alias: "active_users",
     type: "UInt64",
   },
-  logins: { expr: "count()", alias: "logins", type: "UInt64" },
-  signups: { expr: "count()", alias: "signups", type: "UInt64" },
+  logins: { expr: EVENT_COUNT, alias: "logins", type: "UInt64" },
+  signups: { expr: EVENT_COUNT, alias: "signups", type: "UInt64" },
   "refresh-tokens": {
-    expr: "count()",
+    expr: EVENT_COUNT,
     alias: "refresh_tokens",
     type: "UInt64",
   },
-  sessions: { expr: "count()", alias: "sessions", type: "UInt64" },
-  logouts: { expr: "count()", alias: "logouts", type: "UInt64" },
+  sessions: { expr: EVENT_COUNT, alias: "sessions", type: "UInt64" },
+  logouts: { expr: EVENT_COUNT, alias: "logouts", type: "UInt64" },
   "password-changes": {
-    expr: "count()",
+    expr: EVENT_COUNT,
     alias: "password_changes",
     type: "UInt64",
   },
   "password-migrations": {
-    expr: "count()",
+    expr: EVENT_COUNT,
     alias: "password_migrations",
     type: "UInt64",
   },
-  mfa: { expr: "count()", alias: "mfa", type: "UInt64" },
+  mfa: { expr: EVENT_COUNT, alias: "mfa", type: "UInt64" },
   "email-verifications": {
-    expr: "count()",
+    expr: EVENT_COUNT,
     alias: "email_verifications",
     type: "UInt64",
   },
-  "codes-sent": { expr: "count()", alias: "codes_sent", type: "UInt64" },
+  "codes-sent": { expr: EVENT_COUNT, alias: "codes_sent", type: "UInt64" },
 };
 
 function timeBucketExpr(interval: string, tz: string): string {

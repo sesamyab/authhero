@@ -4,7 +4,11 @@ import {
   DailyStats,
 } from "@authhero/adapter-interfaces";
 import { AnalyticsEngineLogsAdapterConfig } from "./types";
-import { executeAnalyticsEngineQuery, escapeSQLString } from "./query";
+import {
+  executeAnalyticsEngineQuery,
+  escapeSQLString,
+  sampledCount,
+} from "./query";
 
 // Match Auth0: only SUCCESS_LOGIN counts as a login (no token exchanges /
 // silent auth), and only pwd_leak counts as a leaked-password detection.
@@ -109,12 +113,14 @@ export function createAnalyticsEngineStatsAdapter(
 
       // Query to aggregate daily stats
       // blob2 = tenant_id, blob3 = type, double2 = timestamp (epoch ms)
+      // Counts are weighted by _sample_interval so they stay event counts
+      // (not stored-row counts) once Analytics Engine samples the dataset.
       const query = `
         SELECT
           toDate(toDateTime(double2 / 1000)) AS date,
-          SUM(CASE WHEN blob3 IN (${loginTypesIn}) THEN 1 ELSE 0 END) AS logins,
-          SUM(CASE WHEN blob3 = 'ss' THEN 1 ELSE 0 END) AS signups,
-          SUM(CASE WHEN blob3 IN (${leakedPasswordTypesIn}) THEN 1 ELSE 0 END) AS leaked_passwords,
+          ${sampledCount(`blob3 IN (${loginTypesIn})`)} AS logins,
+          ${sampledCount("blob3 = 'ss'")} AS signups,
+          ${sampledCount(`blob3 IN (${leakedPasswordTypesIn})`)} AS leaked_passwords,
           MIN(double2) AS first_event,
           MAX(double2) AS last_event
         FROM "${dataset}"
@@ -141,6 +147,15 @@ export function createAnalyticsEngineStatsAdapter(
       }));
     },
 
+    /**
+     * Distinct users with a successful login in the last 30 days.
+     *
+     * Approximate under sampling: unlike the event counts in `getDaily`, a
+     * distinct count can't be weighted by `_sample_interval`. Once Analytics
+     * Engine samples the dataset, a user whose logins were all dropped by the
+     * sampler isn't counted, so the result is a lower bound. Exact for
+     * unsampled (low-volume) datasets.
+     */
     async getActiveUsers(tenantId: string): Promise<number> {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
