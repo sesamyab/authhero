@@ -239,7 +239,9 @@ export function listLogs(config: AnalyticsEngineLogsAdapterConfig) {
       };
     }
 
-    // Get total count
+    // Get total count. This is deliberately `count()` (stored rows), not
+    // `SUM(_sample_interval)`: it sizes pagination over the rows the list
+    // query can actually return, which under sampling is the stored rows only.
     const countQuery = `
       SELECT count() as count
       FROM ${escapeSQLIdentifier(dataset)}
