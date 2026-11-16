@@ -1,5 +1,22 @@
 # @authhero/cloudflare-adapter
 
+## 4.2.4
+
+### Patch Changes
+
+- ff3cc32: The Analytics Engine stats and analytics adapters now count events instead of stored rows. `stats.getDaily` (logins, signups, leaked passwords) and every event-count resource in `analytics.query` sum `_sample_interval` in place of `count()` / `SUM(CASE WHEN … THEN 1 …)`, so `/api/v2/stats/daily` and `/api/v2/analytics/*` no longer under-count once Analytics Engine samples a high-volume dataset. Distinct-user metrics (`stats.getActiveUsers`, the `active-users` analytics resource) can't be weighted this way; they are now documented as approximate (a lower bound) under sampling.
+- Updated dependencies [fd986c0]
+- Updated dependencies [488ee5a]
+- Updated dependencies [a6c737d]
+- Updated dependencies [bde32b7]
+- Updated dependencies [940c435]
+- Updated dependencies [e2cb332]
+- Updated dependencies [087b9ba]
+  - authhero@9.32.0
+  - @authhero/multi-tenancy@15.9.0
+  - @authhero/adapter-interfaces@4.28.0
+  - @authhero/kysely-adapter@12.20.0
+
 ## 4.2.3
 
 ### Patch Changes
