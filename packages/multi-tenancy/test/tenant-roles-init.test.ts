@@ -222,42 +222,38 @@ describe("the role a tenant's creator gets, through initMultiTenant", () => {
     ).toThrow(/must differ/);
   });
 
-  it("stops tenant creation when the owner role cannot be resolved", async () => {
+  it("creates nothing when the creator's role cannot be resolved", async () => {
     await newUser("auth2|customer");
     const creator = await data.roles.create(CP, {
       name: DEFAULT_SELF_SERVICE_ROLE_NAME,
     });
     await data.userRoles.create(CP, "auth2|customer", creator.id, "");
-    // Resolving the owner role reads the role's permissions; make that fail.
-    const original = data.rolePermissions.list.bind(data.rolePermissions);
-    let calls = 0;
-    data.rolePermissions.list = (async (
-      ...args: Parameters<typeof original>
-    ) => {
-      // The reads, in order: the admin role's top-up, the creator's global
-      // roles (admin:organizations check), then the owner role's top-up.
-      if (++calls === 3) throw new Error("db down");
-      return original(...args);
-    }) as typeof original;
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Creating the owner role fails, as a db error would.
+    const create = data.roles.create.bind(data.roles);
+    data.roles.create = (async (...args: Parameters<typeof create>) => {
+      if (args[1].name === "Tenant Owner") throw new Error("db down");
+      return create(...args);
+    }) as typeof create;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const response = await createTenant("auth2|customer", "globex");
 
     expect(response.status).not.toBe(201);
-    // The creator must not be left a member of the tenant without a role.
-    const orgs = (await data.organizations.list(CP)).organizations;
-    const org = orgs.find((o) => o.name === "globex");
-    if (org) {
-      expect(await roleNames("auth2|customer", org.id)).toEqual([]);
-      const memberships = await data.userOrganizations.listUserOrganizations(
-        CP,
-        "auth2|customer",
-      );
-      expect(memberships.organizations.map((o) => o.name)).not.toContain(
-        "globex",
-      );
-    }
-    warn.mockRestore();
+    // Nothing is left behind, so the same id can be retried: no tenant row, no
+    // organization, no membership.
+    expect(await data.tenants.get("globex")).toBeNull();
+    expect(
+      (await data.organizations.list(CP)).organizations.map((o) => o.name),
+    ).not.toContain("globex");
+    expect(
+      (await data.userOrganizations.listUserOrganizations(CP, "auth2|customer"))
+        .organizations,
+    ).toEqual([]);
+
+    // And once the failure is gone the retry succeeds.
+    data.roles.create = create;
+    expect((await createTenant("auth2|customer", "globex")).status).toBe(201);
+    error.mockRestore();
   });
 
   it("leaves an earlier creator on the role they already have", async () => {
