@@ -67,6 +67,20 @@ export async function resumeLoginSession(
     throw new JSONHTTPException(403, { message: "State not found" });
   }
 
+  // A session of another tenant than the request resolved is an unknown
+  // state here, before the cross-domain hop too (some adapters load the
+  // session by id alone). Without a request tenant the login session row
+  // decides: a CIMD client_id (https URL) has a stub row in every tenant
+  // that uses it, so a lookup by client_id alone can't identify the tenant
+  // (#1731).
+  const sessionTenant = resolveLoginSessionTenant(
+    ctx.var.tenant_id,
+    loginSession,
+  );
+  if (!sessionTenant.ok) {
+    throw new JSONHTTPException(403, { message: "State not found" });
+  }
+
   // Cross-domain hop. If /authorize was originally served from a different
   // custom domain than where the browser landed on /authorize/resume, send
   // it back to the original host before we set any cookie. This is the
@@ -113,22 +127,8 @@ export async function resumeLoginSession(
   // BEFORE fetching the enriched client: the client-bundle wrapper routes
   // reads by ctx.var, so without this every resume pays per-entity
   // round-trips for tenant/connections/clientConnections instead of one
-  // bundle cache hit.
-  //
-  // A session of another tenant than the request resolved is an unknown
-  // state here (some adapters load the session by id alone). Without a
-  // request tenant the login session row decides: a CIMD client_id (https
-  // URL) has a stub row in every tenant that uses it, so a lookup by
-  // client_id alone can't identify the tenant (#1731). Only an adapter that
-  // doesn't return the session's tenant falls back, for a registered client,
-  // to the global client lookup.
-  const sessionTenant = resolveLoginSessionTenant(
-    ctx.var.tenant_id,
-    loginSession,
-  );
-  if (!sessionTenant.ok) {
-    throw new JSONHTTPException(403, { message: "State not found" });
-  }
+  // bundle cache hit. Only an adapter that doesn't return the session's
+  // tenant falls back, for a registered client, to the global client lookup.
   const sessionClientId = loginSession.authParams.client_id;
   let resolvedTenantId = sessionTenant.tenantId;
   if (!resolvedTenantId && !isCimdClientId(sessionClientId)) {

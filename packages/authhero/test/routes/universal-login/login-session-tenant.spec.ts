@@ -121,6 +121,29 @@ describe("login session from another tenant than the request", () => {
     expect(await onA.text()).toContain("State not found");
   });
 
+  it("/authorize/resume rejects it before the cross-domain hop", async () => {
+    const { oauthApp, env, sessionId } = await setup();
+    await env.data.customDomains.create("tenantB", {
+      domain: "login.b.example.com",
+      custom_domain_id: "b-domain",
+      type: "auth0_managed_certs",
+    });
+    await env.data.loginSessions.update("tenantB", sessionId, {
+      state: "authenticated",
+      authorization_url:
+        "https://login.b.example.com/authorize?client_id=clientB",
+    });
+
+    const onA = await oauthApp.request(
+      `/authorize/resume?state=${sessionId}`,
+      { headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(onA.status).toBe(403);
+    expect(await onA.text()).toContain("State not found");
+    expect(onA.headers.get("location")).toBeNull();
+  });
+
   it("/login/callback treats it as an unknown state", async () => {
     const { oauthApp, env, sessionId } = await setup();
     await env.data.connections.create("tenantB", {
