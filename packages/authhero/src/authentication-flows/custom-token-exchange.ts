@@ -213,8 +213,10 @@ export async function customTokenExchangeGrant(
     client,
     authParams,
     organization,
-    authConnection: resolved.connection ?? user.connection,
-    authStrategy: authStrategyFor(resolved.strategy ?? user.provider),
+    // The identity the exchange selected, not the primary it resolved to: a
+    // linked secondary keeps its own connection and strategy on the log.
+    authConnection: resolved.connection ?? resolved.user.connection,
+    authStrategy: authStrategyFor(resolved.strategy ?? resolved.user.provider),
   };
 }
 

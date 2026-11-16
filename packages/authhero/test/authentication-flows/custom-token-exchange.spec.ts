@@ -853,6 +853,29 @@ describe("custom token exchange with a declarative JWT profile", () => {
     },
   );
 
+  it("logs the selected linked identity's strategy for user_id mapping", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const keypair = await generateKeypair();
+    await seedClient(env);
+    await seedJwtProfile(env, keypair);
+    await seedLinkedExchangeUser(env, "linked-3");
+
+    const { status, body } = await exchange(oauthApp, env, {
+      subject_token: await signSubjectToken(keypair, {
+        sub: "auth0|linked-3",
+      }),
+    });
+
+    expect(status).toBe(200);
+    expect(parseJWT(body.access_token!)?.payload.sub).toBe("email|userId");
+    expect(await successLog(env)).toMatchObject({
+      user_id: "email|userId",
+      connection: EXCHANGE_CONNECTION,
+      strategy: "auth0",
+      strategy_type: "database",
+    });
+  });
+
   it("resolves a linked identity in the profile's connection to its primary", async () => {
     const { oauthApp, env } = await getTestServer();
     const keypair = await generateKeypair();
@@ -1021,6 +1044,28 @@ describe("custom token exchange with an action profile", () => {
       expect(status).toBe(200);
       expect(parseJWT(body.access_token!)?.payload.sub).toBe("auth0|ext-8");
     }
+  });
+
+  it("logs the selected linked identity's strategy for setUserById", async () => {
+    const { oauthApp, env } = await setup(`
+      exports.onExecuteCustomTokenExchange = async (event, api) => {
+        api.authentication.setUserById("auth0|linked-4");
+      };
+    `);
+    await seedLinkedExchangeUser(env, "linked-4");
+
+    const { status, body } = await exchange(oauthApp, env, {
+      subject_token: "anything",
+    });
+
+    expect(status).toBe(200);
+    expect(parseJWT(body.access_token!)?.payload.sub).toBe("email|userId");
+    expect(await successLog(env)).toMatchObject({
+      user_id: "email|userId",
+      connection: EXCHANGE_CONNECTION,
+      strategy: "auth0",
+      strategy_type: "database",
+    });
   });
 
   it("resolves a linked identity to its primary and logs the action's connection", async () => {
