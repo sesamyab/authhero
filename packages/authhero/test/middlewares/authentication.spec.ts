@@ -1086,7 +1086,6 @@ describe("createAuthMiddleware", () => {
         ["get", "/tenants"],
         ["post", "/tenants"],
         ["get", "/tenants/{id}"],
-        ["get", "/tenants/{id}/operations"],
       ] as const) {
         app = new OpenAPIHono<{ Bindings: Bindings; Variables: Variables }>();
         route(method, path);
@@ -1094,6 +1093,11 @@ describe("createAuthMiddleware", () => {
           "allowed",
         );
       }
+    });
+
+    it("does not exempt /tenants/{id}/operations, which does no per-organization check", async () => {
+      route("get", "/tenants/{id}/operations");
+      expect(await call("controlPlane", { org_name: "acme" })).toBe("403");
     });
 
     it("does not extend the exemption to /tenants/settings, which acts on the request's own tenant", async () => {

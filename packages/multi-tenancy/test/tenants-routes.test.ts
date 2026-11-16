@@ -191,6 +191,50 @@ describe("tenants routes authorization", () => {
     expect(await adapters.tenants.get("other-tenant")).not.toBeNull();
   });
 
+  it("does not let an org-scoped token delete a tenant whose organization the user merely belongs to", async () => {
+    await createChildTenant("globex");
+    const org = await adapters.organizations.create(controlPlaneTenantId, {
+      name: "globex",
+      display_name: "globex",
+    });
+    await adapters.users.create(controlPlaneTenantId, {
+      user_id: "auth0|both",
+      email: "both@example.com",
+      email_verified: true,
+      provider: "auth0",
+      connection: "Username-Password-Authentication",
+      is_social: false,
+    });
+    await adapters.userOrganizations.create(controlPlaneTenantId, {
+      user_id: "auth0|both",
+      organization_id: org.id,
+    });
+
+    const { hooks } = setupMultiTenancy(accessControlConfig);
+
+    // Minted for organization "acme"; the user is also a member of "globex".
+    const app = createHostApp({
+      config: accessControlConfig,
+      hooks,
+      user: {
+        sub: "auth0|both",
+        tenant_id: controlPlaneTenantId,
+        scope: "delete:tenants",
+        org_id: "org_acme",
+      },
+      org_name: "acme",
+    });
+
+    const response = await app.request(
+      "/management/tenants/globex",
+      { method: "DELETE" },
+      env,
+    );
+
+    expect(response.status).toBe(403);
+    expect(await adapters.tenants.get("globex")).not.toBeNull();
+  });
+
   describe("access:all_organizations grants no tenant-admin rights (#1437)", () => {
     // Global control-plane token (no org claim) carrying the org-access
     // permission, as a support user in the publisher portal would hold.
