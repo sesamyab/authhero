@@ -7,6 +7,7 @@ import {
   getPrimaryUserByProvider,
   getUserByProvider,
 } from "../helpers/users";
+import { resolveDatabaseConnectionScope } from "../helpers/database-connection-scope";
 
 /**
  * TRANSITIONAL helpers for the auth2 → auth0 provider migration.
@@ -69,6 +70,13 @@ interface DualReadParams {
   env: Bindings;
   tenant_id: string;
   username: string;
+  /**
+   * Name of the database connection to look in (#1702). Rows of the tenant's
+   * other database connections are skipped. Has no effect for tenants with a
+   * single database connection, or when the name isn't one of the tenant's
+   * database connections; see `resolveDatabaseConnectionScope`.
+   */
+  connection?: string;
 }
 
 /**
@@ -85,12 +93,19 @@ export async function getUsernamePasswordUser({
   env,
   tenant_id,
   username,
+  connection,
 }: DualReadParams): Promise<User | null> {
+  const scope = await resolveDatabaseConnectionScope(
+    env.data.connections,
+    tenant_id,
+    connection,
+  );
   const legacy = await getUserByProvider({
     userAdapter: env.data.users,
     tenant_id,
     username,
     provider: LEGACY_PROVIDER,
+    connection: scope,
   });
   if (legacy) return legacy;
 
@@ -99,6 +114,7 @@ export async function getUsernamePasswordUser({
     tenant_id,
     username,
     provider: TARGET_PROVIDER,
+    connection: scope,
   });
 }
 
@@ -110,12 +126,19 @@ export async function getPrimaryUsernamePasswordUser({
   env,
   tenant_id,
   username,
+  connection,
 }: DualReadParams): Promise<User | null> {
+  const scope = await resolveDatabaseConnectionScope(
+    env.data.connections,
+    tenant_id,
+    connection,
+  );
   const legacy = await getPrimaryUserByProvider({
     userAdapter: env.data.users,
     tenant_id,
     username,
     provider: LEGACY_PROVIDER,
+    connection: scope,
   });
   if (legacy) return legacy;
 
@@ -124,6 +147,7 @@ export async function getPrimaryUsernamePasswordUser({
     tenant_id,
     username,
     provider: TARGET_PROVIDER,
+    connection: scope,
   });
 }
 
@@ -132,6 +156,9 @@ export async function getPrimaryUsernamePasswordUser({
  * user under EITHER provider value, and only creates a new row (under the
  * configured provider) if none exists. Prevents duplicating an existing
  * `auth2|*` user when the tenant is migrated to `"auth0"`.
+ *
+ * `connection` is written on a new row; `lookupConnection` (default
+ * `connection`) scopes the existing-user lookup, see {@link DualReadParams}.
  */
 export async function getOrCreateUsernamePasswordUser(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
@@ -139,14 +166,16 @@ export async function getOrCreateUsernamePasswordUser(
     client: EnrichedClient;
     username: string;
     connection: string;
+    lookupConnection?: string;
     ip?: string;
   },
 ): Promise<User> {
-  const { client, username, connection, ip } = params;
+  const { client, username, connection, lookupConnection, ip } = params;
   const existing = await getUsernamePasswordUser({
     env: ctx.env,
     tenant_id: client.tenant.id,
     username,
+    connection: lookupConnection ?? connection,
   });
   if (existing) {
     return existing;
@@ -160,6 +189,7 @@ export async function getOrCreateUsernamePasswordUser(
     username,
     provider,
     connection,
+    lookupConnection,
     isSocial: false,
     ip,
   });

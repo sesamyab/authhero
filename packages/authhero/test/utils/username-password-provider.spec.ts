@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  getPrimaryUsernamePasswordUser,
   getUsernamePasswordUser,
   isUsernamePasswordProvider,
   resolveUsernamePasswordProvider,
@@ -118,5 +119,146 @@ describe("getUsernamePasswordUser dual-read", () => {
       username: "shared@example.com",
     });
     expect(user?.user_id).toBe("auth2|legacy-password");
+  });
+});
+
+describe("getUsernamePasswordUser connection scope (#1702)", () => {
+  const MAIN = "Username-Password-Authentication";
+  const CTE = "cte-store";
+
+  async function serverWithTwoDatabaseConnections() {
+    const server = await getTestServer();
+    await server.env.data.connections.create("tenantId", {
+      id: CTE,
+      name: CTE,
+      strategy: "auth0",
+      options: {},
+    });
+    return server;
+  }
+
+  it("skips a user of another database connection", async () => {
+    const { env } = await serverWithTwoDatabaseConnections();
+    await env.data.users.create("tenantId", {
+      user_id: "auth0|exchanged",
+      email: "exchanged@example.com",
+      email_verified: true,
+      provider: "auth0",
+      connection: CTE,
+      is_social: false,
+    });
+
+    const lookup = (connection?: string) =>
+      getUsernamePasswordUser({
+        env,
+        tenant_id: "tenantId",
+        username: "exchanged@example.com",
+        connection,
+      });
+
+    expect(await lookup(MAIN)).toBeNull();
+    expect((await lookup(CTE))?.user_id).toBe("auth0|exchanged");
+    // No connection keeps the unscoped lookup.
+    expect((await lookup())?.user_id).toBe("auth0|exchanged");
+  });
+
+  it("finds the right row when one email exists in two connections", async () => {
+    // The provider-scoped unique index allows this pair: an auth2 row in the
+    // main connection and an auth0 row in the token exchange connection.
+    const { env } = await serverWithTwoDatabaseConnections();
+    await env.data.users.create("tenantId", {
+      user_id: "auth2|main",
+      email: "both@example.com",
+      email_verified: true,
+      provider: "auth2",
+      connection: MAIN,
+      is_social: false,
+    });
+    await env.data.users.create("tenantId", {
+      user_id: "auth0|cte",
+      email: "both@example.com",
+      email_verified: true,
+      provider: "auth0",
+      connection: CTE,
+      is_social: false,
+    });
+
+    const lookup = (connection: string) =>
+      getUsernamePasswordUser({
+        env,
+        tenant_id: "tenantId",
+        username: "both@example.com",
+        connection,
+      });
+
+    expect((await lookup(MAIN))?.user_id).toBe("auth2|main");
+    expect((await lookup(CTE))?.user_id).toBe("auth0|cte");
+  });
+
+  it("keeps legacy rows whose connection names no database connection", async () => {
+    const { env } = await serverWithTwoDatabaseConnections();
+    await env.data.users.create("tenantId", {
+      user_id: "auth2|legacy-literal",
+      email: "literal@example.com",
+      email_verified: true,
+      provider: "auth2",
+      connection: "auth2",
+      is_social: false,
+    });
+
+    for (const connection of [MAIN, CTE]) {
+      const user = await getUsernamePasswordUser({
+        env,
+        tenant_id: "tenantId",
+        username: "literal@example.com",
+        connection,
+      });
+      expect(user?.user_id).toBe("auth2|legacy-literal");
+    }
+  });
+
+  it("does not change lookups for a tenant with one database connection", async () => {
+    const { env } = await getTestServer();
+    // A row naming a connection that no longer exists, read through the
+    // tenant's only database connection.
+    await env.data.users.create("tenantId", {
+      user_id: "auth0|renamed",
+      email: "renamed@example.com",
+      email_verified: true,
+      provider: "auth0",
+      connection: "old-name",
+      is_social: false,
+    });
+
+    const user = await getUsernamePasswordUser({
+      env,
+      tenant_id: "tenantId",
+      username: "renamed@example.com",
+      connection: MAIN,
+    });
+    expect(user?.user_id).toBe("auth0|renamed");
+  });
+
+  it("scopes the primary-user lookup too", async () => {
+    const { env } = await serverWithTwoDatabaseConnections();
+    await env.data.users.create("tenantId", {
+      user_id: "auth0|exchanged-primary",
+      username: "exchangeduser",
+      email_verified: true,
+      provider: "auth0",
+      connection: CTE,
+      is_social: false,
+    });
+
+    const lookup = (connection: string) =>
+      getPrimaryUsernamePasswordUser({
+        env,
+        tenant_id: "tenantId",
+        username: "exchangeduser",
+        connection,
+      });
+
+    expect(await lookup(MAIN)).toBeNull();
+    expect((await lookup(CTE))?.user_id).toBe("auth0|exchanged-primary");
   });
 });

@@ -26,6 +26,7 @@ import { stringifyAuth0Client } from "../../utils/client-info";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { getEnrichedClient } from "../../helpers/client";
 import { cimdTenantHint } from "../../helpers/cimd";
+import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
 const postSignup = defineRoute({
@@ -107,6 +108,7 @@ const postSignup = defineRoute({
       env: ctx.env,
       tenant_id: client.tenant.id,
       username: email,
+      connection: resolveClientDatabaseConnectionName(client),
     });
 
     if (existingUser) {
@@ -202,6 +204,7 @@ const postChangePassword = defineRoute({
       env: ctx.env,
       tenant_id: client.tenant.id,
       username: email,
+      connection: resolveClientDatabaseConnectionName(client),
     });
 
     if (!existingUser) {

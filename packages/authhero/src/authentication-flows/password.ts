@@ -51,6 +51,7 @@ import {
 import { findConnectionByName } from "../utils/connections";
 import { attemptUpstreamPasswordFallback } from "./auth0-migration";
 import { resolvePrimaryUser } from "../helpers/users";
+import { resolveClientDatabaseConnectionName } from "../helpers/database-connection-scope";
 import {
   LoginEmailVerification,
   sendLoginEmailVerificationCode,
@@ -362,6 +363,7 @@ export async function passwordGrant(
     env: ctx.env,
     tenant_id: client.tenant.id,
     username,
+    connection: resolveClientDatabaseConnectionName(client, realm),
   });
 
   // Lazy migration: a DB connection flagged `import_mode: true` AND carrying
@@ -833,10 +835,14 @@ export async function requestPasswordReset(
   // connection still permits signups — otherwise creation would throw (signup
   // disabled) and surface a raw error on the page. Stopping silently keeps the
   // UX identical whether or not the account exists, avoiding enumeration.
+  // Scoped like the login and reset-completion lookups, so the user found or
+  // created here is the one the emailed reset lands on.
+  const lookupConnection = resolveClientDatabaseConnectionName(client);
   const existingUser = await getUsernamePasswordUser({
     env: ctx.env,
     tenant_id: client.tenant.id,
     username: email,
+    connection: lookupConnection,
   });
 
   if (!existingUser) {
@@ -858,6 +864,7 @@ export async function requestPasswordReset(
       client,
       username: email,
       connection: Strategy.USERNAME_PASSWORD,
+      lookupConnection,
       ip: ctx.var.ip,
     });
   }

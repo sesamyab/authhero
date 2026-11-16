@@ -8,6 +8,7 @@ import { JSONHTTPException } from "../errors/json-http-exception";
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
 import { getOrCreateUserByProvider } from "../helpers/users";
+import { resolveClientDatabaseConnectionName } from "../helpers/database-connection-scope";
 import { createFrontChannelAuthResponse } from "./common";
 import { getEnrichedClient } from "../helpers/client";
 import {
@@ -111,6 +112,9 @@ export async function ticketAuth(
           client,
           username: loginSession.authParams.username,
           connection: realm,
+          // Same scope /co/authenticate verified the password in, so the
+          // ticket resolves the user that logged in.
+          lookupConnection: resolveClientDatabaseConnectionName(client, realm),
           ip: ctx.var.ip,
         })
       : await getOrCreateUserByProvider(ctx, {

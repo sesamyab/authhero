@@ -27,6 +27,7 @@ import {
   getUsernamePasswordUser,
   resolveUsernamePasswordProvider,
 } from "../../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../../helpers/database-connection-scope";
 import {
   getPasswordPolicy,
   validatePasswordPolicy,
@@ -313,6 +314,7 @@ export const acceptInvitationScreenDefinition: ScreenDefinition = {
         env: ctx.env,
         tenant_id: client.tenant.id,
         username: email,
+        connection: resolveClientDatabaseConnectionName(client),
       });
 
       if (!user) {

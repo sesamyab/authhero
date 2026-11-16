@@ -20,6 +20,7 @@ import {
   getUsernamePasswordUser,
   resolveUsernamePasswordProvider,
 } from "../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import { userIdGenerate } from "../../utils/user-id";
 import MessagePage from "../../components/MessagePage";
 import { sendValidateEmailAddress } from "../../emails";
@@ -228,6 +229,7 @@ const postRoot = defineRoute({
         env: ctx.env,
         tenant_id: client.tenant.id,
         username: loginSession.authParams.username,
+        connection: resolveClientDatabaseConnectionName(client),
       });
 
       if (existingUser) {
