@@ -323,6 +323,11 @@ export function createAuthMiddleware(
             const isTenantsRouter =
               requestTenantId === controlPlaneId &&
               isTenantsRouterPath(relativePath);
+            // The tenants router tells an organization's own tenant apart by
+            // `org_name`, which an `org_id`-only token does not carry.
+            if (isTenantsRouter && boundTenantId && !ctx.var.org_name) {
+              ctx.set("org_name", boundTenantId);
+            }
             if (!isBound && !isTenantsRouter) {
               throw new JSONHTTPException(403, {
                 // The wording matches the WFP tenant worker's own guard.

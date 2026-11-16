@@ -1095,6 +1095,18 @@ describe("createAuthMiddleware", () => {
       }
     });
 
+    it("hands the tenants router the organization's name when the token only has its id", async () => {
+      route("delete", "/tenants/{id}");
+      expect(
+        await call(
+          "controlPlane",
+          { org_id: "org_acme" },
+          { org_acme: "acme" },
+        ),
+      ).toBe("allowed");
+      expect(mockCtx.set).toHaveBeenCalledWith("org_name", "acme");
+    });
+
     it("does not exempt /tenants/{id}/operations, which does no per-organization check", async () => {
       route("get", "/tenants/{id}/operations");
       expect(await call("controlPlane", { org_name: "acme" })).toBe("403");
