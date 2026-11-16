@@ -358,7 +358,9 @@ describe("management-api tenant operations", () => {
       engine: "inline",
     });
 
-    const token = await getAdminToken();
+    // Tokens issued for a child tenant carry its id as `tenant_id`.
+    const otherToken = await getAdminToken({ tenant_id: "otherTenant" });
+    const ownToken = await getAdminToken({ tenant_id: "tenantId" });
 
     // A foreign tenant gets a 404 for the operation and a 403 for the list.
     const foreignGet = await app.request(
@@ -366,7 +368,7 @@ describe("management-api tenant operations", () => {
       {
         headers: {
           "tenant-id": "otherTenant",
-          authorization: `Bearer ${token}`,
+          authorization: `Bearer ${otherToken}`,
         },
       },
       env,
@@ -378,7 +380,7 @@ describe("management-api tenant operations", () => {
       {
         headers: {
           "tenant-id": "otherTenant",
-          authorization: `Bearer ${token}`,
+          authorization: `Bearer ${otherToken}`,
         },
       },
       env,
@@ -389,7 +391,10 @@ describe("management-api tenant operations", () => {
     const ownGet = await app.request(
       `/api/v2/operations/${operation.id}`,
       {
-        headers: { "tenant-id": "tenantId", authorization: `Bearer ${token}` },
+        headers: {
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${ownToken}`,
+        },
       },
       env,
     );
@@ -618,6 +623,36 @@ describe("management-api tenant operations: who reaches which tenant", () => {
     ).toBe(404);
 
     const member = await controlPlaneToken(MEMBER);
+    expect(
+      (await asChild(member, `/api/v2/tenants/${CHILD}/operations`)).status,
+    ).toBe(200);
+    expect(
+      (await asChild(member, `/api/v2/operations/${operation.id}`)).status,
+    ).toBe(200);
+  });
+
+  it("gives a token without a tenant_id no own-tenant shortcut from the tenant-id header", async () => {
+    const { app, env, operation } = await setup();
+    const asChild = (token: string, path: string) =>
+      app.request(
+        path,
+        {
+          headers: { "tenant-id": CHILD, authorization: `Bearer ${token}` },
+        },
+        env as never,
+      );
+
+    // No tenant_id claim (reader() does not set one): a non-member is refused
+    // however the header is set, a member still passes on membership.
+    const outsider = await reader(OUTSIDER);
+    expect(
+      (await asChild(outsider, `/api/v2/tenants/${CHILD}/operations`)).status,
+    ).toBe(404);
+    expect(
+      (await asChild(outsider, `/api/v2/operations/${operation.id}`)).status,
+    ).toBe(404);
+
+    const member = await reader(MEMBER);
     expect(
       (await asChild(member, `/api/v2/tenants/${CHILD}/operations`)).status,
     ).toBe(200);

@@ -60,7 +60,8 @@ function callerGrants(user: CallerToken | undefined): Set<string> {
  *
  * - A caller whose token belongs to a child tenant reaches only that tenant.
  *   The tenant is the token's `tenant_id`, not the `tenant-id` header, which
- *   a control-plane token may point at any tenant.
+ *   a control-plane token may point at any tenant. A token without a
+ *   `tenant_id` is not a child's token and is treated like a control-plane one.
  * - On the control plane, an operator reaches every tenant: a machine token
  *   (its scopes are explicit grants), a caller holding `create:tenant_operations` or
  *   `create:rollouts`,
@@ -81,12 +82,13 @@ async function callerReachesTenant(
   if (!controlPlaneTenantId) return true;
 
   const user = ctx.var.user as CallerToken | undefined;
-  // Which tenant the caller belongs to is the token's own tenant, not the
-  // `tenant-id` header: a control-plane token may name any tenant there, and
-  // must not be taken for that tenant's own caller.
-  const callerTenantId = user?.tenant_id ?? ctx.var.tenant_id;
-  if (callerTenantId !== controlPlaneTenantId) {
-    return targetTenantId === callerTenantId;
+  // Which tenant the caller belongs to is the token's own `tenant_id`, never
+  // the `tenant-id` header: a control-plane token may name any tenant there,
+  // and the header is the caller's to set. A token that does not say which
+  // tenant it belongs to is not a child's token either, so it gets no
+  // own-tenant shortcut and goes through the operator and membership rules.
+  if (user?.tenant_id && user.tenant_id !== controlPlaneTenantId) {
+    return targetTenantId === user.tenant_id;
   }
   if (!user?.sub) return false;
   if (
