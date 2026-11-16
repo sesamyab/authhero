@@ -1848,6 +1848,7 @@ export async function createFrontChannelAuthResponse(
       !stateData.mfa_verified
     ) {
       const { checkMfaRequired, sendMfaOtp } = await import("./mfa");
+      const { isBrowserRememberedForMfa } = await import("./remember-browser");
       const mfaCheck = await checkMfaRequired(
         ctx,
         client.tenant.id,
@@ -1867,7 +1868,20 @@ export async function createFrontChannelAuthResponse(
               )
           : false;
 
-      if (mfaCheck.required && !sessionCompletedMfa) {
+      // A browser the user asked to remember after an earlier MFA, where every
+      // source requiring MFA allows that (#1670). Never skips enrollment.
+      const browserRemembered =
+        mfaCheck.required && mfaCheck.enrolled && !sessionCompletedMfa
+          ? await isBrowserRememberedForMfa(ctx, {
+              tenant: client.tenant,
+              userId: user.user_id,
+              actionRequest: readLoginSessionData(
+                currentLoginSession.state_data,
+              ).mfa_required_by_action,
+            })
+          : false;
+
+      if (mfaCheck.required && !sessionCompletedMfa && !browserRemembered) {
         // Transition to AWAITING_MFA
         const { state: newState } = transitionLoginSession(
           LoginSessionState.AUTHENTICATED,
@@ -2029,7 +2043,16 @@ export async function createFrontChannelAuthResponse(
           .then((session) =>
             session ? sessionSatisfiesMfa(session, user.user_id) : false,
           ))
-      )
+      ) &&
+      !(await import("./remember-browser").then(
+        ({ isBrowserRememberedForMfa }) =>
+          isBrowserRememberedForMfa(ctx, {
+            tenant: client.tenant,
+            userId: user.user_id,
+            actionRequest: readLoginSessionData(currentLoginSession.state_data)
+              .mfa_required_by_action,
+          }),
+      ))
     ) {
       throw new JSONHTTPException(403, {
         error: "access_denied",

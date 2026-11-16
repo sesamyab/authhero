@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { attackProtectionSchema } from "./AttackProtection";
-import { mfaPolicySchema } from "./TenantSettings";
+import { mfaPolicySchema, mfaRememberBrowserShape } from "./TenantSettings";
 
 export const tenantInsertSchema = z.object({
   id: z.string().optional(),
@@ -294,6 +294,8 @@ export const tenantInsertSchema = z.object({
     .object({
       // MFA policy, see `mfaPolicySchema` for what each value enforces.
       policy: mfaPolicySchema.default("never").optional(),
+      // Remember this device for MFA, see `mfaRememberBrowserShape`.
+      ...mfaRememberBrowserShape,
       // Factor states
       factors: z
         .object({

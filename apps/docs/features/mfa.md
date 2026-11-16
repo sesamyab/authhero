@@ -252,11 +252,48 @@ How AuthHero applies it:
 - `api.multifactor.enable("none")` does nothing. Unlike Auth0, it does not turn MFA off for the login: it never overrides the tenant policy or another action that required MFA.
 - If MFA was already completed in the same login (for example because the tenant policy requires it), the user is not challenged again.
 - Post-login actions run once per login. The MFA challenge happens after all actions have run and before tokens are issued.
-- `allowRememberBrowser` is recorded but remembering the browser is not supported yet.
+- `allowRememberBrowser: true` lets the user tick "Remember this device" on the challenge, and lets a browser remembered earlier skip this action's MFA. With `false` (the default) a remembered browser is still challenged. See [Remember This Device](#remember-this-device).
 - At least one MFA factor must be enabled on the tenant, otherwise the login fails.
 - Silent authentication (`prompt=none`) does not run post-login actions, so action-required MFA does not apply there.
 
 The tenant setting `customize_mfa_in_postlogin_action` is stored for Auth0 parity but has no effect. In Auth0 it enables `api.authentication.challengeWith` / `enrollWith`, which AuthHero does not implement. `api.multifactor.enable` works whatever its value.
+
+## Remember This Device
+
+After a successful TOTP or SMS challenge, the user can tick **Remember this device for N days**. Later logins of the same user from that browser skip the MFA challenge until the period ends. This is an AuthHero extension for the tenant policy: Auth0 has no tenant setting for it.
+
+The option is offered, and a remembered browser is accepted, only when everything that requires MFA for the login allows it:
+
+| What requires MFA | Allowed by |
+|-------------------|------------|
+| The tenant policy (`always`, `all-applications`, `confidence-score`) | `mfa.allow_remember_browser: true` on the tenant (off by default) |
+| A post-login action (`api.multifactor.enable`) | The action's `allowRememberBrowser: true` |
+| Both | Both of the above |
+
+```bash
+curl -X PATCH "https://auth.example.com/api/v2/tenants/settings" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"mfa": {"allow_remember_browser": true, "remember_browser_lifetime_in_days": 30}}'
+```
+
+How it works:
+
+- The browser gets an `HttpOnly` cookie named `{tenant_id}-mfa-remember-browser` holding a random token. Only the token's SHA-256 is stored, as a code of type `mfa_remember_browser` bound to the user, so a database read does not yield usable tokens. One browser can be remembered for up to 5 users.
+- `mfa.remember_browser_lifetime_in_days` sets the period (1 to 365, default 30). Lowering it also shortens browsers remembered earlier.
+- A remembered browser satisfies MFA but is not MFA: the ID token gets **no** `amr` claim, and the browser session is not marked as having completed MFA. Relying parties that check `amr` for step-up still see the difference.
+- It never skips enrollment: a user with no confirmed MFA enrollment (for example after an admin removed all of their authentication methods) has to enroll again.
+- Silent authentication (`prompt=none`) accepts a remembered browser when the tenant policy allows remembering.
+- The option is shown on the TOTP and SMS challenge screens (including the challenge that completes a new enrollment). Passkey challenges don't offer it.
+
+To make every browser remembered for a user complete MFA again, for example after a lost device, call Auth0's endpoint:
+
+```bash
+curl -X POST "https://auth.example.com/api/v2/users/{user_id}/multifactor/actions/invalidate-remember-browser" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+It needs the `update:users` scope and returns `204` (`404` for an unknown user).
 
 ## Disabling MFA
 
@@ -383,7 +420,9 @@ AuthHero's MFA implementation is compatible with Auth0's Guardian API:
 | `GET /api/v2/guardian/factors` | Supported |
 | `PUT /api/v2/guardian/factors/{name}` | Supported |
 | `GET/PUT /api/v2/guardian/policies` | Supported (`confidence-score` is enforced like `all-applications`) |
-| Post-login `api.multifactor.enable` | Supported (`"none"` never disables MFA; remember browser not yet) |
+| Post-login `api.multifactor.enable` | Supported (`"none"` never disables MFA) |
+| `allowRememberBrowser` / "Remember this device" | Supported (no `amr` on remembered logins) |
+| `POST /api/v2/users/{id}/multifactor/actions/invalidate-remember-browser` | Supported |
 | `GET/PUT /api/v2/guardian/factors/sms/selected-provider` | Supported |
 | `GET/PUT /api/v2/guardian/factors/sms/providers/twilio` | Supported |
 | `POST /api/v2/guardian/enrollments/ticket` | Supported |

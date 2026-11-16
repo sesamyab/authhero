@@ -20,6 +20,11 @@ export const codeTypeSchema = z.enum([
   // SHA-256 of the token, never the token itself; `login_id` points at a
   // login session carrying what the token transfers.
   "session_transfer_token",
+  // A remembered browser that may skip the MFA challenge (#1670). `code_id` is
+  // the SHA-256 of the token held in the browser's cookie and `user_id` the
+  // user who completed MFA. The row `user:<user_id>` of this type marks when
+  // that user's remembered browsers were last invalidated.
+  "mfa_remember_browser",
 ]);
 export type CodeType = z.infer<typeof codeTypeSchema>;
 

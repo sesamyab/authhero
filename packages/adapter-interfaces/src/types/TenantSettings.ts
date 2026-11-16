@@ -21,6 +21,30 @@ export const mfaPolicySchema = z.enum([
 ]);
 export type MfaPolicy = z.infer<typeof mfaPolicySchema>;
 
+/** Longest a browser can stay remembered for MFA, in days. */
+export const MFA_REMEMBER_BROWSER_MAX_LIFETIME_IN_DAYS = 365;
+
+/**
+ * "Remember this device" for MFA (#1670). AuthHero extension: Auth0 has no
+ * tenant setting for it.
+ *
+ * - `allow_remember_browser`: offer the "remember this device" option when the
+ *   tenant policy is what requires MFA. Off by default. When a post-login
+ *   action requires MFA, its own `allowRememberBrowser` decides instead, and
+ *   both must allow it when both require MFA.
+ * - `remember_browser_lifetime_in_days`: how long a remembered browser skips
+ *   the MFA challenge (default 30).
+ */
+export const mfaRememberBrowserShape = {
+  allow_remember_browser: z.boolean().optional(),
+  remember_browser_lifetime_in_days: z
+    .number()
+    .int()
+    .min(1)
+    .max(MFA_REMEMBER_BROWSER_MAX_LIFETIME_IN_DAYS)
+    .optional(),
+};
+
 // Based on Auth0 Management API v2 Tenant Settings
 // https://auth0.com/docs/api/management/v2/tenants/tenant-settings-route
 
@@ -121,6 +145,8 @@ export const tenantSettingsSchema = z.object({
   mfa: z
     .object({
       policy: mfaPolicySchema.default("never").optional(),
+      // Remember this device for MFA, see `mfaRememberBrowserShape`.
+      ...mfaRememberBrowserShape,
       // Factor states
       factors: z
         .object({

@@ -522,7 +522,8 @@
       "transaction-not-found": "Din registreringstransaktion har gått ut, du behöver börja om.",
       "unexpectedError": "Något gick fel. Försök igen.",
       "pageTitle": "Verifiera identitet | ${clientName}",
-      "too-many-failures": "Du har överskridit det högsta antalet misslyckade försök. Börja om inloggningen."
+      "too-many-failures": "Du har överskridit det högsta antalet misslyckade försök. Börja om inloggningen.",
+      "rememberMeText": "Kom ihåg den här enheten i ${days} dagar"
     }
   },
   "mfa-phone": {
@@ -551,7 +552,8 @@
       "unexpectedError": "Något gick fel. Försök igen.",
       "resendSuccess": "Vi skickade en ny kod till din telefon",
       "enrollmentComplete": "MFA-registreringen är klar. Du kan stänga denna sida.",
-      "too-many-failures": "Du har överskridit det högsta antalet misslyckade försök. Börja om inloggningen."
+      "too-many-failures": "Du har överskridit det högsta antalet misslyckade försök. Börja om inloggningen.",
+      "rememberMeText": "Kom ihåg den här enheten i ${days} dagar"
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Ange ditt telefonnummer för att logga in med en telefonkod | ${clientName}",

@@ -5,6 +5,7 @@ import {
   TextInput,
   SelectInput,
   BooleanInput,
+  NumberInput,
 } from "@/components/admin";
 import { SecretInput } from "@/common/SecretInput";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -73,6 +74,20 @@ function FactorsTab() {
           />
           <FactorRow source="mfa.factors.recovery_code" label="Recovery code" />
           <FactorRow source="mfa.factors.duo" label="Duo" />
+        </div>
+        <div className="flex flex-col gap-3 rounded-md border px-3 py-3">
+          <BooleanInput
+            source="mfa.allow_remember_browser"
+            label="Let users remember a device"
+            helperText="Show a “Remember this device” option on the MFA challenge when the policy above requires MFA. A remembered browser skips the challenge on later logins (no amr claim is issued for those logins). MFA required by a post-login action follows the action's allowRememberBrowser instead."
+          />
+          <NumberInput
+            source="mfa.remember_browser_lifetime_in_days"
+            label="Remember a device for (days)"
+            min={1}
+            max={365}
+            helperText="How long a remembered device skips MFA. Default: 30. Lowering it also shortens devices remembered earlier."
+          />
         </div>
       </CardContent>
     </Card>

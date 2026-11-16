@@ -328,6 +328,21 @@ async function requireMfaFromAction(
       return undefined;
     }
   }
+  // A remembered browser satisfies the action when it allowed that (#1670).
+  const tenant = await ctx.env.data.tenants.get(tenantId);
+  if (tenant) {
+    const { isBrowserRememberedForMfa } =
+      await import("../authentication-flows/remember-browser");
+    if (
+      await isBrowserRememberedForMfa(ctx, {
+        tenant,
+        userId: user.user_id,
+        actionRequest: request,
+      })
+    ) {
+      return undefined;
+    }
+  }
   const continueUrl = `/u/continue?state=${encodeURIComponent(loginSession.id)}`;
   await startLoginSessionContinuation(ctx, tenantId, current, [], continueUrl);
   return new Response(null, {

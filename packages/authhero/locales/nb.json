@@ -522,7 +522,8 @@
       "transaction-not-found": "Registreringsøkten din har utløpt, du må starte på nytt.",
       "unexpectedError": "Noe gikk galt. Vennligst prøv igjen.",
       "pageTitle": "Bekreft identitet | ${clientName}",
-      "too-many-failures": "Du har overskredet maksimalt antall mislykkede forsøk. Start innloggingen på nytt."
+      "too-many-failures": "Du har overskredet maksimalt antall mislykkede forsøk. Start innloggingen på nytt.",
+      "rememberMeText": "Husk denne enheten i ${days} dager"
     }
   },
   "mfa-phone": {
@@ -551,7 +552,8 @@
       "unexpectedError": "Noe gikk galt. Prøv igjen.",
       "resendSuccess": "Vi sendte en ny kode til telefonen din",
       "enrollmentComplete": "MFA-registreringen er fullført. Du kan lukke denne siden.",
-      "too-many-failures": "Du har overskredet maksimalt antall mislykkede forsøk. Start innloggingen på nytt."
+      "too-many-failures": "Du har overskredet maksimalt antall mislykkede forsøk. Start innloggingen på nytt.",
+      "rememberMeText": "Husk denne enheten i ${days} dager"
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Skriv inn telefonnummeret ditt for å logge inn med en telefonkode | ${clientName}",

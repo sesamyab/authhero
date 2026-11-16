@@ -22,6 +22,7 @@ import { parseSort } from "../../utils/sort";
 import { logMessage } from "../../helpers/logging";
 import { revokeUserSessions } from "../../helpers/revoke-user-sessions";
 import { revokeUserRefreshTokens } from "../../helpers/revoke-user-refresh-tokens";
+import { invalidateRememberedBrowsers } from "../../authentication-flows/remember-browser";
 import { hashPassword } from "../../helpers/password-policy";
 import {
   Connection,
@@ -1505,6 +1506,57 @@ const deleteByUser_idRefreshTokens = defineRoute({
   },
 });
 
+const postByUser_idInvalidateRememberBrowser = defineRoute({
+  route: createRoute({
+    tags: ["users"],
+    method: "post",
+    path: "/{user_id}/multifactor/actions/invalidate-remember-browser",
+    request: {
+      headers: z.object({
+        "tenant-id": z.string().optional(),
+      }),
+      params: z.object({
+        user_id: z.string(),
+      }),
+    },
+    security: [
+      {
+        Bearer: ["update:users"],
+      },
+    ],
+    responses: {
+      204: {
+        description:
+          "Every browser remembered for the user's MFA has to complete MFA again",
+      },
+      404: {
+        description: "User not found",
+      },
+    },
+  }),
+  handler: async (ctx) => {
+    const { user_id } = ctx.req.valid("param");
+    const tenantId = requireTenantId(ctx);
+
+    const user = await ctx.env.data.users.get(tenantId, user_id);
+    if (!user) {
+      throw notFound.user();
+    }
+
+    await invalidateRememberedBrowsers(ctx, tenantId, user_id);
+
+    await logMessage(ctx, tenantId, {
+      type: LogTypes.SUCCESS_API_OPERATION,
+      description: "Invalidated remembered browsers for MFA",
+      targetType: "user",
+      targetId: user_id,
+      userId: user_id,
+    });
+
+    return ctx.body(null, 204);
+  },
+});
+
 const getByUser_idLogs = defineRoute({
   route: createRoute({
     tags: ["users"],
@@ -2184,6 +2236,7 @@ export const userRoutes = new OpenAPIHono<{
   getByUser_idSessions,
   getByUser_idRefreshTokens,
   deleteByUser_idRefreshTokens,
+  postByUser_idInvalidateRememberBrowser,
   getByUser_idLogs,
   getByUser_idPermissions,
   postByUser_idPermissions,

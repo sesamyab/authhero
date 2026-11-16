@@ -522,7 +522,8 @@
       "transaction-not-found": "La tua transazione di registrazione è scaduta, dovrai ricominciare.",
       "unexpectedError": "Qualcosa è andato storto. Riprova.",
       "pageTitle": "Verifica identità | ${clientName}",
-      "too-many-failures": "Hai superato il numero massimo di tentativi non riusciti. Ricomincia l'accesso."
+      "too-many-failures": "Hai superato il numero massimo di tentativi non riusciti. Ricomincia l'accesso.",
+      "rememberMeText": "Ricorda questo dispositivo per ${days} giorni"
     }
   },
   "mfa-phone": {
@@ -551,7 +552,8 @@
       "unexpectedError": "Qualcosa è andato storto. Riprova.",
       "resendSuccess": "Abbiamo inviato un nuovo codice al tuo telefono",
       "enrollmentComplete": "La registrazione MFA è completata. Puoi chiudere questa pagina.",
-      "too-many-failures": "Hai superato il numero massimo di tentativi non riusciti. Ricomincia l'accesso."
+      "too-many-failures": "Hai superato il numero massimo di tentativi non riusciti. Ricomincia l'accesso.",
+      "rememberMeText": "Ricorda questo dispositivo per ${days} giorni"
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Inserisci il tuo numero di telefono per accedere con un codice telefonico | ${clientName}",

@@ -21,6 +21,11 @@ import {
   isMfaLockedOut,
   recordMfaFailure,
 } from "../../../authentication-flows/mfa-attempts";
+import {
+  rememberBrowserComponent,
+  rememberBrowserCookies,
+  withRememberBrowserCookies,
+} from "./mfa-remember-browser";
 
 /**
  * Create the mfa-totp-challenge screen
@@ -55,17 +60,27 @@ export async function mfaTotpChallengeScreen(
         ? [{ text: errors.code, type: "error" as const }]
         : undefined,
     },
-    {
-      id: "submit",
-      type: "NEXT_BUTTON",
-      category: "BLOCK",
-      visible: true,
-      config: {
-        text: m.continueButtonText(),
-      },
-      order: 1,
-    },
   ];
+
+  const rememberBrowser = await rememberBrowserComponent(
+    context,
+    (days) => m.rememberMeText({ days: String(days) }),
+    1,
+  );
+  if (rememberBrowser) {
+    components.push(rememberBrowser);
+  }
+
+  components.push({
+    id: "submit",
+    type: "NEXT_BUTTON",
+    category: "BLOCK",
+    visible: true,
+    config: {
+      text: m.continueButtonText(),
+    },
+    order: 2,
+  });
 
   const screen: UiScreen = {
     name: "mfa-totp-challenge",
@@ -360,12 +375,16 @@ export const mfaTotpChallengeScreenDefinition: ScreenDefinition = {
           authConnection: loginSession.auth_connection,
         });
 
-        const location = result.headers.get("location");
-        const cookies = result.headers.getSetCookie?.() || [];
-        if (location) {
-          return { redirect: location, cookies };
-        }
-        return { response: result };
+        return withRememberBrowserCookies(
+          result,
+          await rememberBrowserCookies(
+            ctx,
+            client,
+            loginSession,
+            user.user_id,
+            data,
+          ),
+        );
       } catch {
         const errorMessage = m.unexpectedError();
         return {

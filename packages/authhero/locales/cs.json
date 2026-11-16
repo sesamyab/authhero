@@ -522,7 +522,8 @@
       "transaction-not-found": "Platnost vaší registrace vypršela, budete muset začít znovu.",
       "unexpectedError": "Něco se pokazilo. Zkuste to prosím znovu.",
       "pageTitle": "Ověření identity | ${clientName}",
-      "too-many-failures": "Překročili jste maximální počet neúspěšných pokusů. Začněte přihlášení znovu."
+      "too-many-failures": "Překročili jste maximální počet neúspěšných pokusů. Začněte přihlášení znovu.",
+      "rememberMeText": "Zapamatovat si toto zařízení na ${days} dní"
     }
   },
   "mfa-phone": {
@@ -551,7 +552,8 @@
       "unexpectedError": "Něco se pokazilo. Zkuste to znovu.",
       "resendSuccess": "Odeslali jsme nový kód na váš telefon",
       "enrollmentComplete": "Registrace MFA je dokončena. Tuto stránku můžete zavřít.",
-      "too-many-failures": "Překročili jste maximální počet neúspěšných pokusů. Začněte přihlášení znovu."
+      "too-many-failures": "Překročili jste maximální počet neúspěšných pokusů. Začněte přihlášení znovu.",
+      "rememberMeText": "Zapamatovat si toto zařízení na ${days} dní"
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Zadejte své telefonní číslo pro přihlášení pomocí telefonního kódu | ${clientName}",

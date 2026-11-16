@@ -11,7 +11,10 @@ import type { SessionTransferCarrierState } from "../helpers/session-transfer";
 export interface MfaRequiredByAction {
   /** The provider the (last enabling) action passed, e.g. "any". */
   provider: string;
-  /** Recorded for remember-browser support; not acted on yet. */
+  /**
+   * Whether a remembered browser may satisfy this MFA. True only if every
+   * enabling call allowed it (see authentication-flows/remember-browser.ts).
+   */
   allow_remember_browser: boolean;
 }
 
