@@ -949,6 +949,197 @@ describe("createAuthMiddleware", () => {
   // Note: middleware strips /api/v2 before looking up the route in the
   // OpenAPI registry, so we register routes here with their relative paths
   // (e.g. /users) while matchedRoutes carries the full /api/v2/... path.
+  // An organization-scoped control-plane token carries the permissions of its
+  // organization's roles. On the control plane an organization is a tenant, so
+  // the token may act on that tenant only, not on the control plane or on
+  // another tenant by naming it in `tenant-id`.
+  describe("organization binding of control-plane tokens", () => {
+    const route = (method: "get" | "patch" | "post", path: string) => {
+      app.openapi(
+        {
+          method,
+          path,
+          security: [{ Bearer: ["read:users"] }],
+          responses: { 200: { description: "Success" } },
+        },
+        async (c) => c.json({ message: "success" }),
+      );
+      mockCtx.req.method = method.toUpperCase();
+      mockCtx.req.matchedRoutes = [
+        { method: method.toUpperCase(), path: `/api/v2${path}` },
+      ];
+    };
+
+    const call = async (
+      requestTenant: string,
+      claims: { org_name?: string; org_id?: string },
+      organizations: Record<string, string> = {},
+    ) => {
+      const middleware = createAuthMiddleware(app, {
+        requireManagementAudience: true,
+      });
+      const token = await createToken({
+        user_id: "owner",
+        permissions: ["read:users"],
+        aud: MANAGEMENT_API_AUDIENCE,
+        tenant_id: "controlPlane",
+        ...claims,
+      });
+      mockCtx.env = {
+        ...mockEnv,
+        data: {
+          ...mockEnv.data,
+          multiTenancyConfig: { controlPlaneTenantId: "controlPlane" },
+          organizations: {
+            get: vi.fn(async (_tenant: string, id: string) =>
+              organizations[id] ? { id, name: organizations[id] } : null,
+            ),
+          },
+        },
+      };
+      mockCtx.req.header.mockReturnValue(`Bearer ${token}`);
+      mockCtx.var.tenant_id = requestTenant;
+      mockCtx.var.data = {
+        tenants: { get: vi.fn().mockResolvedValue({ id: requestTenant }) },
+      };
+      return middleware(mockCtx, mockNext).then(
+        () => "allowed",
+        (error: unknown) =>
+          error instanceof HTTPException ? `${error.status}` : "error",
+      );
+    };
+
+    it("lets an organization token act on the tenant its organization names", async () => {
+      route("get", "/users");
+      expect(await call("acme", { org_name: "acme" })).toBe("allowed");
+      // The name is compared without regard to case, like the tenant id match
+      // elsewhere.
+      expect(await call("acme", { org_name: "ACME" })).toBe("allowed");
+      // With only the organization id, the name comes from the organization.
+      expect(
+        await call("acme", { org_id: "org_acme" }, { org_acme: "acme" }),
+      ).toBe("allowed");
+    });
+
+    it("refuses an organization token on another tenant", async () => {
+      route("get", "/users");
+      expect(await call("globex", { org_name: "acme" })).toBe("403");
+      expect(
+        await call("globex", { org_id: "org_acme" }, { org_acme: "acme" }),
+      ).toBe("403");
+    });
+
+    it("refuses an organization token on the control plane itself", async () => {
+      route("get", "/users");
+      expect(await call("controlPlane", { org_name: "acme" })).toBe("403");
+      expect(
+        await call(
+          "controlPlane",
+          { org_id: "org_acme" },
+          { org_acme: "acme" },
+        ),
+      ).toBe("403");
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it("refuses an organization id that names no organization", async () => {
+      route("get", "/users");
+      expect(await call("acme", { org_id: "org_missing" })).toBe("403");
+    });
+
+    it("surfaces a failing organization lookup as a 500", async () => {
+      route("get", "/users");
+      const middleware = createAuthMiddleware(app, {
+        requireManagementAudience: true,
+      });
+      const token = await createToken({
+        user_id: "owner",
+        permissions: ["read:users"],
+        aud: MANAGEMENT_API_AUDIENCE,
+        tenant_id: "controlPlane",
+        org_id: "org_acme",
+      });
+      mockCtx.env = {
+        ...mockEnv,
+        data: {
+          ...mockEnv.data,
+          multiTenancyConfig: { controlPlaneTenantId: "controlPlane" },
+          organizations: {
+            get: vi.fn().mockRejectedValue(new Error("db down")),
+          },
+        },
+      };
+      mockCtx.req.header.mockReturnValue(`Bearer ${token}`);
+      mockCtx.var.tenant_id = "acme";
+      mockCtx.var.data = {
+        tenants: { get: vi.fn().mockResolvedValue({ id: "acme" }) },
+      };
+      const error = await middleware(mockCtx, mockNext).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(HTTPException);
+      expect((error as HTTPException).status).toBe(500);
+    });
+
+    it("lets an organization token reach the tenants router in the control plane's context", async () => {
+      for (const [method, path] of [
+        ["get", "/tenants"],
+        ["post", "/tenants"],
+        ["get", "/tenants/{id}"],
+        ["get", "/tenants/{id}/operations"],
+      ] as const) {
+        app = new OpenAPIHono<{ Bindings: Bindings; Variables: Variables }>();
+        route(method, path);
+        expect(await call("controlPlane", { org_name: "acme" })).toBe(
+          "allowed",
+        );
+      }
+    });
+
+    it("does not extend the exemption to /tenants/settings, which acts on the request's own tenant", async () => {
+      for (const method of ["get", "patch"] as const) {
+        app = new OpenAPIHono<{ Bindings: Bindings; Variables: Variables }>();
+        route(method, "/tenants/settings");
+        expect(await call("controlPlane", { org_name: "acme" })).toBe("403");
+      }
+    });
+
+    it("does not exempt the tenants router for another tenant's context", async () => {
+      route("get", "/tenants");
+      expect(await call("globex", { org_name: "acme" })).toBe("403");
+    });
+
+    it("leaves a token without an organization claim alone", async () => {
+      route("get", "/users");
+      expect(await call("globex", {})).toBe("allowed");
+      expect(await call("controlPlane", {})).toBe("allowed");
+    });
+
+    it("does not apply to tokens that are not from the control plane", async () => {
+      route("get", "/users");
+      const middleware = createAuthMiddleware(app, {
+        requireManagementAudience: true,
+      });
+      const token = await createToken({
+        user_id: "owner",
+        permissions: ["read:users"],
+        aud: MANAGEMENT_API_AUDIENCE,
+        tenant_id: "acme",
+        org_name: "acme",
+      });
+      mockCtx.env = {
+        ...mockEnv,
+        data: {
+          ...mockEnv.data,
+          multiTenancyConfig: { controlPlaneTenantId: "controlPlane" },
+        },
+      };
+      mockCtx.req.header.mockReturnValue(`Bearer ${token}`);
+      mockCtx.var.tenant_id = "acme";
+      expect(await middleware(mockCtx, mockNext)).toBe("next-response");
+    });
+  });
+
   describe("audience enforcement on /api/v2/users* paths (no exemption)", () => {
     const userPaths: Array<{ full: string; relative: string }> = [
       { full: "/api/v2/users", relative: "/users" },

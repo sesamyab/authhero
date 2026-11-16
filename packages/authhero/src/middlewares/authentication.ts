@@ -14,6 +14,20 @@ import { extractBearerToken } from "../utils/auth-header";
  */
 export const MANAGEMENT_API_AUDIENCE = "urn:authhero:management";
 
+/**
+ * Routes of the multi-tenancy tenants router (`/tenants`, `/tenants/{id}` and
+ * what hangs off it). They run in the control plane's context and check access
+ * per organization themselves, so an organization-scoped control-plane token may
+ * reach them there. `/tenants/settings` is not one of them: it reads and writes
+ * the settings of the tenant the request is in, which for the control plane's
+ * context would be the control plane's own.
+ */
+function isTenantsRouterPath(path: string): boolean {
+  if (path === "/tenants") return true;
+  if (!path.startsWith("/tenants/")) return false;
+  return path !== "/tenants/settings" && !path.startsWith("/tenants/settings/");
+}
+
 function convertRouteSyntax(route: string) {
   return route.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, "{$1}");
 }
@@ -256,6 +270,60 @@ export function createAuthMiddleware(
               });
             if (!tenant) {
               throw notFound.tenant();
+            }
+          }
+
+          // Organization binding: a control-plane token that carries an
+          // organization claim is bound to the tenant that organization names.
+          // On the control plane an organization is a tenant (its name is the
+          // tenant id), and the token carries that organization role's
+          // permissions, so it may act on that tenant only. Without this a
+          // member of one tenant's organization could name the control plane,
+          // or any other tenant, in `tenant-id` and use those permissions
+          // there. The one exception is the tenants router in the control
+          // plane's own context, which does its own per-organization checks.
+          const controlPlaneId =
+            ctx.env.data?.multiTenancyConfig?.controlPlaneTenantId;
+          const orgName =
+            typeof tokenPayload.org_name === "string"
+              ? tokenPayload.org_name
+              : undefined;
+          const orgId =
+            typeof tokenPayload.org_id === "string"
+              ? tokenPayload.org_id
+              : undefined;
+          if (
+            controlPlaneId &&
+            tokenTenantId === controlPlaneId &&
+            requestTenantId &&
+            (orgName || orgId)
+          ) {
+            // The organization's name when only its id is in the token. A
+            // failed lookup is a server error, like the tenant lookup above.
+            const boundTenantId =
+              orgName ??
+              (
+                await ctx.env.data.organizations
+                  .get(controlPlaneId, orgId!)
+                  .catch((cause: unknown) => {
+                    throw new HTTPException(500, {
+                      message: "Failed to look up organization",
+                      cause,
+                    });
+                  })
+              )?.name;
+            const isBound =
+              !!boundTenantId &&
+              boundTenantId.toLowerCase() === requestTenantId.toLowerCase();
+            const isTenantsRouter =
+              requestTenantId === controlPlaneId &&
+              isTenantsRouterPath(relativePath);
+            if (!isBound && !isTenantsRouter) {
+              throw new JSONHTTPException(403, {
+                message: boundTenantId
+                  ? `An organization token for "${boundTenantId}" cannot act on tenant "${requestTenantId}"`
+                  : "An organization token must belong to a tenant's organization",
+              });
             }
           }
         }

@@ -346,6 +346,8 @@ const response = await fetch("https://api.example.com/api/v2/users", {
 - Access control middleware validates organization membership on control plane
 - Request is automatically scoped to the acme tenant
 
+**An organization token is bound to its tenant.** The token carries the permissions of that organization's roles, and on the control plane an organization is a tenant, so the management API refuses it anywhere else with `403`: on another tenant named in `tenant-id`, and on the control plane's own context. The one exception is the tenants router (`/tenants`, `/tenants/{id}` and what hangs off it) in the control plane's context, which checks access per organization itself; `/tenants/settings` is not part of it, since it acts on the tenant the request is in. A token whose organization is only given by `org_id` is bound to that organization's name, and one that names no organization is refused. A token without an organization claim is not affected, and neither is a token issued by a child tenant. Work on the control plane itself, or across tenants, with a token that is not scoped to an organization.
+
 **Best for:**
 
 - Production applications
