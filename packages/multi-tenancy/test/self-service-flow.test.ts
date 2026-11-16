@@ -103,9 +103,14 @@ describe("self-service sign-up to a created tenant", () => {
       {} as any,
     );
 
-    // 2. The permissions a token would carry: create:tenants and nothing else.
+    // 2. The permissions a token would carry: the self-service set, nothing
+    // else (no read:tenants, delete:tenants, admin:organizations, rollouts).
     const permissions = await globalPermissions(userId);
-    expect(permissions).toEqual(["create:tenants"]);
+    expect([...permissions].sort()).toEqual([
+      "create:tenants",
+      "read:tenant_operations",
+      "retry:tenant_provisioning",
+    ]);
 
     // 3. A user holding only that creates a tenant.
     const response = await appFor(userId, permissions).request(
@@ -137,7 +142,11 @@ describe("self-service sign-up to a created tenant", () => {
     const orgRoles = await data.userRoles.list(CP, userId, undefined, org.id);
     expect(orgRoles.map((role) => role.name)).toEqual(["Tenant Admin"]);
 
-    // The global role is still only create:tenants.
-    expect(await globalPermissions(userId)).toEqual(["create:tenants"]);
+    // The global role is unchanged by creating a tenant.
+    expect([...(await globalPermissions(userId))].sort()).toEqual([
+      "create:tenants",
+      "read:tenant_operations",
+      "retry:tenant_provisioning",
+    ]);
   });
 });

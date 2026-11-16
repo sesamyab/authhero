@@ -432,3 +432,243 @@ describe("management-api tenant operations", () => {
     expect(response.status).toBe(403);
   });
 });
+
+// On the control plane the routes must not hand every control-plane token
+// every tenant's operations: operators (admin:organizations or a machine
+// token) reach all tenants, anyone else only the tenants whose organization
+// they belong to, and the narrow retry scope may only retry a failed provision.
+describe("management-api tenant operations: who reaches which tenant", () => {
+  const CONTROL_PLANE = "tenantId";
+  const CHILD = "child";
+  const MEMBER = "auth2|member";
+  const OUTSIDER = "auth2|outsider";
+
+  async function setup() {
+    const dataRef: { current?: DataAdapters } = {};
+    const { app, env } = await getTestServer({
+      tenantOperationExecutor: createStubExecutor(() => dataRef.current),
+    });
+    dataRef.current = env.data;
+    env.data.multiTenancyConfig = { controlPlaneTenantId: CONTROL_PLANE };
+
+    await env.data.tenants.create({
+      id: CHILD,
+      friendly_name: "Child",
+      audience: "https://child.example.com",
+      sender_email: "support@child.example.com",
+      sender_name: "Child",
+      provisioning_state: "failed",
+    });
+    const org = await env.data.organizations.create(CONTROL_PLANE, {
+      name: CHILD,
+    });
+    await env.data.users.create(CONTROL_PLANE, {
+      user_id: MEMBER,
+      email: "member@example.com",
+      email_verified: true,
+      provider: "auth2",
+      connection: "Username-Password-Authentication",
+      is_social: false,
+    });
+    await env.data.userOrganizations.create(CONTROL_PLANE, {
+      user_id: MEMBER,
+      organization_id: org.id,
+    });
+    const operation = await env.data.tenantOperations!.create({
+      tenant_id: CHILD,
+      kind: "upgrade",
+      engine: "inline",
+    });
+    return { app, env, operation };
+  }
+
+  const get = (
+    app: Awaited<ReturnType<typeof setup>>["app"],
+    env: unknown,
+    path: string,
+    token: string,
+  ) =>
+    app.request(
+      path,
+      {
+        headers: {
+          "tenant-id": CONTROL_PLANE,
+          authorization: `Bearer ${token}`,
+        },
+      },
+      env as never,
+    );
+
+  const post = (
+    app: Awaited<ReturnType<typeof setup>>["app"],
+    env: unknown,
+    token: string,
+    kind = "upgrade",
+  ) =>
+    app.request(
+      `/api/v2/tenants/${CHILD}/operations`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": CONTROL_PLANE,
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ kind }),
+      },
+      env as never,
+    );
+
+  const reader = (user_id: string) =>
+    createToken({
+      user_id,
+      aud: "urn:authhero:management",
+      permissions: ["read:tenant_operations"],
+    });
+
+  it("hides a tenant's history from a user who is not a member of it", async () => {
+    const { app, env } = await setup();
+    const response = await get(
+      app,
+      env,
+      `/api/v2/tenants/${CHILD}/operations`,
+      await reader(OUTSIDER),
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("shows a tenant's history to a member of it", async () => {
+    const { app, env, operation } = await setup();
+    const response = await get(
+      app,
+      env,
+      `/api/v2/tenants/${CHILD}/operations`,
+      await reader(MEMBER),
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).operations[0].id).toBe(operation.id);
+  });
+
+  it("answers 404 for an operation of a tenant the user is not a member of", async () => {
+    const { app, env, operation } = await setup();
+    const outsider = await get(
+      app,
+      env,
+      `/api/v2/operations/${operation.id}`,
+      await reader(OUTSIDER),
+    );
+    expect(outsider.status).toBe(404);
+    const member = await get(
+      app,
+      env,
+      `/api/v2/operations/${operation.id}`,
+      await reader(MEMBER),
+    );
+    expect(member.status).toBe(200);
+  });
+
+  it("lets a global operator and a machine token reach any tenant", async () => {
+    const { app, env, operation } = await setup();
+    const operator = await createToken({
+      user_id: OUTSIDER,
+      aud: "urn:authhero:management",
+      permissions: ["read:tenant_operations", "admin:organizations"],
+    });
+    expect(
+      (await get(app, env, `/api/v2/operations/${operation.id}`, operator))
+        .status,
+    ).toBe(200);
+
+    const machine = await createToken({
+      user_id: "client@clients",
+      azp: "client",
+      aud: "urn:authhero:management",
+      permissions: ["read:tenant_operations"],
+    });
+    expect(
+      (await get(app, env, `/api/v2/operations/${operation.id}`, machine))
+        .status,
+    ).toBe(200);
+  });
+
+  it("treats holders of the operator scopes as reaching every tenant", async () => {
+    const { app, env, operation } = await setup();
+    for (const scope of ["create:tenant_operations", "create:rollouts"]) {
+      const token = await createToken({
+        user_id: OUTSIDER,
+        aud: "urn:authhero:management",
+        permissions: ["read:tenant_operations", scope],
+      });
+      expect(
+        (await get(app, env, `/api/v2/operations/${operation.id}`, token))
+          .status,
+      ).toBe(200);
+    }
+  });
+
+  it("does not let an organization-scoped admin:organizations act globally", async () => {
+    const { app, env, operation } = await setup();
+    const token = await createToken({
+      user_id: OUTSIDER,
+      aud: "urn:authhero:management",
+      org_id: "org_other",
+      permissions: ["read:tenant_operations", "admin:organizations"],
+    });
+    expect(
+      (await get(app, env, `/api/v2/operations/${operation.id}`, token)).status,
+    ).toBe(404);
+  });
+
+  describe("retry:tenant_provisioning", () => {
+    const retrier = (user_id: string) =>
+      createToken({
+        user_id,
+        aud: "urn:authhero:management",
+        permissions: ["retry:tenant_provisioning"],
+      });
+
+    it("lets a member retry a failed provision with an upgrade", async () => {
+      const { app, env } = await setup();
+      const response = await post(app, env, await retrier(MEMBER));
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({
+        tenant_id: CHILD,
+        kind: "upgrade",
+      });
+    });
+
+    it("refuses every other kind", async () => {
+      const { app, env } = await setup();
+      for (const kind of ["sync-defaults", "detach"]) {
+        const response = await post(app, env, await retrier(MEMBER), kind);
+        expect(response.status).toBe(403);
+      }
+    });
+
+    it("refuses a tenant that did not fail", async () => {
+      const { app, env } = await setup();
+      await env.data.tenants.update(CHILD, { provisioning_state: "ready" });
+      const response = await post(app, env, await retrier(MEMBER));
+      expect(response.status).toBe(403);
+    });
+
+    it("answers 404 for a user who is not a member of the tenant", async () => {
+      const { app, env } = await setup();
+      const response = await post(app, env, await retrier(OUTSIDER));
+      expect(response.status).toBe(404);
+    });
+
+    it("keeps create:tenant_operations as the operator scope for every kind", async () => {
+      const { app, env } = await setup();
+      await env.data.tenants.update(CHILD, { provisioning_state: "ready" });
+      const operator = await createToken({
+        user_id: "client@clients",
+        azp: "client",
+        aud: "urn:authhero:management",
+        permissions: ["create:tenant_operations"],
+      });
+      const response = await post(app, env, operator);
+      expect(response.status).toBe(201);
+    });
+  });
+});

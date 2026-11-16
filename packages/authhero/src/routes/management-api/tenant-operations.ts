@@ -29,6 +29,89 @@ const listQuerySchema = z.object({
   rollout_id: z.string().optional(),
 });
 
+type CallerToken = {
+  sub?: string;
+  azp?: string;
+  gty?: string;
+  scope?: string;
+  permissions?: string[];
+  org_id?: string;
+};
+
+function callerGrants(user: CallerToken | undefined): Set<string> {
+  return new Set([
+    ...(user?.permissions ?? []),
+    ...(user?.scope ? user.scope.split(" ").filter(Boolean) : []),
+  ]);
+}
+
+/**
+ * Whether the caller may reach a tenant's operations.
+ *
+ * - A caller on a child tenant reaches only that tenant.
+ * - On the control plane, an operator reaches every tenant: a machine token
+ *   (its scopes are explicit grants), a caller holding `create:tenant_operations` or
+ *   `create:rollouts`,
+ *   or a user token that is not scoped to an organization and holds
+ *   `admin:organizations`. Anyone else reaches only the
+ *   tenants whose organization they belong to, the same rule as `GET /tenants`.
+ * - Without a configured control plane there is one tenant and no filter.
+ */
+async function callerReachesTenant(
+  ctx: {
+    env: { data: Bindings["data"] };
+    var: Variables;
+  },
+  targetTenantId: string | null,
+): Promise<boolean> {
+  if (!isControlPlaneTenant(ctx, ctx.var.tenant_id)) {
+    return targetTenantId === ctx.var.tenant_id;
+  }
+  const controlPlaneTenantId =
+    ctx.env.data.multiTenancyConfig?.controlPlaneTenantId;
+  if (!controlPlaneTenantId) return true;
+
+  const user = ctx.var.user as CallerToken | undefined;
+  if (!user?.sub) return false;
+  if (
+    user.sub.endsWith("@clients") ||
+    (user.azp && user.sub === user.azp) ||
+    user.gty
+  ) {
+    return true;
+  }
+  const grants = callerGrants(user);
+  // Operator scopes: `create:tenant_operations` starts any kind of operation
+  // and `create:rollouts` runs one across the fleet, so their holders already
+  // reach every tenant.
+  if (grants.has("create:tenant_operations") || grants.has("create:rollouts")) {
+    return true;
+  }
+  const orgScoped = Boolean(user.org_id ?? ctx.var.organization_id);
+  if (!orgScoped && grants.has("admin:organizations")) return true;
+
+  // An operation with no tenant (fleet-wide) is for operators only.
+  if (!targetTenantId) return false;
+
+  const perPage = 100;
+  for (let page = 0; ; page++) {
+    const { organizations } =
+      await ctx.env.data.userOrganizations.listUserOrganizations(
+        controlPlaneTenantId,
+        user.sub,
+        { page, per_page: perPage },
+      );
+    if (
+      organizations.some(
+        (org) => org.name.toLowerCase() === targetTenantId.toLowerCase(),
+      )
+    ) {
+      return true;
+    }
+    if (organizations.length < perPage) return false;
+  }
+}
+
 // GET /operations/{id} — one operation plus its full event timeline.
 const getOperation = defineRoute({
   route: createRoute({
@@ -63,14 +146,10 @@ const getOperation = defineRoute({
 
     const { id } = ctx.req.valid("param");
     const operation = await tenantOperations.get(id);
-    // Only the control plane may read arbitrary operations; other callers
-    // are limited to their own tenant's. Respond 404 (not 403) so foreign
-    // operation ids don't leak their existence.
-    if (
-      !operation ||
-      (!isControlPlaneTenant(ctx, ctx.var.tenant_id) &&
-        operation.tenant_id !== ctx.var.tenant_id)
-    ) {
+    // Only operators on the control plane may read arbitrary operations;
+    // other callers are limited to the tenants they can reach. Respond 404
+    // (not 403) so foreign operation ids don't leak their existence.
+    if (!operation || !(await callerReachesTenant(ctx, operation.tenant_id))) {
       throw notFound.tenantOperation();
     }
 
@@ -127,8 +206,9 @@ const listTenantOperations = defineRoute({
     if (!tenantId) {
       throw new HTTPException(400, { message: "Missing tenant id" });
     }
-    // Same scoping as GET /operations/{id}: only the control plane may read
-    // other tenants' operation history.
+    // Same scoping as GET /operations/{id}: a child tenant reads only its own
+    // history, and on the control plane only operators and members of the
+    // tenant's organization read a tenant's history.
     if (
       !isControlPlaneTenant(ctx, ctx.var.tenant_id) &&
       tenantId !== ctx.var.tenant_id
@@ -137,6 +217,9 @@ const listTenantOperations = defineRoute({
         message:
           "Operations for other tenants can only be read from the control plane",
       });
+    }
+    if (!(await callerReachesTenant(ctx, tenantId))) {
+      throw notFound.tenant();
     }
     const { page, per_page, kind, status, rollout_id } = ctx.req.valid("query");
 
@@ -184,7 +267,11 @@ const createTenantOperation = defineRoute({
         },
       },
     },
-    security: [{ Bearer: ["create:tenant_operations"] }],
+    // `retry:tenant_provisioning` is the narrow scope for self-service users:
+    // it only allows retrying a failed provision (see the handler).
+    security: [
+      { Bearer: ["create:tenant_operations", "retry:tenant_provisioning"] },
+    ],
     responses: {
       201: {
         content: {
@@ -212,6 +299,22 @@ const createTenantOperation = defineRoute({
     const tenant = await ctx.env.data.tenants.get(tenantId);
     if (!tenant) {
       throw notFound.tenant();
+    }
+    if (!(await callerReachesTenant(ctx, tenantId))) {
+      throw notFound.tenant();
+    }
+
+    // Without `create:tenant_operations` the caller holds only the narrow
+    // retry scope: `upgrade`, and only while the tenant's provisioning failed.
+    if (
+      !callerGrants(ctx.var.user as CallerToken).has("create:tenant_operations")
+    ) {
+      if (kind !== "upgrade" || tenant.provisioning_state !== "failed") {
+        throw new HTTPException(403, {
+          message:
+            "retry:tenant_provisioning only allows retrying a failed provision",
+        });
+      }
     }
 
     if (kind === "provision" || kind === "deprovision") {
