@@ -4,8 +4,8 @@ import { Bindings, Variables } from "../types";
 import { EnrichedClient } from "../helpers/client";
 import {
   getOrCreateUserByProvider,
-  getPrimaryUserByProvider,
   getUserByProvider,
+  resolvePrimaryUser,
 } from "../helpers/users";
 import { resolveDatabaseConnectionScope } from "../helpers/database-connection-scope";
 
@@ -100,55 +100,41 @@ export async function getUsernamePasswordUser({
     tenant_id,
     connection,
   );
-  const legacy = await getUserByProvider({
-    userAdapter: env.data.users,
-    tenant_id,
-    username,
-    provider: LEGACY_PROVIDER,
-    connection: scope,
-  });
-  if (legacy) return legacy;
+  const lookup = (provider: UsernamePasswordProviderValue) =>
+    getUserByProvider({
+      userAdapter: env.data.users,
+      tenant_id,
+      username,
+      provider,
+      connection: scope,
+    });
 
-  return getUserByProvider({
-    userAdapter: env.data.users,
-    tenant_id,
-    username,
-    provider: TARGET_PROVIDER,
-    connection: scope,
-  });
+  const legacy = await lookup(LEGACY_PROVIDER);
+  // Unscoped, or an exact match in the scoped connection: auth2 wins.
+  if (legacy && (!scope || legacy.connection === scope.name)) return legacy;
+
+  const target = await lookup(TARGET_PROVIDER);
+  if (!scope) return target;
+
+  // Scoped: a row in the connection itself beats an unattributed legacy row
+  // (one whose `connection` names no database connection), whichever
+  // provider it has. Otherwise a login scoped to one connection could check
+  // the password of, and issue tokens for, a legacy user of another one.
+  if (target && target.connection === scope.name) return target;
+  return legacy ?? target;
 }
 
 /**
  * Same as {@link getUsernamePasswordUser} but resolves to the primary user
- * if a linked secondary is matched. Same `auth2`-first ordering.
+ * if a linked secondary is matched. Same ordering: the row is chosen first,
+ * then its cluster root.
  */
-export async function getPrimaryUsernamePasswordUser({
-  env,
-  tenant_id,
-  username,
-  connection,
-}: DualReadParams): Promise<User | null> {
-  const scope = await resolveDatabaseConnectionScope(
-    env.data.connections,
-    tenant_id,
-    connection,
-  );
-  const legacy = await getPrimaryUserByProvider({
-    userAdapter: env.data.users,
-    tenant_id,
-    username,
-    provider: LEGACY_PROVIDER,
-    connection: scope,
-  });
-  if (legacy) return legacy;
-
-  return getPrimaryUserByProvider({
-    userAdapter: env.data.users,
-    tenant_id,
-    username,
-    provider: TARGET_PROVIDER,
-    connection: scope,
-  });
+export async function getPrimaryUsernamePasswordUser(
+  params: DualReadParams,
+): Promise<User | null> {
+  const user = await getUsernamePasswordUser(params);
+  if (!user) return null;
+  return resolvePrimaryUser(params.env.data.users, params.tenant_id, user);
 }
 
 /**
@@ -157,8 +143,8 @@ export async function getPrimaryUsernamePasswordUser({
  * configured provider) if none exists. Prevents duplicating an existing
  * `auth2|*` user when the tenant is migrated to `"auth0"`.
  *
- * `connection` is written on a new row; `lookupConnection` (default
- * `connection`) scopes the existing-user lookup, see {@link DualReadParams}.
+ * `connection` is written on a new row and scopes the existing-user lookup,
+ * see {@link DualReadParams}.
  */
 export async function getOrCreateUsernamePasswordUser(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
@@ -166,16 +152,15 @@ export async function getOrCreateUsernamePasswordUser(
     client: EnrichedClient;
     username: string;
     connection: string;
-    lookupConnection?: string;
     ip?: string;
   },
 ): Promise<User> {
-  const { client, username, connection, lookupConnection, ip } = params;
+  const { client, username, connection, ip } = params;
   const existing = await getUsernamePasswordUser({
     env: ctx.env,
     tenant_id: client.tenant.id,
     username,
-    connection: lookupConnection ?? connection,
+    connection,
   });
   if (existing) {
     return existing;
@@ -189,7 +174,6 @@ export async function getOrCreateUsernamePasswordUser(
     username,
     provider,
     connection,
-    lookupConnection,
     isSocial: false,
     ip,
   });

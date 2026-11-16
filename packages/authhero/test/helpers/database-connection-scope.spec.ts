@@ -84,8 +84,12 @@ describe("resolveClientDatabaseConnectionName", () => {
   });
 
   it("does not guess between several database connections", () => {
+    // Falls back to the generic name, which only scopes when a tenant
+    // connection carries it.
     const client = { connections: [db("main"), db("cte-store")] };
-    expect(resolveClientDatabaseConnectionName(client)).toBeUndefined();
+    expect(resolveClientDatabaseConnectionName(client)).toBe(
+      "Username-Password-Authentication",
+    );
     expect(
       resolveClientDatabaseConnectionName(
         client,

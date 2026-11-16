@@ -738,12 +738,14 @@ export const signupScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Check if user already exists
+      // Check if user already exists. Deliberately unscoped: the users table
+      // is unique per (email, provider) until #1704, so an address held in
+      // another database connection would pass a scoped check and then fail
+      // the insert. Scope this together with the index.
       const existingUser = await getUsernamePasswordUser({
         env: ctx.env,
         tenant_id: client.tenant.id,
         username: email,
-        connection: resolveClientDatabaseConnectionName(client),
       });
 
       if (existingUser) {
@@ -809,7 +811,8 @@ export const signupScreenDefinition: ScreenDefinition = {
           email,
           email_verified: false,
           provider,
-          connection,
+          // The connection this client's login lookups scope to (#1702).
+          connection: resolveClientDatabaseConnectionName(client),
           is_social: false,
           password: { hash, algorithm },
           // Mappings come from the stored partial, never from the request.

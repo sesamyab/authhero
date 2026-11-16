@@ -104,11 +104,14 @@ const postSignup = defineRoute({
       });
     }
 
+    // Deliberately unscoped: the users table is unique per (email, provider)
+    // until #1704, so an address held in another database connection would
+    // pass a scoped check and then fail the insert with a 409 that reveals
+    // the account. Scope this together with the index.
     const existingUser = await getPrimaryUsernamePasswordUser({
       env: ctx.env,
       tenant_id: client.tenant.id,
       username: email,
-      connection: resolveClientDatabaseConnectionName(client),
     });
 
     if (existingUser) {
@@ -130,7 +133,8 @@ const postSignup = defineRoute({
       email,
       email_verified: false,
       provider,
-      connection: Strategy.USERNAME_PASSWORD,
+      // The connection the login lookups for this client scope to.
+      connection: resolveClientDatabaseConnectionName(client),
       is_social: false,
       password: { hash, algorithm },
     });

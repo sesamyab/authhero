@@ -225,11 +225,12 @@ const postRoot = defineRoute({
           )
         : undefined;
 
+      // Deliberately unscoped until #1704 makes the unique index per
+      // connection; see the same check in screens/signup.ts.
       const existingUser = await getUsernamePasswordUser({
         env: ctx.env,
         tenant_id: client.tenant.id,
         username: loginSession.authParams.username,
-        connection: resolveClientDatabaseConnectionName(client),
       });
 
       if (existingUser) {
@@ -263,7 +264,8 @@ const postRoot = defineRoute({
         email: loginSession.authParams.username,
         email_verified,
         provider,
-        connection,
+        // The connection this client's login lookups scope to (#1702).
+        connection: resolveClientDatabaseConnectionName(client),
         is_social: false,
       });
 

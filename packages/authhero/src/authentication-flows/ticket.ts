@@ -111,10 +111,9 @@ export async function ticketAuth(
       ? await getOrCreateUsernamePasswordUser(ctx, {
           client,
           username: loginSession.authParams.username,
-          connection: realm,
-          // Same scope /co/authenticate verified the password in, so the
+          // Same connection /co/authenticate verified the password in, so the
           // ticket resolves the user that logged in.
-          lookupConnection: resolveClientDatabaseConnectionName(client, realm),
+          connection: resolveClientDatabaseConnectionName(client, realm),
           ip: ctx.var.ip,
         })
       : await getOrCreateUserByProvider(ctx, {

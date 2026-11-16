@@ -262,3 +262,56 @@ describe("getUsernamePasswordUser connection scope (#1702)", () => {
     expect((await lookup(CTE))?.user_id).toBe("auth0|exchanged-primary");
   });
 });
+
+describe("getUsernamePasswordUser exact match first (#1702 review)", () => {
+  it("prefers an auth0 row in the scoped connection over an unattributed auth2 row", async () => {
+    const { env } = await getTestServer();
+    await env.data.connections.create("tenantId", {
+      id: "cte-store",
+      name: "cte-store",
+      strategy: "auth0",
+      options: {},
+    });
+    // A legacy row whose connection names no database connection: visible
+    // to every scope, and found first by the auth2-first dual read.
+    await env.data.users.create("tenantId", {
+      user_id: "auth2|legacy-alice",
+      email: "alice@example.com",
+      email_verified: true,
+      provider: "auth2",
+      connection: "auth2",
+      is_social: false,
+    });
+    await env.data.users.create("tenantId", {
+      user_id: "auth0|cte-alice",
+      email: "alice@example.com",
+      email_verified: true,
+      provider: "auth0",
+      connection: "cte-store",
+      is_social: false,
+    });
+
+    const params = (connection: string) => ({
+      env,
+      tenant_id: "tenantId",
+      username: "alice@example.com",
+      connection,
+    });
+
+    expect((await getUsernamePasswordUser(params("cte-store")))?.user_id).toBe(
+      "auth0|cte-alice",
+    );
+    expect(
+      (await getPrimaryUsernamePasswordUser(params("cte-store")))?.user_id,
+    ).toBe("auth0|cte-alice");
+    // In the main connection the cte row is out of scope; the legacy row is
+    // the only candidate.
+    expect(
+      (
+        await getUsernamePasswordUser(
+          params("Username-Password-Authentication"),
+        )
+      )?.user_id,
+    ).toBe("auth2|legacy-alice");
+  });
+});

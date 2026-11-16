@@ -88,35 +88,34 @@ export async function resolveDatabaseConnectionScope(
 }
 
 /**
- * The database connection a login for `client` targets, when that is
- * unambiguous.
+ * The database connection a login or signup for `client` targets. Lookups
+ * scope to it and new database users are written with it, so the two always
+ * agree.
  *
  * - An explicit realm other than the generic `Username-Password-Authentication`
  *   is used as is.
- * - The generic realm (or none) resolves to a client connection carrying that
- *   exact name, else to the client's only database connection.
- * - With several database connections on the client and no way to pick one,
- *   the generic realm (or `undefined`) is returned, and
- *   {@link resolveDatabaseConnectionScope} leaves the lookup unscoped unless
- *   that literal is itself a database connection's name.
+ * - The generic realm (the default) resolves to a client connection carrying
+ *   that exact name, else to the client's only database connection.
+ * - With several database connections on the client and none named like the
+ *   generic realm, the generic name is returned. A user written with it is
+ *   visible to every scope unless a tenant connection has that name, and
+ *   {@link resolveDatabaseConnectionScope} leaves a lookup by it unscoped
+ *   under the same condition.
  *
  * Choosing between several database connections on one client is #1703; this
  * deliberately does not guess.
  */
 export function resolveClientDatabaseConnectionName(
   client: { connections: Pick<Connection, "name" | "strategy">[] },
-  realm?: string,
-): string | undefined {
-  if (realm && realm !== Strategy.USERNAME_PASSWORD) return realm;
+  realm: string = Strategy.USERNAME_PASSWORD,
+): string {
+  if (realm !== Strategy.USERNAME_PASSWORD) return realm;
 
   const databaseConnections = client.connections.filter((connection) =>
     isDatabaseConnectionStrategy(connection.strategy),
   );
-  if (realm && databaseConnections.some((c) => c.name === realm)) {
-    return realm;
-  }
-  if (databaseConnections.length === 1) {
-    return databaseConnections[0]?.name;
-  }
+  if (databaseConnections.some((c) => c.name === realm)) return realm;
+  const [only] = databaseConnections;
+  if (only && databaseConnections.length === 1) return only.name;
   return realm;
 }

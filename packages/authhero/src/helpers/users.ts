@@ -890,13 +890,6 @@ interface GetOrCreateUserByProviderParams {
    * asserted, so email-based linking never acts on it.
    */
   selfService?: ConnectionSelfService | null;
-  /**
-   * Database connection the existing-user lookup is scoped to, when it
-   * differs from the `connection` written on a new row. Defaults to
-   * `connection`. Only applies to the username-password providers; see
-   * `resolveDatabaseConnectionScope` for when a scope takes effect.
-   */
-  lookupConnection?: string;
   userId?: string;
   profileData?: Record<string, unknown>;
   ip?: string;
@@ -919,7 +912,6 @@ export async function getOrCreateUserByProvider(
   const {
     provider,
     connection,
-    lookupConnection,
     client,
     userId,
     isSocial,
@@ -965,7 +957,7 @@ export async function getOrCreateUserByProvider(
     ? await resolveDatabaseConnectionScope(
         ctx.env.data.connections,
         client.tenant.id,
-        lookupConnection ?? connection,
+        connection,
       )
     : undefined;
   const findExistingIdentity = async (): Promise<User | null> => {

@@ -330,7 +330,8 @@ export const acceptInvitationScreenDefinition: ScreenDefinition = {
             email,
             email_verified: true,
             provider,
-            connection,
+            // The connection this client's login lookups scope to (#1702).
+            connection: resolveClientDatabaseConnectionName(client),
             is_social: false,
             password: { hash, algorithm },
             app_metadata: invite.app_metadata || {},
