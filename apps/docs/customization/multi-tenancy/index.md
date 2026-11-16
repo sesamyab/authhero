@@ -90,6 +90,10 @@ const { app } = initMultiTenant({
   // Default permissions for new tenant organizations
   defaultPermissions: ["tenant:admin", "tenant:read"],
 
+  // Let users who verify their email on the control plane create a tenant
+  // (grants a role with only create:tenants). Off by default.
+  // selfServiceSignup: true,
+
   // Custom database per tenant (for database isolation)
   getAdapters: async (tenantId) =>
     createAdapters(getDatabaseForTenant(tenantId)),

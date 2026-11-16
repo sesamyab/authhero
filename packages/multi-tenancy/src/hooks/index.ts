@@ -9,3 +9,9 @@ export {
   type EntitySyncConfig,
   type SyncHooksResult,
 } from "./sync";
+export {
+  createSelfServiceSignupHooks,
+  chainSelfServiceHooks,
+  DEFAULT_SELF_SERVICE_ROLE_NAME,
+  type SelfServiceSignupConfig,
+} from "./self-service-signup";

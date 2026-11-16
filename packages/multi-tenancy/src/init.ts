@@ -11,6 +11,10 @@ import {
 import { createSyncHooks, EntitySyncConfig } from "./hooks/sync";
 import { createProvisioningHooks } from "./hooks";
 import {
+  chainSelfServiceHooks,
+  createSelfServiceSignupHooks,
+} from "./hooks/self-service-signup";
+import {
   createInProcessDetach,
   createInProcessSyncConfig,
   createInlineExecutor,
@@ -238,6 +242,21 @@ export interface MultiTenantConfig extends Omit<
     | false;
 
   /**
+   * Let people who sign up on the control plane create their own tenant.
+   * Once a user's email is verified they get a global role that carries only
+   * `create:tenants` (never `read:tenants`, `delete:tenants` or
+   * `admin:organizations`). Off by default. Needs `controlPlane`.
+   *
+   * It runs through the `onExecutePostUserRegistration` and
+   * `onExecutePostUserUpdate` hooks, ahead of any you configure. The control
+   * plane's admin client must put permissions in the access token (RBAC and
+   * "add permissions to the access token").
+   *
+   * Existing users are not backfilled.
+   */
+  selfServiceSignup?: boolean | { roleName?: string };
+
+  /**
    * Default permissions to grant when creating a tenant organization.
    * @default ["tenant:admin"]
    */
@@ -408,6 +427,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     requireOrganizationMatch = false,
     managementApiExtensions = [],
     entityHooks: customEntityHooks,
+    selfServiceSignup,
     getChildTenantIds,
     getAdapters,
     ...restConfig
@@ -784,11 +804,31 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     { tenants: combinedTenantHooks },
   );
 
+  if (selfServiceSignup && !controlPlane) {
+    throw new Error(
+      "initMultiTenant: `selfServiceSignup` requires `controlPlane` to be set. " +
+        "Only sign-ups on the control plane get the tenant creator role.",
+    );
+  }
+  const hooks = selfServiceSignup
+    ? chainSelfServiceHooks(
+        restConfig.hooks,
+        createSelfServiceSignupHooks({
+          controlPlaneTenantId,
+          roleName:
+            typeof selfServiceSignup === "object"
+              ? selfServiceSignup.roleName
+              : undefined,
+        }),
+      )
+    : restConfig.hooks;
+
   // Initialize AuthHero
   const { app } = init({
     dataAdapter,
     managementDataAdapter,
     ...restConfig,
+    ...(hooks ? { hooks } : {}),
     tenantOperationExecutor,
     ...(rolloutController ? { rolloutController } : {}),
     entityHooks,
