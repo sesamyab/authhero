@@ -1,6 +1,10 @@
-import { Kysely } from "kysely";
+import { Kysely, UpdateResult } from "kysely";
+import { HTTPException } from "hono/http-exception";
 import { Database } from "../db";
-import { OrganizationInsert } from "@authhero/adapter-interfaces";
+import {
+  isUniqueViolation,
+  OrganizationInsert,
+} from "@authhero/adapter-interfaces";
 import { stringifyProperties } from "../helpers/stringify";
 
 export function update(db: Kysely<Database>) {
@@ -24,12 +28,22 @@ export function update(db: Kysely<Database>) {
       updateData,
     );
 
-    const result = await db
-      .updateTable("organizations")
-      .set(updateData)
-      .where("tenant_id", "=", tenantId)
-      .where("id", "=", id)
-      .execute();
+    let result: UpdateResult[];
+    try {
+      result = await db
+        .updateTable("organizations")
+        .set(updateData)
+        .where("tenant_id", "=", tenantId)
+        .where("id", "=", id)
+        .execute();
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new HTTPException(409, {
+          message: "Organization already exists",
+        });
+      }
+      throw err;
+    }
 
     return result.length > 0;
   };

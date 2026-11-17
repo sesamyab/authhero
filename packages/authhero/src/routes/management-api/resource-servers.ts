@@ -15,12 +15,18 @@ import {
   ResourceServer,
   LogTypes,
   escapeLuceneValue,
+  DataAdapters,
 } from "@authhero/adapter-interfaces";
 import { parseSort } from "../../utils/sort";
 import { logMessage } from "../../helpers/logging";
 
 import { defineRoute } from "../../utils/define-route";
-import { requireTenantId, withTotals, listResponse } from "./helpers";
+import {
+  requireTenantId,
+  withTotals,
+  listResponse,
+  findInPagedList,
+} from "./helpers";
 const resourceServersWithTotalsSchema = withTotals({
   resource_servers: z.array(resourceServerSchema),
 });
@@ -33,9 +39,30 @@ const resourceServersWithNextSchema = z.object({
   }),
 });
 
+// Exact identifier lookup across every page. The `identifier:` filter narrows
+// the scan but is a substring match in drizzle, so the comparison is redone
+// here.
+async function findResourceServerByIdentifier(
+  data: DataAdapters,
+  tenantId: string,
+  identifier: string,
+): Promise<ResourceServer | undefined> {
+  return findInPagedList(
+    async (page, per_page) =>
+      (
+        await data.resourceServers.list(tenantId, {
+          q: `identifier:${escapeLuceneValue(identifier)}`,
+          page,
+          per_page,
+        })
+      ).resource_servers,
+    (rs) => rs.identifier === identifier,
+  );
+}
+
 // Auth0 lets clients reference a resource server by either its UUID id or its
 // URL identifier. SDKs (e.g. terraform-provider-auth0) commonly pass the
-// identifier. Look up by id first; on miss, scan by identifier.
+// identifier. Look up by id first; on miss, look up by identifier.
 async function resolveResourceServer(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   tenantId: string,
@@ -46,9 +73,12 @@ async function resolveResourceServer(
     idOrIdentifier,
   );
   if (direct) return direct;
-  const list = await ctx.env.data.resourceServers.list(tenantId, {});
   return (
-    list.resource_servers.find((rs) => rs.identifier === idOrIdentifier) ?? null
+    (await findResourceServerByIdentifier(
+      ctx.env.data,
+      tenantId,
+      idOrIdentifier,
+    )) ?? null
   );
 }
 const getRoot = defineRoute({
@@ -287,7 +317,32 @@ const patchById = defineRoute({
     }
 
     const realId = existingResourceServer.id!;
-    await ctx.env.data.resourceServers.update(tenant_id, realId, body);
+
+    const newIdentifier = body.identifier;
+    if (
+      newIdentifier !== undefined &&
+      newIdentifier !== existingResourceServer.identifier
+    ) {
+      const clash = await findResourceServerByIdentifier(
+        ctx.env.data,
+        tenant_id,
+        newIdentifier,
+      );
+      if (clash && clash.id !== realId) {
+        throw conflict.resourceServer(newIdentifier);
+      }
+    }
+
+    try {
+      await ctx.env.data.resourceServers.update(tenant_id, realId, body);
+    } catch (err) {
+      // The (tenant_id, identifier) unique index is the only one an update
+      // can trip: a concurrent request took the identifier after the check.
+      if (isUniqueConstraintError(err) && newIdentifier !== undefined) {
+        throw conflict.resourceServer(newIdentifier);
+      }
+      throw err;
+    }
 
     const resourceServer = await ctx.env.data.resourceServers.get(
       tenant_id,
@@ -348,11 +403,13 @@ const postRoot = defineRoute({
     const tenant_id = requireTenantId(ctx);
     const body = ctx.req.valid("json");
 
-    const { resource_servers: existing } =
-      await ctx.env.data.resourceServers.list(tenant_id, {
-        q: `identifier:${escapeLuceneValue(body.identifier)}`,
-      });
-    if (existing.some((rs) => rs.identifier === body.identifier)) {
+    if (
+      await findResourceServerByIdentifier(
+        ctx.env.data,
+        tenant_id,
+        body.identifier,
+      )
+    ) {
       throw conflict.resourceServer(body.identifier);
     }
 
@@ -363,7 +420,17 @@ const postRoot = defineRoute({
         body,
       );
     } catch (err) {
-      if (isUniqueConstraintError(err)) {
+      // A concurrent create took the identifier after the check above. Only
+      // report it as an identifier conflict if that is what it was: a
+      // caller-supplied `id` that already exists is a different 409.
+      if (
+        isUniqueConstraintError(err) &&
+        (await findResourceServerByIdentifier(
+          ctx.env.data,
+          tenant_id,
+          body.identifier,
+        ))
+      ) {
         throw conflict.resourceServer(body.identifier);
       }
       throw err;

@@ -1,5 +1,9 @@
-import { Kysely } from "kysely";
-import { ResourceServer } from "@authhero/adapter-interfaces";
+import { Kysely, UpdateResult } from "kysely";
+import { HTTPException } from "hono/http-exception";
+import {
+  isUniqueViolation,
+  ResourceServer,
+} from "@authhero/adapter-interfaces";
 import { Database, sqlResourceServerSchema } from "../db";
 import { z } from "@hono/zod-openapi";
 import { enforceToSql } from "../utils/configInheritance";
@@ -75,12 +79,22 @@ export function update(db: Kysely<Database>) {
       updates.is_system = is_system ? 1 : 0;
     }
 
-    const result = await db
-      .updateTable("resource_servers")
-      .set(updates)
-      .where("tenant_id", "=", tenant_id)
-      .where("id", "=", id)
-      .executeTakeFirst();
+    let result: UpdateResult;
+    try {
+      result = await db
+        .updateTable("resource_servers")
+        .set(updates)
+        .where("tenant_id", "=", tenant_id)
+        .where("id", "=", id)
+        .executeTakeFirst();
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new HTTPException(409, {
+          message: "Resource server already exists",
+        });
+      }
+      throw err;
+    }
 
     return Number(result.numUpdatedRows) > 0;
   };

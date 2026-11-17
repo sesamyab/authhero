@@ -21,7 +21,14 @@ export const organizations = sqliteTable(
     created_at: text("created_at", { length: 35 }).notNull(),
     updated_at: text("updated_at", { length: 35 }).notNull(),
   },
-  (table) => [index("idx_organizations_tenant_id").on(table.tenant_id)],
+  (table) => [
+    index("idx_organizations_tenant_id").on(table.tenant_id),
+    // Same name as kysely's index so both adapters report the same constraint.
+    uniqueIndex("idx_organizations_tenant_name_unique").on(
+      table.tenant_id,
+      table.name,
+    ),
+  ],
 );
 
 export const userOrganizations = sqliteTable(
