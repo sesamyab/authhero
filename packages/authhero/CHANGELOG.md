@@ -1,5 +1,28 @@
 # authhero
 
+## 9.34.0
+
+### Minor Changes
+
+- 87f2e7a: Users can now tick "Remember this device for N days" on the TOTP and SMS challenge screens, and later logins from that browser skip the MFA challenge for that period (#1670). The option appears only when everything that requires MFA for the login allows it: the tenant policy through the new `tenant.mfa.allow_remember_browser` setting (off by default, so nothing changes until a tenant turns it on), and a post-login action through `api.multifactor.enable(provider, { allowRememberBrowser: true })`. `tenant.mfa.remember_browser_lifetime_in_days` sets the period (1–365, default 30); lowering it also shortens devices remembered earlier.
+
+  The browser holds a random token in an `HttpOnly` `{tenant_id}-mfa-remember-browser` cookie; only its SHA-256 is stored, as a new `mfa_remember_browser` code type (no migration). A remembered browser satisfies MFA but is not MFA: no `amr` claim is issued for those logins and the browser session is not marked as MFA-complete. It never skips enrollment, and silent authentication accepts it when the tenant allows remembering. `POST /api/v2/users/{id}/multifactor/actions/invalidate-remember-browser` (Auth0) makes every browser remembered for a user complete MFA again. The admin MFA page has the two new settings.
+
+### Patch Changes
+
+- 1bdd870: Enforce resource-server identifier and organization name uniqueness per tenant at the storage layer (#1589).
+  - `@authhero/drizzle`: migration `0020_resource_server_org_unique` adds unique indexes on `resource_servers (tenant_id, identifier)` and `organizations (tenant_id, name)`, matching the kysely schema. The migration fails if a tenant already has duplicates; resolve them before deploying. Resource-server create/update and organization update now throw a 409 on a unique violation.
+  - `@authhero/kysely-adapter`: resource-server create/update and organization update throw a 409 on a unique violation instead of a raw driver error.
+  - `@authhero/adapter-interfaces`: new `isUniqueViolation(err)` that recognizes unique/primary-key violations from SQLite, D1, MySQL, PlanetScale and Postgres drivers, including drizzle-wrapped errors.
+  - `authhero`: `PATCH /api/v2/organizations/:id` returns 409 `organization_conflict` when the new name belongs to another organization, and `PATCH /api/v2/resource-servers/:id` returns 409 `resource_server_conflict` when the new identifier is taken. The duplicate checks on create and update, and resource-server lookup by identifier, now compare exactly across all pages instead of the first page of a substring search. Unique violations from a concurrent write map to the same 409 bodies.
+
+- Updated dependencies [87f2e7a]
+- Updated dependencies [1bdd870]
+  - @authhero/adapter-interfaces@4.29.0
+  - @authhero/proxy@0.11.16
+  - @authhero/saml@0.6.9
+  - @authhero/widget@0.41.13
+
 ## 9.33.0
 
 ### Minor Changes
