@@ -41,7 +41,11 @@ When the control plane carries the operations adapters, `createProvisioningHooks
 
 ## Management API
 
-Mounted only when the operations adapters are present. Scopes: `read:tenant_operations`, `create:tenant_operations`.
+Mounted only when the operations adapters are present. Scopes: `read:tenant_operations`, `create:tenant_operations` and the narrow `retry:tenant_provisioning`.
+
+**Who reaches which tenant.** A token for a child tenant reaches only that tenant. On the control plane a caller reaches every tenant if it is an operator: a machine token, or a caller holding `create:tenant_operations`, `create:rollouts` or `admin:organizations`. That only counts for a token that is not scoped to an organization: an organization-scoped token carries the permissions of that organization's roles (the stock Tenant Admin role holds every management scope), so it says nothing about being an operator. A real operator can always mint a token without an organization. Anyone else reaches only the tenants whose organization they belong to, the same rule as `GET /tenants`. A tenant the caller cannot reach answers `404`, both for its history and for one of its operations, so ids do not leak.
+
+**`retry:tenant_provisioning`** is for self-service users. On its own it allows one thing: `{ "kind": "upgrade" }` on a tenant the caller can reach while that tenant's `provisioning_state` is `failed`. Any other kind, or a tenant that did not fail, is refused with `403`, and a second retry while an `upgrade` for the tenant is `pending` or `running` with `409`. `create:tenant_operations` stays the operator scope for every kind. Management API resource servers seeded before this scope existed need it added to their scopes (`selfServiceSignup` does that for you).
 
 | Route                                  | Purpose                                                                                                                             |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |

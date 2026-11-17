@@ -193,6 +193,18 @@ describe("TenantSetup", () => {
     expect(await screen.findByText("Setting up Acme")).toBeTruthy();
   });
 
+  it("lets a user with only the retry scope retry, without seeing the steps", async () => {
+    const { createTenantOperation } = renderSetup([failed, pending], {
+      permissions: ["retry:tenant_provisioning"],
+    });
+    expect(await screen.findByText("Setting up Acme failed")).toBeTruthy();
+    expect(screen.queryByText("D1 quota exceeded")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
+    await waitFor(() =>
+      expect(createTenantOperation).toHaveBeenCalledWith("acme", "upgrade"),
+    );
+  });
+
   it("points a user without retry rights to support", async () => {
     renderSetup([failed]);
     await screen.findByText("Setting up Acme failed");

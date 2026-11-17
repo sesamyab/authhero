@@ -65,7 +65,7 @@ describe("self-service sign-up hooks", () => {
     await data.tenants.create({ id: CHILD, friendly_name: "Child" });
   });
 
-  it("grants a user who registers verified the role with only create:tenants", async () => {
+  it("grants a user who registers verified the self-service role and nothing more", async () => {
     const userId = await createUser(CP, "social", true);
     await registration(CP, { user_id: userId, email_verified: true });
 
@@ -78,8 +78,16 @@ describe("self-service sign-up hooks", () => {
       per_page: 100,
     });
     expect(
-      permissions.map((p) => [p.resource_server_identifier, p.permission_name]),
-    ).toEqual([[MANAGEMENT_API_AUDIENCE, "create:tenants"]]);
+      permissions
+        .map((p) => [p.resource_server_identifier, p.permission_name])
+        .sort(),
+    ).toEqual(
+      [
+        [MANAGEMENT_API_AUDIENCE, "create:tenants"],
+        [MANAGEMENT_API_AUDIENCE, "read:tenant_operations"],
+        [MANAGEMENT_API_AUDIENCE, "retry:tenant_provisioning"],
+      ].sort(),
+    );
   });
 
   it("does not grant a user who registers with an unverified email", async () => {
@@ -137,7 +145,7 @@ describe("self-service sign-up hooks", () => {
     ]);
   });
 
-  it("adds create:tenants to an existing role without removing other permissions", async () => {
+  it("tops up an existing role without removing other permissions", async () => {
     const role = await data.roles.create(CP, {
       name: DEFAULT_SELF_SERVICE_ROLE_NAME,
     });
@@ -158,6 +166,8 @@ describe("self-service sign-up hooks", () => {
     expect(permissions.map((p) => p.permission_name).sort()).toEqual([
       "create:tenants",
       "read:logs",
+      "read:tenant_operations",
+      "retry:tenant_provisioning",
     ]);
   });
 
@@ -173,8 +183,10 @@ describe("self-service sign-up hooks", () => {
     const permissions = await data.rolePermissions.list(CP, role.id, {
       per_page: 100,
     });
-    expect(permissions.map((p) => p.permission_name)).toEqual([
+    expect(permissions.map((p) => p.permission_name).sort()).toEqual([
       "create:tenants",
+      "read:tenant_operations",
+      "retry:tenant_provisioning",
     ]);
     expect(await globalRoles(CP, userId)).toEqual([
       DEFAULT_SELF_SERVICE_ROLE_NAME,
@@ -222,6 +234,31 @@ describe("self-service sign-up hooks", () => {
     expect(
       (await data.userRoles.list(CP, userId, undefined, "")).map((r) => r.id),
     ).toEqual([existing.id]);
+  });
+
+  it("adds the role's scopes to the Management API resource server without dropping others", async () => {
+    const server = await data.resourceServers.create(CP, {
+      name: "Authhero Management API",
+      identifier: MANAGEMENT_API_AUDIENCE,
+      scopes: [
+        { value: "create:tenants", description: "Create Tenants" },
+        { value: "read:logs", description: "Read logs" },
+      ],
+    });
+    const userId = await createUser(CP, "social", true);
+    await registration(CP, { user_id: userId, email_verified: true });
+    // A second sign-up must not add them again.
+    const second = await createUser(CP, "second", true);
+    await registration(CP, { user_id: second, email_verified: true });
+
+    const updated = await data.resourceServers.get(CP, server.id!);
+    const values = (updated!.scopes ?? []).map((scope) => scope.value);
+    expect(values.sort()).toEqual([
+      "create:tenants",
+      "read:logs",
+      "read:tenant_operations",
+      "retry:tenant_provisioning",
+    ]);
   });
 
   it("uses a custom role name", async () => {

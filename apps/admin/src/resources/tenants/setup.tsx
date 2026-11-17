@@ -261,7 +261,8 @@ export function TenantSetup() {
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-3">
               <StepList events={events} />
-              {can("create:tenant_operations") ? (
+              {can("retry:tenant_provisioning") ||
+              can("create:tenant_operations") ? (
                 <Button onClick={retry} disabled={retrying}>
                   <RefreshCw className="h-4 w-4 mr-1" />
                   {retrying ? "Retrying…" : "Retry"}

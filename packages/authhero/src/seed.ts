@@ -577,6 +577,10 @@ export const MANAGEMENT_API_SCOPES = [
   // Tenant lifecycle operations (issue #1026)
   { description: "Read Tenant Operations", value: "read:tenant_operations" },
   {
+    description: "Retry a failed provision of a tenant you can reach",
+    value: "retry:tenant_provisioning",
+  },
+  {
     description: "Create Tenant Operations",
     value: "create:tenant_operations",
   },
