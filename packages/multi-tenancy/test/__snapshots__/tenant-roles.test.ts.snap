@@ -188,6 +188,7 @@ exports[`the tenant owner role's scopes > matches the frozen list 1`] = `
   "read:users",
   "read:users_app_metadata",
   "read:vdcs_templates",
+  "retry:tenant_provisioning",
   "update:actions",
   "update:attack_protection",
   "update:authentication_methods",
