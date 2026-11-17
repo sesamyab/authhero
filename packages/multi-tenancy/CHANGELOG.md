@@ -1,5 +1,38 @@
 # @authhero/multi-tenancy
 
+## 15.9.0
+
+### Minor Changes
+
+- fd986c0: Bind an organization-scoped control-plane token to the tenant its organization names. Such a token carries the permissions of that organization's roles, and on the control plane an organization is a tenant, but the management API let it act on any tenant by naming it in `tenant-id`, including the control plane itself. A member of one tenant's organization who held a role with `update:users` or `update:roles` could change the control plane's users and roles and make themselves an operator, and any Tenant Admin could manage other tenants' users and clients.
+
+  The management API now answers `403` when the token's tenant is the control plane, the token carries an organization (`org_name`, or `org_id`, resolved to the organization's name on the control plane) and the request's tenant is not that tenant. The match ignores case. An `org_id` that names no organization is refused, and a failing organization lookup is a `500`.
+
+  The tenants router in the control plane's own context stays reachable (`/tenants`, `/tenants/{id}` and what hangs off it), since it checks access per organization itself. `/tenants/settings`, `/tenants/{id}/operations` and `/tenants/{id}/config-sync` are not exempt: the first acts on the tenant the request is in, the others do no per-organization check. Tokens without an organization claim, and tokens issued by a child tenant, are not affected. A caller who needs to work on the control plane or across tenants has to use a token that is not scoped to an organization.
+
+  Deleting a tenant with an organization-scoped token no longer falls back to the user's membership of the target organization: an organization-scoped token can now delete only the tenant its own organization names. A token that carries only `org_id` has its organization's name resolved, so it can still delete its own tenant. `/tenants/{id}/operations` and `/tenants/{id}/config-sync` are no longer exempt from the binding in the control plane's context.
+
+  `GET /tenants` now treats a token that carries only `org_name` as organization-scoped, like one with `org_id`. Before, a name-only organization token holding `admin:organizations` received every tenant; it now gets only the tenants of the organizations it belongs to.
+
+  An organization that cannot be resolved (an `org_id` that names no organization) is now refused on the tenants router too, not only elsewhere.
+
+- e2cb332: Add `selfServiceSignup` to `initMultiTenant`, so people who sign up on the control plane can create their own tenant. Once a user's email is verified they get a global role, `Tenant Creator` by default (rename it with `selfServiceSignup: { roleName }`), that carries only `create:tenants` on the Management API. Never `read:tenants`, `delete:tenants` or `admin:organizations`.
+
+  Users who arrive verified (social, passwordless) get it at registration, password sign-ups when they verify. Only the control plane tenant is affected, existing users are not backfilled, and it is off by default. It runs through `onExecutePostUserRegistration` and `onExecutePostUserUpdate` ahead of your own hooks, and it needs `controlPlane` to be set. The role is created on first use and `create:tenants` is added to an existing role if missing; other permissions on it are kept. `createSelfServiceSignupHooks` is exported for hosts that wire hooks themselves.
+
+  Closes #1717.
+
+### Patch Changes
+
+- Updated dependencies [fd986c0]
+- Updated dependencies [488ee5a]
+- Updated dependencies [a6c737d]
+- Updated dependencies [bde32b7]
+- Updated dependencies [940c435]
+- Updated dependencies [087b9ba]
+  - authhero@9.32.0
+  - @authhero/adapter-interfaces@4.28.0
+
 ## 15.8.0
 
 ### Minor Changes

@@ -91,7 +91,8 @@ const { app } = initMultiTenant({
   defaultPermissions: ["tenant:admin", "tenant:read"],
 
   // Let users who verify their email on the control plane create a tenant
-  // (grants a role with only create:tenants). Off by default.
+  // (grants a role that can create a tenant and see and retry its
+  // provisioning). Off by default.
   // selfServiceSignup: true,
 
   // Custom database per tenant (for database isolation)

@@ -1,5 +1,44 @@
 # authhero
 
+## 9.32.0
+
+### Minor Changes
+
+- fd986c0: Bind an organization-scoped control-plane token to the tenant its organization names. Such a token carries the permissions of that organization's roles, and on the control plane an organization is a tenant, but the management API let it act on any tenant by naming it in `tenant-id`, including the control plane itself. A member of one tenant's organization who held a role with `update:users` or `update:roles` could change the control plane's users and roles and make themselves an operator, and any Tenant Admin could manage other tenants' users and clients.
+
+  The management API now answers `403` when the token's tenant is the control plane, the token carries an organization (`org_name`, or `org_id`, resolved to the organization's name on the control plane) and the request's tenant is not that tenant. The match ignores case. An `org_id` that names no organization is refused, and a failing organization lookup is a `500`.
+
+  The tenants router in the control plane's own context stays reachable (`/tenants`, `/tenants/{id}` and what hangs off it), since it checks access per organization itself. `/tenants/settings`, `/tenants/{id}/operations` and `/tenants/{id}/config-sync` are not exempt: the first acts on the tenant the request is in, the others do no per-organization check. Tokens without an organization claim, and tokens issued by a child tenant, are not affected. A caller who needs to work on the control plane or across tenants has to use a token that is not scoped to an organization.
+
+  Deleting a tenant with an organization-scoped token no longer falls back to the user's membership of the target organization: an organization-scoped token can now delete only the tenant its own organization names. A token that carries only `org_id` has its organization's name resolved, so it can still delete its own tenant. `/tenants/{id}/operations` and `/tenants/{id}/config-sync` are no longer exempt from the binding in the control plane's context.
+
+  `GET /tenants` now treats a token that carries only `org_name` as organization-scoped, like one with `org_id`. Before, a name-only organization token holding `admin:organizations` received every tenant; it now gets only the tenants of the organizations it belongs to.
+
+  An organization that cannot be resolved (an `org_id` that names no organization) is now refused on the tenants router too, not only elsewhere.
+
+- 087b9ba: Add session transfer tokens (Auth0's Native to Web SSO), so a signed-in user can be carried from one application to another in the same tenant, including between sites on different top-level domains.
+
+  An application whose client has `session_transfer.can_create_session_transfer_token` exchanges its refresh token at `POST /oauth/token` with `audience=urn:{domain}:session_transfer` and gets a single-use, 60-second token back in Auth0's response shape (`issued_token_type: urn:auth0:params:oauth:token-type:session_transfer_token`, `token_type: N_A`). The receiving application sends it to `/authorize` as the `session_transfer_token` query parameter or the `auth0_session_transfer_token` cookie, whichever its `session_transfer.allowed_authentication_methods` allows, and the user is logged in without a prompt. A token that is reused, expired, presented from another IP address (`enforce_device_binding`, default `ip`), meant for another organization, or whose parent refresh token is gone falls through to the normal login page and writes a `w` log; it is never an error page. A browser session that belongs to a different user is revoked, and the user is asked to log in.
+
+  `session_transfer` on clients is now typed and validated, and the Management API fills in Auth0's defaults when it is written. Beyond Auth0: any application type may create tokens, a token works on every domain of the tenant, `allow_onward_transfer` lets a transferred login pass the session on again, and `trust_forwarded_ip` lets an authenticated confidential client bind the token to the end user's address from the `auth0-forwarded-for` header. Sessions and refresh tokens created from a transfer record where they came from: revoking the parent refresh token ends them unless the sender turned `enforce_cascade_revocation` off, the receiver gets a refresh token only with `allow_refresh_token`, and that refresh token ends with its session while `enforce_online_refresh_tokens` is on. Post-login hooks receive `event.session_transfer_token` and `event.session.session_transfer`.
+
+  Admin UI: applications that users log in through get a **Session Transfer** tab with the sending and receiving settings. It warns when tokens are accepted in the URL with no device check.
+
+  Adapters: `sessions` and `refresh_tokens` gain a nullable `session_transfer` column (kysely and drizzle migrations included), and `refreshTokens` gains a required `isFamilyActive(tenant_id, family_id)` method, which custom adapters must implement.
+
+### Patch Changes
+
+- 488ee5a: Fix CIMD logins resuming in the wrong tenant when several tenants have a stub client for the same client_id URL (#1731). The state-keyed routes (`/callback`, `/authorize/resume` and the universal login screens) now take the tenant from the login session row when the request resolved no tenant, instead of from a lookup by client_id alone. A login session of another tenant than the request resolved is treated as missing on these routes, so one tenant's login screens are never served on another tenant's domain (kysely loads login sessions by id alone). `LoginSession` exposes an optional `tenant_id`, which the kysely, drizzle and AWS adapters set on read. `clients.getByClientId` returns null for a URL client_id that has rows in more than one tenant (kysely, drizzle; the AWS adapter, whose legacy client_id pointer can't detect that, returns null for every URL client_id), so `getEnrichedClient` no longer picks one of them: it uses the stub only when exactly one tenant has it, and otherwise throws the existing 400 "tenant_id is required to resolve a CIMD client". Host-scoped routes that take the client_id from the request (`/co/authenticate`, `/passwordless/*`, `/dbconnections/*`, `/v2/logout`, `/oidc/logout`, `/account`, SMS sending, u2 invitations and password-change tickets) pass the request's tenant for CIMD client_ids.
+- a6c737d: Custom Token Exchange only resolves a user that belongs to the connection the profile or the action's `setUserByConnection` names. Database connections share the `auth0` provider, so a subject whose `sub` matched the id of an existing password user used to get tokens for that user. The exchange now fails with `400 invalid_request` and an `fecte` log naming the user, its connection and the expected connection. When creating the user fails because another user already has the same email or username, the exchange returns `400 invalid_request` with an `fecte` log instead of a `409`.
+- bde32b7: `secte` (successful Custom Token Exchange) logs fill `strategy` and `strategy_type`. `strategy` is the strategy of the connection the user was resolved in, or the user's provider when the profile maps by user id; `strategy_type` is derived from it as for the other flows.
+- 940c435: Management API user creation no longer runs signup validation (`disable_signup`, validate-registration hooks) when the bearer token's `azp` names a client in the target tenant. Auth-flow signups are still validated. A `client_id` that did not come from a token and does not resolve in the tenant now fails with "Client not found" instead of silently skipping validation.
+- Updated dependencies [488ee5a]
+- Updated dependencies [087b9ba]
+  - @authhero/adapter-interfaces@4.28.0
+  - @authhero/proxy@0.11.15
+  - @authhero/saml@0.6.8
+  - @authhero/widget@0.41.12
+
 ## 9.31.0
 
 ### Minor Changes

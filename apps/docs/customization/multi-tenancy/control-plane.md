@@ -494,7 +494,7 @@ initMultiTenant({
 });
 ```
 
-Once a user's email is **verified**, they get a global role (default name `Tenant Creator`) on the control plane. The role carries `create:tenants` on the Management API and nothing else: not `read:tenants`, `delete:tenants` or `admin:organizations`. The role is created the first time it is needed, and `create:tenants` is added to it if it is missing. Permissions an operator adds to the role are never removed.
+Once a user's email is **verified**, they get a global role (default name `Tenant Creator`) on the control plane. The role carries three permissions on the Management API and nothing else: `create:tenants`, `read:tenant_operations` and `retry:tenant_provisioning`. Not `read:tenants`, `delete:tenants` or `admin:organizations`. The role is created the first time it is needed, and any of the three that are missing are added to it, and to the Management API resource server's scopes if it does not define them yet. Permissions an operator adds to the role are never removed.
 
 - Users who arrive with a verified email (social, passwordless) get the role at registration. Password sign-ups get it when they verify their email.
 - Only sign-ups on the control plane get it. Sign-ups on child tenants never do.
@@ -504,7 +504,7 @@ Once a user's email is **verified**, they get a global role (default name `Tenan
 
 After the user creates a tenant they become admin of the tenant's organization, as for any creator. Creating a tenant provisions real resources and there is no rate limit or per-user quota yet, so leave this off unless you accept that.
 
-Provisioning progress is shown to the new user, but the step list, the failure reason and the retry button need `read:tenant_operations` and `create:tenant_operations`. The role does not carry them, since a global permission would let one user read other tenants' operations. A self-service user whose provisioning fails sees a generic error.
+The two operations permissions are what lets the admin show the new user their provisioning: the steps and the failure reason (`read:tenant_operations`) and a retry (`retry:tenant_provisioning`). They are safe to hold globally because the [tenant operations routes](./tenant-operations.md#management-api) only answer for tenants the caller is a member of. The exception is operators: a machine token, or a caller holding `create:tenant_operations`, `create:rollouts` or `admin:organizations`, reaches every tenant when its token is not scoped to an organization, so for them `read:tenant_operations` is not limited to their own tenants. **Upgrade authhero and `@authhero/multi-tenancy` together**: an authhero without that check would let any holder of `read:tenant_operations` read every tenant's operations.
 
 ## The role a tenant's creator gets
 
