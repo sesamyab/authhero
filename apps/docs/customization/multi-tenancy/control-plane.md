@@ -529,6 +529,8 @@ initMultiTenant({
 
 What this does not cover: how fast a user creates tenants (there is no rate limit per time window), per-endpoint rate limiting on the rest of the Management API, plans and billing, and email verification strength or CAPTCHA at sign-up. Deleting a tenant frees a slot, so a user can create and delete repeatedly.
 
+The limit is a check before creation, not an atomic reservation: two requests from the same user sent at the same moment can both pass it and go one over. It bounds steady-state abuse, not a burst. An organization-scoped token is never exempt, whatever scopes it carries, and `tenantCreationLimits` needs managed tenant roles (`accessControl.issuer` or `provisionRoles`; `initMultiTenant` always has them), because the count is by the owner role.
+
 The two operations permissions are what lets the admin show the new user their provisioning: the steps and the failure reason (`read:tenant_operations`) and a retry (`retry:tenant_provisioning`). They are safe to hold globally because the [tenant operations routes](./tenant-operations.md#management-api) only answer for tenants the caller is a member of. The exception is operators: a machine token, or a caller holding `create:tenant_operations`, `create:rollouts` or `admin:organizations`, reaches every tenant when its token is not scoped to an organization, so for them `read:tenant_operations` is not limited to their own tenants. **Upgrade authhero and `@authhero/multi-tenancy` together**: an authhero without that check would let any holder of `read:tenant_operations` read every tenant's operations.
 
 ## The role a tenant's creator gets

@@ -16,7 +16,10 @@ const MAX_PAGES = 50;
  * creator holds `create:tenants` alone, and their token is from the control
  * plane too, so "is a control plane token" is not enough to exempt a caller.
  */
-export function callerIsOperator(user: unknown): boolean {
+export function callerIsOperator(user: unknown, orgScoped = false): boolean {
+  // An organization-scoped token acts for one tenant's organization; its
+  // scopes come from an org role, so it is never the operator exemption.
+  if (orgScoped) return false;
   if (!user || typeof user !== "object") return false;
   const { permissions, scope } = user as {
     permissions?: unknown;
@@ -107,6 +110,14 @@ export async function enforceTenantCreationLimits(args: {
         }
       }
       if (organizations.length < PAGE_SIZE) break;
+      // A full last page means the list may continue: the count is not proven
+      // complete, so fail closed rather than compare a prefix to the cap.
+      if (page === MAX_PAGES - 1) {
+        throw new HTTPException(503, {
+          message:
+            "Could not check the tenant creation limit. Try again later.",
+        });
+      }
     }
 
     if (cap !== undefined && cap !== null && owned.length >= cap) {

@@ -187,4 +187,20 @@ describe("tenantCreationLimits", () => {
       expect((await create(nextId())).status).toBe(201);
     }
   });
+
+  it("does not exempt an organization-scoped token that carries operator scopes", async () => {
+    const orgScoped = { ...operator, sub: selfService.sub, org_id: "org_x" };
+    const create = appFor(orgScoped, { perUser: 1 });
+    expect((await create(nextId())).status).toBe(201);
+    expect((await create(nextId())).status).toBe(403);
+  });
+
+  it("refuses a limit when tenant roles are not managed", () => {
+    expect(() =>
+      setupMultiTenancy({
+        accessControl: { controlPlaneTenantId },
+        tenantCreationLimits: { perUser: 1 },
+      }),
+    ).toThrow(/managed tenant roles/);
+  });
 });

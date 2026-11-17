@@ -480,7 +480,15 @@ export function createTenantsOpenAPIRouter(
 
       // Cost guard for self-service creators. Operators are exempt; this runs
       // before any hook so a refused request provisions nothing.
-      if (config.tenantCreationLimits && !callerIsOperator(ctx.var.user)) {
+      const callerOrgScoped = Boolean(
+        parseCaller(ctx.var.user)?.org_id ??
+        ctx.var.organization_id ??
+        ctx.var.org_name,
+      );
+      if (
+        config.tenantCreationLimits &&
+        !callerIsOperator(ctx.var.user, callerOrgScoped)
+      ) {
         await enforceTenantCreationLimits({
           limits: config.tenantCreationLimits,
           data: getRequestData(ctx),

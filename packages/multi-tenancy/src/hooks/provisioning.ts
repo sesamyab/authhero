@@ -68,6 +68,18 @@ export function createProvisioningHooks(
         `ownerRoleName and adminRoleName must differ (both are "${adminName}")`,
       );
     }
+    // The limit counts tenants by the owner role. Without managed roles no
+    // creator gets it, the count stays at zero and the limit never applies.
+    if (
+      config.tenantCreationLimits &&
+      !config.accessControl.issuer &&
+      !config.accessControl.provisionRoles
+    ) {
+      throw new Error(
+        "tenantCreationLimits needs managed tenant roles: set accessControl.issuer or accessControl.provisionRoles, " +
+          "otherwise no creator gets the owner role the limit counts and it would never apply",
+      );
+    }
   }
 
   return {
