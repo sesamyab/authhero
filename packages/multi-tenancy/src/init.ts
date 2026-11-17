@@ -731,6 +731,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       controlPlaneTenantId,
       requireOrganizationMatch,
       defaultPermissions,
+      provisionRoles: true,
     },
     databaseIsolation,
   });

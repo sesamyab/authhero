@@ -102,6 +102,41 @@ export interface AccessControlConfig {
    * @default true
    */
   addCreatorToOrganization?: boolean;
+
+  /**
+   * Create and assign the tenant roles even when no `issuer` is set.
+   * `initMultiTenant` turns this on; `setupMultiTenancy` keeps the older rule
+   * that roles are only created when `issuer` is set.
+   *
+   * Both roles (admin and owner) are kept up to date by adding the scopes they
+   * lack every time a tenant is created, under whatever name they have.
+   * Nothing is ever removed, so a scope an operator took off one of them on
+   * purpose (say `delete:tenants` off the admin role) is added back on the next
+   * tenant creation, and renaming a role changes nothing about that.
+   * Provisioning never adds the operator-only scopes to the owner role, but it
+   * removes nothing either: an owner role that already carries operator-only
+   * scopes (put there by an operator, or by a role of that name that existed
+   * before) keeps them and hands them to every owner. The owner scope list is
+   * what provisioning adds, not a ceiling.
+   */
+  provisionRoles?: boolean;
+
+  /**
+   * Name of the role a creator gets in their tenant unless they already hold
+   * the operator scopes globally (then they get the admin role). It carries
+   * every management scope except the operator-only ones (creating or deleting
+   * tenants, `admin:organizations`, rollouts, tenant operations). Those are the
+   * scopes provisioning adds; it does not remove permissions already on a role
+   * of that name.
+   * @default "Tenant Owner"
+   */
+  ownerRoleName?: string;
+
+  /**
+   * Description for the owner role.
+   * @default "Manages the tenant's own configuration, users and applications"
+   */
+  ownerRoleDescription?: string;
 }
 
 /**

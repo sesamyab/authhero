@@ -20,6 +20,25 @@ import {
   TenantHookContext,
 } from "../types";
 import { runRecordedTenantOperation } from "../operations";
+import {
+  ADMIN_REQUIRES_SCOPES,
+  DEFAULT_ADMIN_ROLE_NAME,
+  DEFAULT_OWNER_ROLE_NAME,
+  ensureRoleWithScopes,
+  globalManagementPermissions,
+  tenantOwnerScopes,
+} from "./tenant-roles";
+
+/**
+ * What `beforeCreate` read for a request, so `afterCreate` reads nothing a
+ * second time after the tenant row exists: a failure then would leave the
+ * tenant behind. The creator's roles, and whether the creator already holds the
+ * global `admin:organizations`. Keyed by the request's context, one create each.
+ */
+type PreflightResult = Awaited<ReturnType<typeof resolveCreatorRoles>> & {
+  hasGlobalOrgAdmin?: boolean;
+};
+const preflight = new WeakMap<object, PreflightResult>();
 
 /**
  * Creates hooks for tenant provisioning and deprovisioning.
@@ -36,11 +55,47 @@ import { runRecordedTenantOperation } from "../operations";
 export function createProvisioningHooks(
   config: MultiTenancyConfig,
 ): TenantEntityHooks {
+  // The owner role is the admin role minus the operator-only scopes. With the
+  // same name both would be one role, and a self-service creator would get
+  // every scope. Refuse that before any tenant or role is written.
+  if (config.accessControl) {
+    const adminName =
+      config.accessControl.adminRoleName ?? DEFAULT_ADMIN_ROLE_NAME;
+    const ownerName =
+      config.accessControl.ownerRoleName ?? DEFAULT_OWNER_ROLE_NAME;
+    if (adminName === ownerName) {
+      throw new Error(
+        `ownerRoleName and adminRoleName must differ (both are "${adminName}")`,
+      );
+    }
+  }
+
   return {
     async beforeCreate(
-      _ctx: TenantHookContext,
+      ctx: TenantHookContext,
       params: CreateTenantParams,
     ): Promise<CreateTenantParams> {
+      // Read what the creator's role depends on before anything is written.
+      // The roles are shared and idempotent, so doing it here costs nothing,
+      // and a failure now leaves no tenant or organization behind.
+      if (config.accessControl && ctx.ctx?.var.user?.sub) {
+        const userId = ctx.ctx.var.user.sub;
+        const { controlPlaneTenantId, addCreatorToOrganization = true } =
+          config.accessControl;
+        preflight.set(ctx.ctx, {
+          ...(await resolveCreatorRoles(ctx, config.accessControl, userId)),
+          ...(addCreatorToOrganization
+            ? {
+                hasGlobalOrgAdmin: await userHasGlobalOrgAdminPermission(
+                  ctx,
+                  controlPlaneTenantId,
+                  userId,
+                ),
+              }
+            : {}),
+        });
+      }
+
       // Set the audience to the tenant-specific URN if not already set
       // This ensures child tenants use urn:authhero:tenant:{id} as their audience
       if (!params.audience && params.id) {
@@ -151,6 +206,69 @@ export function createProvisioningHooks(
 }
 
 /**
+ * Resolves the roles a new tenant's creator needs, creating or topping them up
+ * as needed: the admin role (when roles are managed, that is an `issuer` is set
+ * or `provisionRoles` is on) and the role the creator will get: the admin role
+ * for a creator who already holds the operator scopes globally, the narrower
+ * owner role for anyone else. Safe to call more than once.
+ */
+async function resolveCreatorRoles(
+  ctx: TenantHookContext,
+  accessControl: NonNullable<MultiTenancyConfig["accessControl"]>,
+  userId: string | undefined,
+): Promise<{ adminRoleId?: string; creatorRoleId?: string }> {
+  const {
+    controlPlaneTenantId,
+    issuer,
+    adminRoleName = DEFAULT_ADMIN_ROLE_NAME,
+    adminRoleDescription = "Full access to all tenant management operations",
+    addCreatorToOrganization = true,
+    provisionRoles = false,
+    ownerRoleName = DEFAULT_OWNER_ROLE_NAME,
+    ownerRoleDescription = "Manages the tenant's own configuration, users and applications",
+  } = accessControl;
+
+  if (!issuer && !provisionRoles) return {};
+
+  // The admin role has every management scope, topped up with scopes added
+  // since it was created.
+  const adminRoleId = await ensureRoleWithScopes(
+    ctx.adapters,
+    controlPlaneTenantId,
+    {
+      name: adminRoleName,
+      description: adminRoleDescription,
+      scopes: MANAGEMENT_API_SCOPES.map((scope) => scope.value),
+    },
+  );
+  // The owner role is kept up to date on every creation too, whoever the
+  // creator is, so an existing one picks up scopes added since it was created.
+  const ownerRoleId = await ensureRoleWithScopes(
+    ctx.adapters,
+    controlPlaneTenantId,
+    {
+      name: ownerRoleName,
+      description: ownerRoleDescription,
+      scopes: tenantOwnerScopes(),
+    },
+  );
+  if (!addCreatorToOrganization || !userId) return { adminRoleId };
+
+  // The admin role only for a creator who already holds the operator scopes
+  // globally, so the role in the tenant's organization never grants more than
+  // they had. Everyone else, a self-service creator included, gets the owner
+  // role.
+  const held = await globalManagementPermissions(
+    ctx.adapters,
+    controlPlaneTenantId,
+    userId,
+  );
+  const isOperator = ADMIN_REQUIRES_SCOPES.every((scope) => held.has(scope));
+  const creatorRoleId = isOperator ? adminRoleId : ownerRoleId;
+  return { adminRoleId, creatorRoleId };
+}
+
+/**
  * Creates an organization on the control plane for a new tenant.
  * Also creates/assigns the admin role and adds the creator to the organization.
  */
@@ -163,11 +281,16 @@ async function createOrganizationForTenant(
     controlPlaneTenantId,
     defaultPermissions,
     defaultRoles,
-    issuer,
-    adminRoleName = "Tenant Admin",
-    adminRoleDescription = "Full access to all tenant management operations",
     addCreatorToOrganization = true,
   } = accessControl;
+
+  // What `beforeCreate` already read, so nothing that can fail runs after the
+  // tenant row exists. Read here only when that did not run.
+  const cached = ctx.ctx ? preflight.get(ctx.ctx) : undefined;
+  if (ctx.ctx) preflight.delete(ctx.ctx);
+  const { creatorRoleId } =
+    cached ??
+    (await resolveCreatorRoles(ctx, accessControl, ctx.ctx?.var.user?.sub));
 
   // Create organization with tenant ID as the name (let the adapter generate the ID)
   // The org name is used for access control - tokens include org_name which matches tenant ID
@@ -180,29 +303,19 @@ async function createOrganizationForTenant(
     },
   );
 
-  // Get or create the admin role with all Management API permissions
-  // Only create admin role if issuer is provided (per documentation)
-  let adminRoleId: string | undefined;
-  if (issuer) {
-    adminRoleId = await getOrCreateAdminRole(
-      ctx,
-      controlPlaneTenantId,
-      adminRoleName,
-      adminRoleDescription,
-    );
-  }
-
-  // Add the creator to the organization and assign the admin role
+  // Add the creator to the organization and assign the role
   // Skip if the user has admin:organizations permission (they can access any org without membership)
   if (addCreatorToOrganization && ctx.ctx) {
     const user = ctx.ctx.var.user;
     if (user?.sub) {
       // Check if user has admin:organizations at the global level
-      const hasGlobalOrgAdmin = await userHasGlobalOrgAdminPermission(
-        ctx,
-        controlPlaneTenantId,
-        user.sub,
-      );
+      const hasGlobalOrgAdmin =
+        cached?.hasGlobalOrgAdmin ??
+        (await userHasGlobalOrgAdminPermission(
+          ctx,
+          controlPlaneTenantId,
+          user.sub,
+        ));
 
       // Only add user to organization if they don't have global admin:organizations
       if (!hasGlobalOrgAdmin) {
@@ -213,12 +326,13 @@ async function createOrganizationForTenant(
             organization_id: organization.id,
           });
 
-          // Assign admin role to the user for this organization (only if role was created)
-          if (adminRoleId) {
+          // Assign the role to the user for this organization (only if roles
+          // are managed)
+          if (creatorRoleId) {
             await ctx.adapters.userRoles.create(
               controlPlaneTenantId,
               user.sub,
-              adminRoleId,
+              creatorRoleId,
               organization.id, // organizationId
             );
           }
@@ -292,48 +406,4 @@ async function userHasGlobalOrgAdminPermission(
   }
 
   return false;
-}
-
-/**
- * Gets or creates the admin role with all Management API permissions.
- * Returns the role ID.
- */
-async function getOrCreateAdminRole(
-  ctx: TenantHookContext,
-  controlPlaneTenantId: string,
-  roleName: string,
-  roleDescription: string,
-): Promise<string> {
-  // Check if the role already exists
-  const existingRoles = await ctx.adapters.roles.list(controlPlaneTenantId, {});
-  const existingRole = existingRoles.roles.find((r) => r.name === roleName);
-
-  if (existingRole) {
-    return existingRole.id;
-  }
-
-  // Create the admin role
-  const role = await ctx.adapters.roles.create(controlPlaneTenantId, {
-    name: roleName,
-    description: roleDescription,
-  });
-
-  // Assign all Management API permissions to the role
-  // Use the standard management API audience as the identifier
-  const managementApiIdentifier = MANAGEMENT_API_AUDIENCE;
-
-  // Convert MANAGEMENT_API_SCOPES to the format expected by rolePermissions.assign
-  const permissions = MANAGEMENT_API_SCOPES.map((scope) => ({
-    role_id: role.id,
-    resource_server_identifier: managementApiIdentifier,
-    permission_name: scope.value,
-  }));
-
-  await ctx.adapters.rolePermissions.assign(
-    controlPlaneTenantId,
-    role.id,
-    permissions,
-  );
-
-  return role.id;
 }
