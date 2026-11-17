@@ -216,4 +216,10 @@ describe("tenantCreationLimits", () => {
       }),
     ).toThrow(/creator added/);
   });
+
+  it("refuses a limit when accessControl is not configured", () => {
+    expect(() =>
+      setupMultiTenancy({ tenantCreationLimits: { perUser: 1 } }),
+    ).toThrow(/needs accessControl/);
+  });
 });
