@@ -58,7 +58,10 @@ export function createProvisioningHooks(
   // The owner role is the admin role minus the operator-only scopes. With the
   // same name both would be one role, and a self-service creator would get
   // every scope. Refuse that before any tenant or role is written.
-  if (config.tenantCreationLimits && !config.accessControl) {
+  if (
+    config.tenantCreationLimits &&
+    !config.accessControl?.controlPlaneTenantId
+  ) {
     throw new Error(
       "tenantCreationLimits needs accessControl (with a controlPlaneTenantId): " +
         "the limit counts owner roles on the control plane, so without it the limit would never apply",

@@ -222,4 +222,13 @@ describe("tenantCreationLimits", () => {
       setupMultiTenancy({ tenantCreationLimits: { perUser: 1 } }),
     ).toThrow(/needs accessControl/);
   });
+
+  it("refuses a limit when the control plane id is empty", () => {
+    expect(() =>
+      setupMultiTenancy({
+        accessControl: { controlPlaneTenantId: "", provisionRoles: true },
+        tenantCreationLimits: { perUser: 1 },
+      }),
+    ).toThrow(/needs accessControl/);
+  });
 });
