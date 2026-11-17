@@ -68,6 +68,15 @@ export function createProvisioningHooks(
         `ownerRoleName and adminRoleName must differ (both are "${adminName}")`,
       );
     }
+    if (
+      config.tenantCreationLimits &&
+      config.accessControl.addCreatorToOrganization === false
+    ) {
+      throw new Error(
+        "tenantCreationLimits needs the creator added to the tenant's organization: " +
+          "addCreatorToOrganization: false means no ownership is recorded and the limit would never apply",
+      );
+    }
     // The limit counts tenants by the owner role. Without managed roles no
     // creator gets it, the count stays at zero and the limit never applies.
     if (

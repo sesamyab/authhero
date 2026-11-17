@@ -203,4 +203,17 @@ describe("tenantCreationLimits", () => {
       }),
     ).toThrow(/managed tenant roles/);
   });
+
+  it("refuses a limit when the creator is not added to the organization", () => {
+    expect(() =>
+      setupMultiTenancy({
+        accessControl: {
+          controlPlaneTenantId,
+          provisionRoles: true,
+          addCreatorToOrganization: false,
+        },
+        tenantCreationLimits: { perUser: 1 },
+      }),
+    ).toThrow(/creator added/);
+  });
 });
