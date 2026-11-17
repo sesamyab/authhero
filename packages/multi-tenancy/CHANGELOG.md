@@ -1,5 +1,32 @@
 # @authhero/multi-tenancy
 
+## 15.10.0
+
+### Minor Changes
+
+- 006428a: Fix the creator of a new tenant getting no role in it when the host uses `initMultiTenant`, and stop giving self-service creators every management scope.
+  - `initMultiTenant` now creates the "Tenant Admin" role and assigns it to the creator in the tenant's organization. It was only created when `accessControl.issuer` was set, and `initMultiTenant` never set it, so the creator became a member of the organization with no role. `setupMultiTenancy` keeps its rule; set `accessControl.provisionRoles: true` to opt in there.
+  - An existing role is topped up on the next tenant creation with scopes added to the Management API since it was created (permissions an operator added are kept), instead of being returned as it was.
+  - New "Tenant Owner" role (`ownerRoleName`): every management scope except `create:tenants`, `delete:tenants`, `admin:organizations`, `access:all_organizations`, the rollout scopes and the tenant-operation scopes. A creator gets Tenant Admin only if they already hold the operator scopes globally (`create:tenants`, `delete:tenants`, the rollout scopes and the tenant-operation scopes), so the role in the organization never grants more than they had; everyone else gets Tenant Owner, including a self-service creator and a creator who has only `create:tenants`. This changes what a creator who does not hold those scopes gets compared to before, when everyone got Tenant Admin (on the `issuer` path). Existing creators keep the role they have.
+  - A test freezes the owner role's scope list, so a newly added management scope has to be placed on purpose.
+
+  Closes #1719.
+
+- 829e519: The tenant operations routes on the control plane now check which tenant the caller may reach. Before, any control-plane token with `read:tenant_operations` could read the operations of every tenant, and one with `create:tenant_operations` could enqueue any kind of operation on any tenant.
+
+  Operators still reach every tenant: machine tokens and callers holding `create:tenant_operations`, `create:rollouts` or `admin:organizations`, as long as the token is not scoped to an organization (an organization-scoped token carries its organization role's permissions, which the stock Tenant Admin role fills with every management scope). Everyone else reaches only the tenants whose organization they belong to, the rule `GET /tenants` already uses. A tenant they cannot reach answers `404` on `GET /tenants/{id}/operations` and `GET /operations/{id}`, and on `POST /tenants/{id}/operations`.
+
+  New scope `retry:tenant_provisioning` (added to the seeded Management API scopes): on its own it only allows `{ "kind": "upgrade" }` on a reachable tenant whose `provisioning_state` is `failed`, and any other kind or state is `403`; a second retry while an `upgrade` for the tenant is `pending` or `running` is `409`. `create:tenant_operations` stays the operator scope. The admin's setup page offers Retry to users with either scope. Resource servers seeded before this scope existed need it added; `selfServiceSignup` adds it for you.
+
+  `selfServiceSignup` now also gives the `Tenant Creator` role `read:tenant_operations` and `retry:tenant_provisioning`, so a new user sees the steps and failure reason of their own tenant's provisioning and can retry it. It also adds those scopes to the Management API resource server if it does not define them. **Upgrade authhero and `@authhero/multi-tenancy` together**: an authhero without the reach check would let any holder of `read:tenant_operations` read every tenant's operations.
+
+  Closes #1720.
+
+### Patch Changes
+
+- Updated dependencies [829e519]
+  - authhero@9.33.0
+
 ## 15.9.0
 
 ### Minor Changes
