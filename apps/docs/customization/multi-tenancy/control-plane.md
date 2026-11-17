@@ -502,7 +502,32 @@ Once a user's email is **verified**, they get a global role (default name `Tenan
 - It runs through `onExecutePostUserRegistration` and `onExecutePostUserUpdate`, ahead of any hooks you configure. A failure is logged and never fails the sign-up.
 - The control plane's admin client must put permissions in the access token (turn on RBAC and "add permissions to the access token"), or the admin UI will not see the role.
 
-After the user creates a tenant they become admin of the tenant's organization, as for any creator. Creating a tenant provisions real resources and there is no rate limit or per-user quota yet, so leave this off unless you accept that.
+After the user creates a tenant they become admin of the tenant's organization, as for any creator. Creating a tenant provisions real resources, so cap how many one user can create (next section). Without a cap, leave this off unless you accept the cost.
+
+### Limit how many tenants a user can create
+
+`tenantCreationLimits` caps tenant creation for callers who are not operators. It applies to every tenant a user creates, whether `shared` or `wfp`.
+
+```typescript
+initMultiTenant({
+  dataAdapter,
+  controlPlane: { tenantId: "main", clientId: "main_client" },
+  selfServiceSignup: true,
+  tenantCreationLimits: {
+    perUser: 3, // a number, null for unlimited, or (user) => number | null
+    // blockWhilePending: true (default)
+  },
+});
+```
+
+- **Tenants per user.** `POST /tenants` is refused with `403` once the caller owns `perUser` tenants, that is the tenants whose organization they belong to with the owner role. The message names the limit and the admin's create form shows it. `perUser` can be a function, so a plan can decide the number per user.
+- **One provisioning at a time.** While a tenant the user owns is still `pending`, creating another is refused with `403`. Turn it off with `blockWhilePending: false`.
+- **Raise or lift the limit for one user.** Set `app_metadata.tenant_limit` on the user to a number, or to `"unlimited"`. It wins over `perUser`, takes effect on the next request and needs no deploy. (`null` does not work: a metadata update treats it as removing the key.)
+- **Operators are exempt.** A caller whose token carries `delete:tenants`, `admin:organizations`, `create:tenant_operations` or `create:rollouts`, which includes machine tokens.
+- **Fails closed.** If the counts cannot be read, the request is refused with `503`.
+- **Unset means unchanged.** Without `tenantCreationLimits` nothing is checked.
+
+What this does not cover: how fast a user creates tenants (there is no rate limit per time window), per-endpoint rate limiting on the rest of the Management API, plans and billing, and email verification strength or CAPTCHA at sign-up. Deleting a tenant frees a slot, so a user can create and delete repeatedly.
 
 The two operations permissions are what lets the admin show the new user their provisioning: the steps and the failure reason (`read:tenant_operations`) and a retry (`retry:tenant_provisioning`). They are safe to hold globally because the [tenant operations routes](./tenant-operations.md#management-api) only answer for tenants the caller is a member of. The exception is operators: a machine token, or a caller holding `create:tenant_operations`, `create:rollouts` or `admin:organizations`, reaches every tenant when its token is not scoped to an organization, so for them `read:tenant_operations` is not limited to their own tenants. **Upgrade authhero and `@authhero/multi-tenancy` together**: an authhero without that check would let any holder of `read:tenant_operations` read every tenant's operations.
 

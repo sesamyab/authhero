@@ -55,6 +55,7 @@ import type { InheritanceShadowOptions } from "./inheritance";
 import {
   DatabaseIsolationConfig,
   TenantDeploymentTypesConfig,
+  TenantCreationLimitsConfig,
   TenantEntityHooks,
   TenantHookContext,
 } from "./types";
@@ -106,6 +107,13 @@ export interface MultiTenantConfig extends Omit<
    * Unset allows both, with `shared` as the default.
    */
   deploymentTypes?: TenantDeploymentTypesConfig;
+
+  /**
+   * Limits on how many tenants a non-operator can create (a ceiling per user
+   * and no second tenant while one is still provisioning). Operators are
+   * exempt. Unset leaves creation unlimited.
+   */
+  tenantCreationLimits?: TenantCreationLimitsConfig;
 
   /**
    * The hostname a new tenant gets, with `{id}` standing for the tenant id,
@@ -415,6 +423,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     resolveControlPlane,
     databaseIsolation,
     deploymentTypes,
+    tenantCreationLimits,
     tenantHostTemplate,
     inheritanceShadow,
     syncDefaults,
@@ -772,6 +781,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
         defaultPermissions,
       },
       deploymentTypes,
+      tenantCreationLimits,
       tenantHostTemplate,
       onConfigSyncChange: (tenantId) => forgetConfigSyncMode?.(tenantId),
       configSyncStatus: (tenantId) =>

@@ -24,6 +24,10 @@ import { computedTenantFields } from "../utils/tenant-settings";
 import { validateTenantParent } from "../utils/tenant-tree";
 import { findCaseCollidingTenantId } from "../utils/tenant-id-collision";
 import { resolveDeploymentTypes } from "../utils/deployment-types";
+import {
+  callerIsOperator,
+  enforceTenantCreationLimits,
+} from "../utils/tenant-creation-limits";
 
 // How an organization-scoped tenant search reads the matches: in batches of
 // this size, up to this many batches before it refuses the search.
@@ -471,6 +475,20 @@ export function createTenantsOpenAPIRouter(
       if (!user?.sub) {
         throw new HTTPException(401, {
           message: "Authentication required to create tenants",
+        });
+      }
+
+      // Cost guard for self-service creators. Operators are exempt; this runs
+      // before any hook so a refused request provisions nothing.
+      if (config.tenantCreationLimits && !callerIsOperator(ctx.var.user)) {
+        await enforceTenantCreationLimits({
+          limits: config.tenantCreationLimits,
+          data: getRequestData(ctx),
+          controlPlaneTenantId:
+            config.accessControl?.controlPlaneTenantId ??
+            getRequestData(ctx).multiTenancyConfig?.controlPlaneTenantId,
+          ownerRoleName: config.accessControl?.ownerRoleName,
+          user: { sub: user.sub },
         });
       }
 
