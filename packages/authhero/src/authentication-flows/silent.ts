@@ -237,8 +237,19 @@ export async function silentAuth({
   // completed MFA may get tokens without interaction. This also refuses
   // sessions from before the tenant turned MFA on.
   const { checkMfaRequired } = await import("./mfa");
+  const { isBrowserRememberedForMfa } = await import("./remember-browser");
   const mfaCheck = await checkMfaRequired(ctx, client.tenant.id, user.user_id);
-  if (mfaCheck.required && !sessionSatisfiesMfa(session, user.user_id)) {
+  // A browser remembered after an earlier MFA counts too, when the tenant
+  // allows remembering (#1670). Silent auth runs no post-login actions, so
+  // only the tenant policy can require MFA here.
+  if (
+    mfaCheck.required &&
+    !sessionSatisfiesMfa(session, user.user_id) &&
+    !(await isBrowserRememberedForMfa(ctx, {
+      tenant: client.tenant,
+      userId: user.user_id,
+    }))
+  ) {
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_SILENT_AUTH,
       description: "Multi-factor authentication required",

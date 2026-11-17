@@ -19,6 +19,8 @@ export const SILENT_COOKIE_NAME = "auth-token";
 // Value is the connection name only — never PII, never a fingerprint.
 export const LAST_USED_CONNECTION_COOKIE_NAME = "last-used-connection";
 export const LAST_USED_CONNECTION_MAX_AGE_IN_SECONDS = 365 * 24 * 60 * 60; // 1 year
+// Remembered browsers that may skip the MFA challenge (#1670).
+export const MFA_REMEMBER_BROWSER_COOKIE_NAME = "mfa-remember-browser";
 export const OTP_EXPIRATION_TIME = 30 * 60 * 1000; // 30 minutes
 export const EMAIL_VERIFICATION_EXPIRATION_TIME = 7 * 24 * 60 * 60 * 1000; // One week
 export const AUTHORIZATION_CODE_EXPIRES_IN_SECONDS = 5 * 60; // 5 minutes

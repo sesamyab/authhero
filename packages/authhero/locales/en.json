@@ -522,7 +522,8 @@
       "transaction-not-found": "Your enrollment transaction expired, you will need to start again.",
       "unexpectedError": "Something went wrong. Please try again.",
       "pageTitle": "Verify Identity | ${clientName}",
-      "too-many-failures": "You have exceeded the maximum number of failed attempts. Please start the login again."
+      "too-many-failures": "You have exceeded the maximum number of failed attempts. Please start the login again.",
+      "rememberMeText": "Remember this device for ${days} days"
     }
   },
   "mfa-phone": {
@@ -551,7 +552,8 @@
       "unexpectedError": "Something went wrong. Please try again.",
       "resendSuccess": "We sent a new code to your phone",
       "enrollmentComplete": "MFA enrollment is complete. You can close this page.",
-      "too-many-failures": "You have exceeded the maximum number of failed attempts. Please start the login again."
+      "too-many-failures": "You have exceeded the maximum number of failed attempts. Please start the login again.",
+      "rememberMeText": "Remember this device for ${days} days"
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Enter your phone number to log in using a phone code | ${clientName}",

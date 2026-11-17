@@ -522,7 +522,8 @@
       "transaction-not-found": "Din session er udløbet. Du skal starte forfra.",
       "unexpectedError": "Noget gik galt. Prøv venligst igen.",
       "pageTitle": "Bekræft identitet | ${clientName}",
-      "too-many-failures": "Du har overskredet det maksimale antal mislykkede forsøg. Start login forfra."
+      "too-many-failures": "Du har overskredet det maksimale antal mislykkede forsøg. Start login forfra.",
+      "rememberMeText": "Husk denne enhed i ${days} dage"
     }
   },
   "mfa-phone": {
@@ -551,7 +552,8 @@
       "unexpectedError": "Noget gik galt. Prøv igen.",
       "resendSuccess": "Vi sendte en ny kode til din telefon",
       "enrollmentComplete": "MFA-tilmeldingen er fuldført. Du kan lukke denne side.",
-      "too-many-failures": "Du har overskredet det maksimale antal mislykkede forsøg. Start login forfra."
+      "too-many-failures": "Du har overskredet det maksimale antal mislykkede forsøg. Start login forfra.",
+      "rememberMeText": "Husk denne enhed i ${days} dage"
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Indtast dit telefonnummer for at logge ind med en telefonkode | ${clientName}",

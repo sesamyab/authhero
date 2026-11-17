@@ -18,6 +18,11 @@ import {
   recordMfaFailure,
 } from "../../../authentication-flows/mfa-attempts";
 import {
+  rememberBrowserComponent,
+  rememberBrowserCookies,
+  withRememberBrowserCookies,
+} from "./mfa-remember-browser";
+import {
   transitionLoginSession,
   LoginSessionEventType,
 } from "../../../state-machines/login-session";
@@ -79,6 +84,18 @@ export async function mfaPhoneChallengeScreen(
         ? [{ text: errors.code, type: "error" as const }]
         : undefined,
     },
+  ];
+
+  const rememberBrowser = await rememberBrowserComponent(
+    context,
+    (days) => m.rememberMeText({ days: String(days) }),
+    1,
+  );
+  if (rememberBrowser) {
+    components.push(rememberBrowser);
+  }
+
+  components.push(
     {
       id: "submit",
       type: "NEXT_BUTTON",
@@ -87,7 +104,7 @@ export async function mfaPhoneChallengeScreen(
       config: {
         text: m.continueButtonText(),
       },
-      order: 1,
+      order: 2,
     },
     {
       id: "resend",
@@ -97,9 +114,9 @@ export async function mfaPhoneChallengeScreen(
       config: {
         text: m.smsButtonText(),
       },
-      order: 2,
+      order: 3,
     },
-  ];
+  );
 
   const screen: UiScreen = {
     name: "mfa-phone-challenge",
@@ -466,12 +483,16 @@ export const mfaPhoneChallengeScreenDefinition: ScreenDefinition = {
           authConnection: loginSession.auth_connection,
         });
 
-        const location = result.headers.get("location");
-        const cookies = result.headers.getSetCookie?.() || [];
-        if (location) {
-          return { redirect: location, cookies };
-        }
-        return { response: result };
+        return withRememberBrowserCookies(
+          result,
+          await rememberBrowserCookies(
+            ctx,
+            client,
+            loginSession,
+            user.user_id,
+            data,
+          ),
+        );
       } catch {
         const phone = await getEnrollmentPhone(
           ctx,

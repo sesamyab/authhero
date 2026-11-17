@@ -2,6 +2,7 @@ import { parse, serialize } from "cookie";
 import {
   LAST_USED_CONNECTION_COOKIE_NAME,
   LAST_USED_CONNECTION_MAX_AGE_IN_SECONDS,
+  MFA_REMEMBER_BROWSER_COOKIE_NAME,
   SILENT_AUTH_MAX_AGE_IN_SECONDS,
   SILENT_COOKIE_NAME,
 } from "../constants";
@@ -92,7 +93,10 @@ export function getAllAuthCookies(
     return [];
   }
 
-  const cookieName = getCookieName(tenant_id);
+  return getAllCookieValues(getCookieName(tenant_id), cookieHeaders);
+}
+
+function getAllCookieValues(cookieName: string, cookieHeaders: string) {
   const values: string[] = [];
 
   // Parse cookie header manually to get all values for duplicate cookie names
@@ -107,6 +111,89 @@ export function getAllAuthCookies(
   }
 
   return values;
+}
+
+function getMfaRememberBrowserCookieName(tenant_id: string) {
+  return `${tenant_id}-${MFA_REMEMBER_BROWSER_COOKIE_NAME}`;
+}
+
+/** Separates the tokens of several users in one remember-browser cookie. */
+const MFA_REMEMBER_BROWSER_TOKEN_SEPARATOR = ".";
+
+/** A generated token: 32 random bytes as unpadded base64url. */
+const MFA_REMEMBER_BROWSER_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * Most tokens read from one request. Each one costs a hash and a database
+ * read, so a padded cookie must not multiply them. A browser holds at most 5
+ * tokens per cookie, and both cookie jars are read, so 10 covers every
+ * legitimate request.
+ */
+const MFA_REMEMBER_BROWSER_MAX_CANDIDATES = 10;
+
+/**
+ * The remember-browser tokens (#1670) this browser holds for the tenant, from
+ * both cookie jars, without duplicates. The cookie carries one token per user
+ * who asked this browser to be remembered (newest first); base64url tokens
+ * never contain the separator. Values that aren't a generated token are
+ * skipped, and at most `MFA_REMEMBER_BROWSER_MAX_CANDIDATES` are returned.
+ */
+export function getMfaRememberBrowserTokens(
+  tenant_id: string,
+  cookieHeaders?: string,
+): string[] {
+  if (!cookieHeaders) {
+    return [];
+  }
+  const tokens: string[] = [];
+  for (const value of getAllCookieValues(
+    getMfaRememberBrowserCookieName(tenant_id),
+    cookieHeaders,
+  )) {
+    for (const token of value.split(MFA_REMEMBER_BROWSER_TOKEN_SEPARATOR)) {
+      if (tokens.length >= MFA_REMEMBER_BROWSER_MAX_CANDIDATES) {
+        return tokens;
+      }
+      if (
+        MFA_REMEMBER_BROWSER_TOKEN_PATTERN.test(token) &&
+        !tokens.includes(token)
+      ) {
+        tokens.push(token);
+      }
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Set-Cookie values that store the remember-browser tokens. Set like the
+ * session cookie (both jars, SameSite=None) so silent auth in an iframe and a
+ * login embedded in an iframe see it too.
+ */
+export function serializeMfaRememberBrowserCookie(
+  tenant_id: string,
+  tokens: string[],
+  maxAgeSeconds: number,
+  hostname?: string,
+): string[] {
+  const cookieName = getMfaRememberBrowserCookieName(tenant_id);
+  const insecure = isInsecureDevHost(hostname);
+  const options = {
+    path: "/",
+    httpOnly: true,
+    secure: !insecure,
+    sameSite: (insecure ? "lax" : "none") as "lax" | "none",
+    domain: hostname ? getWildcardDomain(hostname) : undefined,
+    maxAge: maxAgeSeconds,
+  };
+  const value = tokens.join(MFA_REMEMBER_BROWSER_TOKEN_SEPARATOR);
+  if (insecure) {
+    return [serialize(cookieName, value, options)];
+  }
+  return [
+    serialize(cookieName, value, options),
+    serialize(cookieName, value, { ...options, partitioned: true }),
+  ];
 }
 
 export function getAuthCookie(

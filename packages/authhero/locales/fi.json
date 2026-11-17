@@ -522,7 +522,8 @@
       "transaction-not-found": "Rekisteröintitapahtumasi on vanhentunut, sinun täytyy aloittaa alusta.",
       "unexpectedError": "Jokin meni pieleen. Yritä uudelleen.",
       "pageTitle": "Vahvista henkilöllisyys | ${clientName}",
-      "too-many-failures": "Olet ylittänyt epäonnistuneiden yritysten enimmäismäärän. Aloita kirjautuminen uudelleen."
+      "too-many-failures": "Olet ylittänyt epäonnistuneiden yritysten enimmäismäärän. Aloita kirjautuminen uudelleen.",
+      "rememberMeText": "Muista tämä laite ${days} päivän ajan"
     }
   },
   "mfa-phone": {
@@ -551,7 +552,8 @@
       "unexpectedError": "Jokin meni pieleen. Yritä uudelleen.",
       "resendSuccess": "Lähetimme uuden koodin puhelimeesi",
       "enrollmentComplete": "MFA-rekisteröinti on valmis. Voit sulkea tämän sivun.",
-      "too-many-failures": "Olet ylittänyt epäonnistuneiden yritysten enimmäismäärän. Aloita kirjautuminen uudelleen."
+      "too-many-failures": "Olet ylittänyt epäonnistuneiden yritysten enimmäismäärän. Aloita kirjautuminen uudelleen.",
+      "rememberMeText": "Muista tämä laite ${days} päivän ajan"
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Syötä puhelinnumerosi kirjautuaksesi puhelinkoodilla | ${clientName}",

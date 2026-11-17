@@ -522,7 +522,8 @@
       "transaction-not-found": "Twoja transakcja rejestracji wygasła, musisz zacząć od nowa.",
       "unexpectedError": "Coś poszło nie tak. Spróbuj ponownie.",
       "pageTitle": "Weryfikacja tożsamości | ${clientName}",
-      "too-many-failures": "Przekroczono maksymalną liczbę nieudanych prób. Rozpocznij logowanie od nowa."
+      "too-many-failures": "Przekroczono maksymalną liczbę nieudanych prób. Rozpocznij logowanie od nowa.",
+      "rememberMeText": "Zapamiętaj to urządzenie na ${days} dni"
     }
   },
   "mfa-phone": {
@@ -551,7 +552,8 @@
       "unexpectedError": "Coś poszło nie tak. Spróbuj ponownie.",
       "resendSuccess": "Wysłaliśmy nowy kod na Twój telefon",
       "enrollmentComplete": "Rejestracja MFA została zakończona. Możesz zamknąć tę stronę.",
-      "too-many-failures": "Przekroczono maksymalną liczbę nieudanych prób. Rozpocznij logowanie od nowa."
+      "too-many-failures": "Przekroczono maksymalną liczbę nieudanych prób. Rozpocznij logowanie od nowa.",
+      "rememberMeText": "Zapamiętaj to urządzenie na ${days} dni"
     },
     "mfa-phone-enrollment": {
       "pageTitle": "Wpisz swój numer telefonu, aby zalogować się kodem telefonicznym | ${clientName}",
