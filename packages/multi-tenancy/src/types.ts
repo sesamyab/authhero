@@ -267,7 +267,33 @@ export interface SubdomainRoutingConfig {
  * - **databaseIsolation**: Per-tenant database instances
  * - **subdomainRouting**: Route requests via subdomains
  */
+export interface TenantCreationLimitsConfig {
+  /**
+   * The most tenants one non-operator user may own (those whose organization
+   * they belong to with the owner role). A number, `null` for unlimited, or a
+   * function so a plan can decide per user. An operator can override it for one
+   * user with `app_metadata.tenant_limit` (a number, or `"unlimited"`).
+   * Unset means no cap.
+   */
+  perUser?:
+    | number
+    | null
+    | ((user: { user_id: string }) => number | null | Promise<number | null>);
+  /**
+   * Refuse a new tenant while the user has one still `pending` provisioning.
+   * @default true
+   */
+  blockWhilePending?: boolean;
+}
+
 export interface MultiTenancyConfig {
+  /**
+   * Limits on how many tenants a non-operator can create. Operators (callers
+   * with `delete:tenants`, `admin:organizations`, `create:tenant_operations`
+   * or `create:rollouts`) are exempt. Unset leaves tenant creation unlimited.
+   */
+  tenantCreationLimits?: TenantCreationLimitsConfig;
+
   /**
    * Organization-based access control configuration.
    * Links organizations on the control plane to tenant access.

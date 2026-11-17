@@ -58,6 +58,15 @@ export function createProvisioningHooks(
   // The owner role is the admin role minus the operator-only scopes. With the
   // same name both would be one role, and a self-service creator would get
   // every scope. Refuse that before any tenant or role is written.
+  if (
+    config.tenantCreationLimits &&
+    !config.accessControl?.controlPlaneTenantId
+  ) {
+    throw new Error(
+      "tenantCreationLimits needs accessControl (with a controlPlaneTenantId): " +
+        "the limit counts owner roles on the control plane, so without it the limit would never apply",
+    );
+  }
   if (config.accessControl) {
     const adminName =
       config.accessControl.adminRoleName ?? DEFAULT_ADMIN_ROLE_NAME;
@@ -66,6 +75,27 @@ export function createProvisioningHooks(
     if (adminName === ownerName) {
       throw new Error(
         `ownerRoleName and adminRoleName must differ (both are "${adminName}")`,
+      );
+    }
+    if (
+      config.tenantCreationLimits &&
+      config.accessControl.addCreatorToOrganization === false
+    ) {
+      throw new Error(
+        "tenantCreationLimits needs the creator added to the tenant's organization: " +
+          "addCreatorToOrganization: false means no ownership is recorded and the limit would never apply",
+      );
+    }
+    // The limit counts tenants by the owner role. Without managed roles no
+    // creator gets it, the count stays at zero and the limit never applies.
+    if (
+      config.tenantCreationLimits &&
+      !config.accessControl.issuer &&
+      !config.accessControl.provisionRoles
+    ) {
+      throw new Error(
+        "tenantCreationLimits needs managed tenant roles: set accessControl.issuer or accessControl.provisionRoles, " +
+          "otherwise no creator gets the owner role the limit counts and it would never apply",
       );
     }
   }

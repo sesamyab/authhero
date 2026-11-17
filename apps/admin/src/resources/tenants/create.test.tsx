@@ -263,5 +263,12 @@ describe("tenant id helpers", () => {
       createErrorToFieldErrors({ status: 500, message: "boom" }),
     ).toBeUndefined();
     expect(createErrorToFieldErrors(new Error("network"))).toBeUndefined();
+    // A refused tenant limit is not about the id: the form notifies it.
+    expect(
+      createErrorToFieldErrors({
+        status: 403,
+        message: "Tenant limit reached: you can own at most 3 tenants.",
+      }),
+    ).toBeUndefined();
   });
 });
