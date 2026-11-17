@@ -87,5 +87,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No npm token: packages publish via npm trusted publishing (OIDC,
           # `id-token: write` above), configured per package on npmjs.com for
-          # this repository and the release.yml workflow.
+          # this repository and the release.yml workflow. A trusted publisher
+          # can only be configured for a package that already exists on npm, so
+          # a NEW public package must get a manual first publish (and then its
+          # trusted publisher set up) before this workflow can release it.
           NPM_CONFIG_PROVENANCE: true
