@@ -1,0 +1,95 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
+import { FormProvider, useForm } from "react-hook-form";
+import { AssetUrlInput } from "./asset-url-input";
+
+const notify = vi.fn();
+vi.mock("ra-core", () => ({ useNotify: () => notify }));
+vi.mock("@/TenantContext", () => ({ useTenantId: () => "t1" }));
+vi.mock("@/components/admin", async () => {
+  const { useFormContext } = await import("react-hook-form");
+  return {
+    TextInput: ({ source }: { source: string }) => {
+      const { register } = useFormContext();
+      return <input data-testid="url" {...register(source)} />;
+    },
+  };
+});
+
+let resolveUpload: (url: string) => void = () => {};
+vi.mock("./previewClient", () => ({
+  getApiUrl: () => "http://api",
+  getHttpClient: () => () =>
+    new Promise((resolve) => {
+      resolveUpload = (url) => resolve({ json: { url } });
+    }),
+}));
+
+let form: ReturnType<typeof useForm>;
+function Harness({ show = true }: { show?: boolean }) {
+  form = useForm<Record<string, unknown>>({
+    defaultValues: { logo_url: "old" },
+  });
+  return (
+    <FormProvider {...form}>
+      {show && <AssetUrlInput source="logo_url" label="Logo" kind="logo" />}
+    </FormProvider>
+  );
+}
+
+const png = () =>
+  new File([new Uint8Array([1])], "a.png", { type: "image/png" });
+const pick = (container: HTMLElement) =>
+  fireEvent.change(container.querySelector('input[type="file"]')!, {
+    target: { files: [png()] },
+  });
+
+afterEach(() => {
+  cleanup();
+  notify.mockClear();
+});
+
+describe("AssetUrlInput", () => {
+  it("applies the uploaded URL and clears the submit guard afterwards", async () => {
+    const { container } = render(<Harness />);
+    pick(container);
+    await act(async () => {
+      expect(await form.trigger()).toBe(false); // blocked while pending
+      resolveUpload("http://a/new.png");
+    });
+    await waitFor(() =>
+      expect(form.getValues("logo_url")).toBe("http://a/new.png"),
+    );
+    expect(await form.trigger()).toBe(true);
+  });
+
+  it("does not overwrite an edit made during the upload, even restoring the original", async () => {
+    const { container } = render(<Harness />);
+    pick(container);
+    await act(async () => {
+      form.setValue("logo_url", "typed");
+      form.setValue("logo_url", "old"); // restored to the original value
+      resolveUpload("http://a/new.png");
+    });
+    await waitFor(() => expect(form.formState).toBeDefined());
+    expect(form.getValues("logo_url")).toBe("old");
+  });
+
+  it("discards an upload that finishes after the input unmounted", async () => {
+    const { container, rerender } = render(<Harness />);
+    pick(container);
+    rerender(<Harness show={false} />);
+    await act(async () => resolveUpload("http://a/new.png"));
+    expect(form.getValues("logo_url")).toBe("old");
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringContaining("discarded"),
+      expect.anything(),
+    );
+  });
+});
