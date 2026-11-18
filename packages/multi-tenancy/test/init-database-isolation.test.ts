@@ -129,6 +129,12 @@ describe("initMultiTenant: databaseIsolation", () => {
     expect(provisioned).toEqual([CHILD]);
     // Pooled provisioning would have written these here.
     expect((await adapters.clients.list(CHILD)).clients).toHaveLength(0);
+    // So would the sync of the control plane's resource servers and roles,
+    // which writes through the control plane's adapters.
+    expect(
+      (await adapters.resourceServers.list(CHILD, {})).resource_servers,
+    ).toHaveLength(0);
+    expect((await adapters.roles.list(CHILD, {})).roles).toHaveLength(0);
 
     const deleted = await request("DELETE", `/api/v2/tenants/${CHILD}`);
     expect(deleted.status).toBe(204);

@@ -627,6 +627,41 @@ describe("createWfpTenantApp /internal/sync-defaults", () => {
     expect(signingKeys.filter((k) => k.pkcs7)).toHaveLength(1);
   });
 
+  it("creates the tenant's interactive default client and points default_client_id at it (#1754)", async () => {
+    const withTenant = {
+      ...payload,
+      tenants: [
+        { id: CP, friendly_name: "Control plane" },
+        { id: "acme", friendly_name: "Acme" },
+      ],
+    };
+    const push = () =>
+      app.fetch(
+        new Request("https://tenant.internal/internal/sync-defaults", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer push-secret",
+          },
+          body: JSON.stringify(withTenant),
+        }),
+        { ...env, TENANT_ID: "acme" },
+        { waitUntil() {}, passThroughOnException() {} },
+      );
+
+    expect((await push()).status).toBe(200);
+    const { clients } = await tenant.clients.list("acme");
+    expect(clients).toHaveLength(1);
+    expect(clients[0].name).toBe("Default App");
+    expect((await tenant.tenants.get("acme"))?.default_client_id).toBe(
+      clients[0].client_id,
+    );
+
+    // A re-sync keeps the client it finds, and never adds a Management API one.
+    expect((await push()).status).toBe(200);
+    expect((await tenant.clients.list("acme")).clients).toHaveLength(1);
+  });
+
   it("invokes onSyncResult with the applied result", async () => {
     const onSyncResult = vi.fn();
     app = createWfpTenantApp({

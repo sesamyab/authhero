@@ -761,7 +761,13 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     },
     async afterCreate(ctx: TenantHookContext, tenant: Tenant): Promise<void> {
       await provisioningHooks.afterCreate?.(ctx, tenant);
-      await tenantHooks.afterCreate?.(ctx, tenant);
+      // A tenant with its own database is seeded through `onProvision`. This
+      // sync writes through the control plane's adapters (`getAdapters` defaults
+      // to them), so it would only leave resource servers and roles in the
+      // control plane's database under the tenant's id, where nothing reads them.
+      if (!databaseIsolation?.onProvision) {
+        await tenantHooks.afterCreate?.(ctx, tenant);
+      }
     },
     async beforeDelete(
       ctx: TenantHookContext,

@@ -5,6 +5,7 @@ import {
   loadEncryptionKey,
   createEncryptedDataAdapterWithKeyRing,
   ensureSigningKey,
+  provisionDefaultClients,
   renewSigningCertificates,
   SigningCertificateRenewalError,
   TENANT_URI_PREFIX,
@@ -325,6 +326,27 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
       signingKey = { created: ensured.created };
     } catch (err) {
       return errorResponse(c, "sync_defaults_signing_key_failed", err, result);
+    }
+
+    // The tenant's own interactive default client (#1007, #1754). The control
+    // plane's seed cannot create it: that would write to the control plane's
+    // database, and only this Worker holds the adapter that encrypts the client
+    // secret. Idempotent, so a re-sync keeps the client it finds. No Management
+    // API client: its secret would hold every management scope, and a tenant is
+    // managed with control plane tokens.
+    if (env.TENANT_ID) {
+      try {
+        await provisionDefaultClients(encrypted, env.TENANT_ID, {
+          createManagementClient: false,
+        });
+      } catch (err) {
+        return errorResponse(
+          c,
+          "sync_defaults_default_client_failed",
+          err,
+          result,
+        );
+      }
     }
 
     if (options.onSyncResult) {
