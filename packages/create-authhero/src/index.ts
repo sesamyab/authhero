@@ -1044,6 +1044,10 @@ export default function createApp(config: AppConfig) {
   // Initialize multi-tenant AuthHero
   const { app } = initMultiTenant({
     ...config,
+    widgetHandler: (ctx) =>
+      ctx.redirect(
+        \`\${config.widgetUrl}/widget/\${ctx.req.path.replace("/u/widget/", "")}\`,
+      ),
     controlPlane: {
       tenantId: CONTROL_PLANE_TENANT_ID,
       clientId: CONTROL_PLANE_CLIENT_ID,
@@ -1069,10 +1073,6 @@ export default function createApp(config: AppConfig) {
     })
     .get("/docs", swaggerUI({ url: "/api/v2/spec" }))
     // Redirect widget requests to S3/CloudFront
-    .get("/widget/*", async (ctx) => {
-      const file = ctx.req.path.replace("/widget/", "");
-      return ctx.redirect(\`\${config.widgetUrl}/widget/\${file}\`);
-    })
     .get("/u/widget/*", async (ctx) => {
       const file = ctx.req.path.replace("/u/widget/", "");
       return ctx.redirect(\`\${config.widgetUrl}/u/widget/\${file}\`);
@@ -1098,7 +1098,13 @@ interface AppConfig extends AuthHeroConfig {
 }
 
 export default function createApp(config: AppConfig) {
-  const { app } = init(config);
+  const { app } = init({
+    ...config,
+    widgetHandler: (ctx) =>
+      ctx.redirect(
+        \`\${config.widgetUrl}/widget/\${ctx.req.path.replace("/u/widget/", "")}\`,
+      ),
+  });
 
   // Enable CORS for all origins in development
   app.use("*", cors({
@@ -1125,10 +1131,6 @@ export default function createApp(config: AppConfig) {
     })
     .get("/docs", swaggerUI({ url: "/api/v2/spec" }))
     // Redirect widget requests to S3/CloudFront
-    .get("/widget/*", async (ctx) => {
-      const file = ctx.req.path.replace("/widget/", "");
-      return ctx.redirect(\`\${config.widgetUrl}/widget/\${file}\`);
-    })
     .get("/u/widget/*", async (ctx) => {
       const file = ctx.req.path.replace("/u/widget/", "");
       return ctx.redirect(\`\${config.widgetUrl}/u/widget/\${file}\`);
