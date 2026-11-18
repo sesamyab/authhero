@@ -37,7 +37,7 @@ type getEnvParams = {
   emailValidation?: "enabled" | "enforced" | "disabled";
   mockEmail?: boolean;
   outbox?: boolean;
-  widgetHandler?: (ctx: any) => Response | Promise<Response>;
+  widgetHandler?: AuthHeroConfig["widgetHandler"];
   hooks?: {
     onExecuteCredentialsExchange?: OnExecuteCredentialsExchange;
     onExecutePreUserRegistration?: OnExecutePreUserRegistration;

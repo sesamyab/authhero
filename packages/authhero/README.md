@@ -37,7 +37,7 @@ rootApp
   .route("/", samlApp);
 ```
 
-The login pages load the widget from `/widget/*` and `/widget/client.js` (`/u/widget/*` is kept as an alias). Those routes are registered on the root `app` from `init()`; if you only mount `universalApp` you must also serve `/widget/*` yourself.
+The login pages load the widget from `/widget/*` and `/widget/client.js` (`/u/widget/*` is kept as an alias). Those routes are registered on the root `app` from `init()`; if you only mount `universalApp` you must also serve `/widget/*` yourself. To serve the bundle from the root `app`, pass a `widgetHandler` to `init()` (e.g. `serveStatic` over `@authhero/widget/dist/authhero-widget`, stripping `/u/widget`); without one, `/widget/authhero-widget.esm.js` returns `404 widget_not_configured`.
 
 ## Data Adapters
 

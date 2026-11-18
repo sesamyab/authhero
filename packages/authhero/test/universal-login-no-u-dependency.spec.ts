@@ -29,7 +29,7 @@ describe("universal login v2 does not depend on /u", () => {
   it("serves the widget and client.js from /widget, with legacy handler compat", async () => {
     const seen: string[] = [];
     const routes = createWidgetAssetRoutes({
-      widgetHandler: (c: any) => {
+      widgetHandler: (c) => {
         seen.push(c.req.path);
         return c.text("widget");
       },
@@ -49,7 +49,7 @@ describe("universal login v2 does not depend on /u", () => {
 
   it("mounts /widget, the /u/widget alias and /u2/continue on the app", async () => {
     const { app, env } = await getTestServer({
-      widgetHandler: (c: any) => c.text(`widget:${c.req.path}`),
+      widgetHandler: (c) => c.text(`widget:${c.req.path}`),
     });
     expect((await app.request("/widget/client.js")).status).toBe(200);
     expect((await app.request("/u/js/client.js")).status).toBe(200);

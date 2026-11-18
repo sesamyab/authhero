@@ -1069,6 +1069,10 @@ export default function createApp(config: AppConfig) {
     })
     .get("/docs", swaggerUI({ url: "/api/v2/spec" }))
     // Redirect widget requests to S3/CloudFront
+    .get("/widget/*", async (ctx) => {
+      const file = ctx.req.path.replace("/widget/", "");
+      return ctx.redirect(\`\${config.widgetUrl}/widget/\${file}\`);
+    })
     .get("/u/widget/*", async (ctx) => {
       const file = ctx.req.path.replace("/u/widget/", "");
       return ctx.redirect(\`\${config.widgetUrl}/u/widget/\${file}\`);
@@ -1121,6 +1125,10 @@ export default function createApp(config: AppConfig) {
     })
     .get("/docs", swaggerUI({ url: "/api/v2/spec" }))
     // Redirect widget requests to S3/CloudFront
+    .get("/widget/*", async (ctx) => {
+      const file = ctx.req.path.replace("/widget/", "");
+      return ctx.redirect(\`\${config.widgetUrl}/widget/\${file}\`);
+    })
     .get("/u/widget/*", async (ctx) => {
       const file = ctx.req.path.replace("/u/widget/", "");
       return ctx.redirect(\`\${config.widgetUrl}/u/widget/\${file}\`);
