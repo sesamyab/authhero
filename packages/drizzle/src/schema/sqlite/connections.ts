@@ -29,6 +29,10 @@ export const connections = sqliteTable(
     is_system: integer("is_system").notNull().default(0),
     ...configInheritanceColumns(),
     metadata: text("metadata", { length: 4096 }),
+    // Self-Service SSO state (JSON, see `ConnectionSelfService`). NULL for a
+    // connection that was not set up through self-service. Internal: never
+    // part of the Management API's connection object.
+    self_service: text("self_service", { length: 4096 }),
   },
   (table) => [
     primaryKey({ columns: [table.tenant_id, table.id] }),

@@ -77,6 +77,35 @@ describe("connections", () => {
     expect(fetchedAfterDelete).toBeNull();
   });
 
+  it("preserves self-service domain state for explicitly linked connections", async () => {
+    const { data } = await getTestServer();
+    const tenantId = "self-service-tenant";
+    const clientId = "self-service-client";
+    const selfService = {
+      domains: [{ domain: "example.com", status: "verified" as const }],
+    };
+    const { id } = await data.connections.create(tenantId, {
+      name: "self-service-sso",
+      strategy: "samlp",
+      self_service: selfService,
+    });
+    await data.clientConnections.updateByClient(tenantId, clientId, [id]);
+
+    const linked = await data.clientConnections.listByClient(
+      tenantId,
+      clientId,
+    );
+    expect(linked).toMatchObject([{ id, self_service: selfService }]);
+
+    await data.connections.update(tenantId, id, { self_service: null });
+    const cleared = await data.clientConnections.listByClient(
+      tenantId,
+      clientId,
+    );
+    expect(cleared).toMatchObject([{ id }]);
+    expect(cleared[0]?.self_service).toBeUndefined();
+  });
+
   it("returns a next cursor for checkpoint pagination", async () => {
     const { data } = await getTestServer();
     const tenantId = "connections-cursor-tenant";

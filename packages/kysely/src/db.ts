@@ -74,6 +74,9 @@ const sqlConnectionSchema = flattenSchema(connectionSchema).extend({
   // `options` is persisted as a JSON-encoded string; the in-memory schema
   // types it as a parsed object, so override here for the DB row shape.
   options: z.string(),
+  // Self-Service SSO state as JSON (`ConnectionSelfService`); NULL for a
+  // connection that was not set up through self-service.
+  self_service: z.string().nullish(),
 });
 
 const sqlBrandingSchema = flattenSchema(brandingSchema).extend({

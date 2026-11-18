@@ -22,6 +22,7 @@ import { isTryConnectionClientId } from "../../constants";
 
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId, withTotals } from "./helpers";
+import { withoutSelfService } from "../../helpers/self-service-connections";
 
 // Platform-managed clients with no business meaning to admins (e.g. the
 // per-tenant "AuthHero Try Connection" stub created by ensureTryConnectionClient).
@@ -569,7 +570,7 @@ const getByIdConnections = defineRoute({
           );
           return {
             connection_id: connectionId,
-            connection: connection || undefined,
+            connection: connection ? withoutSelfService(connection) : undefined,
           };
         }),
       );
@@ -581,7 +582,7 @@ const getByIdConnections = defineRoute({
         .filter((connection) => connection.id)
         .map((connection) => ({
           connection_id: connection.id!,
-          connection,
+          connection: withoutSelfService(connection),
         }));
     }
 
@@ -671,7 +672,7 @@ const patchByIdConnections = defineRoute({
         );
         return {
           connection_id: connectionId,
-          connection: connection || undefined,
+          connection: connection ? withoutSelfService(connection) : undefined,
         };
       }),
     );

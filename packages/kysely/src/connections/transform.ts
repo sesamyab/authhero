@@ -14,9 +14,10 @@ type DbConnection = Selectable<Database["connections"]>;
  * - Removing null properties
  */
 export function transformConnection(dbConnection: DbConnection): Connection {
-  const { is_system, enforce, ...rest } = dbConnection;
+  const { is_system, enforce, self_service, ...rest } = dbConnection;
   return removeNullProperties({
     ...rest,
+    self_service: parseSelfService(self_service),
     is_system: is_system ? true : undefined,
     enforce: enforceFromSql(enforce as number | null | undefined),
     options:
@@ -24,6 +25,16 @@ export function transformConnection(dbConnection: DbConnection): Connection {
         ? JSON.parse(dbConnection.options)
         : {},
   });
+}
+
+/** The stored Self-Service SSO JSON, or `undefined` when unset or unreadable. */
+function parseSelfService(value: unknown): Connection["self_service"] {
+  if (typeof value !== "string" || !value) return undefined;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
