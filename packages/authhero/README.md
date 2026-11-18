@@ -36,11 +36,11 @@ const config = {
 const { managementApp, oauthApp, universalApp, u2App, samlApp } = init(config);
 
 rootApp
-  // Mount the widget assets first so they skip oauthApp's per-request middleware.
+  // Mount the widget assets first and mount the universal login apps before oauthApp, so they skip oauthApp's per-request tenant middleware.
   .route("/", createWidgetAssetRoutes(config))
-  .route("/", oauthApp)
   .route("/u", universalApp)
   .route("/u2", u2App)
+  .route("/", oauthApp)
   .route("/api/v2", managementApp)
   .route("/", samlApp);
 ```
