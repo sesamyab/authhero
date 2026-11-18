@@ -23,11 +23,13 @@ vi.mock("@/components/admin", async () => {
 });
 
 let resolveUpload: (url: string) => void = () => {};
+let rejectUpload: (err: Error) => void = () => {};
 vi.mock("./previewClient", () => ({
   getApiUrl: () => "http://api",
   getHttpClient: () => () =>
-    new Promise((resolve) => {
+    new Promise((resolve, reject) => {
       resolveUpload = (url) => resolve({ json: { url } });
+      rejectUpload = reject;
     }),
 }));
 
@@ -91,5 +93,16 @@ describe("AssetUrlInput", () => {
       expect.stringContaining("discarded"),
       expect.anything(),
     );
+  });
+
+  it("re-enables submit and keeps the value when the upload fails", async () => {
+    const { container } = render(<Harness />);
+    pick(container);
+    await act(async () => rejectUpload(new Error("boom")));
+    await waitFor(() =>
+      expect(notify).toHaveBeenCalledWith("boom", { type: "error" }),
+    );
+    expect(form.getValues("logo_url")).toBe("old");
+    expect(await form.trigger()).toBe(true);
   });
 });
