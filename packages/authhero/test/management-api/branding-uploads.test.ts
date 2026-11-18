@@ -214,6 +214,16 @@ describe("POST /branding/uploads/{kind}", () => {
           { type: "image/svg+xml" },
         ),
       ],
+      [
+        "logo",
+        new File(
+          [
+            '<svg xmlns="http://www.w3.org/2000/svg"><text>İİİİİİİİ</text><style>@import "https://e.test/a.css";</style></svg>',
+          ],
+          "a.svg",
+          { type: "image/svg+xml" },
+        ),
+      ],
       ["logo", "just a string"],
     ] as const;
     for (const [kind, file] of bad) {

@@ -117,7 +117,8 @@ export function matchesSignature(contentType: string, bytes: Uint8Array) {
  * like a fake `</style-extra>` can't hide a rule), plus `style=""` values.
  */
 function extractCss(body: string): string {
-  const start = body.toLowerCase().indexOf("<style");
+  // Search the original string: toLowerCase() can change its length (e.g. İ).
+  const start = /<style/i.exec(body)?.index ?? -1;
   const parts: string[] = start === -1 ? [] : [body.slice(start)];
   for (const m of body.matchAll(/style\s*=\s*["']([^"']*)["']/gi)) {
     parts.push(m[1]!);
