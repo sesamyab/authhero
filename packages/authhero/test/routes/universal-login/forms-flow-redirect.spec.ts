@@ -518,5 +518,14 @@ describe("forms - FLOW node with REDIRECT after STEP", () => {
     expect(stateData.continuationReturnUrl).toBe(
       `/u/continue?state=${encodeURIComponent(state)}`,
     );
+
+    // Follow the redirect without an auth cookie: the scoped continuation
+    // must let the classic account page render for the login-session user.
+    const accountPage = await universalApp.request(
+      postLocation!.replace(/^\/u/, ""),
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(accountPage.status).toBe(200);
   });
 });

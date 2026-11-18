@@ -24,6 +24,7 @@ export * from "./components";
 export * from "./styles";
 export * from "./adapters";
 export * from "./email-services";
+export { createWidgetAssetRoutes } from "./routes/universal-login/widget-assets";
 export { waitUntil } from "./helpers/wait-until";
 export {
   toMutableResponse,

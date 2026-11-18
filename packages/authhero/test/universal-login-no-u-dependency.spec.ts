@@ -47,6 +47,17 @@ describe("universal login v2 does not depend on /u", () => {
     expect(client.headers.get("content-type")).toContain("javascript");
   });
 
+  it("serves both widget URLs from a sub-app-only composition", async () => {
+    const routes = createWidgetAssetRoutes({
+      widgetHandler: (c) => c.text(`widget:${c.req.path}`),
+    });
+    const host = new Hono().route("/", routes).route("/u", new Hono());
+    expect(await (await host.request("/widget/a.js")).text()).toBe(
+      "widget:/u/widget/a.js",
+    );
+    expect((await host.request("/widget/client.js")).status).toBe(200);
+  });
+
   it("mounts /widget, the /u/widget alias and /u2/continue on the app", async () => {
     const { app, env } = await getTestServer({
       widgetHandler: (c) => c.text(`widget:${c.req.path}`),
