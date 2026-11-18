@@ -548,6 +548,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               link: "/customization/adapter-interfaces/rate-limit",
             },
             {
+              text: "Storage (Branding Uploads)",
+              link: "/customization/adapter-interfaces/storage",
+            },
+            {
               text: "Failed Events (Dead-letter)",
               link: "/customization/failed-events",
             },
