@@ -184,6 +184,16 @@ describe("POST /branding/uploads/{kind}", () => {
           { type: "image/svg+xml" },
         ),
       ],
+      [
+        "logo",
+        new File(
+          ['<svg xmlns="x"><style>@font-face{}</style></svg>'],
+          "a.svg",
+          {
+            type: "image/svg+xml",
+          },
+        ),
+      ],
       ["logo", "just a string"],
     ] as const;
     for (const [kind, file] of bad) {
@@ -200,6 +210,19 @@ describe("POST /branding/uploads/{kind}", () => {
       }),
     );
     expect(ok.status).toBe(201);
+
+    const withAt = await upload(
+      server,
+      "logo",
+      new File(
+        [
+          '<svg xmlns="http://www.w3.org/2000/svg"><title>@studio</title></svg>',
+        ],
+        "a.svg",
+        { type: "image/svg+xml" },
+      ),
+    );
+    expect(withAt.status).toBe(201);
   });
 
   it("requires authentication", async () => {

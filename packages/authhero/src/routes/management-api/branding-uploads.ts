@@ -77,8 +77,8 @@ const postUpload = defineRoute({
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
     const { kind } = ctx.req.valid("param");
-    // Dot segments would be collapsed by clients and break the asset URL.
-    if (tenantId === "." || tenantId === "..") {
+    // Dot segments and path separators would break the single-segment asset URL.
+    if (tenantId === "." || tenantId === ".." || tenantId.includes("/")) {
       throw new HTTPException(400, {
         message: "Uploads are not supported for this tenant id",
       });

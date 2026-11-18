@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useFormContext, useWatch } from "react-hook-form";
+import { useController, useFormContext, useWatch } from "react-hook-form";
 import { useNotify } from "ra-core";
 import { Loader2, Upload, X } from "lucide-react";
 import { TextInput } from "@/components/admin";
@@ -53,35 +53,40 @@ export function AssetUrlInput({
 }) {
   const notify = useNotify();
   const tenantId = useTenantId() ?? "";
-  const { setValue, register, unregister, watch } = useFormContext();
+  const { setValue, getValues, watch, control } = useFormContext();
   const value = useWatch({ name: source }) as string | undefined;
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
   // True when the field was edited by the user while an upload was in flight.
   const editedDuringUpload = useRef(false);
+  const valueAtStart = useRef<unknown>(undefined);
 
   // Block form submission while an upload is pending: a hidden, value-less
-  // field whose validator fails until the upload settles.
-  const guardName = `__upload_pending.${source.replace(/\./g, "_")}`;
-  useEffect(() => {
-    register(guardName, {
+  // field whose validator fails until the upload settles. useController
+  // re-registers it on render, so it survives a form reset.
+  useController({
+    control,
+    name: `__upload_pending.${source.replace(/\./g, "_")}`,
+    rules: {
       validate: () =>
         !uploadingRef.current || "Wait for the upload to finish before saving",
-    });
-    return () => unregister(guardName);
-  }, [register, unregister, guardName]);
+    },
+  });
 
   // Track edits synchronously (the subscription fires inside setValue/onChange,
   // before any later upload completion can run).
   useEffect(() => {
     const sub = watch((_, { name }) => {
-      if (name === source && uploadingRef.current) {
+      if (!uploadingRef.current) return;
+      // An ancestor update (e.g. the Themes JSON editor replacing `themes`)
+      // reports the parent name, so also compare the field's value.
+      if (name === source || getValues(source) !== valueAtStart.current) {
         editedDuringUpload.current = true;
       }
     });
     return () => sub.unsubscribe();
-  }, [watch, source]);
+  }, [watch, getValues, source]);
 
   // Leaving the tab discards an in-flight upload: its result is ignored and the
   // admin is told, so it can't overwrite an edit made after returning.
@@ -103,6 +108,7 @@ export function AssetUrlInput({
     setUploading(true);
     uploadingRef.current = true;
     editedDuringUpload.current = false;
+    valueAtStart.current = getValues(source);
     const token = Symbol("upload");
     latestUpload.set(source, token);
     try {

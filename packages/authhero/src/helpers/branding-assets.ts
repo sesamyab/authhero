@@ -135,14 +135,21 @@ export function isSafeSvg(bytes: Uint8Array) {
     /<foreignObject[\s>]/i.test(body) ||
     /\son[a-z]+\s*=/i.test(body) ||
     /javascript:/i.test(body) ||
-    /@import/i.test(body) ||
     // CSS escapes (e.g. `@\\69mport`, `u\\72l(`) can hide at-rules and urls,
     // including inside CDATA. No legitimate logo needs a backslash.
-    /\\/.test(body) ||
-    /@[a-z\\]/i.test(body.replace(/[\w.-]+@[\w.-]+/g, ""))
+    /\\/.test(body)
   ) {
     return false;
   }
+  // At-rules (@import, @font-face, ...) only matter inside CSS, so text such as
+  // `<title>@studio</title>` stays valid.
+  const css = [
+    ...body.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi),
+    ...body.matchAll(/style\s*=\s*["']([^"']*)["']/gi),
+  ]
+    .map((m) => m[1])
+    .join("\n");
+  if (/@/.test(css)) return false;
   // Only same-document and inline image references are allowed.
   for (const m of body.matchAll(/(?:xlink:)?href\s*=\s*["']([^"']*)["']/gi)) {
     const ref = m[1]!.trim();
