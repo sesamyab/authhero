@@ -164,6 +164,16 @@ describe("POST /branding/uploads/{kind}", () => {
           { type: "image/svg+xml" },
         ),
       ],
+      [
+        "logo",
+        new File(
+          [
+            '<svg xmlns="x"><style><![CDATA[ svg{background-image:u\\72l(https://e.test/p.png)} ]]></style></svg>',
+          ],
+          "a.svg",
+          { type: "image/svg+xml" },
+        ),
+      ],
       ["logo", "just a string"],
     ] as const;
     for (const [kind, file] of bad) {

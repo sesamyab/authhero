@@ -136,10 +136,9 @@ export function isSafeSvg(bytes: Uint8Array) {
     /\son[a-z]+\s*=/i.test(body) ||
     /javascript:/i.test(body) ||
     /@import/i.test(body) ||
-    // CSS escapes (e.g. `@\\69mport`) can hide at-rules; no legitimate logo
-    // needs them, so reject any backslash inside <style> or style="".
-    /<style[^>]*>[^<]*\\/i.test(body) ||
-    /style\s*=\s*["'][^"']*\\/i.test(body) ||
+    // CSS escapes (e.g. `@\\69mport`, `u\\72l(`) can hide at-rules and urls,
+    // including inside CDATA. No legitimate logo needs a backslash.
+    /\\/.test(body) ||
     /@[a-z\\]/i.test(body.replace(/[\w.-]+@[\w.-]+/g, ""))
   ) {
     return false;
