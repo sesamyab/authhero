@@ -52,6 +52,7 @@ function renderList({
       return Promise.resolve({ data, total: data.length });
     }) as never,
     getOne: getOne as never,
+    getTenantCreationLimit: vi.fn(() => Promise.resolve(null)),
   });
   render(
     <TestMemoryRouter initialEntries={[url]}>

@@ -34,7 +34,12 @@ function renderCreate(
   {
     tenants = [],
     createError,
-  }: { tenants?: { id: string }[]; createError?: unknown } = {},
+    creationLimit = null,
+  }: {
+    tenants?: { id: string }[];
+    createError?: unknown;
+    creationLimit?: unknown;
+  } = {},
 ) {
   const create = vi.fn((_resource: string, params: { data: unknown }) =>
     createError
@@ -46,6 +51,7 @@ function renderCreate(
     getList: vi.fn(() =>
       Promise.resolve({ data: tenants, total: tenants.length }),
     ) as never,
+    getTenantCreationLimit: vi.fn(() => Promise.resolve(creationLimit)),
     getTenantDeploymentOptions: vi.fn(() =>
       deploymentOptions instanceof Error
         ? Promise.reject(deploymentOptions)
@@ -234,6 +240,54 @@ describe("TenantsCreate first tenant", () => {
       await screen.findByText('The tenant id "local" is reserved.'),
     ).toBeTruthy();
     expect(screen.queryByText(/Setup page/)).toBeNull();
+  });
+});
+
+describe("TenantsCreate creation limit", () => {
+  const options = {
+    deployment_types: ["shared"],
+    default_deployment_type: "shared",
+  };
+
+  it("shows how many tenants the user has used", async () => {
+    renderCreate(options, {
+      tenants: [{ id: "a" }],
+      creationLimit: {
+        key: "tenants_per_user",
+        used: 1,
+        limit: 3,
+        source: "default",
+      },
+    });
+    expect(await screen.findByText(/1 of 3 tenants used/)).toBeTruthy();
+    expect(screen.queryByText(/reached the limit/)).toBeNull();
+  });
+
+  it("says so when the limit is reached", async () => {
+    renderCreate(options, {
+      tenants: [{ id: "a" }],
+      creationLimit: {
+        key: "tenants_per_user",
+        used: 3,
+        limit: 3,
+        source: "override",
+      },
+    });
+    expect(await screen.findByText(/reached the limit/)).toBeTruthy();
+  });
+
+  it("shows nothing when there is no cap", async () => {
+    renderCreate(options, {
+      tenants: [{ id: "a" }],
+      creationLimit: {
+        key: "tenants_per_user",
+        used: 1,
+        limit: null,
+        source: "none",
+      },
+    });
+    await screen.findByLabelText(/Name/);
+    expect(screen.queryByText(/tenants? used/)).toBeNull();
   });
 });
 

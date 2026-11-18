@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useDataProvider } from "ra-core";
 import type {
   AuthHeroDataProvider,
+  TenantCreationLimit,
   TenantDeploymentOptions,
 } from "@/auth0DataProvider";
 
@@ -58,4 +59,43 @@ export function validateTenantId(value: unknown): string | undefined {
 /** The hostname for `id` from the server's template (`{id}.example.com`). */
 export function tenantHost(template: string, id: string): string {
   return template.split("{id}").join(id || "your-id");
+}
+
+/**
+ * The caller's creation limit, or `undefined` while loading and when there is
+ * nothing to show (an old server, or a caller the endpoint refuses). The
+ * server enforces it either way.
+ */
+export function useTenantCreationLimit(): TenantCreationLimit | undefined {
+  const dataProvider = useDataProvider<AuthHeroDataProvider>();
+  const [limit, setLimit] = useState<TenantCreationLimit>();
+
+  useEffect(() => {
+    let cancelled = false;
+    dataProvider
+      .getTenantCreationLimit()
+      .then((result) => {
+        if (!cancelled && result) setLimit(result);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [dataProvider]);
+
+  return limit;
+}
+
+/** "2 of 3 tenants used", or nothing when there is no cap. */
+export function describeCreationLimit(
+  limit: TenantCreationLimit | undefined,
+): string | undefined {
+  if (!limit || limit.limit === null) return undefined;
+  return `${limit.used} of ${limit.limit} tenant${limit.limit === 1 ? "" : "s"} used`;
+}
+
+export function creationLimitReached(
+  limit: TenantCreationLimit | undefined,
+): boolean {
+  return !!limit && limit.limit !== null && limit.used >= limit.limit;
 }

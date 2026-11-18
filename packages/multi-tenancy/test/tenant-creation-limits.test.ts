@@ -93,7 +93,7 @@ describe("tenantCreationLimits", () => {
           },
         }
       : adapters;
-    return (id: string) =>
+    const create = (id: string) =>
       app.request(
         "/management/tenants",
         {
@@ -109,6 +109,9 @@ describe("tenantCreationLimits", () => {
         },
         { data },
       );
+    create.usage = () =>
+      app.request("/management/tenants/creation-limit", {}, { data });
+    return create;
   }
 
   const nextId = () => `tenant-${++counter}`;
@@ -128,6 +131,41 @@ describe("tenantCreationLimits", () => {
     for (let i = 0; i < 3; i++) {
       expect((await operatorCreate(nextId())).status).toBe(201);
     }
+  });
+
+  it("reports used and limit for the caller, and where the limit comes from", async () => {
+    const create = appFor(selfService, { perUser: 3 });
+    expect(await (await create.usage()).json()).toEqual({
+      key: "tenants_per_user",
+      used: 0,
+      limit: 3,
+      source: "default",
+    });
+
+    expect((await create(nextId())).status).toBe(201);
+    expect(await (await create.usage()).json()).toMatchObject({
+      used: 1,
+      limit: 3,
+    });
+
+    await adapters.users.update(controlPlaneTenantId, selfService.sub, {
+      app_metadata: { tenant_limit: 10 },
+    });
+    expect(await (await create.usage()).json()).toMatchObject({
+      used: 1,
+      limit: 10,
+      source: "override",
+    });
+  });
+
+  it("reports no cap for an operator and when limits are unset", async () => {
+    const operatorUsage = await appFor(operator, { perUser: 1 }).usage();
+    expect(await operatorUsage.json()).toMatchObject({
+      limit: null,
+      source: "none",
+    });
+    const unset = await appFor(selfService, undefined).usage();
+    expect(await unset.json()).toMatchObject({ limit: null, source: "none" });
   });
 
   it("refuses a second tenant while one is still pending", async () => {

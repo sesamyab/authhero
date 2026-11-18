@@ -13,6 +13,8 @@ import { useHasChildren } from "@/hooks/useHasChildren";
 import { useManagementPermissions } from "@/hooks/useManagementPermissions";
 import { getBasePath } from "@/utils/runtimeConfig";
 import { TenantsEmptyState } from "./empty-state";
+import { CreationLimitMeter } from "./creation-limit";
+import { useTenantCreationLimit } from "./deployment";
 
 /**
  * The tenant to show the setup page of: a user's first and only tenant while
@@ -113,8 +115,10 @@ function TenantListActions({
   hasChildren: boolean;
   canCreate: boolean;
 }) {
+  const creationLimit = useTenantCreationLimit();
   return (
     <div className="flex items-center gap-2">
+      {canCreate && <CreationLimitMeter limit={creationLimit} compact />}
       {hasChildren && (
         <Button asChild variant="outline" size="sm">
           <Link to="/tenants/rollouts">
