@@ -183,29 +183,39 @@ describe("self-service SSO: email_verified guard", () => {
     expect(employee?.linked_to).toBe(VICTIM_ID);
   });
 
-  it("clears a stored email_verified on the next login from an unverified domain", async () => {
-    const server = await getTestServer();
-    const { env } = server;
-    // A user created before the connection became self-service (an "edit
-    // this connection" ticket), or while its domain was still verified.
-    await env.data.users.create("tenantId", {
-      user_id: "mock-strategy|stale",
-      email: "stale@unverified.example",
-      email_verified: true,
-      provider: "mock-strategy",
-      connection: "mock-strategy",
-      is_social: true,
-    });
-    await markSelfService(env, { domains: [] });
+  it.each(["on_each_login", "on_first_login", "never_on_login"] as const)(
+    "clears a stored email_verified outside verified domains in %s mode",
+    async (mode) => {
+      const server = await getTestServer();
+      const { env } = server;
+      // A user created before the connection became self-service (an "edit
+      // this connection" ticket), or while its domain was still verified.
+      await env.data.users.create("tenantId", {
+        user_id: "mock-strategy|stale",
+        email: "stale@unverified.example",
+        email_verified: true,
+        provider: "mock-strategy",
+        connection: "mock-strategy",
+        is_social: true,
+      });
+      const connection = await env.data.connections.get(
+        "tenantId",
+        "mock-strategy",
+      );
+      await env.data.connections.update("tenantId", "mock-strategy", {
+        options: { ...connection?.options, set_user_root_attributes: mode },
+        self_service: { domains: [] },
+      });
 
-    await loginThroughConnection(
-      server,
-      "asserts-verified:stale:stale@unverified.example",
-    );
+      await loginThroughConnection(
+        server,
+        "asserts-verified:stale:stale@unverified.example",
+      );
 
-    const user = await env.data.users.get("tenantId", "mock-strategy|stale");
-    expect(user?.email_verified).toBe(false);
-  });
+      const user = await env.data.users.get("tenantId", "mock-strategy|stale");
+      expect(user?.email_verified).toBe(false);
+    },
+  );
 });
 
 describe("self-service SSO: never a link target", () => {
@@ -298,6 +308,17 @@ describe("self-service SSO: never a link target", () => {
     expect(filtered.map((u) => u.user_id)).not.toContain(
       "mock-strategy|squatter",
     );
+
+    const untrustedUser = unfiltered.find(
+      (user) => user.user_id === "mock-strategy|squatter",
+    )!;
+    const candidatesForUntrustedUser = await resolveLinkCandidates({
+      userAdapter: env.data.users,
+      connectionAdapter: env.data.connections,
+      tenantId: "tenantId",
+      user: untrustedUser,
+    });
+    expect(candidatesForUntrustedUser).toEqual([]);
   });
 });
 

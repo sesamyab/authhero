@@ -917,12 +917,8 @@ export async function getOrCreateUserByProvider(
 
   // Self-Service SSO guard: whoever configured the identity provider controls
   // what it asserts, so outside the connection's verified domains its
-  // `email_verified` is never trusted. Forced to `false` (not just dropped) so
-  // the per-login sync below also clears a stale `true`.
+  // `email_verified` is never trusted.
   const untrustedEmail = isUntrustedSelfServiceEmail(selfService, username);
-  if (untrustedEmail && effectiveMode !== "never_on_login") {
-    rootAttrs.email_verified = false;
-  }
 
   // When the caller passes the upstream subject (social/enterprise callback,
   // refresh-token migration) the user id is deterministic, and it is the
@@ -1007,10 +1003,23 @@ export async function getOrCreateUserByProvider(
     ctx.set("user_id", user.user_id);
   }
 
-  if (!wasCreated && effectiveMode === "on_each_login") {
+  const syncRootAttributes = effectiveMode === "on_each_login";
+  const clearEmailVerification =
+    untrustedEmail || isUntrustedSelfServiceEmail(selfService, user.email);
+
+  if (!wasCreated && (syncRootAttributes || clearEmailVerification)) {
+    // Root sync retains the account's email. An assertion for another address
+    // cannot change verification for that retained address.
+    const emailVerified = clearEmailVerification
+      ? false
+      : !selfService || (user.email && normalizeEmail(user.email) === username)
+        ? rootAttrs.email_verified
+        : undefined;
     const updates: Record<string, unknown> = {
-      ...rootAttrs,
-      profileData: JSON.stringify(profileData),
+      ...(syncRootAttributes
+        ? { ...rootAttrs, profileData: JSON.stringify(profileData) }
+        : {}),
+      email_verified: emailVerified,
     };
     // Filter out undefined values to avoid overwriting existing data, and
     // drop fields whose stored value already matches — most logins sync an

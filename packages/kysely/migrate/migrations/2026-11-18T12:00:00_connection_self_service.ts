@@ -35,7 +35,14 @@ export async function down(db: Kysely<Database>): Promise<void> {
       .execute();
   } catch (error: unknown) {
     // PlanetScale doesn't support IF EXISTS here, so tolerate "doesn't exist".
-    if (error instanceof Error && error.message.includes("1091")) return;
+    if (
+      error instanceof Error &&
+      (("errno" in error && error.errno === 1091) ||
+        ("code" in error && error.code === "ER_CANT_DROP_FIELD_OR_KEY") ||
+        error.message.includes("1091"))
+    ) {
+      return;
+    }
     throw error;
   }
 }

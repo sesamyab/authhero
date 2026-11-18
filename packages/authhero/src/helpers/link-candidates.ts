@@ -36,10 +36,17 @@ export async function resolveLinkCandidates(params: {
   user: User;
 }): Promise<User[]> {
   const { userAdapter, connectionAdapter, tenantId, user } = params;
-  const trusted = (candidates: User[]) =>
-    connectionAdapter
-      ? filterTrustedLinkTargets(connectionAdapter, tenantId, candidates)
-      : Promise.resolve(candidates);
+  const trusted = async (candidates: User[]) => {
+    if (!connectionAdapter || candidates.length === 0) return candidates;
+    // The current user could link into a primary or become the primary.
+    const trustedUsers = await filterTrustedLinkTargets(
+      connectionAdapter,
+      tenantId,
+      [user, ...candidates],
+    );
+    if (trustedUsers[0]?.user_id !== user.user_id) return [];
+    return trustedUsers.slice(1);
+  };
 
   if (!user.email) return [];
 
