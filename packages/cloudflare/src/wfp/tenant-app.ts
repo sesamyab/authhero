@@ -336,9 +336,17 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
     // managed with control plane tokens.
     if (env.TENANT_ID) {
       try {
-        await provisionDefaultClients(encrypted, env.TENANT_ID, {
-          createManagementClient: false,
-        });
+        // A push filtered to leave out the tenant's own seed row (`entities.tenants:
+        // false`) has nothing to attach a client to; it still succeeds as before.
+        if (await encrypted.tenants.get(env.TENANT_ID)) {
+          await provisionDefaultClients(encrypted, env.TENANT_ID, {
+            createManagementClient: false,
+          });
+        } else {
+          console.warn(
+            `[wfp-tenant] sync-defaults: no tenants row for "${env.TENANT_ID}", default client skipped`,
+          );
+        }
       } catch (err) {
         return errorResponse(
           c,

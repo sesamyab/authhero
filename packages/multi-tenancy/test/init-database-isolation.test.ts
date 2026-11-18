@@ -124,6 +124,7 @@ describe("initMultiTenant: databaseIsolation", () => {
       audience: `https://${CHILD}.example.com`,
       sender_email: "admin@example.com",
       sender_name: CHILD,
+      deployment_type: "wfp",
     });
     expect(created.status).toBe(201);
     expect(provisioned).toEqual([CHILD]);
@@ -139,5 +140,22 @@ describe("initMultiTenant: databaseIsolation", () => {
     const deleted = await request("DELETE", `/api/v2/tenants/${CHILD}`);
     expect(deleted.status).toBe(204);
     expect(deprovisioned).toEqual([CHILD]);
+  });
+  it("keeps the resource server and role sync for a shared tenant", async () => {
+    // The control plane's roles and resource servers, to be copied.
+    await adapters.roles.create(CONTROL_PLANE, { name: "Platform Role" });
+
+    const created = await request("POST", "/api/v2/tenants", {
+      id: CHILD,
+      friendly_name: CHILD,
+      audience: `https://${CHILD}.example.com`,
+      sender_email: "admin@example.com",
+      sender_name: CHILD,
+      deployment_type: "shared",
+    });
+    expect(created.status).toBe(201);
+    expect(
+      (await adapters.roles.list(CHILD, {})).roles.map((r) => r.name),
+    ).toContain("Platform Role");
   });
 });

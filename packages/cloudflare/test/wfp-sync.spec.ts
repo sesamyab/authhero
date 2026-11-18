@@ -658,8 +658,11 @@ describe("createWfpTenantApp /internal/sync-defaults", () => {
     );
 
     // A re-sync keeps the client it finds, and never adds a Management API one.
+    const firstId = clients[0].client_id;
     expect((await push()).status).toBe(200);
-    expect((await tenant.clients.list("acme")).clients).toHaveLength(1);
+    const again = (await tenant.clients.list("acme")).clients;
+    expect(again.map((c) => c.client_id)).toEqual([firstId]);
+    expect((await tenant.tenants.get("acme"))?.default_client_id).toBe(firstId);
   });
 
   it("invokes onSyncResult with the applied result", async () => {
