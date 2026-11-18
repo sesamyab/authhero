@@ -1,5 +1,12 @@
 # @authhero/docker
 
+## 1.4.142
+
+### Patch Changes
+
+- Updated dependencies [5d51b37]
+  - @authhero/admin@0.30.0
+
 ## 1.4.141
 
 ### Patch Changes
