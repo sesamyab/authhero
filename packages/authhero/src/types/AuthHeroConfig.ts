@@ -392,7 +392,7 @@ export interface AuthHeroConfig {
    *   dataAdapter,
    *   widgetHandler: serveStatic({
    *     root: widgetPath,
-   *     rewriteRequestPath: (p) => p.replace(/^\/(u\/)?widget/, ""),
+   *     rewriteRequestPath: (p) => p.replace("/u/widget", "").replace("/widget", ""),
    *   }),
    * });
    * ```
@@ -405,7 +405,7 @@ export interface AuthHeroConfig {
    *   dataAdapter,
    *   widgetHandler: serveStatic({
    *     root: "./node_modules/@authhero/widget/dist/authhero-widget",
-   *     rewriteRequestPath: (p) => p.replace(/^\/(u\/)?widget/, ""),
+   *     rewriteRequestPath: (p) => p.replace("/u/widget", "").replace("/widget", ""),
    *   }),
    * });
    * ```
