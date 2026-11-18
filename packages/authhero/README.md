@@ -26,19 +26,25 @@ Authhero consists of several npm packages that provide different authentication-
 To initialize an auth server using Authhero:
 
 ```javascript
-const { managementApp, oauthApp, universalApp, u2App, samlApp } = init({
+import { init, createWidgetAssetRoutes } from "authhero";
+
+const config = {
   dataAdapter: params.dataAdapter,
-});
+  // Serves the widget bundle (see `widgetHandler` in AuthHeroConfig).
+  widgetHandler: params.widgetHandler,
+};
+const { managementApp, oauthApp, universalApp, u2App, samlApp } = init(config);
 
 rootApp
   .route("/", oauthApp)
+  .route("/", createWidgetAssetRoutes(config))
   .route("/u", universalApp)
   .route("/u2", u2App)
   .route("/api/v2", managementApp)
   .route("/", samlApp);
 ```
 
-The login pages load the widget from `/widget/*` and `/widget/client.js` (`/u/widget/*` is kept as an alias). Those routes are registered on the root `app` from `init()`; if you only mount `universalApp` you must also serve `/widget/*` yourself. To serve the bundle from the root `app`, pass a `widgetHandler` to `init()` (e.g. `serveStatic` over `@authhero/widget/dist/authhero-widget`, stripping `/u/widget`); without one, `/widget/authhero-widget.esm.js` returns `404 widget_not_configured`.
+The login pages load the widget from `/widget/*` and `/widget/client.js` (`/u/widget/*` is kept as an alias). Those routes are registered on the root `app` returned by `init()`. When you compose the routers yourself, as above, mount `createWidgetAssetRoutes` at the root (or serve `/widget/*` yourself). Without a `widgetHandler`, `/widget/authhero-widget.esm.js` returns `404 widget_not_configured`.
 
 ## Data Adapters
 
