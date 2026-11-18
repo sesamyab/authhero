@@ -127,15 +127,18 @@ describe("AssetUrlInput", () => {
     },
   );
 
-  it("does not apply an upload after remount plus an edit", async () => {
+  it("discards an upload started before a remount and warns", async () => {
     const { container, rerender } = render(<Harness />);
     pick(container);
     rerender(<Harness show={false} />);
     rerender(<Harness show />);
     await act(async () => {
-      form.setValue("logo_url", "typed");
       resolvers[0]!("http://a/0.png");
     });
-    expect(form.getValues("logo_url")).toBe("typed");
+    expect(form.getValues("logo_url")).toBe("old");
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringContaining("discarded"),
+      expect.anything(),
+    );
   });
 });

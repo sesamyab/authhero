@@ -173,6 +173,7 @@ export function AssetUrlInput({
             type="button"
             variant="ghost"
             size="sm"
+            disabled={uploading}
             onClick={() => setValue(source, "", { shouldDirty: true })}
           >
             <X className="size-4" />
