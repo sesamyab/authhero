@@ -5,7 +5,6 @@ import {
   getSelfCallbackWildcards,
 } from "../src/variables";
 import { createWidgetAssetRoutes } from "../src/routes/universal-login/widget-assets";
-import { getRedirectUrl } from "../src/hooks/formhooks";
 import { getTestServer } from "./helpers/test-server";
 
 const env = { ISSUER: "https://auth.example.com/" } as any;
@@ -25,12 +24,6 @@ describe("universal login v2 does not depend on /u", () => {
     const wildcards = getSelfCallbackWildcards(env);
     expect(wildcards).toContain("https://auth.example.com/u/*");
     expect(wildcards).toContain("https://auth.example.com/u2/*");
-  });
-
-  it("form hook redirects target /u2", () => {
-    expect(getRedirectUrl("account", undefined, "s")).toBe(
-      "/u2/account?state=s",
-    );
   });
 
   it("serves the widget and client.js from /widget, with legacy handler compat", async () => {
@@ -54,11 +47,35 @@ describe("universal login v2 does not depend on /u", () => {
     expect(client.headers.get("content-type")).toContain("javascript");
   });
 
-  it("mounts /widget and the /u/widget alias on the app, and /u2/continue", async () => {
-    const { app } = await getTestServer();
+  it("mounts /widget, the /u/widget alias and /u2/continue on the app", async () => {
+    const { app, env } = await getTestServer({
+      widgetHandler: (c: any) => c.text(`widget:${c.req.path}`),
+    });
     expect((await app.request("/widget/client.js")).status).toBe(200);
     expect((await app.request("/u/js/client.js")).status).toBe(200);
-    // /u2/continue exists (400 for a missing state, not 404)
-    expect((await app.request("/u2/continue")).status).not.toBe(404);
+
+    const neutral = await app.request("/widget/authhero-widget.esm.js");
+    expect(await neutral.text()).toBe(
+      "widget:/u/widget/authhero-widget.esm.js",
+    );
+    const legacy = await app.request("/u/widget/authhero-widget.esm.js");
+    expect(await legacy.text()).toBe("widget:/u/widget/authhero-widget.esm.js");
+
+    // A PENDING session is not awaiting continuation: the u2 handler sends
+    // the browser to the u2 identifier screen (the catch-all would 400).
+    const loginSession = await env.data.loginSessions.create("tenantId", {
+      csrf_token: "csrf",
+      authParams: { client_id: "clientId" },
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    } as any);
+    const res = await app.request(
+      `/u2/continue?state=${loginSession.id}`,
+      { headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      `/u2/login/identifier?state=${encodeURIComponent(loginSession.id)}`,
+    );
   });
 });

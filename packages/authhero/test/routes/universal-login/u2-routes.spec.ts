@@ -279,7 +279,7 @@ describe("u2 routes", () => {
       expect(html).toContain("<head");
       expect(html).toContain("<body");
       expect(html).toContain("authhero-widget");
-      expect(html).toContain("/widget/authhero-widget.esm.js");
+      expect(html).toContain('src="/widget/authhero-widget.esm.js');
     });
 
     it("should render identifier page with custom liquid template", async () => {
@@ -356,7 +356,7 @@ describe("u2 routes", () => {
       expect(html).toContain("Custom Footer Content");
 
       // Shell still provides head plumbing
-      expect(html).toContain("/widget/authhero-widget.esm.js");
+      expect(html).toContain('src="/widget/authhero-widget.esm.js');
       expect(html).toContain("<meta charSet=");
 
       // auth0:widget slot expanded into the widget mount
@@ -480,7 +480,7 @@ describe("u2 routes", () => {
 
       // Standard elements should still be present
       expect(defaultHtml).toContain("authhero-widget");
-      expect(defaultHtml).toContain("/widget/authhero-widget.esm.js");
+      expect(defaultHtml).toContain('src="/widget/authhero-widget.esm.js');
     });
   });
 

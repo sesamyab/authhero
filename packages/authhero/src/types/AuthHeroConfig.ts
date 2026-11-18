@@ -375,6 +375,10 @@ export interface AuthHeroConfig {
 
   /**
    * Handler for serving widget static files at /widget/* (and the legacy /u/widget/* alias).
+   * Requests to /widget/* are passed to the handler with the path rewritten to
+   * /u/widget/*, so a handler only needs to strip "/u/widget". The /widget/* routes
+   * are registered on the root app returned by init(), so mount that (or
+   * createWidgetAssetRoutes) when serving the pages from a sub-app.
    *
    * The widget files are served from @authhero/widget package.
    * This must be a platform-specific static file handler.
@@ -392,7 +396,7 @@ export interface AuthHeroConfig {
    *   dataAdapter,
    *   widgetHandler: serveStatic({
    *     root: widgetPath,
-   *     rewriteRequestPath: (p) => p.replace("/u/widget", "").replace("/widget", ""),
+   *     rewriteRequestPath: (p) => p.replace("/u/widget", ""),
    *   }),
    * });
    * ```
@@ -405,7 +409,7 @@ export interface AuthHeroConfig {
    *   dataAdapter,
    *   widgetHandler: serveStatic({
    *     root: "./node_modules/@authhero/widget/dist/authhero-widget",
-   *     rewriteRequestPath: (p) => p.replace("/u/widget", "").replace("/widget", ""),
+   *     rewriteRequestPath: (p) => p.replace("/u/widget", ""),
    *   }),
    * });
    * ```

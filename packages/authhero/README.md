@@ -37,6 +37,8 @@ rootApp
   .route("/", samlApp);
 ```
 
+The login pages load the widget from `/widget/*` and `/widget/client.js` (`/u/widget/*` is kept as an alias). Those routes are registered on the root `app` from `init()`; if you only mount `universalApp` you must also serve `/widget/*` yourself.
+
 ## Data Adapters
 
 Authhero uses data adapters to handle persistence. The default adapter is `@authhero/kysely`, which connects to any SQL database using Kysely. Future versions will migrate to Drizzle as the default data adapter. You can also create custom adapters, such as DynamoDB + Elasticsearch.
