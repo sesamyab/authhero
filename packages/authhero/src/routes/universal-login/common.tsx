@@ -384,7 +384,10 @@ export async function getLoginStrategy(
             env: ctx.env,
             tenant_id: client.tenant.id,
             username,
-            connection: resolveClientDatabaseConnectionName(client),
+            connection: resolveClientDatabaseConnectionName(
+              client,
+              ctx.var.loginSession?.authParams.connection,
+            ),
           });
 
   // Check user's preferred login method (last used)

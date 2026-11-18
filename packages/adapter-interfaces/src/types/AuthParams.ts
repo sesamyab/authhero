@@ -70,8 +70,9 @@ export const authParamsSchema = z.object({
   // OIDC Core 5.5 - parsed `claims` request parameter (individual claim
   // requests for the id_token and/or userinfo response).
   claims: claimsRequestSchema.optional(),
-  // The database connection a password was verified in by /co/authenticate,
-  // kept so the login ticket can only be redeemed in that connection.
+  // The database connection the /authorize `connection` parameter names, kept
+  // so password login, signup and reset in universal login use it (#1703).
+  // Only set for a database connection enabled on the client.
   connection: z.string().optional(),
   // The following fields are not available in Auth0
   vendor_id: z.string().optional(),

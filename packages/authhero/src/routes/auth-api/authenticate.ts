@@ -48,7 +48,10 @@ const postRoot = defineRoute({
                 client_id: z.string(),
                 username: z.string().transform((v) => normalizeEmail(v)),
                 password: z.string(),
-                realm: z.enum([Strategy.USERNAME_PASSWORD]),
+                // The database connection to log in to (#1703). It must be
+                // enabled on the client; the generic
+                // Username-Password-Authentication means the client's default.
+                realm: z.string(),
                 scope: z.string().optional(),
               }),
             ]),

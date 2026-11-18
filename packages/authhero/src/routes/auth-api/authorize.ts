@@ -448,6 +448,18 @@ const getRoot = defineRoute({
     ctx.set("client_id", client.client_id);
     setTenantId(ctx, client.tenant.id);
 
+    // A `connection` that names a database connection enabled on the client
+    // picks the database connection universal login uses for password login,
+    // signup and reset (#1703). Any other connection is an external one to
+    // redirect to; a name the client doesn't enable is refused there.
+    const databaseConnection = connection
+      ? client.connections.find(
+          (c) =>
+            c.name === connection && isDatabaseConnectionStrategy(c.strategy),
+        )
+      : undefined;
+    const redirectConnection = databaseConnection ? undefined : connection;
+
     // When a `state` param matches a non-terminal login session, hydrate
     // any params the caller omitted from the session's stored authParams.
     // This makes `/authorize?connection=X&state=Y` work for social-login
@@ -500,8 +512,8 @@ const getRoot = defineRoute({
     // authorization response. Resume only a live, matching server-side session
     // and use its stored parameters so this cannot relax normal OAuth checks.
     if (
-      connection &&
-      connection !== Strategy.EMAIL &&
+      redirectConnection &&
+      redirectConnection !== Strategy.EMAIL &&
       existingSession &&
       existingSession.authParams.client_id === client.client_id &&
       existingSession.state !== LoginSessionState.COMPLETED &&
@@ -524,7 +536,7 @@ const getRoot = defineRoute({
       return connectionAuth(
         ctx,
         client,
-        connection,
+        redirectConnection,
         { ...existingSession.authParams, state: existingSession.id },
         existingSession,
       );
@@ -624,6 +636,7 @@ const getRoot = defineRoute({
       max_age: max_age ? parseInt(max_age, 10) : undefined,
       acr_values,
       claims: parsedClaims,
+      connection: databaseConnection?.name,
     };
 
     if (authParams.redirect_uri) {
@@ -950,12 +963,12 @@ const getRoot = defineRoute({
     }
 
     // Connection auth flow
-    if (connection && connection !== Strategy.EMAIL) {
+    if (redirectConnection && redirectConnection !== Strategy.EMAIL) {
       // connectionAuth returns Promise<Response>, which is fine directly.
       return connectionAuth(
         ctx,
         client,
-        connection,
+        redirectConnection,
         authParams,
         existingSession,
         sessionCookie,

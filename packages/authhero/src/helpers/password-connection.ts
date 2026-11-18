@@ -1,5 +1,5 @@
-import { isDatabaseConnectionStrategy } from "@authhero/adapter-interfaces";
 import type { EnrichedClient } from "./client";
+import { resolveClientDatabaseConnection } from "./database-connection-scope";
 
 /**
  * Resolve the tenant's database (username/password) connection for a client.
@@ -9,16 +9,18 @@ import type { EnrichedClient } from "./client";
  * fallback rather than the tenant's actual connection. Centralised here so the
  * HTML route and the screen handler resolve it identically.
  *
+ * The connection is the one {@link resolveClientDatabaseConnection} picks.
+ *
  * @param fallbackConnection connection name to use when the client has no
  *   database connection (typically `user.connection`).
  */
 export function resolvePasswordConnection(
   client: EnrichedClient,
   fallbackConnection: string,
+  // The database connection the login session names, if any (#1703).
+  requested?: string,
 ): { connection: string; connectionId?: string } {
-  const passwordConnection = client.connections.find((c) =>
-    isDatabaseConnectionStrategy(c.strategy),
-  );
+  const passwordConnection = resolveClientDatabaseConnection(client, requested);
   return {
     connection: passwordConnection?.name || fallbackConnection,
     connectionId: passwordConnection?.id,

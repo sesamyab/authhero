@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { HTTPException } from "hono/http-exception";
+import { connectionSchema } from "@authhero/adapter-interfaces";
 import {
   DatabaseConnectionScope,
   isUserInConnectionScope,
+  orderFallbackDatabaseConnections,
+  resolveClientDatabaseConnection,
   resolveClientDatabaseConnectionName,
   resolveDatabaseConnectionScope,
 } from "../../src/helpers/database-connection-scope";
@@ -83,19 +87,81 @@ describe("resolveClientDatabaseConnectionName", () => {
     ).toBe("Username-Password-Authentication");
   });
 
-  it("does not guess between several database connections", () => {
-    // Falls back to the generic name, which only scopes when a tenant
-    // connection carries it.
-    const client = { connections: [db("main"), db("cte-store")] };
-    expect(resolveClientDatabaseConnectionName(client)).toBe(
-      "Username-Password-Authentication",
-    );
+  it("uses the first database connection in the client's order when none is named (#1703)", () => {
+    const client = { connections: [email, db("main"), db("cte-store")] };
+    expect(resolveClientDatabaseConnectionName(client)).toBe("main");
+    // The generic realm names no connection here, so it means the default.
     expect(
       resolveClientDatabaseConnectionName(
         client,
         "Username-Password-Authentication",
       ),
-    ).toBe("Username-Password-Authentication");
+    ).toBe("main");
+    expect(
+      resolveClientDatabaseConnectionName({
+        connections: [db("cte-store"), db("main")],
+      }),
+    ).toBe("cte-store");
+  });
+
+  it("rejects a named connection the client doesn't enable", () => {
+    const client = { connections: [db("main")] };
+    for (const name of ["cte-store", "email"]) {
+      let thrown: unknown;
+      try {
+        resolveClientDatabaseConnection(client, name);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(HTTPException);
+      expect(thrown).toHaveProperty("status", 400);
+    }
+  });
+
+  it("returns the generic name for a client without a database connection", () => {
+    expect(resolveClientDatabaseConnection({ connections: [email] })).toBe(
+      undefined,
+    );
+    expect(resolveClientDatabaseConnectionName({ connections: [email] })).toBe(
+      "Username-Password-Authentication",
+    );
+  });
+});
+
+describe("orderFallbackDatabaseConnections", () => {
+  function connection(id: string, strategy: string, created_at: string) {
+    return connectionSchema.parse({
+      id,
+      name: id,
+      strategy,
+      created_at,
+      updated_at: created_at,
+    });
+  }
+  const google = connection("google", "google-oauth2", "2024-01-01T00:00:00Z");
+  const sms = connection("sms", "sms", "2024-01-01T00:00:00Z");
+  const newer = connection("newer-db", "auth0", "2026-06-01T00:00:00Z");
+  const older = connection("older-db", "auth2", "2025-06-01T00:00:00Z");
+  const undated = connection("a-undated", "auth0", "");
+
+  it("puts the oldest database connection first, keeping other slots", () => {
+    expect(
+      orderFallbackDatabaseConnections([google, newer, sms, older]).map(
+        (c) => c.id,
+      ),
+    ).toEqual(["google", "older-db", "sms", "newer-db"]);
+  });
+
+  it("treats a connection without created_at as the newest, ties on id", () => {
+    expect(
+      orderFallbackDatabaseConnections([undated, newer]).map((c) => c.id),
+    ).toEqual(["newer-db", "a-undated"]);
+    const a = connection("a-db", "auth0", "2025-01-01T00:00:00Z");
+    const b = connection("b-db", "auth0", "2025-01-01T00:00:00Z");
+    expect(orderFallbackDatabaseConnections([b, a]).map((c) => c.id)).toEqual([
+      "a-db",
+      "b-db",
+    ]);
   });
 });
 

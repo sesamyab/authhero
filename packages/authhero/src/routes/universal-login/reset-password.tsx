@@ -137,7 +137,10 @@ const postRoot = defineRoute({
       env,
       tenant_id: client.tenant.id,
       username: loginSession.authParams.username,
-      connection: resolveClientDatabaseConnectionName(client),
+      connection: resolveClientDatabaseConnectionName(
+        client,
+        loginSession.authParams.connection,
+      ),
     });
 
     if (!user) {
@@ -148,7 +151,11 @@ const postRoot = defineRoute({
     // "Username-Password-Authentication" hardcoded fallback rather than the
     // tenant's actual connection name.
     const { connection: connectionName, connectionId } =
-      resolvePasswordConnection(client, user.connection);
+      resolvePasswordConnection(
+        client,
+        user.connection,
+        loginSession.authParams.connection,
+      );
 
     // Validate password against connection policy
     const policy = await getPasswordPolicy(

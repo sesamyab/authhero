@@ -509,6 +509,29 @@ const authProvider = getAuthProvider(getSelectedDomainFromStorage());
  * `checkError` signs the user out on a `status` of 401 or 403, which these
  * errors have never done.
  */
+/**
+ * The message for a failed request, the way react-admin's `fetchJson` builds
+ * `HttpError`: the JSON body's `message` when there is one, else the status
+ * text. Never the raw body, which may be JSON or a proxy's HTML page.
+ */
+export function httpErrorMessage(text: string, statusText: string): string {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "message" in parsed &&
+      typeof parsed.message === "string" &&
+      parsed.message
+    ) {
+      return parsed.message;
+    }
+  } catch {
+    // Not JSON.
+  }
+  return statusText;
+}
+
 function httpStatusError(
   message: string,
   status: number,
@@ -671,7 +694,10 @@ const authorizedHttpClient = (
             throw new Error("Navigating to Auth0 configuration");
           }
 
-          throw httpStatusError(response.statusText, response.status);
+          throw httpStatusError(
+            httpErrorMessage(text, response.statusText),
+            response.status,
+          );
         }
 
         const text = await response.text();
@@ -734,7 +760,10 @@ const authorizedHttpClient = (
             throw new Error("Navigating to Auth0 configuration");
           }
 
-          throw httpStatusError(text || response.statusText, response.status);
+          throw httpStatusError(
+            httpErrorMessage(text, response.statusText),
+            response.status,
+          );
         }
 
         const text = await response.text();
@@ -907,7 +936,7 @@ export const createOrganizationHttpClient = (organizationId: string) => {
         .then(async (response) => {
           if (response.status < 200 || response.status >= 300) {
             const text = await response.text();
-            throw new Error(text || response.statusText);
+            throw new Error(httpErrorMessage(text, response.statusText));
           }
 
           const text = await response.text();

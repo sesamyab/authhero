@@ -99,19 +99,34 @@ Email or SMS-based authentication without passwords:
 
 ## Connection Configuration
 
-Connections can be configured per application, allowing different apps to use different authentication methods:
+Connections can be configured per application, allowing different apps to use different authentication methods. The body is the ordered list of connection ids:
 
 ```typescript
 // Enable specific connections for an application
-PATCH /api/v2/clients/{client_id}
-{
-  "enabled_connections": [
-    "Username-Password-Authentication",
-    "google-oauth2",
-    "corporate-saml"
-  ]
-}
+PATCH /api/v2/clients/{client_id}/connections
+["con_database", "con_google", "con_corporate_saml"]
 ```
+
+You can also enable or disable one connection for several applications with `PATCH /api/v2/connections/{id}/clients`.
+
+An application with no connections enabled uses every connection in the tenant.
+
+### Several database connections on one application
+
+An application can enable more than one database connection, as in Auth0. Password login, signup and password reset use one of them, chosen like this:
+
+1. **The connection the request names**, when the application enables it: the `connection` parameter on `/authorize`, the `realm` of the password-realm grant on `/co/authenticate`, or the `connection` field of `/dbconnections/signup` and `/dbconnections/change_password`. A name the application doesn't enable is rejected (`/authorize` answers `403`, the others `400 invalid_request`); another connection is never used instead. The generic `Username-Password-Authentication` names a connection only when one has that exact name, and otherwise means "the default".
+2. **Otherwise the application's first enabled database connection**, in the order of its connection list. The admin UI lists database connections in their own section, in that order, and marks the default.
+3. **An application with no connections enabled** uses the tenant's oldest database connection, by creation time.
+
+A login looks the user up in the chosen connection only, not across database connections. (User rows from before AuthHero recorded a database user's connection name stay visible to every connection.)
+
+A database connection that only receives users from a [Custom Token Exchange](../../features/custom-token-exchange) profile doesn't need to be enabled on any application. To transfer its users into an application with [session transfer](../../features/session-transfer), enable it on that application next to its login connection; put the login connection first so it stays the default.
+
+Not implemented yet, compared with Auth0:
+
+- **Organization logins** use the application's connections. Auth0 replaces them with the organization's enabled connections.
+- **`default_directory`** (the tenant setting Auth0 uses for the `password` grant without a realm) is stored but unused: AuthHero has no `password` grant on `/oauth/token`.
 
 ## API Reference
 

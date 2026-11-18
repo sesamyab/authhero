@@ -7,7 +7,10 @@ import {
   getPrimaryUserByEmail,
 } from "../../helpers/users";
 import { getPrimaryUsernamePasswordUser } from "../../utils/username-password-provider";
-import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
+import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../../helpers/database-connection-scope";
 import { validateSignupEmail } from "../../hooks";
 import { logMessage } from "../../helpers/logging";
 import {
@@ -183,8 +186,9 @@ const postRoot = defineRoute({
     }
 
     // Check if the password connection has username identifier enabled
-    const passwordConnection = client.connections.find((c) =>
-      isDatabaseConnectionStrategy(c.strategy),
+    const passwordConnection = resolveClientDatabaseConnection(
+      client,
+      loginSession.authParams.connection,
     );
     const identifierConfig = getConnectionIdentifierConfig(passwordConnection);
     const requiresUsername = identifierConfig.usernameIdentifierActive;
@@ -230,7 +234,10 @@ const postRoot = defineRoute({
               env,
               tenant_id: client.tenant.id,
               username,
-              connection: resolveClientDatabaseConnectionName(client),
+              connection: resolveClientDatabaseConnectionName(
+                client,
+                loginSession.authParams.connection,
+              ),
             })
           : await getPrimaryUserByProvider({
               userAdapter: env.data.users,

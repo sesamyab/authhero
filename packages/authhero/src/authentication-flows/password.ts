@@ -20,7 +20,6 @@ import {
   Strategy,
   StrategyType,
   User,
-  isDatabaseConnectionStrategy,
 } from "@authhero/adapter-interfaces";
 import { EnrichedClient } from "../helpers/client";
 import { Bindings, GrantFlowUserResult, Variables } from "../types";
@@ -52,7 +51,10 @@ import {
 import { findConnectionByName } from "../utils/connections";
 import { attemptUpstreamPasswordFallback } from "./auth0-migration";
 import { resolvePrimaryUser } from "../helpers/users";
-import { resolveClientDatabaseConnectionName } from "../helpers/database-connection-scope";
+import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../helpers/database-connection-scope";
 import {
   LoginEmailVerification,
   sendLoginEmailVerificationCode,
@@ -315,7 +317,7 @@ export async function passwordGrant(
   client: EnrichedClient,
   authParams: AuthParams & { password: string },
   loginSession?: LoginSession,
-  realm: string = Strategy.USERNAME_PASSWORD,
+  realm?: string,
   emailVerification?: LoginEmailVerification,
 ): Promise<GrantFlowUserResult> {
   const { data } = ctx.env;
@@ -325,6 +327,15 @@ export async function passwordGrant(
   if (!username) {
     throw new JSONHTTPException(400, { message: "Username is required" });
   }
+
+  // The database connection this login targets (#1703): the realm the caller
+  // names, else the one /authorize named (carried in authParams), else the
+  // client's default. A name not enabled on the client is rejected here.
+  const databaseConnection = resolveClientDatabaseConnection(
+    client,
+    realm ?? authParams.connection,
+  );
+  const connectionName = databaseConnection?.name ?? Strategy.USERNAME_PASSWORD;
 
   // Pre-login throttling: short-window IP-based guard backed by
   // `data.rateLimit` (e.g. Cloudflare Workers Rate Limiter binding).
@@ -364,7 +375,7 @@ export async function passwordGrant(
     env: ctx.env,
     tenant_id: client.tenant.id,
     username,
-    connection: resolveClientDatabaseConnectionName(client, realm),
+    connection: connectionName,
   });
 
   // Lazy migration: a DB connection flagged `import_mode: true` AND carrying
@@ -373,32 +384,14 @@ export async function passwordGrant(
   // hash) is missing locally. On success, the user/password are created
   // locally so subsequent logins are served entirely from authhero.
   if (!user) {
-    // Resolve the DB connection by the requested realm (the connection the
-    // login is targeting), not "any import_mode connection in the tenant".
-    // This prevents a login for realm A from being verified against realm
-    // B's upstream just because B happens to have import_mode enabled.
-    let realmDbConnection = await findConnectionByName(
-      ctx,
-      client.tenant.id,
-      realm,
-    );
-    // Universal-login callers (enter-password, login) don't know the tenant's
-    // specific connection name and pass the default `Strategy.USERNAME_PASSWORD`
-    // string as the realm. Connections named anything other than that literal
-    // (e.g. "Password") would never resolve, so fall back to matching by
-    // strategy on the client's connections in that case.
-    if (!realmDbConnection && realm === Strategy.USERNAME_PASSWORD) {
-      const usernamePasswordConnections = client.connections.filter((c) =>
-        isDatabaseConnectionStrategy(c.strategy),
-      );
-      if (usernamePasswordConnections.length > 1) {
-        throw new JSONHTTPException(400, {
-          message:
-            "Multiple username-password connections configured for this client; specify an explicit realm.",
-        });
-      }
-      realmDbConnection = usernamePasswordConnections[0] ?? null;
-    }
+    // Use the connection this login targets, not "any import_mode connection
+    // in the tenant": a login for realm A must not be verified against realm
+    // B's upstream just because B happens to have import_mode enabled. A
+    // client without a database connection still finds the tenant connection
+    // named like the generic realm, as before.
+    const realmDbConnection =
+      databaseConnection ??
+      (await findConnectionByName(ctx, client.tenant.id, connectionName));
     if (realmDbConnection?.options?.import_mode === true) {
       const migrated = await attemptUpstreamPasswordFallback({
         ctx,
@@ -444,24 +437,11 @@ export async function passwordGrant(
     throw invalidCredentialsError();
   }
 
-  // The realm is the connection this login targets (defaults to the canonical
-  // "Username-Password-Authentication"). Legacy user records carry provider
-  // literals ("auth0"/"auth2") in `user.connection`, which must not leak into
-  // ctx.var.connection — it feeds the tenant logs and the session's persisted
-  // auth_connection. Resolve the realm against the client's connections so a
-  // tenant whose password connection has a custom name (e.g. "Password")
-  // records that name instead of the generic literal; when the match is
-  // ambiguous (multiple username-password connections) keep the realm as-is.
-  let targetConnection = client.connections.find((c) => c.name === realm);
-  if (!targetConnection && realm === Strategy.USERNAME_PASSWORD) {
-    const usernamePasswordConnections = client.connections.filter((c) =>
-      isDatabaseConnectionStrategy(c.strategy),
-    );
-    if (usernamePasswordConnections.length === 1) {
-      targetConnection = usernamePasswordConnections[0];
-    }
-  }
-  ctx.set("connection", targetConnection?.name ?? realm);
+  // Record the connection this login targets. Legacy user records carry
+  // provider literals ("auth0"/"auth2") in `user.connection`, which must not
+  // leak into ctx.var.connection — it feeds the tenant logs and the session's
+  // persisted auth_connection.
+  ctx.set("connection", connectionName);
   ctx.set("user_id", primaryUser.user_id);
 
   // Check failed login attempts from user_activity BEFORE validating password
@@ -594,7 +574,7 @@ export async function passwordGrant(
         loginSession.id,
         {
           user_id: user.user_id,
-          connection: targetConnection?.name ?? realm,
+          connection: connectionName,
         },
       );
     }
@@ -604,7 +584,7 @@ export async function passwordGrant(
         client,
         user,
         loginSession,
-        connection: targetConnection?.name ?? realm,
+        connection: connectionName,
         language,
       });
     } else {
@@ -660,7 +640,7 @@ export async function loginWithPassword(
   authParams: AuthParams & { password: string },
   loginSession?: LoginSession,
   ticketAuth?: boolean,
-  realm: string = Strategy.USERNAME_PASSWORD,
+  realm?: string,
   emailVerification?: LoginEmailVerification,
 ): Promise<Response> {
   const result = await passwordGrant(
@@ -839,7 +819,10 @@ export async function requestPasswordReset(
   // Scoped like the login and reset-completion lookups, and a lazily created
   // user is written with the same connection, so the emailed reset and later
   // logins through this client find the same row.
-  const databaseConnection = resolveClientDatabaseConnectionName(client);
+  const databaseConnection = resolveClientDatabaseConnectionName(
+    client,
+    existingSession?.authParams.connection,
+  );
   const existingUser = await getUsernamePasswordUser({
     env: ctx.env,
     tenant_id: client.tenant.id,
@@ -848,15 +831,12 @@ export async function requestPasswordReset(
   });
 
   if (!existingUser) {
-    const passwordConnection = client.connections.find((c) =>
-      isDatabaseConnectionStrategy(c.strategy),
-    );
     const validation = await validateSignupEmail(
       ctx,
       client,
       ctx.env.data,
       email,
-      passwordConnection?.name ?? Strategy.USERNAME_PASSWORD,
+      databaseConnection,
     );
     if (!validation.allowed) {
       return;

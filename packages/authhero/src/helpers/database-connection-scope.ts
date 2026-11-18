@@ -5,6 +5,7 @@ import {
   User,
   isDatabaseConnectionStrategy,
 } from "@authhero/adapter-interfaces";
+import { JSONHTTPException } from "../errors/json-http-exception";
 
 /**
  * Scopes a database-user lookup to one database connection (#1702).
@@ -88,34 +89,95 @@ export async function resolveDatabaseConnectionScope(
 }
 
 /**
- * The database connection a login or signup for `client` targets. Lookups
- * scope to it and new database users are written with it, so the two always
- * agree.
+ * The database connection a login, signup or password reset for `client`
+ * uses (#1703). This is the one place that decides it; lookups scope to it and
+ * new database users are written with it, so the two always agree.
  *
- * - An explicit realm other than the generic `Username-Password-Authentication`
- *   is used as is.
- * - The generic realm (the default) resolves to a client connection carrying
- *   that exact name, else to the client's only database connection.
- * - With several database connections on the client and none named like the
- *   generic realm, the generic name is returned. A user written with it is
- *   visible to every scope unless a tenant connection has that name, and
- *   {@link resolveDatabaseConnectionScope} leaves a lookup by it unscoped
- *   under the same condition.
+ * Auth0's rule, in order:
+ * 1. A connection the request names (`/authorize` `connection`, carried on the
+ *    login session as `authParams.connection`; the password-realm `realm`; the
+ *    `/dbconnections` `connection` field) is used when it is a database
+ *    connection enabled on the client. A name that isn't enabled on the client
+ *    is rejected, never replaced by another connection.
+ * 2. Otherwise the client's first enabled database connection, in the
+ *    client's stored order. A client with no explicit connection list (it
+ *    falls back to every tenant connection, as CIMD clients do) gets its
+ *    database connections oldest first, see
+ *    {@link orderFallbackDatabaseConnections}, so this is the tenant's oldest.
  *
- * Choosing between several database connections on one client is #1703; this
- * deliberately does not guess.
+ * `Username-Password-Authentication` is the generic realm that callers from
+ * before named database connections send for "this client's database
+ * connection". It names a connection when one has that exact name, and
+ * otherwise means "no explicit choice".
+ *
+ * Returns `undefined` when the client has no database connection.
  */
-export function resolveClientDatabaseConnectionName(
-  client: { connections: Pick<Connection, "name" | "strategy">[] },
-  realm: string = Strategy.USERNAME_PASSWORD,
-): string {
-  if (realm !== Strategy.USERNAME_PASSWORD) return realm;
-
+export function resolveClientDatabaseConnection<
+  T extends Pick<Connection, "name" | "strategy">,
+>(client: { connections: T[] }, requested?: string): T | undefined {
   const databaseConnections = client.connections.filter((connection) =>
     isDatabaseConnectionStrategy(connection.strategy),
   );
-  if (databaseConnections.some((c) => c.name === realm)) return realm;
-  const [only] = databaseConnections;
-  if (only && databaseConnections.length === 1) return only.name;
-  return realm;
+  if (requested) {
+    const named = databaseConnections.find((c) => c.name === requested);
+    if (named) return named;
+    if (requested !== Strategy.USERNAME_PASSWORD) {
+      throw databaseConnectionNotEnabled(requested);
+    }
+  }
+  return databaseConnections[0];
+}
+
+/**
+ * Name of the connection {@link resolveClientDatabaseConnection} picks, or the
+ * generic `Username-Password-Authentication` when the client has no database
+ * connection (the name such users were always written with).
+ */
+export function resolveClientDatabaseConnectionName(
+  client: { connections: Pick<Connection, "name" | "strategy">[] },
+  requested?: string,
+): string {
+  return (
+    resolveClientDatabaseConnection(client, requested)?.name ??
+    Strategy.USERNAME_PASSWORD
+  );
+}
+
+/** A request named a connection that isn't a database connection of the client. */
+export function databaseConnectionNotEnabled(name: string): JSONHTTPException {
+  return new JSONHTTPException(400, {
+    error: "invalid_request",
+    error_description: `The connection ${name} is not enabled for this client.`,
+  });
+}
+
+/**
+ * Order a client's fallback connection list (every tenant connection, used
+ * when the client enables none explicitly) so its database connections come
+ * oldest first. Only the database connections move, within the slots they
+ * already hold, so the order of login buttons doesn't change.
+ *
+ * Oldest is by `created_at`; a connection without one (imported or seeded
+ * rows) counts as newest, and ties break on id.
+ */
+export function orderFallbackDatabaseConnections<T extends Connection>(
+  connections: T[],
+): T[] {
+  const databaseConnections = connections
+    .filter((connection) => isDatabaseConnectionStrategy(connection.strategy))
+    .sort(compareByAge);
+  if (databaseConnections.length < 2) return connections;
+  let next = 0;
+  return connections.map((connection) =>
+    isDatabaseConnectionStrategy(connection.strategy)
+      ? (databaseConnections[next++] ?? connection)
+      : connection,
+  );
+}
+
+function compareByAge(a: Connection, b: Connection): number {
+  if (!!a.created_at !== !!b.created_at) return a.created_at ? -1 : 1;
+  const byCreated = (a.created_at || "").localeCompare(b.created_at || "");
+  if (byCreated !== 0) return byCreated;
+  return (a.id || a.name).localeCompare(b.id || b.name);
 }

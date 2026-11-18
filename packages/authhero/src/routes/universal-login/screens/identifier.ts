@@ -23,7 +23,10 @@ import {
 import { validateSignupEmail } from "../../../hooks";
 import { getConnectionFromIdentifier } from "../../../utils/username";
 import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
-import { resolveClientDatabaseConnectionName } from "../../../helpers/database-connection-scope";
+import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../../../helpers/database-connection-scope";
 import { findHrdConnection } from "../../../helpers/hrd";
 import { connectionAuth } from "../../../authentication-flows/connection";
 import { getLoginStrategy } from "../common";
@@ -166,8 +169,9 @@ export async function identifierScreen(
   );
 
   // Check if the password connection has username identifier enabled
-  const passwordConnection = context.connections.find((c) =>
-    isDatabaseConnectionStrategy(c.strategy),
+  const passwordConnection = resolveClientDatabaseConnection(
+    { connections: context.connections },
+    context.ctx.var.loginSession?.authParams.connection,
   );
   const identifierConfig = getConnectionIdentifierConfig(passwordConnection);
   const requiresUsername = identifierConfig.usernameIdentifierActive;
@@ -458,8 +462,9 @@ export const identifierScreenDefinition: ScreenDefinition = {
       const username = (data.username as string)?.toLowerCase()?.trim();
 
       // Check if the password connection has username identifier enabled
-      const passwordConnection = client.connections.find((c) =>
-        isDatabaseConnectionStrategy(c.strategy),
+      const passwordConnection = resolveClientDatabaseConnection(
+        client,
+        context.ctx.var.loginSession?.authParams.connection,
       );
       const identifierConfig =
         getConnectionIdentifierConfig(passwordConnection);
@@ -589,7 +594,10 @@ export const identifierScreenDefinition: ScreenDefinition = {
                 env: ctx.env,
                 tenant_id: client.tenant.id,
                 username: normalized,
-                connection: resolveClientDatabaseConnectionName(client),
+                connection: resolveClientDatabaseConnectionName(
+                  client,
+                  ctx.var.loginSession?.authParams.connection,
+                ),
               }))
             : !!(await getPrimaryUserByProvider({
                 userAdapter: ctx.env.data.users,

@@ -1218,6 +1218,67 @@ describe("session transfer tokens", () => {
       expect(await warnings(server)).toEqual([WARN_CONNECTION_NOT_ENABLED]);
     });
 
+    describe("a user in a second database connection (#1703)", () => {
+      // A user that Custom Token Exchange put in "cte-users" transfers into a
+      // client that enables that connection, next to its login connection,
+      // and only then (Auth0's exact-connection rule).
+      const CTE_USER = "auth0|cte-user";
+
+      async function setupWithCteUser(receiverConnections: string[]) {
+        const server = await setup();
+        const { data } = server.env;
+        await data.connections.create(TENANT, {
+          id: "cte-users",
+          name: "cte-users",
+          strategy: "auth0",
+          options: {},
+        });
+        await data.users.create(TENANT, {
+          user_id: CTE_USER,
+          email: "cte@example.com",
+          email_verified: true,
+          connection: "cte-users",
+          provider: "auth0",
+          is_social: false,
+        });
+        await data.clientConnections.updateByClient(
+          TENANT,
+          RECEIVER,
+          receiverConnections,
+        );
+        return server;
+      }
+
+      it("is accepted by a receiver that enables the connection", async () => {
+        const server = await setupWithCteUser([
+          "Username-Password-Authentication",
+          "cte-users",
+        ]);
+        const { token } = await mint(server, {
+          refreshToken: { user_id: CTE_USER },
+        });
+
+        expectLoggedIn(
+          await authorize(server, { session_transfer_token: token }),
+        );
+        expect(await warnings(server)).toEqual([]);
+      });
+
+      it("is refused by a receiver that only enables the login connection", async () => {
+        const server = await setupWithCteUser([
+          "Username-Password-Authentication",
+        ]);
+        const { token } = await mint(server, {
+          refreshToken: { user_id: CTE_USER },
+        });
+
+        expectLoginPrompt(
+          await authorize(server, { session_transfer_token: token }),
+        );
+        expect(await warnings(server)).toEqual([WARN_CONNECTION_NOT_ENABLED]);
+      });
+    });
+
     it("keeps an existing session of the same user", async () => {
       const server = await setup();
       const { data } = server.env;

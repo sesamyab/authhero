@@ -21,8 +21,9 @@ async function getProviderFromRealm(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   tenant_id: string,
   realm: string,
+  isDatabaseRealm: boolean,
 ) {
-  if (realm === Strategy.USERNAME_PASSWORD) {
+  if (isDatabaseRealm) {
     return resolveUsernamePasswordProvider(ctx.env, tenant_id);
   }
 
@@ -93,26 +94,31 @@ export async function ticketAuth(
 
   await env.data.codes.used(tenant_id, ticketId);
 
-  // A login ticket only proves a password in the connection that verified it,
-  // which the password branch of /co/authenticate records on the login
-  // session. The realm sent here must be that same database connection; any
-  // other realm, including `email`, is refused. Other `ticket` codes (for
-  // example guardian enrollment tickets) point at login sessions without a
-  // recorded connection and never proved a password, so a missing connection
-  // is refused too.
-  const verifiedConnection = loginSession.authParams.connection;
-  if (
-    !verifiedConnection ||
-    realm !== Strategy.USERNAME_PASSWORD ||
-    realm !== verifiedConnection
-  ) {
-    throw new JSONHTTPException(403, { message: "Invalid realm" });
+  // A database realm is the generic `Username-Password-Authentication` or the
+  // name of a database connection enabled on the client (#1703): the one
+  // /co/authenticate verified the password in.
+  const isDatabaseRealm =
+    realm === Strategy.USERNAME_PASSWORD ||
+    client.connections.some(
+      (c) => c.name === realm && isDatabaseConnectionStrategy(c.strategy),
+    );
+  const provider = await getProviderFromRealm(
+    ctx,
+    tenant_id,
+    realm,
+    isDatabaseRealm,
+  );
+  const databaseConnection = isDatabaseRealm
+    ? resolveClientDatabaseConnectionName(client, realm)
+    : undefined;
+  if (databaseConnection) {
+    ctx.set("connection", databaseConnection);
   }
 
-  const provider = await getProviderFromRealm(ctx, tenant_id, realm);
-
   // Look up the connection to get its strategy
-  const connection = client.connections.find((c) => c.name === realm);
+  const connection = client.connections.find(
+    (c) => c.name === (databaseConnection ?? realm),
+  );
   const strategy =
     connection?.strategy ||
     (isUsernamePasswordProvider(provider)
@@ -122,24 +128,23 @@ export async function ticketAuth(
     ? StrategyType.DATABASE
     : StrategyType.PASSWORDLESS;
 
-  let user =
-    realm === Strategy.USERNAME_PASSWORD
-      ? await getOrCreateUsernamePasswordUser(ctx, {
-          client,
-          username: loginSession.authParams.username,
-          // Same connection /co/authenticate verified the password in, so the
-          // ticket resolves the user that logged in.
-          connection: resolveClientDatabaseConnectionName(client, realm),
-          ip: ctx.var.ip,
-        })
-      : await getOrCreateUserByProvider(ctx, {
-          username: loginSession.authParams.username,
-          provider,
-          client,
-          connection: realm,
-          isSocial: false,
-          ip: ctx.var.ip,
-        });
+  let user = databaseConnection
+    ? await getOrCreateUsernamePasswordUser(ctx, {
+        client,
+        username: loginSession.authParams.username,
+        // Same connection /co/authenticate verified the password in, so the
+        // ticket resolves the user that logged in.
+        connection: databaseConnection,
+        ip: ctx.var.ip,
+      })
+    : await getOrCreateUserByProvider(ctx, {
+        username: loginSession.authParams.username,
+        provider,
+        client,
+        connection: realm,
+        isSocial: false,
+        ip: ctx.var.ip,
+      });
 
   ctx.set("username", user.email || user.phone_number);
   ctx.set("user_id", user.user_id);
@@ -165,8 +170,6 @@ export async function ticketAuth(
     ...omitUndefined(authParams),
     client_id: loginSession.authParams.client_id,
     username: loginSession.authParams.username,
-    // Likewise the connection the password was verified in.
-    connection: loginSession.authParams.connection,
   };
 
   await env.data.loginSessions.update(tenant_id, loginSession.id, {
@@ -180,7 +183,7 @@ export async function ticketAuth(
     loginSession: { ...loginSession, authParams: mergedAuthParams },
     user,
     client,
-    authConnection: realm,
+    authConnection: databaseConnection ?? realm,
     authStrategy: {
       strategy,
       strategy_type,
