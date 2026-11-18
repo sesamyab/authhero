@@ -354,26 +354,29 @@ describe("TenantsCreate creation limit", () => {
     await waitFor(() => expect(screen.queryByText(/tenants used/)).toBeNull());
   });
 
-  it("refreshes on the status shape the admin's own client throws", async () => {
-    // authorizedHttpClient reports `httpStatus`, never `status`.
-    const getCreationLimit = vi.fn().mockResolvedValue({
-      key: "tenants_per_user",
-      used: 1,
-      limit: 2,
-      source: "default",
-    });
-    renderCreate(options, {
-      getCreationLimit,
-      createError: Object.assign(new Error("Tenant limit reached"), {
-        httpStatus: 403,
-      }),
-    });
-    await screen.findByText(/1 of 2 tenants used/);
+  // authorizedHttpClient reports `httpStatus`, never `status`.
+  it.each([403, 500])(
+    "refreshes once, without retrying the create, on a %i from the admin's own client",
+    async (httpStatus) => {
+      const getCreationLimit = vi.fn().mockResolvedValue({
+        key: "tenants_per_user",
+        used: 1,
+        limit: 2,
+        source: "default",
+      });
+      const { create } = renderCreate(options, {
+        getCreationLimit,
+        createError: Object.assign(new Error("Refused"), { httpStatus }),
+      });
+      await screen.findByText(/1 of 2 tenants used/);
 
-    await submit("Acme");
+      await submit("Acme");
 
-    await waitFor(() => expect(getCreationLimit).toHaveBeenCalledTimes(2));
-  });
+      await waitFor(() => expect(getCreationLimit).toHaveBeenCalledTimes(2));
+      // The create itself is not sent again.
+      expect(create).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("keeps a zero cap out of the meter range", async () => {
     renderCreate(options, {
