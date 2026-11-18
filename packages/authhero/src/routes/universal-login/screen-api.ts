@@ -322,9 +322,8 @@ async function buildScreenContext(
     language,
   );
 
-  // Determine route prefix based on client metadata (matches u2-routes behavior)
-  const routePrefix =
-    client.client_metadata?.universal_login_version === "2" ? "/u2" : "/u";
+  // This API only serves /u2
+  const routePrefix = "/u2";
 
   // Build screen-specific data from the login session
   const data: Record<string, unknown> = {};
@@ -692,15 +691,6 @@ screenApiRoutes.openapi(
       const screen = {
         ...builtInResult.screen,
         action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}${screenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
-        // Update links to use u2 routes
-        links: builtInResult.screen.links?.map((link) => ({
-          ...link,
-          href: link.href
-            .replace("/u/widget/", "/u2/")
-            .replace("/u/signup", "/u2/signup")
-            .replace("/u/enter-", "/u2/enter-")
-            .replace("/u/login/", "/u2/login/"),
-        })),
       };
       return ctx.json({
         screen,
@@ -859,14 +849,6 @@ screenApiRoutes.openapi(
             ...renderedScreen,
             // Widget will POST JSON here when JS is enabled
             action: `/u2/screen/${nextScreenId}?state=${encodeURIComponent(state)}${nextScreenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
-            links: renderedScreen.links?.map((link) => ({
-              ...link,
-              href: link.href
-                .replace("/u/widget/", "/u2/")
-                .replace("/u/signup", "/u2/signup")
-                .replace("/u/enter-", "/u2/enter-")
-                .replace("/u/login/", "/u2/login/"),
-            })),
           },
           branding: screenData.branding,
           screenId: nextScreenId,
@@ -1053,8 +1035,8 @@ screenApiRoutes.openapi(
           // For account pages (change-email, account), use continuation state
           // This allows the user to access the page without full auth, but with scope validation
           if (target === "change-email" || target === "account") {
-            // Return URL is /u/continue which will resume the login flow
-            const returnUrl = `/u/continue?state=${encodeURIComponent(state)}`;
+            // Return URL is /u2/continue which will resume the login flow
+            const returnUrl = `/u2/continue?state=${encodeURIComponent(state)}`;
             await startLoginSessionContinuation(
               ctx,
               client.tenant.id,

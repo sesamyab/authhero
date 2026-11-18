@@ -505,7 +505,7 @@ export async function sendCode(
   const logo = branding?.logo_url || "";
   const buttonColor = branding?.colors?.primary || "#7d68f4";
 
-  const loginUrl = new URL(getUniversalLoginUrl(ctx.env));
+  const loginUrl = new URL(getUniversalLoginUrl(ctx.env, undefined, "u"));
 
   const options = {
     vendorName: tenant.friendly_name,
@@ -547,7 +547,7 @@ export async function sendCode(
       templateName: "verify_email_by_code",
       legacyTemplate: "auth-code",
       fallbackSubject: t("code_email_subject", options),
-      fallbackHtml: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env)}validate-email`,
+      fallbackHtml: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env, undefined, "u")}validate-email`,
       tenant,
       branding: { logo, primary_color: buttonColor },
       code,
@@ -934,7 +934,7 @@ export async function sendSignupValidateEmailAddress(
     lng: language || "en",
   };
 
-  const signupUrl = `${getUniversalLoginUrl(ctx.env)}signup?state=${state}&code=${code}`;
+  const signupUrl = `${getUniversalLoginUrl(ctx.env, undefined, "u")}signup?state=${state}&code=${code}`;
 
   const data: Record<string, string> = {
     tenantId: tenant.id,

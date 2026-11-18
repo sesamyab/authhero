@@ -374,7 +374,7 @@ export interface AuthHeroConfig {
   entityHooks?: EntityHooksConfig;
 
   /**
-   * Handler for serving widget static files at /u/widget/*.
+   * Handler for serving widget static files at /widget/* (and the legacy /u/widget/* alias).
    *
    * The widget files are served from @authhero/widget package.
    * This must be a platform-specific static file handler.
@@ -392,7 +392,7 @@ export interface AuthHeroConfig {
    *   dataAdapter,
    *   widgetHandler: serveStatic({
    *     root: widgetPath,
-   *     rewriteRequestPath: (p) => p.replace("/u/widget", ""),
+   *     rewriteRequestPath: (p) => p.replace(/^\/(u\/)?widget/, ""),
    *   }),
    * });
    * ```
@@ -405,7 +405,7 @@ export interface AuthHeroConfig {
    *   dataAdapter,
    *   widgetHandler: serveStatic({
    *     root: "./node_modules/@authhero/widget/dist/authhero-widget",
-   *     rewriteRequestPath: (p) => p.replace("/u/widget", ""),
+   *     rewriteRequestPath: (p) => p.replace(/^\/(u\/)?widget/, ""),
    *   }),
    * });
    * ```

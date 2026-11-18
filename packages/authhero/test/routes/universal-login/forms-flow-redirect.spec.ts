@@ -175,7 +175,7 @@ describe("forms - FLOW node with REDIRECT after STEP", () => {
     const postLocation = formStepPost.headers.get("location");
 
     // Should redirect to the change-email page (from the FLOW redirect action)
-    expect(postLocation).toBe(`/u/account/change-email?state=${state}`);
+    expect(postLocation).toBe(`/u2/account/profile?state=${state}`);
 
     // Verify that the login session is properly set to awaiting_continuation state
     // This ensures the user can access the change-email page and return to the auth flow
@@ -503,7 +503,7 @@ describe("forms - FLOW node with REDIRECT after STEP", () => {
     const postLocation = formStepPost.headers.get("location");
 
     // Should redirect to the account page (from the FLOW redirect action)
-    expect(postLocation).toBe(`/u/account?state=${state}`);
+    expect(postLocation).toBe(`/u2/account?state=${state}`);
 
     // Verify that the login session is properly set to awaiting_continuation state
     // This ensures the user can access the account page and return to the auth flow

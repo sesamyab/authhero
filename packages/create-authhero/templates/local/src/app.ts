@@ -26,7 +26,7 @@ export default function createApp(config: AuthHeroConfig) {
     ...config,
     widgetHandler: serveStatic({
       root: widgetPath,
-      rewriteRequestPath: (p) => p.replace("/u/widget", ""),
+      rewriteRequestPath: (p) => p.replace(/^\/(u\/)?widget/, ""),
     }),
   };
 

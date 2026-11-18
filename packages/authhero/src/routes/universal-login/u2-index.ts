@@ -34,6 +34,7 @@ import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
 import { CodeHookDestination } from "../../helpers/outbox-destinations/code-hooks";
 import { RegistrationFinalizerDestination } from "../../helpers/outbox-destinations/registration-finalizer";
 import { createServiceToken } from "../../helpers/service-token";
+import { u2ContinueRoutes } from "./continue";
 import { screenApiRoutes } from "./screen-api";
 import { u2Routes } from "./u2-routes.tsx";
 import { u2FormNodeRoutes } from "./u2-form-node.tsx";
@@ -136,6 +137,7 @@ export default function createU2App(config: AuthHeroConfig) {
   const u2App = app
     .route("/screen", screenApiRoutes)
     .route("/forms", u2FormNodeRoutes)
+    .route("/continue", u2ContinueRoutes)
     .route("/", u2Routes);
 
   // OpenAPI spec

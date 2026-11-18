@@ -34,7 +34,7 @@ crons = ["0 3 * * *"]
 # This includes the widget, CSS, and client-side JavaScript.
 # Assets are copied from node_modules/authhero/dist/assets to dist/assets
 # during the build process (see copy-assets.js).
-# Assets are served at their path: /u/widget/*, /u/css/*, /u/js/*
+# Assets are served at their path: /widget/* (also /u/widget/*), /u/css/*, /u/js/*
 [assets]
 directory = "./dist/assets"
 

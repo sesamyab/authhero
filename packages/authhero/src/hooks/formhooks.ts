@@ -495,9 +495,9 @@ export function getRedirectUrl(
 ): string {
   switch (target) {
     case "change-email":
-      return `/u/account/change-email?state=${encodeURIComponent(state)}`;
+      return `/u2/account/profile?state=${encodeURIComponent(state)}`;
     case "account":
-      return `/u/account?state=${encodeURIComponent(state)}`;
+      return `/u2/account?state=${encodeURIComponent(state)}`;
     case "custom":
       if (!customUrl) {
         throw new HTTPException(400, {

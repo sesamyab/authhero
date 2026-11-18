@@ -80,12 +80,21 @@ function enrichClient(
   tenant: Tenant,
   connections: Connection[],
 ): EnrichedClient {
-  const universalLoginUrl = getUniversalLoginUrl(env);
+  const universalLoginUrl = getUniversalLoginUrl(env, undefined, "u2");
+  const legacyUniversalLoginUrl = getUniversalLoginUrl(env, undefined, "u");
   return {
     ...client,
-    web_origins: [...(client.web_origins || []), `${universalLoginUrl}login`],
+    web_origins: [
+      ...(client.web_origins || []),
+      `${universalLoginUrl}login`,
+      `${legacyUniversalLoginUrl}login`,
+    ],
     allowed_logout_urls: [...(client.allowed_logout_urls || []), env.ISSUER],
-    callbacks: [...(client.callbacks || []), `${universalLoginUrl}info`],
+    callbacks: [
+      ...(client.callbacks || []),
+      `${universalLoginUrl}info`,
+      `${legacyUniversalLoginUrl}info`,
+    ],
     tenant,
     connections,
   };

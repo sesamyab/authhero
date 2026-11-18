@@ -264,7 +264,7 @@ const getVerifyRedirect = defineRoute({
     });
 
     return ctx.redirect(
-      `${getUniversalLoginUrl(ctx.env, ctx.var.custom_domain)}invalid-session?state=${loginSession.id}&error=${encodeURIComponent(errorMessage)}`,
+      `${getUniversalLoginUrl(ctx.env, ctx.var.custom_domain, "u")}invalid-session?state=${loginSession.id}&error=${encodeURIComponent(errorMessage)}`,
       302,
     );
   },

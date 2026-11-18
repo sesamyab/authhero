@@ -207,9 +207,7 @@ function createScreenRouteHandler(screenId: string) {
 
     // Build screen context for SSR
     // Use client.connections which is already ordered per the client's configuration
-    // Determine route prefix based on client metadata
-    const routePrefix =
-      client.client_metadata?.universal_login_version === "2" ? "/u2" : "/u";
+    const routePrefix = "/u2";
 
     // Build screen-specific data
     const screenData: Record<string, unknown> = {
@@ -310,15 +308,6 @@ function createScreenRouteHandler(screenId: string) {
     const screen = {
       ...result.screen,
       action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}${screenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
-      // Update links to use u2 routes
-      links: result.screen.links?.map((link) => ({
-        ...link,
-        href: link.href
-          .replace("/u/widget/", "/u2/")
-          .replace("/u2/signup", "/u2/signup")
-          .replace("/u/signup", "/u2/signup")
-          .replace("/u/enter-", "/u2/enter-"),
-      })),
     };
 
     const authParams = {
@@ -465,9 +454,7 @@ function createScreenPostHandler(screenId: string) {
 
     // Build screen context
     // Use client.connections which is already ordered per the client's configuration
-    // Determine route prefix based on client metadata
-    const routePrefix =
-      client.client_metadata?.universal_login_version === "2" ? "/u2" : "/u";
+    const routePrefix = "/u2";
     const screenContext: ScreenContext = {
       ctx,
       tenant: client.tenant,

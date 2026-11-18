@@ -389,7 +389,7 @@ export function buildHeadEssentials(opts: {
     faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : "",
     fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : "",
     `<style>${pageCss}</style>`,
-    `<script type="module" src="/u/widget/authhero-widget.esm.js?v=${buildHash}"></script>`,
+    `<script type="module" src="/widget/authhero-widget.esm.js?v=${buildHash}"></script>`,
     `<script>${buildDarkModeRuntimeScript(darkVarsJson)}</script>`,
   ]
     .filter(Boolean)
@@ -541,7 +541,7 @@ export function WidgetPage({
         />
         <script
           type="module"
-          src={`/u/widget/authhero-widget.esm.js?v=${buildHash}`}
+          src={`/widget/authhero-widget.esm.js?v=${buildHash}`}
         />
       </head>
       <body>
@@ -570,7 +570,7 @@ export function WidgetPage({
               <strong>{bannerT.privateBrowsingTitle()}</strong>
               <p>{bannerT.privateBrowsingText()}</p>
             </div>
-            <script type="module" src={`/u/js/client.js?v=${buildHash}`} />
+            <script type="module" src={`/widget/client.js?v=${buildHash}`} />
           </>
         )}
 

@@ -343,7 +343,7 @@ async function requireMfaFromAction(
       return undefined;
     }
   }
-  const continueUrl = `/u/continue?state=${encodeURIComponent(loginSession.id)}`;
+  const continueUrl = `/u2/continue?state=${encodeURIComponent(loginSession.id)}`;
   await startLoginSessionContinuation(ctx, tenantId, current, [], continueUrl);
   return new Response(null, {
     status: 302,
