@@ -150,7 +150,7 @@ describe("createWfpForwardMiddleware localPaths carve-out", () => {
   });
 
   it("exports the default list so callers can read it", () => {
-    expect(DEFAULT_LOCAL_PATHS).toEqual(["/u/widget/"]);
+    expect(DEFAULT_LOCAL_PATHS).toEqual(["/u/widget/", "/widget/"]);
   });
 
   it("dispatches /u/widget/* when the defaults are switched off", async () => {
