@@ -25,7 +25,12 @@ export const enrichedClientSchema = clientSchema.extend({
   connections: z.array(connectionSchema),
 });
 
-export type EnrichedClient = z.infer<typeof enrichedClientSchema>;
+// `connections` are the adapter's connections, internal fields included (the
+// login flow reads `self_service` from them), not just the API schema's shape.
+export type EnrichedClient = Omit<
+  z.infer<typeof enrichedClientSchema>,
+  "connections"
+> & { connections: Connection[] };
 
 type ClientLike = {
   callbacks?: string[];

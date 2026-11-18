@@ -1,4 +1,10 @@
-import { Connection, ConnectionInsert, CreateOptions, Totals } from "../types";
+import {
+  Connection,
+  ConnectionInsert,
+  ConnectionInternalFields,
+  CreateOptions,
+  Totals,
+} from "../types";
 import { ListParams } from "../types/ListParams";
 
 export interface ListConnectionsResponse extends Totals {
@@ -8,7 +14,7 @@ export interface ListConnectionsResponse extends Totals {
 export interface ConnectionsAdapter {
   create(
     tenant_id: string,
-    params: ConnectionInsert,
+    params: ConnectionInsert & ConnectionInternalFields,
     options?: CreateOptions,
   ): Promise<Connection>;
   remove(tenant_id: string, connection_id: string): Promise<boolean>;
@@ -16,7 +22,7 @@ export interface ConnectionsAdapter {
   update(
     tenant_id: string,
     connection_id: string,
-    params: Partial<ConnectionInsert>,
+    params: Partial<ConnectionInsert> & ConnectionInternalFields,
   ): Promise<boolean>;
   list(
     tenant_id: string,

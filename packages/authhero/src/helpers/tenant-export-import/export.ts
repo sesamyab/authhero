@@ -1,6 +1,7 @@
 import { DataAdapters, ListParams } from "@authhero/adapter-interfaces";
 import { ExportLine, ExportOptions } from "./types";
 import { asRecord, getString } from "./row-access";
+import { withoutSelfService } from "../self-service-connections";
 
 const PAGE_SIZE = 100;
 
@@ -91,7 +92,10 @@ export async function* exportTenantLines(
     (t, p) => data.connections.list(t, p),
     tenant_id,
   )) {
-    yield line("connections", connection);
+    // Self-Service SSO state is per tenant and not part of Auth0's
+    // connection object, so it is never exported (import drops it too).
+    const row = asRecord(connection);
+    yield line("connections", row ? withoutSelfService(row) : connection);
   }
 
   // resource_servers

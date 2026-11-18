@@ -3,6 +3,7 @@ import {
   ConnectionsAdapter,
   Connection,
   ConnectionInsert,
+  ConnectionInternalFields,
   ListConnectionsResponse,
   ListParams,
   connectionSchema,
@@ -29,10 +30,20 @@ interface ConnectionItem extends DynamoDBBaseItem {
   scope?: ConnectionInsert["scope"];
   override?: ConnectionInsert["override"];
   enforce?: boolean;
+  self_service?: string | null; // JSON string (`ConnectionSelfService`)
+}
+
+/** `null` clears the attribute; an object is stored as JSON. */
+function selfServiceToItem(
+  value: ConnectionInternalFields["self_service"],
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  return value === null ? null : JSON.stringify(value);
 }
 
 function toConnection(item: ConnectionItem): Connection {
-  const { tenant_id, is_system, ...rest } = stripDynamoDBFields(item);
+  const { tenant_id, is_system, self_service, ...rest } =
+    stripDynamoDBFields(item);
 
   const data = removeNullProperties({
     ...rest,
@@ -40,7 +51,13 @@ function toConnection(item: ConnectionItem): Connection {
     is_system: is_system ? true : undefined,
   });
 
-  return connectionSchema.parse(data);
+  // `self_service` is internal and not part of `connectionSchema`, so it is
+  // attached after parsing (the parse would strip it).
+  const connection: Connection = connectionSchema.parse(data);
+  if (typeof self_service === "string" && self_service) {
+    connection.self_service = JSON.parse(self_service);
+  }
+  return connection;
 }
 
 export function createConnectionsAdapter(
@@ -49,7 +66,7 @@ export function createConnectionsAdapter(
   return {
     async create(
       tenantId: string,
-      params: ConnectionInsert,
+      params: ConnectionInsert & ConnectionInternalFields,
     ): Promise<Connection> {
       const now = new Date().toISOString();
       const id = params.id || nanoid();
@@ -69,6 +86,7 @@ export function createConnectionsAdapter(
         scope: params.scope,
         override: params.override,
         enforce: params.enforce,
+        self_service: selfServiceToItem(params.self_service),
         created_at: now,
         updated_at: now,
       };
@@ -116,10 +134,11 @@ export function createConnectionsAdapter(
     async update(
       tenantId: string,
       connectionId: string,
-      params: Partial<ConnectionInsert>,
+      params: Partial<ConnectionInsert> & ConnectionInternalFields,
     ): Promise<boolean> {
       const updates: Record<string, unknown> = {
         ...params,
+        self_service: selfServiceToItem(params.self_service),
         updated_at: new Date().toISOString(),
       };
 

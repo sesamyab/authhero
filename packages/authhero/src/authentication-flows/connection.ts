@@ -339,6 +339,7 @@ export async function connectionCallback(
     isSocial,
     ip: ctx.var.ip,
     set_user_root_attributes: connection.options.set_user_root_attributes,
+    selfService: connection.self_service,
   });
 
   return finalizeAuthenticatedSession(ctx, {

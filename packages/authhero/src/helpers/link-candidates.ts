@@ -1,4 +1,5 @@
 import {
+  ConnectionsAdapter,
   LinkCandidate,
   User,
   UserDataAdapter,
@@ -6,6 +7,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { compareUsersByAge, resolveClusterRootId } from "./users";
 import { normalizeEmail } from "../utils/email";
+import { filterTrustedLinkTargets } from "./self-service-connections";
 
 /**
  * Resolve the ordered pool of candidate *primary* users that the built-in
@@ -24,10 +26,20 @@ import { normalizeEmail } from "../utils/email";
  */
 export async function resolveLinkCandidates(params: {
   userAdapter: UserDataAdapter;
+  /**
+   * When set, users that must never be a link target are left out: users of
+   * a self-service SSO connection whose email domain is not verified for it
+   * (#1763). Every linking caller passes it.
+   */
+  connectionAdapter?: Pick<ConnectionsAdapter, "list">;
   tenantId: string;
   user: User;
 }): Promise<User[]> {
-  const { userAdapter, tenantId, user } = params;
+  const { userAdapter, connectionAdapter, tenantId, user } = params;
+  const trusted = (candidates: User[]) =>
+    connectionAdapter
+      ? filterTrustedLinkTargets(connectionAdapter, tenantId, candidates)
+      : Promise.resolve(candidates);
 
   if (!user.email) return [];
 
@@ -58,7 +70,7 @@ export async function resolveLinkCandidates(params: {
 
   const directPrimaries = otherUsers.filter((u) => !u.linked_to);
   if (directPrimaries.length > 0) {
-    return [...directPrimaries].sort(compareUsersByAge);
+    return (await trusted(directPrimaries)).sort(compareUsersByAge);
   }
 
   // No direct primaries — resolve every secondary's linked_to chain to its
@@ -87,7 +99,7 @@ export async function resolveLinkCandidates(params: {
     }
   }
 
-  return roots.sort(compareUsersByAge);
+  return (await trusted(roots)).sort(compareUsersByAge);
 }
 
 /**

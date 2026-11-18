@@ -1,9 +1,11 @@
 import {
   Address,
+  ConnectionSelfService,
   User,
   UserDataAdapter,
   escapeLuceneValue,
 } from "@authhero/adapter-interfaces";
+import { isUntrustedSelfServiceEmail } from "./self-service-connections";
 import { EnrichedClient } from "./client";
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
@@ -183,6 +185,14 @@ interface GetPrimaryUserByEmailParams {
   tenant_id: string;
   email: string;
   /**
+   * Account-linking paths pass this to drop users that must never be a link
+   * target (see `filterTrustedLinkTargets`). Applied to the primaries, or to
+   * the resolved root when every match is a secondary. When it drops them all,
+   * no user is returned. Read paths (login lookup, forgot password) leave it
+   * unset.
+   */
+  filterCandidates?: (users: User[]) => Promise<User[]>;
+  /**
    * Log when more than one primary shares the email. Only meaningful on
    * account-linking paths, where duplicate primaries mean linking failed to
    * converge. With `userLinkingMode: "off"` several primaries per email is the
@@ -197,6 +207,7 @@ export async function getPrimaryUserByEmail({
   tenant_id,
   email,
   warnOnMultiplePrimaries = false,
+  filterCandidates,
 }: GetPrimaryUserByEmailParams): Promise<User | undefined> {
   const { users } = await userAdapter.list(tenant_id, {
     page: 0,
@@ -209,9 +220,14 @@ export async function getPrimaryUserByEmail({
     return;
   }
 
-  const primaryUsers = users.filter((user) => !user.linked_to);
+  const unlinked = users.filter((user) => !user.linked_to);
 
-  if (primaryUsers.length > 0) {
+  if (unlinked.length > 0) {
+    const primaryUsers = filterCandidates
+      ? await filterCandidates(unlinked)
+      : unlinked;
+    if (primaryUsers.length === 0) return undefined;
+
     if (warnOnMultiplePrimaries && primaryUsers.length > 1) {
       console.error("More than one primary user found for same email");
     }
@@ -235,6 +251,11 @@ export async function getPrimaryUserByEmail({
 
   if (!primaryAccount) {
     throw new Error("Primary account not found");
+  }
+
+  if (filterCandidates) {
+    const [trusted] = await filterCandidates([primaryAccount]);
+    return trusted;
   }
 
   return primaryAccount;
@@ -838,6 +859,13 @@ interface GetOrCreateUserByProviderParams {
   username: string;
   provider: string;
   connection: string;
+  /**
+   * The connection's Self-Service SSO state (#1763). When set, an email is
+   * only trusted inside the domains verified for the connection: elsewhere
+   * `email_verified` is stored as `false`, whatever the identity provider
+   * asserted, so email-based linking never acts on it.
+   */
+  selfService?: ConnectionSelfService | null;
   userId?: string;
   profileData?: Record<string, unknown>;
   ip?: string;
@@ -866,6 +894,7 @@ export async function getOrCreateUserByProvider(
     profileData = {},
     ip = "",
     set_user_root_attributes,
+    selfService,
   } = params;
 
   // Normalized once, before the lookup, because this function both reads and
@@ -885,6 +914,15 @@ export async function getOrCreateUserByProvider(
     effectiveMode !== "never_on_login"
       ? extractRootAttributesFromProfile(profileData)
       : {};
+
+  // Self-Service SSO guard: whoever configured the identity provider controls
+  // what it asserts, so outside the connection's verified domains its
+  // `email_verified` is never trusted. Forced to `false` (not just dropped) so
+  // the per-login sync below also clears a stale `true`.
+  const untrustedEmail = isUntrustedSelfServiceEmail(selfService, username);
+  if (untrustedEmail && effectiveMode !== "never_on_login") {
+    rootAttrs.email_verified = false;
+  }
 
   // When the caller passes the upstream subject (social/enterprise callback,
   // refresh-token migration) the user id is deterministic, and it is the
@@ -938,8 +976,9 @@ export async function getOrCreateUserByProvider(
       address: rootAttrs.address,
       provider,
       connection,
-      email_verified:
-        rootAttrs.email_verified ?? (isSocial || connection === "email"),
+      email_verified: untrustedEmail
+        ? false
+        : (rootAttrs.email_verified ?? (isSocial || connection === "email")),
       last_ip: ip,
       is_social: isSocial,
       last_login: new Date().toISOString(),

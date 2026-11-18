@@ -148,6 +148,13 @@
       "when": 1794836982646,
       "tag": "0020_resource_server_org_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1795018334243,
+      "tag": "0021_connection_self_service",
+      "breakpoints": true
     }
   ]
 }

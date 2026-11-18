@@ -28,6 +28,7 @@ import { nanoid } from "nanoid";
 
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId, withTotals, listResponse } from "./helpers";
+import { withoutSelfService } from "../../helpers/self-service-connections";
 
 const connectionsWithTotalsSchema = withTotals({
   connections: z.array(connectionSchema),
@@ -135,9 +136,16 @@ function isBlank(value: unknown): boolean {
   return typeof value === "string" && value.trim() === "";
 }
 
+// Redacts secret options and drops the internal Self-Service SSO state, which
+// is not part of Auth0's connection object. Every connection this router
+// returns (or logs) goes through here.
 function stripConnectionSecrets(connection: Connection): Connection {
-  if (!connection.options) return connection;
-  return { ...connection, options: redactSecretOptions(connection.options) };
+  const publicConnection: Connection = withoutSelfService(connection);
+  if (!publicConnection.options) return publicConnection;
+  return {
+    ...publicConnection,
+    options: redactSecretOptions(publicConnection.options),
+  };
 }
 
 // Schema for the connection clients response
