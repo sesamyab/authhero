@@ -13,6 +13,8 @@ import { useHasChildren } from "@/hooks/useHasChildren";
 import { useManagementPermissions } from "@/hooks/useManagementPermissions";
 import { getBasePath } from "@/utils/runtimeConfig";
 import { TenantsEmptyState } from "./empty-state";
+import { CreationLimitMeter } from "./creation-limit";
+import { useTenantCreationLimit } from "./deployment";
 
 /**
  * The tenant to show the setup page of: a user's first and only tenant while
@@ -106,6 +108,12 @@ function OperationsLinkCell() {
   );
 }
 
+// Its own component so the endpoint is only asked of callers who may create.
+function CreationLimitPill() {
+  const [creationLimit] = useTenantCreationLimit();
+  return <CreationLimitMeter limit={creationLimit} compact />;
+}
+
 function TenantListActions({
   hasChildren,
   canCreate,
@@ -115,6 +123,7 @@ function TenantListActions({
 }) {
   return (
     <div className="flex items-center gap-2">
+      {canCreate && <CreationLimitPill />}
       {hasChildren && (
         <Button asChild variant="outline" size="sm">
           <Link to="/tenants/rollouts">

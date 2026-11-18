@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -34,18 +35,30 @@ function renderCreate(
   {
     tenants = [],
     createError,
-  }: { tenants?: { id: string }[]; createError?: unknown } = {},
+    creationLimit = null,
+    getCreationLimit,
+  }: {
+    tenants?: { id: string }[];
+    createError?: unknown;
+    creationLimit?: unknown;
+    /** Replaces the fixed answer, to control when and how often it resolves. */
+    getCreationLimit?: () => Promise<unknown>;
+  } = {},
 ) {
   const create = vi.fn((_resource: string, params: { data: unknown }) =>
     createError
       ? Promise.reject(createError)
       : Promise.resolve({ data: { id: "acme", ...Object(params.data) } }),
   );
+  const getTenantCreationLimit = vi.fn(
+    getCreationLimit ?? (() => Promise.resolve(creationLimit)),
+  );
   const dataProvider = testDataProvider({
     create: create as never,
     getList: vi.fn(() =>
       Promise.resolve({ data: tenants, total: tenants.length }),
     ) as never,
+    getTenantCreationLimit: getTenantCreationLimit,
     getTenantDeploymentOptions: vi.fn(() =>
       deploymentOptions instanceof Error
         ? Promise.reject(deploymentOptions)
@@ -69,7 +82,7 @@ function renderCreate(
       </CoreAdminContext>
     </TestMemoryRouter>,
   );
-  return { create };
+  return { create, getTenantCreationLimit };
 }
 
 async function submit(name: string) {
@@ -234,6 +247,150 @@ describe("TenantsCreate first tenant", () => {
       await screen.findByText('The tenant id "local" is reserved.'),
     ).toBeTruthy();
     expect(screen.queryByText(/Setup page/)).toBeNull();
+  });
+});
+
+describe("TenantsCreate creation limit", () => {
+  const options = {
+    deployment_types: ["shared"],
+    default_deployment_type: "shared",
+  };
+
+  it("shows how many tenants the user has used", async () => {
+    renderCreate(options, {
+      tenants: [{ id: "a" }],
+      creationLimit: {
+        key: "tenants_per_user",
+        used: 1,
+        limit: 3,
+        source: "default",
+      },
+    });
+    expect(await screen.findByText(/1 of 3 tenants used/)).toBeTruthy();
+    expect(screen.queryByText(/reached the limit/)).toBeNull();
+  });
+
+  it("says so when the limit is reached", async () => {
+    renderCreate(options, {
+      tenants: [{ id: "a" }],
+      creationLimit: {
+        key: "tenants_per_user",
+        used: 3,
+        limit: 3,
+        source: "override",
+      },
+    });
+    expect(await screen.findByText(/reached the limit/)).toBeTruthy();
+  });
+
+  it("shows nothing when there is no cap", async () => {
+    let resolveLimit: (value: unknown) => void = () => {};
+    const { getTenantCreationLimit } = renderCreate(options, {
+      tenants: [{ id: "a" }],
+      getCreationLimit: () =>
+        new Promise((resolve) => {
+          resolveLimit = resolve;
+        }),
+    });
+    await screen.findByLabelText(/Name/);
+    await waitFor(() => expect(getTenantCreationLimit).toHaveBeenCalled());
+    // Answer only after the form is up, then let React apply it.
+    await act(async () => {
+      resolveLimit({
+        key: "tenants_per_user",
+        used: 1,
+        limit: null,
+        source: "override",
+      });
+    });
+    expect(screen.queryByText(/tenants? used/)).toBeNull();
+    expect(screen.queryByRole("meter")).toBeNull();
+  });
+
+  it("refreshes the count after the server refuses over the quota", async () => {
+    const limit = (used: number) => ({
+      key: "tenants_per_user",
+      used,
+      limit: 2,
+      source: "default",
+    });
+    const getCreationLimit = vi
+      .fn()
+      .mockResolvedValueOnce(limit(1))
+      .mockResolvedValue(limit(2));
+    renderCreate(options, {
+      getCreationLimit,
+      createError: Object.assign(new Error("Tenant limit reached"), {
+        status: 403,
+      }),
+    });
+    expect(await screen.findByText(/1 of 2 tenants used/)).toBeTruthy();
+
+    await submit("Acme");
+
+    expect(await screen.findByText(/2 of 2 tenants used/)).toBeTruthy();
+    expect(getCreationLimit).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes after a server error, and drops a count it can no longer confirm", async () => {
+    const getCreationLimit = vi
+      .fn()
+      .mockResolvedValueOnce({
+        key: "tenants_per_user",
+        used: 1,
+        limit: 2,
+        source: "default",
+      })
+      .mockRejectedValue(new Error("unavailable"));
+    renderCreate(options, {
+      getCreationLimit,
+      createError: Object.assign(new Error("Server error"), { status: 500 }),
+    });
+    expect(await screen.findByText(/1 of 2 tenants used/)).toBeTruthy();
+
+    await submit("Acme");
+
+    await waitFor(() => expect(getCreationLimit).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(/tenants used/)).toBeNull());
+  });
+
+  // authorizedHttpClient reports `httpStatus`, never `status`.
+  it.each([403, 500])(
+    "refreshes once, without retrying the create, on a %i from the admin's own client",
+    async (httpStatus) => {
+      const getCreationLimit = vi.fn().mockResolvedValue({
+        key: "tenants_per_user",
+        used: 1,
+        limit: 2,
+        source: "default",
+      });
+      const { create } = renderCreate(options, {
+        getCreationLimit,
+        createError: Object.assign(new Error("Refused"), { httpStatus }),
+      });
+      await screen.findByText(/1 of 2 tenants used/);
+
+      await submit("Acme");
+
+      await waitFor(() => expect(getCreationLimit).toHaveBeenCalledTimes(2));
+      // The create itself is not sent again.
+      expect(create).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("keeps a zero cap out of the meter range", async () => {
+    renderCreate(options, {
+      tenants: [{ id: "a" }],
+      creationLimit: {
+        key: "tenants_per_user",
+        used: 0,
+        limit: 0,
+        source: "override",
+      },
+    });
+    expect(await screen.findByText(/0 of 0 tenants used/)).toBeTruthy();
+    expect(screen.queryByRole("meter")).toBeNull();
+    expect(screen.getByText(/reached the limit/)).toBeTruthy();
   });
 });
 

@@ -406,7 +406,21 @@ export interface TenantDeploymentOptions {
   tenant_host_template?: string;
 }
 
+/** The caller's own tenant-creation limit. `limit: null` is unlimited. */
+export interface TenantCreationLimit {
+  key: "tenants_per_user";
+  used: number;
+  limit: number | null;
+  source: "override" | "default" | "none";
+}
+
 export interface AuthHeroDataProvider extends DataProvider {
+  /**
+   * How many tenants the caller owns against their cap, or `null` when the
+   * server predates the endpoint.
+   */
+  getTenantCreationLimit: () => Promise<TenantCreationLimit | null>;
+
   /**
    * The deployment types this cluster can host for new tenants, or `null`
    * when the server predates the endpoint (it then allows both).
@@ -3309,6 +3323,26 @@ export default (
         { headers: createHeaders(tenantId) },
       );
       return res.json;
+    },
+
+    getTenantCreationLimit: async () => {
+      try {
+        const res = await httpClient(
+          `${apiUrl}/api/v2/tenants/creation-limit`,
+          { headers: createHeaders(tenantId) },
+        );
+        return res.json;
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "status" in error &&
+          (error.status === 404 || error.status === 403)
+        ) {
+          return null;
+        }
+        throw error;
+      }
     },
 
     getTenantDeploymentOptions: async () => {

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDataProvider } from "ra-core";
 import type {
   AuthHeroDataProvider,
+  TenantCreationLimit,
   TenantDeploymentOptions,
 } from "@/auth0DataProvider";
 
@@ -58,4 +59,52 @@ export function validateTenantId(value: unknown): string | undefined {
 /** The hostname for `id` from the server's template (`{id}.example.com`). */
 export function tenantHost(template: string, id: string): string {
   return template.split("{id}").join(id || "your-id");
+}
+
+/**
+ * The caller's creation limit, or `undefined` while loading and when there is
+ * nothing to show (an old server, or a caller the endpoint refuses). The
+ * server enforces it either way.
+ */
+export function useTenantCreationLimit(): [
+  TenantCreationLimit | undefined,
+  /** Ask again, e.g. after the server refused a create. */
+  () => void,
+] {
+  const dataProvider = useDataProvider<AuthHeroDataProvider>();
+  const [limit, setLimit] = useState<TenantCreationLimit>();
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    dataProvider
+      .getTenantCreationLimit()
+      .then((result) => {
+        // No answer clears what was shown: a stale count is worse than none.
+        if (!cancelled) setLimit(result ?? undefined);
+      })
+      .catch(() => {
+        if (!cancelled) setLimit(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataProvider, version]);
+
+  const refresh = useCallback(() => setVersion((v) => v + 1), []);
+  return [limit, refresh];
+}
+
+/** "2 of 3 tenants used", or nothing when there is no cap. */
+export function describeCreationLimit(
+  limit: TenantCreationLimit | undefined,
+): string | undefined {
+  if (!limit || limit.limit === null) return undefined;
+  return `${limit.used} of ${limit.limit} tenant${limit.limit === 1 ? "" : "s"} used`;
+}
+
+export function creationLimitReached(
+  limit: TenantCreationLimit | undefined,
+): boolean {
+  return !!limit && limit.limit !== null && limit.used >= limit.limit;
 }

@@ -54,6 +54,125 @@ function parseMetadataLimit(
   return { set: false };
 }
 
+/** Where a limit's value comes from. */
+export type TenantLimitSource = "override" | "default" | "none";
+
+export interface TenantCreationUsage {
+  /** Stable key, the shape the entitlements port will use for every limit. */
+  key: "tenants_per_user";
+  used: number;
+  /** `null` is unlimited. */
+  limit: number | null;
+  source: TenantLimitSource;
+}
+
+type UsageArgs = {
+  limits: TenantCreationLimitsConfig | undefined;
+  data: DataAdapters;
+  controlPlaneTenantId: string | undefined;
+  ownerRoleName?: string;
+  user: { sub: string };
+};
+
+const UNAVAILABLE =
+  "Could not check the tenant creation limit. Try again later.";
+
+/** The user's cap: a per-user override wins over the configured value. */
+async function resolveCap(
+  limits: TenantCreationLimitsConfig,
+  data: DataAdapters,
+  controlPlaneTenantId: string,
+  userId: string,
+): Promise<{ cap: number | null; source: TenantLimitSource }> {
+  const fromMetadata = parseMetadataLimit(
+    (await data.users.get(controlPlaneTenantId, userId))?.app_metadata,
+  );
+  if (fromMetadata.set) {
+    return { cap: fromMetadata.value, source: "override" };
+  }
+  const cap =
+    typeof limits.perUser === "function"
+      ? await limits.perUser({ user_id: userId })
+      : limits.perUser;
+  return cap === undefined || cap === null
+    ? { cap: null, source: "none" }
+    : { cap, source: "default" };
+}
+
+/**
+ * Tenants the user owns: organizations they belong to where they hold the
+ * owner role. The organization name is the tenant id. Throws when the list
+ * cannot be proven complete.
+ */
+async function listOwnedTenants(
+  data: DataAdapters,
+  controlPlaneTenantId: string,
+  userId: string,
+  ownerRoleName: string,
+): Promise<string[]> {
+  const owned: string[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { organizations } =
+      await data.userOrganizations.listUserOrganizations(
+        controlPlaneTenantId,
+        userId,
+        { page, per_page: PAGE_SIZE },
+      );
+    for (const org of organizations) {
+      const roles = await data.userRoles.list(
+        controlPlaneTenantId,
+        userId,
+        undefined,
+        org.id,
+      );
+      if (roles.some((role) => role.name === ownerRoleName)) {
+        owned.push(org.name);
+      }
+    }
+    if (organizations.length < PAGE_SIZE) break;
+    // A full last page means the list may continue: the count is not proven
+    // complete, so fail closed rather than compare a prefix to the cap.
+    if (page === MAX_PAGES - 1) {
+      throw new HTTPException(503, { message: UNAVAILABLE });
+    }
+  }
+  return owned;
+}
+
+/**
+ * What the user may be shown about their own creation limit: tenants used and
+ * the cap, with where the cap comes from. Throws 503 if it cannot be read.
+ * Provisioning state plays no part here, so it is not read.
+ */
+export async function getTenantCreationUsage(
+  args: UsageArgs & {
+    /** An operator has no cap, but still owns the tenants they own. */
+    exempt?: boolean;
+  },
+): Promise<TenantCreationUsage> {
+  const { limits, data, controlPlaneTenantId, user, exempt } = args;
+  if (!controlPlaneTenantId) {
+    return { key: "tenants_per_user", used: 0, limit: null, source: "none" };
+  }
+  try {
+    const { cap, source } =
+      !limits || exempt
+        ? { cap: null, source: "none" as const }
+        : await resolveCap(limits, data, controlPlaneTenantId, user.sub);
+    const owned = await listOwnedTenants(
+      data,
+      controlPlaneTenantId,
+      user.sub,
+      args.ownerRoleName ?? DEFAULT_OWNER_ROLE_NAME,
+    );
+    return { key: "tenants_per_user", used: owned.length, limit: cap, source };
+  } catch (error) {
+    if (error instanceof HTTPException) throw error;
+    console.error("Could not read tenant creation usage:", error);
+    throw new HTTPException(503, { message: UNAVAILABLE });
+  }
+}
+
 /**
  * Enforces `tenantCreationLimits` for a non-operator creating a tenant.
  *
@@ -61,66 +180,32 @@ function parseMetadataLimit(
  * still has one provisioning. Throws 503 if the counts cannot be read: this is
  * a cost guard, so it fails closed.
  */
-export async function enforceTenantCreationLimits(args: {
-  limits: TenantCreationLimitsConfig | undefined;
-  data: DataAdapters;
-  controlPlaneTenantId: string | undefined;
-  ownerRoleName?: string;
-  user: { sub: string };
-}): Promise<void> {
+export async function enforceTenantCreationLimits(
+  args: UsageArgs,
+): Promise<void> {
   const { limits, data, controlPlaneTenantId, user } = args;
   if (!limits || !controlPlaneTenantId) return;
-  const ownerRoleName = args.ownerRoleName ?? DEFAULT_OWNER_ROLE_NAME;
 
   try {
-    // Resolve the cap: a per-user override wins over the configured value.
-    const fromMetadata = parseMetadataLimit(
-      (await data.users.get(controlPlaneTenantId, user.sub))?.app_metadata,
+    const { cap } = await resolveCap(
+      limits,
+      data,
+      controlPlaneTenantId,
+      user.sub,
     );
-    let cap: number | null | undefined;
-    if (fromMetadata.set) {
-      cap = fromMetadata.value;
-    } else if (typeof limits.perUser === "function") {
-      cap = await limits.perUser({ user_id: user.sub });
-    } else {
-      cap = limits.perUser;
-    }
     const blockWhilePending = limits.blockWhilePending ?? true;
-    if ((cap === undefined || cap === null) && !blockWhilePending) return;
+    // Neither rule applies: nothing to count.
+    if (cap === null && !blockWhilePending) return;
 
-    // Tenants the user owns: organizations they belong to where they hold the
-    // owner role. The organization name is the tenant id.
-    const owned: string[] = [];
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const { organizations } =
-        await data.userOrganizations.listUserOrganizations(
-          controlPlaneTenantId,
-          user.sub,
-          { page, per_page: PAGE_SIZE },
-        );
-      for (const org of organizations) {
-        const roles = await data.userRoles.list(
-          controlPlaneTenantId,
-          user.sub,
-          undefined,
-          org.id,
-        );
-        if (roles.some((role) => role.name === ownerRoleName)) {
-          owned.push(org.name);
-        }
-      }
-      if (organizations.length < PAGE_SIZE) break;
-      // A full last page means the list may continue: the count is not proven
-      // complete, so fail closed rather than compare a prefix to the cap.
-      if (page === MAX_PAGES - 1) {
-        throw new HTTPException(503, {
-          message:
-            "Could not check the tenant creation limit. Try again later.",
-        });
-      }
-    }
+    const owned = await listOwnedTenants(
+      data,
+      controlPlaneTenantId,
+      user.sub,
+      args.ownerRoleName ?? DEFAULT_OWNER_ROLE_NAME,
+    );
 
-    if (cap !== undefined && cap !== null && owned.length >= cap) {
+    // The count alone decides this: no need to read provisioning state.
+    if (cap !== null && owned.length >= cap) {
       throw new HTTPException(403, {
         message: `Tenant limit reached: you can own at most ${cap} tenant${cap === 1 ? "" : "s"}. Contact an administrator to raise the limit.`,
       });
@@ -139,8 +224,6 @@ export async function enforceTenantCreationLimits(args: {
   } catch (error) {
     if (error instanceof HTTPException) throw error;
     console.error("Could not check tenant creation limits:", error);
-    throw new HTTPException(503, {
-      message: "Could not check the tenant creation limit. Try again later.",
-    });
+    throw new HTTPException(503, { message: UNAVAILABLE });
   }
 }
