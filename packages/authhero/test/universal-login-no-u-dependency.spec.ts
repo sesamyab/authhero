@@ -48,14 +48,23 @@ describe("universal login v2 does not depend on /u", () => {
   });
 
   it("serves both widget URLs from a sub-app-only composition", async () => {
-    const routes = createWidgetAssetRoutes({
-      widgetHandler: (c) => c.text(`widget:${c.req.path}`),
-    });
-    const host = new Hono().route("/", routes).route("/u", new Hono());
-    expect(await (await host.request("/widget/a.js")).text()).toBe(
+    const { universalApp, env } = await getTestServer();
+    const host = new Hono()
+      .route(
+        "/",
+        createWidgetAssetRoutes({
+          dataAdapter: env.data,
+          widgetHandler: (c) => c.text(`widget:${c.req.path}`),
+        }),
+      )
+      .route("/u", universalApp);
+
+    expect(await (await host.request("/widget/a.js", {}, env)).text()).toBe(
       "widget:/u/widget/a.js",
     );
-    expect((await host.request("/widget/client.js")).status).toBe(200);
+    expect((await host.request("/widget/client.js", {}, env)).status).toBe(200);
+    // The legacy client.js route on the real universalApp is still mounted.
+    expect((await host.request("/u/js/client.js", {}, env)).status).toBe(200);
   });
 
   it("mounts /widget, the /u/widget alias and /u2/continue on the app", async () => {
