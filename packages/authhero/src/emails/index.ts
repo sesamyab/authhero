@@ -505,7 +505,7 @@ export async function sendCode(
   const logo = branding?.logo_url || "";
   const buttonColor = branding?.colors?.primary || "#7d68f4";
 
-  const loginUrl = new URL(getUniversalLoginUrl(ctx.env, undefined, "u"));
+  const loginUrl = new URL(getUniversalLoginUrl(ctx.env));
 
   const options = {
     vendorName: tenant.friendly_name,
