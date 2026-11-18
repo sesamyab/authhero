@@ -112,6 +112,29 @@ export function matchesSignature(contentType: string, bytes: Uint8Array) {
 }
 
 /**
+ * Linear-time extraction of `<style>` contents and `style=""` values (no
+ * backtracking regexes over attacker-controlled text). An unclosed `<style>`
+ * runs to the end of the document; closing tags may contain whitespace.
+ */
+function extractCss(body: string): string {
+  const lower = body.toLowerCase();
+  const parts: string[] = [];
+  let i = 0;
+  while ((i = lower.indexOf("<style", i)) !== -1) {
+    const open = lower.indexOf(">", i);
+    if (open === -1) break;
+    const close = lower.indexOf("</style", open);
+    parts.push(body.slice(open + 1, close === -1 ? body.length : close));
+    if (close === -1) break;
+    i = close + 1;
+  }
+  for (const m of body.matchAll(/style\s*=\s*["']([^"']*)["']/gi)) {
+    parts.push(m[1]!);
+  }
+  return parts.join("\n");
+}
+
+/**
  * Defence in depth for SVG uploads. Primary protection is that SVGs are only
  * ever served by the auth server's /assets route with a restrictive CSP; this
  * additionally requires an `<svg>` root (after an optional XML declaration,
@@ -143,13 +166,7 @@ export function isSafeSvg(bytes: Uint8Array) {
   }
   // At-rules (@import, @font-face, ...) only matter inside CSS, so text such as
   // `<title>@studio</title>` stays valid.
-  const css = [
-    ...body.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi),
-    ...body.matchAll(/style\s*=\s*["']([^"']*)["']/gi),
-  ]
-    .map((m) => m[1])
-    .join("\n");
-  if (/@/.test(css)) return false;
+  if (/@/.test(extractCss(body))) return false;
   // Only same-document and inline image references are allowed.
   for (const m of body.matchAll(/(?:xlink:)?href\s*=\s*["']([^"']*)["']/gi)) {
     const ref = m[1]!.trim();

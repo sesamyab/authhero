@@ -22,6 +22,7 @@ vi.mock("@/components/admin", async () => {
   };
 });
 
+const resolvers: ((url: string) => void)[] = [];
 let resolveUpload: (url: string) => void = () => {};
 let rejectUpload: (err: Error) => void = () => {};
 vi.mock("./previewClient", () => ({
@@ -29,6 +30,7 @@ vi.mock("./previewClient", () => ({
   getHttpClient: () => () =>
     new Promise((resolve, reject) => {
       resolveUpload = (url) => resolve({ json: { url } });
+      resolvers.push(resolveUpload);
       rejectUpload = reject;
     }),
 }));
@@ -54,6 +56,7 @@ const pick = (container: HTMLElement) =>
 
 afterEach(() => {
   cleanup();
+  resolvers.length = 0;
   notify.mockClear();
 });
 
@@ -104,5 +107,35 @@ describe("AssetUrlInput", () => {
     );
     expect(form.getValues("logo_url")).toBe("old");
     expect(await form.trigger()).toBe(true);
+  });
+
+  it.each([
+    ["first finishes first", [0, 1]],
+    ["second finishes first", [1, 0]],
+  ])(
+    "only the latest of two overlapping uploads wins (%s)",
+    async (_n, order) => {
+      const { container } = render(<Harness />);
+      pick(container);
+      pick(container);
+      await act(async () => {
+        for (const i of order) resolvers[i]!(`http://a/${i}.png`);
+      });
+      await waitFor(() =>
+        expect(form.getValues("logo_url")).toBe("http://a/1.png"),
+      );
+    },
+  );
+
+  it("does not apply an upload after remount plus an edit", async () => {
+    const { container, rerender } = render(<Harness />);
+    pick(container);
+    rerender(<Harness show={false} />);
+    rerender(<Harness show />);
+    await act(async () => {
+      form.setValue("logo_url", "typed");
+      resolvers[0]!("http://a/0.png");
+    });
+    expect(form.getValues("logo_url")).toBe("typed");
   });
 });

@@ -194,6 +194,16 @@ describe("POST /branding/uploads/{kind}", () => {
           },
         ),
       ],
+      [
+        "logo",
+        new File(
+          [
+            '<svg xmlns="x"><style>@import "https://e.test/x.css";</style ></svg>',
+          ],
+          "a.svg",
+          { type: "image/svg+xml" },
+        ),
+      ],
       ["logo", "just a string"],
     ] as const;
     for (const [kind, file] of bad) {
@@ -223,6 +233,21 @@ describe("POST /branding/uploads/{kind}", () => {
       ),
     );
     expect(withAt.status).toBe(201);
+  });
+
+  it("validates a pathological SVG quickly", async () => {
+    const { adapter } = memoryStorage();
+    const server = await getTestServer({
+      wrapDataAdapter: (d) => ({ ...d, storage: adapter }),
+    });
+    const evil = '<svg xmlns="x">' + "<style ".repeat(20000) + "</svg>";
+    const start = Date.now();
+    await upload(
+      server,
+      "logo",
+      new File([evil], "a.svg", { type: "image/svg+xml" }),
+    );
+    expect(Date.now() - start).toBeLessThan(2000);
   });
 
   it("requires authentication", async () => {
