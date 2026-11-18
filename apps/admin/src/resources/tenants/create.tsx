@@ -226,7 +226,7 @@ function createTransform(options: TenantDeploymentOptions | undefined) {
 
 export function TenantsCreate() {
   const deploymentOptions = useDeploymentOptions();
-  const creationLimit = useTenantCreationLimit();
+  const [creationLimit, refreshCreationLimit] = useTenantCreationLimit();
   const hasOtherTenants = useHasOtherTenants();
   const [create] = useCreate();
   const navigate = useNavigate();
@@ -244,6 +244,9 @@ export function TenantsCreate() {
       navigate(`/tenants/${encodeURIComponent(String(id))}/setup`);
       return undefined;
     } catch (error) {
+      // A refusal over the quota means the count moved (another session
+      // created a tenant): show the new one. The server stays the authority.
+      if (httpStatusOf(error) === 403) refreshCreationLimit();
       const fieldErrors = createErrorToFieldErrors(error);
       if (fieldErrors) return fieldErrors;
       notify(

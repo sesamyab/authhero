@@ -108,6 +108,12 @@ function OperationsLinkCell() {
   );
 }
 
+// Its own component so the endpoint is only asked of callers who may create.
+function CreationLimitPill() {
+  const [creationLimit] = useTenantCreationLimit();
+  return <CreationLimitMeter limit={creationLimit} compact />;
+}
+
 function TenantListActions({
   hasChildren,
   canCreate,
@@ -115,10 +121,9 @@ function TenantListActions({
   hasChildren: boolean;
   canCreate: boolean;
 }) {
-  const creationLimit = useTenantCreationLimit();
   return (
     <div className="flex items-center gap-2">
-      {canCreate && <CreationLimitMeter limit={creationLimit} compact />}
+      {canCreate && <CreationLimitPill />}
       {hasChildren && (
         <Button asChild variant="outline" size="sm">
           <Link to="/tenants/rollouts">

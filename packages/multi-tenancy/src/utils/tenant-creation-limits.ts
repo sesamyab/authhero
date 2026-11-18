@@ -64,8 +64,6 @@ export interface TenantCreationUsage {
   /** `null` is unlimited. */
   limit: number | null;
   source: TenantLimitSource;
-  /** Owned tenants still provisioning. */
-  pending: string[];
 }
 
 type UsageArgs = {
@@ -76,52 +74,54 @@ type UsageArgs = {
   user: { sub: string };
 };
 
-/**
- * The user's cap and how many tenants they own. Throws on a read failure, and
- * when the owned count cannot be proven complete.
- */
-async function resolveTenantCreationUsage(
-  args: UsageArgs & { limits: TenantCreationLimitsConfig },
+const UNAVAILABLE =
+  "Could not check the tenant creation limit. Try again later.";
+
+/** The user's cap: a per-user override wins over the configured value. */
+async function resolveCap(
+  limits: TenantCreationLimitsConfig,
+  data: DataAdapters,
   controlPlaneTenantId: string,
-): Promise<TenantCreationUsage & { blockWhilePending: boolean }> {
-  const { limits, data, user } = args;
-  const ownerRoleName = args.ownerRoleName ?? DEFAULT_OWNER_ROLE_NAME;
-
-  // Resolve the cap: a per-user override wins over the configured value.
+  userId: string,
+): Promise<{ cap: number | null; source: TenantLimitSource }> {
   const fromMetadata = parseMetadataLimit(
-    (await data.users.get(controlPlaneTenantId, user.sub))?.app_metadata,
+    (await data.users.get(controlPlaneTenantId, userId))?.app_metadata,
   );
-  let cap: number | null | undefined;
-  let source: TenantLimitSource;
   if (fromMetadata.set) {
-    cap = fromMetadata.value;
-    source = "override";
-  } else if (typeof limits.perUser === "function") {
-    cap = await limits.perUser({ user_id: user.sub });
-    source = "default";
-  } else {
-    cap = limits.perUser;
-    source = "default";
+    return { cap: fromMetadata.value, source: "override" };
   }
-  if (cap === undefined || cap === null) {
-    source = fromMetadata.set ? "override" : "none";
-  }
-  const blockWhilePending = limits.blockWhilePending ?? true;
+  const cap =
+    typeof limits.perUser === "function"
+      ? await limits.perUser({ user_id: userId })
+      : limits.perUser;
+  return cap === undefined || cap === null
+    ? { cap: null, source: "none" }
+    : { cap, source: "default" };
+}
 
-  // Tenants the user owns: organizations they belong to where they hold the
-  // owner role. The organization name is the tenant id.
+/**
+ * Tenants the user owns: organizations they belong to where they hold the
+ * owner role. The organization name is the tenant id. Throws when the list
+ * cannot be proven complete.
+ */
+async function listOwnedTenants(
+  data: DataAdapters,
+  controlPlaneTenantId: string,
+  userId: string,
+  ownerRoleName: string,
+): Promise<string[]> {
   const owned: string[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const { organizations } =
       await data.userOrganizations.listUserOrganizations(
         controlPlaneTenantId,
-        user.sub,
+        userId,
         { page, per_page: PAGE_SIZE },
       );
     for (const org of organizations) {
       const roles = await data.userRoles.list(
         controlPlaneTenantId,
-        user.sub,
+        userId,
         undefined,
         org.id,
       );
@@ -133,60 +133,42 @@ async function resolveTenantCreationUsage(
     // A full last page means the list may continue: the count is not proven
     // complete, so fail closed rather than compare a prefix to the cap.
     if (page === MAX_PAGES - 1) {
-      throw new HTTPException(503, {
-        message: "Could not check the tenant creation limit. Try again later.",
-      });
+      throw new HTTPException(503, { message: UNAVAILABLE });
     }
   }
-
-  const pending: string[] = [];
-  if (blockWhilePending) {
-    for (const tenantId of owned) {
-      const tenant = await data.tenants.get(tenantId);
-      if (tenant?.provisioning_state === "pending") pending.push(tenantId);
-    }
-  }
-
-  return {
-    key: "tenants_per_user",
-    used: owned.length,
-    limit: cap ?? null,
-    source,
-    pending,
-    blockWhilePending,
-  };
+  return owned;
 }
 
 /**
  * What the user may be shown about their own creation limit: tenants used and
  * the cap, with where the cap comes from. Throws 503 if it cannot be read.
+ * Provisioning state plays no part here, so it is not read.
  */
 export async function getTenantCreationUsage(
   args: UsageArgs,
 ): Promise<TenantCreationUsage> {
-  const { limits, controlPlaneTenantId } = args;
+  const { limits, data, controlPlaneTenantId, user } = args;
   if (!limits || !controlPlaneTenantId) {
-    return {
-      key: "tenants_per_user",
-      used: 0,
-      limit: null,
-      source: "none",
-      pending: [],
-    };
+    return { key: "tenants_per_user", used: 0, limit: null, source: "none" };
   }
   try {
-    const { blockWhilePending: _b, ...usage } =
-      await resolveTenantCreationUsage(
-        { ...args, limits },
-        controlPlaneTenantId,
-      );
-    return usage;
+    const { cap, source } = await resolveCap(
+      limits,
+      data,
+      controlPlaneTenantId,
+      user.sub,
+    );
+    const owned = await listOwnedTenants(
+      data,
+      controlPlaneTenantId,
+      user.sub,
+      args.ownerRoleName ?? DEFAULT_OWNER_ROLE_NAME,
+    );
+    return { key: "tenants_per_user", used: owned.length, limit: cap, source };
   } catch (error) {
     if (error instanceof HTTPException) throw error;
     console.error("Could not read tenant creation usage:", error);
-    throw new HTTPException(503, {
-      message: "Could not check the tenant creation limit. Try again later.",
-    });
+    throw new HTTPException(503, { message: UNAVAILABLE });
   }
 }
 
@@ -200,33 +182,47 @@ export async function getTenantCreationUsage(
 export async function enforceTenantCreationLimits(
   args: UsageArgs,
 ): Promise<void> {
-  const { limits, controlPlaneTenantId } = args;
+  const { limits, data, controlPlaneTenantId, user } = args;
   if (!limits || !controlPlaneTenantId) return;
 
   try {
-    const blockWhilePending = limits.blockWhilePending ?? true;
-    // Nothing to check without a cap or the pending rule: skip the reads.
-    const probe = await resolveTenantCreationUsage(
-      { ...args, limits },
+    const { cap } = await resolveCap(
+      limits,
+      data,
       controlPlaneTenantId,
+      user.sub,
     );
-    if (probe.limit === null && !blockWhilePending) return;
+    const blockWhilePending = limits.blockWhilePending ?? true;
+    // Neither rule applies: nothing to count.
+    if (cap === null && !blockWhilePending) return;
 
-    if (probe.limit !== null && probe.used >= probe.limit) {
+    const owned = await listOwnedTenants(
+      data,
+      controlPlaneTenantId,
+      user.sub,
+      args.ownerRoleName ?? DEFAULT_OWNER_ROLE_NAME,
+    );
+
+    // The count alone decides this: no need to read provisioning state.
+    if (cap !== null && owned.length >= cap) {
       throw new HTTPException(403, {
-        message: `Tenant limit reached: you can own at most ${probe.limit} tenant${probe.limit === 1 ? "" : "s"}. Contact an administrator to raise the limit.`,
+        message: `Tenant limit reached: you can own at most ${cap} tenant${cap === 1 ? "" : "s"}. Contact an administrator to raise the limit.`,
       });
     }
-    if (probe.pending.length > 0) {
-      throw new HTTPException(403, {
-        message: `Tenant '${probe.pending[0]}' is still being set up. Wait until it is ready before creating another.`,
-      });
+
+    if (blockWhilePending) {
+      for (const tenantId of owned) {
+        const tenant = await data.tenants.get(tenantId);
+        if (tenant?.provisioning_state === "pending") {
+          throw new HTTPException(403, {
+            message: `Tenant '${tenantId}' is still being set up. Wait until it is ready before creating another.`,
+          });
+        }
+      }
     }
   } catch (error) {
     if (error instanceof HTTPException) throw error;
     console.error("Could not check tenant creation limits:", error);
-    throw new HTTPException(503, {
-      message: "Could not check the tenant creation limit. Try again later.",
-    });
+    throw new HTTPException(503, { message: UNAVAILABLE });
   }
 }

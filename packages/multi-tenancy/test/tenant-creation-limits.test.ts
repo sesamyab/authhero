@@ -59,7 +59,7 @@ describe("tenantCreationLimits", () => {
   function appFor(
     user: TestUser,
     limits: MultiTenancyConfig["tenantCreationLimits"],
-    overrides: { failReads?: boolean } = {},
+    overrides: { failReads?: boolean; failTenantReads?: boolean } = {},
   ) {
     const config: MultiTenancyConfig = {
       accessControl: {
@@ -92,7 +92,17 @@ describe("tenantCreationLimits", () => {
             },
           },
         }
-      : adapters;
+      : overrides.failTenantReads
+        ? {
+            ...adapters,
+            tenants: {
+              ...adapters.tenants,
+              get: async () => {
+                throw new Error("db down");
+              },
+            },
+          }
+        : adapters;
     const create = (id: string) =>
       app.request(
         "/management/tenants",
@@ -217,6 +227,43 @@ describe("tenantCreationLimits", () => {
   it("fails closed with 503 when the counts cannot be read", async () => {
     const create = appFor(selfService, { perUser: 5 }, { failReads: true });
     expect((await create(nextId())).status).toBe(503);
+  });
+
+  it("skips the ownership reads when there is no cap and no pending rule", async () => {
+    const create = appFor(
+      selfService,
+      { perUser: null, blockWhilePending: false },
+      { failReads: true },
+    );
+    expect((await create(nextId())).status).toBe(201);
+  });
+
+  it("answers with the cap error at the cap even if tenant reads fail", async () => {
+    const ok = appFor(selfService, { perUser: 1 });
+    expect((await ok(nextId())).status).toBe(201);
+    const create = appFor(
+      selfService,
+      { perUser: 1 },
+      { failTenantReads: true },
+    );
+    const refused = await create(nextId());
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { message: string }).message).toMatch(
+      /at most 1 tenant/,
+    );
+  });
+
+  it("does not read provisioning state for the usage endpoint", async () => {
+    const ok = appFor(selfService, { perUser: 3 });
+    expect((await ok(nextId())).status).toBe(201);
+    const usage = appFor(
+      selfService,
+      { perUser: 3 },
+      { failTenantReads: true },
+    );
+    const res = await usage.usage();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ used: 1, limit: 3 });
   });
 
   it("changes nothing when tenantCreationLimits is unset", async () => {

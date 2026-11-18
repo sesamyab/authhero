@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDataProvider } from "ra-core";
 import type {
   AuthHeroDataProvider,
@@ -66,9 +66,14 @@ export function tenantHost(template: string, id: string): string {
  * nothing to show (an old server, or a caller the endpoint refuses). The
  * server enforces it either way.
  */
-export function useTenantCreationLimit(): TenantCreationLimit | undefined {
+export function useTenantCreationLimit(): [
+  TenantCreationLimit | undefined,
+  /** Ask again, e.g. after the server refused a create. */
+  () => void,
+] {
   const dataProvider = useDataProvider<AuthHeroDataProvider>();
   const [limit, setLimit] = useState<TenantCreationLimit>();
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,9 +86,10 @@ export function useTenantCreationLimit(): TenantCreationLimit | undefined {
     return () => {
       cancelled = true;
     };
-  }, [dataProvider]);
+  }, [dataProvider, version]);
 
-  return limit;
+  const refresh = useCallback(() => setVersion((v) => v + 1), []);
+  return [limit, refresh];
 }
 
 /** "2 of 3 tenants used", or nothing when there is no cap. */

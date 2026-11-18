@@ -494,10 +494,7 @@ export function createTenantsOpenAPIRouter(
               ownerRoleName: config.accessControl?.ownerRoleName,
               user: { sub: user.sub },
             });
-      const { pending: _pending, ...body } = usage as typeof usage & {
-        pending?: string[];
-      };
-      return ctx.json(body, 200);
+      return ctx.json(usage, 200);
     },
   );
 

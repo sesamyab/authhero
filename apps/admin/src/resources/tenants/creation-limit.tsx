@@ -3,6 +3,21 @@ import type { TenantCreationLimit } from "@/auth0DataProvider";
 import { cn } from "@/lib/utils";
 import { creationLimitReached, describeCreationLimit } from "./deployment";
 
+/**
+ * Meter semantics need a maximum above the minimum. A cap of 0 has none, so
+ * the graphic is decorative there and the text carries the meaning.
+ */
+function meterProps(used: number, limit: number) {
+  if (limit <= 0) return { "aria-hidden": true as const };
+  return {
+    role: "meter" as const,
+    "aria-label": "Tenants used",
+    "aria-valuemin": 0,
+    "aria-valuemax": limit,
+    "aria-valuenow": Math.min(used, limit),
+  };
+}
+
 /** A thin bar showing how much of the cap is used. */
 function Bar({
   used,
@@ -18,11 +33,7 @@ function Bar({
   const share = limit === 0 ? 1 : Math.min(used / limit, 1);
   return (
     <div
-      role="meter"
-      aria-label="Tenants used"
-      aria-valuemin={0}
-      aria-valuemax={limit}
-      aria-valuenow={Math.min(used, limit)}
+      {...meterProps(used, limit)}
       className={cn("h-1.5 overflow-hidden rounded-full bg-muted", className)}
     >
       <div
@@ -53,11 +64,7 @@ function Ring({
   const share = limit === 0 ? 1 : Math.min(used / limit, 1);
   return (
     <svg
-      role="meter"
-      aria-label="Tenants used"
-      aria-valuemin={0}
-      aria-valuemax={limit}
-      aria-valuenow={Math.min(used, limit)}
+      {...meterProps(used, limit)}
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
