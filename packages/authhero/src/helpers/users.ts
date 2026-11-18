@@ -926,17 +926,17 @@ export async function getOrCreateUserByProvider(
   // admin edit, an import, an IdP-side rename). Look up by id first and only
   // fall back to email + provider for older rows whose id isn't `provider|sub`.
   const expectedUserId = userId ? `${provider}|${userId}` : undefined;
-  const findExistingUser = async (): Promise<User | null> => {
+  const findExistingIdentity = async (): Promise<User | null> => {
     if (expectedUserId) {
       const byId = await ctx.env.data.users.get(
         client.tenant.id,
         expectedUserId,
       );
       if (byId) {
-        return resolvePrimaryUser(ctx.env.data.users, client.tenant.id, byId);
+        return byId;
       }
     }
-    return getPrimaryUserByProvider({
+    return getUserByProvider({
       userAdapter: ctx.env.data.users,
       tenant_id: client.tenant.id,
       username,
@@ -944,7 +944,10 @@ export async function getOrCreateUserByProvider(
     });
   };
 
-  let user = await findExistingUser();
+  const resolveIdentity = (identity: User) =>
+    resolvePrimaryUser(ctx.env.data.users, client.tenant.id, identity);
+  let identity = await findExistingIdentity();
+  let user = identity ? await resolveIdentity(identity) : null;
 
   let wasCreated = false;
 
@@ -993,28 +996,37 @@ export async function getOrCreateUserByProvider(
       if ((err as { status?: unknown })?.status !== 409) {
         throw err;
       }
-      const existing = await findExistingUser();
-      if (!existing) {
+      identity = await findExistingIdentity();
+      if (!identity) {
         throw err;
       }
-      user = existing;
+      user = await resolveIdentity(identity);
     }
 
     ctx.set("user_id", user.user_id);
   }
 
   const syncRootAttributes = effectiveMode === "on_each_login";
+  // A self-service secondary authenticates its linked primary, but the
+  // primary's verification belongs to a different identity.
+  const preservePrimaryVerification =
+    !!selfService && !!identity && identity.user_id !== user.user_id;
   const clearEmailVerification =
-    untrustedEmail || isUntrustedSelfServiceEmail(selfService, user.email);
+    !preservePrimaryVerification &&
+    (untrustedEmail || isUntrustedSelfServiceEmail(selfService, user.email));
 
   if (!wasCreated && (syncRootAttributes || clearEmailVerification)) {
     // Root sync retains the account's email. An assertion for another address
     // cannot change verification for that retained address.
-    const emailVerified = clearEmailVerification
-      ? false
-      : !selfService || (user.email && normalizeEmail(user.email) === username)
-        ? rootAttrs.email_verified
-        : undefined;
+    let emailVerified: boolean | undefined;
+    if (clearEmailVerification) {
+      emailVerified = false;
+    } else if (
+      !preservePrimaryVerification &&
+      (!selfService || (user.email && normalizeEmail(user.email) === username))
+    ) {
+      emailVerified = rootAttrs.email_verified;
+    }
     const updates: Record<string, unknown> = {
       ...(syncRootAttributes
         ? { ...rootAttrs, profileData: JSON.stringify(profileData) }

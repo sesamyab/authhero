@@ -94,6 +94,41 @@ function hookedData(env: TestEnv) {
 }
 
 describe("self-service SSO: email_verified guard", () => {
+  it.each(["on_each_login", "never_on_login"] as const)(
+    "preserves the primary's verification on a linked login in %s mode",
+    async (mode) => {
+      const server = await getTestServer();
+      const { env } = server;
+      const email = "linked@partner.example";
+      const secondaryId = "mock-strategy|linked";
+      await env.data.users.create("tenantId", {
+        user_id: secondaryId,
+        email,
+        email_verified: false,
+        provider: "mock-strategy",
+        connection: "mock-strategy",
+        is_social: true,
+        linked_to: VICTIM_ID,
+      });
+      const connection = await env.data.connections.get(
+        "tenantId",
+        "mock-strategy",
+      );
+      await env.data.connections.update("tenantId", "mock-strategy", {
+        options: { ...connection?.options, set_user_root_attributes: mode },
+        self_service: { domains: [] },
+      });
+
+      await loginThroughConnection(server, `asserts-verified:linked:${email}`);
+
+      const primary = await env.data.users.get("tenantId", VICTIM_ID);
+      expect(primary).toMatchObject({
+        email: VICTIM_EMAIL,
+        email_verified: true,
+      });
+    },
+  );
+
   it("does not link a login asserting an existing user's email from an unverified domain", async () => {
     const server = await getTestServer();
     const { env } = server;
