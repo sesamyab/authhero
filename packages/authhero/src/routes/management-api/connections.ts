@@ -369,6 +369,17 @@ const patchById = defineRoute({
 
     const connectionBefore = await ctx.env.data.connections.get(tenantId, id);
 
+    // User identities retain this name for the self-service domain trust check.
+    if (
+      connectionBefore?.self_service &&
+      body.name !== undefined &&
+      body.name !== connectionBefore.name
+    ) {
+      throw new HTTPException(400, {
+        message: "Self-service connections cannot be renamed",
+      });
+    }
+
     // GET responses strip secrets, so a read→edit→PATCH round-trip would
     // otherwise wipe them. Preserve existing secret fields when the caller
     // didn't send a new value, matching Auth0's "missing = keep" contract.

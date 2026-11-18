@@ -362,7 +362,11 @@ describe("self-service SSO: internal state stays internal", () => {
     // A PATCH cannot set or clear it, and its response does not show it.
     // `self_service` is not part of the API's body schema, so validation drops
     // it (a variable, not a literal, so the extra key type-checks).
-    const patchBody = { display_name: "Mock", self_service: null };
+    const patchBody = {
+      name: stored?.name,
+      display_name: "Mock",
+      self_service: null,
+    };
     const patchResponse = await managementClient.connections[":id"].$patch(
       {
         param: { id: "mock-strategy" },
@@ -378,6 +382,36 @@ describe("self-service SSO: internal state stays internal", () => {
       "mock-strategy",
     );
     expect(afterPatch?.self_service).toEqual(selfService);
+  });
+
+  it("preserves the name of a self-service connection on a rename request", async () => {
+    const { managementApp, env } = await getTestServer();
+    await markSelfService(env, selfService);
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+    const request = {
+      param: { id: "mock-strategy" },
+      json: { name: "renamed-connection" },
+      header: { "tenant-id": "tenantId" },
+    };
+    const options = { headers: { authorization: `Bearer ${token}` } };
+
+    const rejected = await managementClient.connections[":id"].$patch(
+      request,
+      options,
+    );
+    expect(rejected.status).toBe(400);
+    expect(
+      await env.data.connections.get("tenantId", "mock-strategy"),
+    ).toMatchObject({ name: "mock-strategy", self_service: selfService });
+
+    await markSelfService(env, null);
+    const renamed = await managementClient.connections[":id"].$patch(
+      request,
+      options,
+    );
+    expect(renamed.status).toBe(200);
+    expect(await renamed.json()).toMatchObject({ name: "renamed-connection" });
   });
 
   it("is not exported", async () => {
