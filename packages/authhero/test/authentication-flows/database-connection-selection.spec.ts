@@ -87,13 +87,17 @@ async function setup() {
       },
     });
 
-  async function createUser(connection: string, email: string) {
-    const user_id = `auth0|${connection}-${email}`;
+  async function createUser(
+    connection: string,
+    email: string,
+    provider = "auth0",
+  ) {
+    const user_id = `${provider}|${connection}-${email}`;
     await env.data.users.create("tenantId", {
       user_id,
       email,
       email_verified: true,
-      provider: "auth0",
+      provider,
       connection,
       is_social: false,
     });
@@ -354,6 +358,129 @@ describe("database connection selection (#1703)", () => {
         "authorization_code",
       );
       expect(stored?.user_id).toBe(userId);
+    });
+
+    describe("a login ticket is bound to the connection its password was verified in", () => {
+      // A cte-store user shares an email with a user of another connection.
+      // The ticket only covers the cte-store password, so redeeming it in
+      // another connection must not log in (or create) that connection's user.
+      async function ticketFor(
+        server: Awaited<ReturnType<typeof setup>>,
+        email: string,
+      ) {
+        const login = await server.coAuthenticate(
+          "cteFirstClient",
+          email,
+          CTE_DB,
+        );
+        expect(login.status).toBe(200);
+        const body: { login_ticket: string } = await login.json();
+        return body.login_ticket;
+      }
+
+      function redeem(
+        server: Awaited<ReturnType<typeof setup>>,
+        login_ticket: string,
+        realm: string,
+      ) {
+        return testClient(server.oauthApp, server.env).authorize.$get({
+          query: {
+            client_id: "cteFirstClient",
+            login_ticket,
+            realm,
+            response_type: AuthorizationResponseType.CODE,
+            redirect_uri: CALLBACK,
+            scope: "openid",
+            state: "state",
+            nonce: "nonce",
+          },
+        });
+      }
+
+      async function usersWithEmail(
+        server: Awaited<ReturnType<typeof setup>>,
+        email: string,
+      ) {
+        const { users } = await server.env.data.users.list("tenantId", {
+          q: `email:${email}`,
+        });
+        return users.map((u) => u.user_id).sort();
+      }
+
+      it("refuses a redeem as the existing user of another database connection", async () => {
+        const server = await setup();
+        // Until #1704 two database users can't share an email under one
+        // provider; a legacy `auth2` row in the login connection can.
+        const loginUser = await server.createUser(
+          LOGIN_DB,
+          "shared@example.com",
+          "auth2",
+        );
+        const cteUser = await server.createUser(CTE_DB, "shared@example.com");
+        const ticket = await ticketFor(server, "shared@example.com");
+
+        const response = await redeem(server, ticket, LOGIN_DB);
+        expect(response.status).toBe(403);
+        expect(response.headers.get("location")).toBeNull();
+        expect(await usersWithEmail(server, "shared@example.com")).toEqual(
+          [cteUser, loginUser].sort(),
+        );
+      });
+
+      it("refuses a redeem with a realm that resolves to the default connection, without creating a user", async () => {
+        const server = await setup();
+        // cteFirstClient's default is cte-store; loginFirstClient's would be
+        // the login connection. Use a ticket from a client whose default is
+        // the login connection but whose password was checked in cte-store.
+        const cteUser = await server.createUser(CTE_DB, "new@example.com");
+        const login = await server.coAuthenticate(
+          "loginFirstClient",
+          "new@example.com",
+          CTE_DB,
+        );
+        expect(login.status).toBe(200);
+        const body: { login_ticket: string } = await login.json();
+
+        const response = await testClient(
+          server.oauthApp,
+          server.env,
+        ).authorize.$get({
+          query: {
+            client_id: "loginFirstClient",
+            login_ticket: body.login_ticket,
+            realm: Strategy.USERNAME_PASSWORD,
+            response_type: AuthorizationResponseType.CODE,
+            redirect_uri: CALLBACK,
+            scope: "openid",
+            state: "state",
+            nonce: "nonce",
+          },
+        });
+        expect(response.status).toBe(403);
+        expect(await usersWithEmail(server, "new@example.com")).toEqual([
+          cteUser,
+        ]);
+      });
+
+      it("refuses a redeem as a passwordless user (realm=email)", async () => {
+        const server = await setup();
+        const cteUser = await server.createUser(CTE_DB, "otp@example.com");
+        await server.env.data.users.create("tenantId", {
+          user_id: "email|otp-user",
+          email: "otp@example.com",
+          email_verified: true,
+          provider: "email",
+          connection: "email",
+          is_social: false,
+        });
+        const ticket = await ticketFor(server, "otp@example.com");
+
+        const response = await redeem(server, ticket, "email");
+        expect(response.status).toBe(403);
+        expect(await usersWithEmail(server, "otp@example.com")).toEqual(
+          [cteUser, "email|otp-user"].sort(),
+        );
+      });
     });
 
     it("picks it for /dbconnections signup, and refuses one the client doesn't enable", async () => {

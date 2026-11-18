@@ -18,6 +18,7 @@ import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { logMessage } from "../../helpers/logging";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
+import { resolveClientDatabaseConnection } from "../../helpers/database-connection-scope";
 const postRoot = defineRoute({
   route: createRoute({
     tags: ["oauth"],
@@ -95,10 +96,13 @@ const postRoot = defineRoute({
           otp: body.otp,
         });
       } else if ("password" in body) {
-        // The connection the password is checked in. It is recorded on the
-        // login session so the ticket can only be redeemed in the same
-        // connection.
-        const connection = body.realm;
+        // The database connection the password is checked in (#1703). It is
+        // recorded on the login session so the ticket can only be redeemed in
+        // the same connection; a realm the client doesn't enable is refused.
+        const connection = resolveClientDatabaseConnection(
+          client,
+          body.realm,
+        )?.name;
         const loginSession = await ctx.env.data.loginSessions.create(
           client.tenant.id,
           {

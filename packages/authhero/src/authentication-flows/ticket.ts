@@ -95,22 +95,37 @@ export async function ticketAuth(
   await env.data.codes.used(tenant_id, ticketId);
 
   // A database realm is the generic `Username-Password-Authentication` or the
-  // name of a database connection enabled on the client (#1703): the one
-  // /co/authenticate verified the password in.
+  // name of a database connection enabled on the client (#1703).
   const isDatabaseRealm =
     realm === Strategy.USERNAME_PASSWORD ||
     client.connections.some(
       (c) => c.name === realm && isDatabaseConnectionStrategy(c.strategy),
     );
+
+  // A login ticket only covers a password in the connection /co/authenticate
+  // verified it in, which it records on the login session. The realm sent
+  // here must resolve to that same database connection; any other realm,
+  // including `email`, is refused. Other `ticket` codes (for example guardian
+  // enrollment tickets) point at login sessions without a recorded connection
+  // and never covered a password, so a missing connection is refused too.
+  const verifiedConnection = loginSession.authParams.connection;
+  const databaseConnection = isDatabaseRealm
+    ? resolveClientDatabaseConnectionName(client, realm)
+    : undefined;
+  if (
+    !verifiedConnection ||
+    !databaseConnection ||
+    databaseConnection !== verifiedConnection
+  ) {
+    throw new JSONHTTPException(403, { message: "Invalid realm" });
+  }
+
   const provider = await getProviderFromRealm(
     ctx,
     tenant_id,
     realm,
     isDatabaseRealm,
   );
-  const databaseConnection = isDatabaseRealm
-    ? resolveClientDatabaseConnectionName(client, realm)
-    : undefined;
   if (databaseConnection) {
     ctx.set("connection", databaseConnection);
   }
@@ -170,6 +185,8 @@ export async function ticketAuth(
     ...omitUndefined(authParams),
     client_id: loginSession.authParams.client_id,
     username: loginSession.authParams.username,
+    // Likewise the connection the password was verified in.
+    connection: loginSession.authParams.connection,
   };
 
   await env.data.loginSessions.update(tenant_id, loginSession.id, {
