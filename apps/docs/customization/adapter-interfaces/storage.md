@@ -19,7 +19,7 @@ interface StorageAdapter {
     options: { contentType: string; cacheControl?: string },
   ): Promise<void>;
   get(key: string): Promise<{
-    body: ReadableStream;
+    body: ReadableStream<Uint8Array>;
     contentType?: string;
     cacheControl?: string;
     size?: number;
@@ -31,7 +31,7 @@ interface StorageAdapter {
 }
 ```
 
-Set it as `data.storage`. To support S3 or local disk, implement these four methods; nothing in `authhero` needs to change.
+Set it as `data.storage`. If you configure `managementDataAdapter`, set `storage` on that object too (uploads and `/assets` read from it). Uploads and `/assets` must resolve the same store, so per-tenant isolated adapters must share one branding bucket. To support S3 or local disk, implement these four methods; nothing in `authhero` needs to change.
 
 ## Cloudflare R2
 
@@ -69,7 +69,7 @@ storage: { bucket: env.ASSETS, publicBaseUrl: "https://assets.example.com" }
 
 - `publicBaseUrl` only changes the URL returned by the upload API; `/assets` stays mounted.
 - Fonts need an R2 CORS policy allowing `GET` from your login origins. If you can't set one, omit `publicBaseUrl`.
-- SVG files always use the `/assets` URL so the restrictive CSP applies. They are still stored in the bucket, so they are also reachable at `publicBaseUrl/<key>` without that CSP. Add a Cloudflare Transform Rule on the assets domain that sets `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` (and `X-Content-Type-Options: nosniff`) for `.svg` paths, or don't expose the bucket publicly.
+- SVG files always use the `/assets` URL so the restrictive CSP applies to the URL the API returns, not to direct bucket access. They are still stored in the bucket, so they are also reachable at `publicBaseUrl/<key>` without that CSP. Add a Cloudflare Transform Rule on the assets domain that sets `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` (and `X-Content-Type-Options: nosniff`) for `.svg` paths, or don't expose the bucket publicly.
 
 Stored URLs are plain URLs, so you can later point per-tenant subdomains at the `tenants/{tenant_id}/` prefix, or move a tenant to its own bucket, by copying objects and updating the URL.
 
@@ -86,11 +86,11 @@ Objects are stored as `tenants/{tenant_id}/branding/{kind}/{uuid}.{ext}`, where 
 | `background`              | PNG, JPEG, WebP, SVG           | 5 MB     |
 | `font`                    | WOFF2, WOFF, TTF, OTF          | 2 MB     |
 
-The file's bytes must match its declared type. SVGs must have an `<svg>` root and are rejected if they contain scripts, `foreignObject`, event handlers, entities or references to external resources.
+The file's bytes must match its resolved type. The type is the declared one, except for fonts: an empty or generic type (such as `application/octet-stream`) falls back to the file extension (`.woff2`, `.woff`, `.ttf`, `.otf`). SVGs must have an unprefixed `<svg>` root (prefixed roots such as `svg:svg` are rejected) and are rejected if they contain scripts, `foreignObject`, event handlers, entities or references to external resources.
 
 ## API
 
-`POST /api/v2/branding/uploads/{kind}` with a multipart `file` field and the `update:branding` scope returns:
+`POST /api/v2/branding/uploads/{kind}` with a multipart `file` field and the `update:branding` scope returns (`413` if the body is over the size limit, `400` for invalid files):
 
 ```json
 {

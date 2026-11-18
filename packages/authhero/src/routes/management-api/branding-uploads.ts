@@ -65,12 +65,24 @@ const postUpload = defineRoute({
           "The file was stored. Put `url` in the matching branding URL field.",
       },
       400: { description: "Invalid file (type, size or content)" },
+      413: {
+        content: {
+          "application/json": { schema: z.object({ message: z.string() }) },
+        },
+        description: "The request body exceeds the upload size limit",
+      },
       501: { description: "No storage adapter is configured" },
     },
   }),
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
     const { kind } = ctx.req.valid("param");
+    // Dot segments would be collapsed by clients and break the asset URL.
+    if (tenantId === "." || tenantId === "..") {
+      throw new HTTPException(400, {
+        message: "Uploads are not supported for this tenant id",
+      });
+    }
     const storage = ctx.env.data.storage;
     if (!storage) {
       throw new HTTPException(501, {

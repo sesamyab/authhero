@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { useNotify } from "ra-core";
 import { Loader2, Upload, X } from "lucide-react";
@@ -53,10 +53,28 @@ export function AssetUrlInput({
 }) {
   const notify = useNotify();
   const tenantId = useTenantId() ?? "";
-  const { setValue, getValues } = useFormContext();
+  const { setValue, register, unregister } = useFormContext();
   const value = useWatch({ name: source }) as string | undefined;
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const uploadingRef = useRef(false);
+  // True when the field was edited by the user while an upload was in flight.
+  const editedDuringUpload = useRef(false);
+
+  // Block form submission while an upload is pending: a hidden, value-less
+  // field whose validator fails until the upload settles.
+  const guardName = `__upload_pending.${source.replace(/\./g, "_")}`;
+  useEffect(() => {
+    register(guardName, {
+      validate: () =>
+        !uploadingRef.current || "Wait for the upload to finish before saving",
+    });
+    return () => unregister(guardName);
+  }, [register, unregister, guardName]);
+
+  useEffect(() => {
+    if (uploadingRef.current) editedDuringUpload.current = true;
+  }, [value]);
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
@@ -67,7 +85,8 @@ export function AssetUrlInput({
       return;
     }
     setUploading(true);
-    const before = getValues(source);
+    uploadingRef.current = true;
+    editedDuringUpload.current = false;
     const token = Symbol("upload");
     latestUpload.set(source, token);
     try {
@@ -85,12 +104,13 @@ export function AssetUrlInput({
       if (!url) throw new Error("No URL returned");
       // Don't clobber an edit made while the upload was in flight.
       if (latestUpload.get(source) !== token) return;
-      if (getValues(source) !== before) return;
+      if (editedDuringUpload.current) return;
       setValue(source, url, { shouldDirty: true, shouldTouch: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed";
       notify(msg, { type: "error" });
     } finally {
+      uploadingRef.current = false;
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
