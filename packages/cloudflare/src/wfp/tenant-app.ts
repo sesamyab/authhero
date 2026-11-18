@@ -342,6 +342,13 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
           await provisionDefaultClients(encrypted, env.TENANT_ID, {
             createManagementClient: false,
           });
+        } else if (payload.tenants?.some((t) => t.id === env.TENANT_ID)) {
+          // The push carried this tenant's seed, so a missing row means the seed
+          // failed to write (see `result.tenants.errors`). Succeeding here would
+          // leave the tenant `ready` without a default client.
+          throw new Error(
+            `the tenants row for "${env.TENANT_ID}" is missing after the seed was applied`,
+          );
         } else {
           console.warn(
             `[wfp-tenant] sync-defaults: no tenants row for "${env.TENANT_ID}", default client skipped`,

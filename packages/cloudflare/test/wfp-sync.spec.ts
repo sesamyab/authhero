@@ -665,6 +665,51 @@ describe("createWfpTenantApp /internal/sync-defaults", () => {
     expect((await tenant.tenants.get("acme"))?.default_client_id).toBe(firstId);
   });
 
+  it("skips the default client for a push filtered without the tenant's seed row (#1754)", async () => {
+    const res = await app.fetch(
+      new Request("https://tenant.internal/internal/sync-defaults", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer push-secret",
+        },
+        body: JSON.stringify({ ...payload, tenants: [] }),
+      }),
+      { ...env, TENANT_ID: "acme" },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    expect(res.status).toBe(200);
+    expect((await tenant.clients.list("acme")).clients).toHaveLength(0);
+  });
+
+  it("fails the push when the tenant's seed row was supplied but did not land (#1754)", async () => {
+    // Seed rows are applied through the tenants adapter; make acme's fail.
+    const create = tenant.tenants.create.bind(tenant.tenants);
+    tenant.tenants.create = async (params) => {
+      if (params.id === "acme") throw new Error("seed write failed");
+      return create(params);
+    };
+    const res = await app.fetch(
+      new Request("https://tenant.internal/internal/sync-defaults", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer push-secret",
+        },
+        body: JSON.stringify({
+          ...payload,
+          tenants: [{ id: "acme", friendly_name: "Acme" }],
+        }),
+      }),
+      { ...env, TENANT_ID: "acme" },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    expect(res.status).toBe(500);
+    expect(res.headers.get("X-Authhero-Error")).toBe(
+      "sync_defaults_default_client_failed",
+    );
+  });
+
   it("invokes onSyncResult with the applied result", async () => {
     const onSyncResult = vi.fn();
     app = createWfpTenantApp({
