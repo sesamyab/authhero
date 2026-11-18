@@ -679,6 +679,8 @@ describe("createWfpTenantApp /internal/sync-defaults", () => {
       { waitUntil() {}, passThroughOnException() {} },
     );
     expect(res.status).toBe(200);
+    // The rest of the payload still applies.
+    expect((await res.json()).signingKeys.upserted).toBe(1);
     expect((await tenant.clients.list("acme")).clients).toHaveLength(0);
   });
 
