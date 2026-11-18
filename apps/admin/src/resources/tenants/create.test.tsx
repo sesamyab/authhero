@@ -354,6 +354,27 @@ describe("TenantsCreate creation limit", () => {
     await waitFor(() => expect(screen.queryByText(/tenants used/)).toBeNull());
   });
 
+  it("refreshes on the status shape the admin's own client throws", async () => {
+    // authorizedHttpClient reports `httpStatus`, never `status`.
+    const getCreationLimit = vi.fn().mockResolvedValue({
+      key: "tenants_per_user",
+      used: 1,
+      limit: 2,
+      source: "default",
+    });
+    renderCreate(options, {
+      getCreationLimit,
+      createError: Object.assign(new Error("Tenant limit reached"), {
+        httpStatus: 403,
+      }),
+    });
+    await screen.findByText(/1 of 2 tenants used/);
+
+    await submit("Acme");
+
+    await waitFor(() => expect(getCreationLimit).toHaveBeenCalledTimes(2));
+  });
+
   it("keeps a zero cap out of the meter range", async () => {
     renderCreate(options, {
       tenants: [{ id: "a" }],
