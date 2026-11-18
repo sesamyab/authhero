@@ -53,7 +53,7 @@ export function AssetUrlInput({
 }) {
   const notify = useNotify();
   const tenantId = useTenantId() ?? "";
-  const { setValue, register, unregister } = useFormContext();
+  const { setValue, register, unregister, watch } = useFormContext();
   const value = useWatch({ name: source }) as string | undefined;
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -72,9 +72,25 @@ export function AssetUrlInput({
     return () => unregister(guardName);
   }, [register, unregister, guardName]);
 
+  // Track edits synchronously (the subscription fires inside setValue/onChange,
+  // before any later upload completion can run).
   useEffect(() => {
-    if (uploadingRef.current) editedDuringUpload.current = true;
-  }, [value]);
+    const sub = watch((_, { name }) => {
+      if (name === source && uploadingRef.current) {
+        editedDuringUpload.current = true;
+      }
+    });
+    return () => sub.unsubscribe();
+  }, [watch, source]);
+
+  // Leaving the tab discards an in-flight upload: its result is ignored and the
+  // admin is told, so it can't overwrite an edit made after returning.
+  useEffect(
+    () => () => {
+      if (uploadingRef.current) latestUpload.delete(source);
+    },
+    [source],
+  );
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
@@ -103,7 +119,12 @@ export function AssetUrlInput({
       const url = (res as { json?: { url?: string } }).json?.url;
       if (!url) throw new Error("No URL returned");
       // Don't clobber an edit made while the upload was in flight.
-      if (latestUpload.get(source) !== token) return;
+      if (latestUpload.get(source) !== token) {
+        notify("Upload was discarded because the form changed", {
+          type: "warning",
+        });
+        return;
+      }
       if (editedDuringUpload.current) return;
       setValue(source, url, { shouldDirty: true, shouldTouch: true });
     } catch (err) {

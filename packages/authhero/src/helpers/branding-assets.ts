@@ -122,7 +122,7 @@ export function isSafeSvg(bytes: Uint8Array) {
   const text = new TextDecoder().decode(bytes);
   const body = text
     .replace(/^\uFEFF/, "")
-    .replace(/<\?xml[\s\S]*?\?>/gi, "")
+    .replace(/<\?xml(?![\w-])[\s\S]*?\?>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<!DOCTYPE[^>[]*(\[[\s\S]*?\])?\s*>/gi, (m) =>
       /<!ENTITY/i.test(m) ? "<!ENTITY" : "",
