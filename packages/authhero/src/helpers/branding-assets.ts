@@ -135,7 +135,12 @@ export function isSafeSvg(bytes: Uint8Array) {
     /<foreignObject[\s>]/i.test(body) ||
     /\son[a-z]+\s*=/i.test(body) ||
     /javascript:/i.test(body) ||
-    /@import/i.test(body)
+    /@import/i.test(body) ||
+    // CSS escapes (e.g. `@\\69mport`) can hide at-rules; no legitimate logo
+    // needs them, so reject any backslash inside <style> or style="".
+    /<style[^>]*>[^<]*\\/i.test(body) ||
+    /style\s*=\s*["'][^"']*\\/i.test(body) ||
+    /@[a-z\\]/i.test(body.replace(/[\w.-]+@[\w.-]+/g, ""))
   ) {
     return false;
   }

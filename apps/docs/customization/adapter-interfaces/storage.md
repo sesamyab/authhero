@@ -18,9 +18,7 @@ interface StorageAdapter {
     body: ArrayBuffer | Uint8Array,
     options: { contentType: string; cacheControl?: string },
   ): Promise<void>;
-  get(
-    key: string,
-  ): Promise<{
+  get(key: string): Promise<{
     body: ReadableStream;
     contentType?: string;
     cacheControl?: string;
@@ -71,7 +69,7 @@ storage: { bucket: env.ASSETS, publicBaseUrl: "https://assets.example.com" }
 
 - `publicBaseUrl` only changes the URL returned by the upload API; `/assets` stays mounted.
 - Fonts need an R2 CORS policy allowing `GET` from your login origins. If you can't set one, omit `publicBaseUrl`.
-- SVG files always use the `/assets` URL so the restrictive CSP applies.
+- SVG files always use the `/assets` URL so the restrictive CSP applies. They are still stored in the bucket, so they are also reachable at `publicBaseUrl/<key>` without that CSP. Add a Cloudflare Transform Rule on the assets domain that sets `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` (and `X-Content-Type-Options: nosniff`) for `.svg` paths, or don't expose the bucket publicly.
 
 Stored URLs are plain URLs, so you can later point per-tenant subdomains at the `tenants/{tenant_id}/` prefix, or move a tenant to its own bucket, by copying objects and updating the URL.
 

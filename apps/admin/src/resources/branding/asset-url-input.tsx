@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/button";
 import { useTenantId } from "@/TenantContext";
 import { getApiUrl, getHttpClient } from "./previewClient";
 
+// Latest upload per field, shared across remounts so a superseded upload
+// (e.g. started before the tab unmounted) never writes its URL.
+const latestUpload = new Map<string, symbol>();
+
 export type BrandingAssetKind =
   | "logo"
   | "favicon"
@@ -64,6 +68,8 @@ export function AssetUrlInput({
     }
     setUploading(true);
     const before = getValues(source);
+    const token = Symbol("upload");
+    latestUpload.set(source, token);
     try {
       const form = new FormData();
       form.set("file", file);
@@ -78,6 +84,7 @@ export function AssetUrlInput({
       const url = (res as { json?: { url?: string } }).json?.url;
       if (!url) throw new Error("No URL returned");
       // Don't clobber an edit made while the upload was in flight.
+      if (latestUpload.get(source) !== token) return;
       if (getValues(source) !== before) return;
       setValue(source, url, { shouldDirty: true, shouldTouch: true });
     } catch (err) {
