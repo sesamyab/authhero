@@ -118,6 +118,13 @@ describe("initMultiTenant: databaseIsolation", () => {
   });
 
   it("provisions and deprovisions the tenant's database, not the control plane's clients", async () => {
+    // The control plane's role and resource server, which the sync would copy.
+    await adapters.roles.create(CONTROL_PLANE, { name: "Platform Role" });
+    await adapters.resourceServers.create(CONTROL_PLANE, {
+      name: "Platform API",
+      identifier: "https://platform.example.com/api",
+    });
+
     const created = await request("POST", "/api/v2/tenants", {
       id: CHILD,
       friendly_name: CHILD,
@@ -141,9 +148,14 @@ describe("initMultiTenant: databaseIsolation", () => {
     expect(deleted.status).toBe(204);
     expect(deprovisioned).toEqual([CHILD]);
   });
+
   it("keeps the resource server and role sync for a shared tenant", async () => {
-    // The control plane's roles and resource servers, to be copied.
+    // The control plane's role and resource server, which the sync would copy.
     await adapters.roles.create(CONTROL_PLANE, { name: "Platform Role" });
+    await adapters.resourceServers.create(CONTROL_PLANE, {
+      name: "Platform API",
+      identifier: "https://platform.example.com/api",
+    });
 
     const created = await request("POST", "/api/v2/tenants", {
       id: CHILD,
@@ -157,5 +169,10 @@ describe("initMultiTenant: databaseIsolation", () => {
     expect(
       (await adapters.roles.list(CHILD, {})).roles.map((r) => r.name),
     ).toContain("Platform Role");
+    expect(
+      (await adapters.resourceServers.list(CHILD, {})).resource_servers.map(
+        (r) => r.identifier,
+      ),
+    ).toContain("https://platform.example.com/api");
   });
 });
