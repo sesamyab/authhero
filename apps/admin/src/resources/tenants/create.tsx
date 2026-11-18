@@ -245,8 +245,13 @@ export function TenantsCreate() {
       return undefined;
     } catch (error) {
       // A refusal over the quota means the count moved (another session
-      // created a tenant): show the new one. The server stays the authority.
-      if (httpStatusOf(error) === 403) refreshCreationLimit();
+      // created a tenant), and a 5xx may come after the tenant was created:
+      // show the real count. The server stays the authority, and nothing is
+      // retried.
+      const status = httpStatusOf(error);
+      if (status === 403 || (status !== undefined && status >= 500)) {
+        refreshCreationLimit();
+      }
       const fieldErrors = createErrorToFieldErrors(error);
       if (fieldErrors) return fieldErrors;
       notify(

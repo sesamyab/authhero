@@ -168,14 +168,23 @@ describe("tenantCreationLimits", () => {
     });
   });
 
-  it("reports no cap for an operator and when limits are unset", async () => {
-    const operatorUsage = await appFor(operator, { perUser: 1 }).usage();
-    expect(await operatorUsage.json()).toMatchObject({
+  it("reports no cap for an operator and when limits are unset, with the real count", async () => {
+    const operatorCreate = appFor(operator, { perUser: 1 });
+    expect((await operatorCreate(nextId())).status).toBe(201);
+    expect((await operatorCreate(nextId())).status).toBe(201);
+    expect(await (await operatorCreate.usage()).json()).toMatchObject({
+      used: 2,
       limit: null,
       source: "none",
     });
-    const unset = await appFor(selfService, undefined).usage();
-    expect(await unset.json()).toMatchObject({ limit: null, source: "none" });
+
+    const unsetCreate = appFor(selfService, undefined);
+    expect((await unsetCreate(nextId())).status).toBe(201);
+    expect(await (await unsetCreate.usage()).json()).toMatchObject({
+      used: 1,
+      limit: null,
+      source: "none",
+    });
   });
 
   it("refuses a second tenant while one is still pending", async () => {

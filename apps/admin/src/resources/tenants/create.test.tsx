@@ -332,6 +332,28 @@ describe("TenantsCreate creation limit", () => {
     expect(getCreationLimit).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes after a server error, and drops a count it can no longer confirm", async () => {
+    const getCreationLimit = vi
+      .fn()
+      .mockResolvedValueOnce({
+        key: "tenants_per_user",
+        used: 1,
+        limit: 2,
+        source: "default",
+      })
+      .mockRejectedValue(new Error("unavailable"));
+    renderCreate(options, {
+      getCreationLimit,
+      createError: Object.assign(new Error("Server error"), { status: 500 }),
+    });
+    expect(await screen.findByText(/1 of 2 tenants used/)).toBeTruthy();
+
+    await submit("Acme");
+
+    await waitFor(() => expect(getCreationLimit).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(/tenants used/)).toBeNull());
+  });
+
   it("keeps a zero cap out of the meter range", async () => {
     renderCreate(options, {
       tenants: [{ id: "a" }],

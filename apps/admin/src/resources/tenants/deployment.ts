@@ -80,9 +80,12 @@ export function useTenantCreationLimit(): [
     dataProvider
       .getTenantCreationLimit()
       .then((result) => {
-        if (!cancelled && result) setLimit(result);
+        // No answer clears what was shown: a stale count is worse than none.
+        if (!cancelled) setLimit(result ?? undefined);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setLimit(undefined);
+      });
     return () => {
       cancelled = true;
     };

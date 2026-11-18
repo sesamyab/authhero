@@ -475,25 +475,18 @@ export function createTenantsOpenAPIRouter(
         ctx.var.organization_id ??
         ctx.var.org_name,
       );
-      // Operators are exempt from the cap, so there is none to show.
-      const usage =
-        !config.tenantCreationLimits ||
-        callerIsOperator(ctx.var.user, callerOrgScoped)
-          ? {
-              key: "tenants_per_user" as const,
-              used: 0,
-              limit: null,
-              source: "none" as const,
-            }
-          : await getTenantCreationUsage({
-              limits: config.tenantCreationLimits,
-              data: getRequestData(ctx),
-              controlPlaneTenantId:
-                config.accessControl?.controlPlaneTenantId ??
-                getRequestData(ctx).multiTenancyConfig?.controlPlaneTenantId,
-              ownerRoleName: config.accessControl?.ownerRoleName,
-              user: { sub: user.sub },
-            });
+      // Operators are exempt from the cap, so there is none to show; what
+      // they own is still counted, as it is when no limits are configured.
+      const usage = await getTenantCreationUsage({
+        limits: config.tenantCreationLimits,
+        exempt: callerIsOperator(ctx.var.user, callerOrgScoped),
+        data: getRequestData(ctx),
+        controlPlaneTenantId:
+          config.accessControl?.controlPlaneTenantId ??
+          getRequestData(ctx).multiTenancyConfig?.controlPlaneTenantId,
+        ownerRoleName: config.accessControl?.ownerRoleName,
+        user: { sub: user.sub },
+      });
       return ctx.json(usage, 200);
     },
   );

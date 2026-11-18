@@ -145,19 +145,20 @@ async function listOwnedTenants(
  * Provisioning state plays no part here, so it is not read.
  */
 export async function getTenantCreationUsage(
-  args: UsageArgs,
+  args: UsageArgs & {
+    /** An operator has no cap, but still owns the tenants they own. */
+    exempt?: boolean;
+  },
 ): Promise<TenantCreationUsage> {
-  const { limits, data, controlPlaneTenantId, user } = args;
-  if (!limits || !controlPlaneTenantId) {
+  const { limits, data, controlPlaneTenantId, user, exempt } = args;
+  if (!controlPlaneTenantId) {
     return { key: "tenants_per_user", used: 0, limit: null, source: "none" };
   }
   try {
-    const { cap, source } = await resolveCap(
-      limits,
-      data,
-      controlPlaneTenantId,
-      user.sub,
-    );
+    const { cap, source } =
+      !limits || exempt
+        ? { cap: null, source: "none" as const }
+        : await resolveCap(limits, data, controlPlaneTenantId, user.sub);
     const owned = await listOwnedTenants(
       data,
       controlPlaneTenantId,
