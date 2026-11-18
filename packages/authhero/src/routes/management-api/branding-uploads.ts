@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
-import { LogTypes } from "@authhero/adapter-interfaces";
+import { bodyLimit } from "hono/body-limit";
+import { LogTypes, storageKeyToUrlPath } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { managementValidationHook } from "../../errors/management-api-error";
 import { defineRoute } from "../../utils/define-route";
@@ -14,7 +15,11 @@ import {
   brandingAssetKey,
   isSafeSvg,
   matchesSignature,
+  resolveContentType,
 } from "../../helpers/branding-assets";
+
+// Largest file (5 MB) plus multipart overhead.
+const MAX_REQUEST_BYTES = 5 * 1024 * 1024 + 64 * 1024;
 
 const uploadResponseSchema = z.object({
   url: z.string(),
@@ -46,6 +51,13 @@ const postUpload = defineRoute({
       },
     },
     security: [{ Bearer: ["update:branding"] }],
+    // Cap actual request bytes before the multipart body is buffered/parsed.
+    middleware: [
+      bodyLimit({
+        maxSize: MAX_REQUEST_BYTES,
+        onError: (c) => c.json({ message: "Request body too large" }, 413),
+      }),
+    ] as const,
     responses: {
       201: {
         content: { "application/json": { schema: uploadResponseSchema } },
@@ -78,7 +90,11 @@ const postUpload = defineRoute({
         message: `The file must be between 1 byte and ${rule.maxBytes} bytes`,
       });
     }
-    const contentType = file.type.split(";")[0]!.trim().toLowerCase();
+    const contentType = resolveContentType(
+      kind,
+      file.type.split(";")[0]!.trim().toLowerCase(),
+      file.name,
+    );
     const ext = rule.types[contentType];
     if (!ext) {
       throw new HTTPException(400, {
@@ -101,14 +117,21 @@ const postUpload = defineRoute({
     // Tenant id comes from the authenticated request context, never the
     // client, so an upload can only land under the caller's own prefix.
     const key = brandingAssetKey(tenantId, kind, crypto.randomUUID(), ext);
+    // Resolve the URL before writing so a lookup failure can't orphan an
+    // object. SVGs always go through the auth server (restrictive CSP), never
+    // a direct bucket URL.
+    const publicUrl =
+      contentType === "image/svg+xml"
+        ? undefined
+        : await storage.getPublicUrl(key);
+    const url =
+      publicUrl ??
+      `${getIssuer(ctx.env, ctx.var.custom_domain)}assets/${storageKeyToUrlPath(key)}`;
+
     await storage.put(key, bytes, {
       contentType,
       cacheControl: BRANDING_ASSET_CACHE_CONTROL,
     });
-
-    const url =
-      (await storage.getPublicUrl(key)) ??
-      `${getIssuer(ctx.env, ctx.var.custom_domain)}assets/${key}`;
 
     await logMessage(ctx, tenantId, {
       type: LogTypes.SUCCESS_API_OPERATION,

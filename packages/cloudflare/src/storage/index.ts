@@ -1,5 +1,6 @@
-import type {
-  StorageAdapter,
+import {
+  storageKeyToUrlPath,
+  type StorageAdapter,
   StorageObject,
   StoragePutOptions,
 } from "@authhero/adapter-interfaces";
@@ -28,7 +29,12 @@ export interface CloudflareStorageAdapterConfig {
   /**
    * Base URL of a public assets domain in front of the bucket (e.g.
    * `https://assets.example.com`). When omitted the auth server serves
-   * objects itself at `/assets/{key}`.
+   * objects itself at `/assets/{key}`. Uploaded SVGs are always returned with
+   * the auth server `/assets` URL (it adds a restrictive CSP).
+   *
+   * Fonts are loaded cross-origin by the login page, so the bucket needs an R2
+   * CORS policy allowing `GET` from your login origins. If you can't configure
+   * that, omit `publicBaseUrl` so `/assets` supplies the CORS header.
    */
   publicBaseUrl?: string;
 }
@@ -61,7 +67,7 @@ export function createCloudflareStorageAdapter(
       await config.bucket.delete(key);
     },
     getPublicUrl(key: string) {
-      return base ? `${base}/${key}` : undefined;
+      return base ? `${base}/${storageKeyToUrlPath(key)}` : undefined;
     },
   };
 }

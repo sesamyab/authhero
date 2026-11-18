@@ -15,7 +15,8 @@ export function createAssetsApp(config: AuthHeroConfig) {
 
   app.get("/tenants/:tenant_id/branding/:kind/:file", async (ctx) => {
     const { tenant_id, kind, file } = ctx.req.param();
-    const storage = config.dataAdapter.storage;
+    const storage = (config.managementDataAdapter ?? config.dataAdapter)
+      .storage;
     if (
       !storage ||
       !isBrandingAssetKind(kind) ||

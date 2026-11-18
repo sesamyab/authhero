@@ -18,7 +18,7 @@ const ACCEPT: Record<BrandingAssetKind, string> = {
   logo: "image/png,image/jpeg,image/webp,image/gif,image/svg+xml",
   powered_by_logo: "image/png,image/jpeg,image/webp,image/gif,image/svg+xml",
   favicon:
-    "image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon",
+    "image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico",
   background: "image/png,image/jpeg,image/webp,image/svg+xml",
   font: "font/woff2,font/woff,font/ttf,font/otf,.woff2,.woff,.ttf,.otf",
 };
@@ -49,7 +49,7 @@ export function AssetUrlInput({
 }) {
   const notify = useNotify();
   const tenantId = useTenantId() ?? "";
-  const { setValue } = useFormContext();
+  const { setValue, getValues } = useFormContext();
   const value = useWatch({ name: source }) as string | undefined;
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -63,6 +63,7 @@ export function AssetUrlInput({
       return;
     }
     setUploading(true);
+    const before = getValues(source);
     try {
       const form = new FormData();
       form.set("file", file);
@@ -76,6 +77,8 @@ export function AssetUrlInput({
       );
       const url = (res as { json?: { url?: string } }).json?.url;
       if (!url) throw new Error("No URL returned");
+      // Don't clobber an edit made while the upload was in flight.
+      if (getValues(source) !== before) return;
       setValue(source, url, { shouldDirty: true, shouldTouch: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed";

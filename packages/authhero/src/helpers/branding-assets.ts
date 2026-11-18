@@ -77,7 +77,10 @@ function startsWith(bytes: Uint8Array, sig: number[], offset = 0) {
 export function matchesSignature(contentType: string, bytes: Uint8Array) {
   switch (contentType) {
     case "image/png":
-      return startsWith(bytes, [0x89, 0x50, 0x4e, 0x47]);
+      return startsWith(
+        bytes,
+        [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+      );
     case "image/jpeg":
       return startsWith(bytes, [0xff, 0xd8, 0xff]);
     case "image/gif":
@@ -109,16 +112,69 @@ export function matchesSignature(contentType: string, bytes: Uint8Array) {
 }
 
 /**
- * Defence in depth for SVG uploads. Primary protection is the restrictive CSP
- * the asset route serves them with; this rejects obvious active content.
+ * Defence in depth for SVG uploads. Primary protection is that SVGs are only
+ * ever served by the auth server's /assets route with a restrictive CSP; this
+ * additionally requires an `<svg>` root (after an optional XML declaration,
+ * comments and doctype) and rejects active content, entities and references to
+ * external resources.
  */
 export function isSafeSvg(bytes: Uint8Array) {
   const text = new TextDecoder().decode(bytes);
-  if (!/<svg[\s>]/i.test(text)) return false;
-  return !(
-    /<script[\s>]/i.test(text) ||
-    /<foreignObject[\s>]/i.test(text) ||
-    /\son[a-z]+\s*=/i.test(text) ||
-    /javascript:/i.test(text)
-  );
+  const body = text
+    .replace(/^\uFEFF/, "")
+    .replace(/<\?xml[\s\S]*?\?>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!DOCTYPE[^>[]*(\[[\s\S]*?\])?\s*>/gi, (m) =>
+      /<!ENTITY/i.test(m) ? "<!ENTITY" : "",
+    )
+    .trim();
+  if (!/^<svg[\s>]/i.test(body)) return false;
+  if (/<!ENTITY/i.test(body) || /&#/.test(body)) return false;
+  if (
+    /<script[\s>]/i.test(body) ||
+    /<foreignObject[\s>]/i.test(body) ||
+    /\son[a-z]+\s*=/i.test(body) ||
+    /javascript:/i.test(body) ||
+    /@import/i.test(body)
+  ) {
+    return false;
+  }
+  // Only same-document and inline image references are allowed.
+  for (const m of body.matchAll(/(?:xlink:)?href\s*=\s*["']([^"']*)["']/gi)) {
+    const ref = m[1]!.trim();
+    if (!ref.startsWith("#") && !/^data:image\/(png|jpeg|gif|webp);/i.test(ref))
+      return false;
+  }
+  for (const m of body.matchAll(/url\(\s*["']?([^)"']*)/gi)) {
+    if (!m[1]!.trim().startsWith("#")) return false;
+  }
+  return true;
+}
+
+const FONT_EXTENSIONS: Record<string, string> = {
+  woff2: "font/woff2",
+  woff: "font/woff",
+  ttf: "font/ttf",
+  otf: "font/otf",
+};
+
+/**
+ * Browsers often report an empty or generic MIME type for fonts. Fall back to
+ * the file extension; the magic-byte check still decides acceptance.
+ */
+export function resolveContentType(
+  kind: BrandingAssetKind,
+  declared: string,
+  filename: string,
+) {
+  if (
+    kind === "font" &&
+    (!declared ||
+      declared === "application/octet-stream" ||
+      !(declared in BRANDING_ASSET_RULES.font.types))
+  ) {
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    return FONT_EXTENSIONS[ext] ?? declared;
+  }
+  return declared;
 }
