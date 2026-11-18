@@ -26,13 +26,14 @@ Authhero consists of several npm packages that provide different authentication-
 To initialize an auth server using Authhero:
 
 ```javascript
-const { managementApp, oauthApp, universalApp, samlApp } = init({
+const { managementApp, oauthApp, universalApp, u2App, samlApp } = init({
   dataAdapter: params.dataAdapter,
 });
 
 rootApp
   .route("/", oauthApp)
   .route("/u", universalApp)
+  .route("/u2", u2App)
   .route("/api/v2", managementApp)
   .route("/", samlApp);
 ```
