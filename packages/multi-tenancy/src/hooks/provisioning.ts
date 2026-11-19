@@ -64,13 +64,28 @@ function mergeUnder(
  * included) wins, nested objects such as `flags` merge key by key, and arrays
  * are replaced whole.
  */
+// The type leaves these out at compile time; a defaults object built at runtime
+// (a variable, a function's return value) can still carry them, so drop them.
+const EXCLUDED_DEFAULT_KEYS = [
+  "id",
+  "friendly_name",
+  "audience",
+  "parent_tenant_id",
+  "config_sync",
+  "config_sync_hash",
+  "config_synced_at",
+  "database_version",
+] as const;
+
 export function applyTenantDefaults(
   params: CreateTenantParams,
   defaults: TenantDefaults,
 ): CreateTenantParams {
+  const settings = { ...defaults } as Record<string, unknown>;
+  for (const key of EXCLUDED_DEFAULT_KEYS) delete settings[key];
   return mergeUnder(
     params as unknown as Record<string, unknown>,
-    defaults as Record<string, unknown>,
+    settings,
   ) as unknown as CreateTenantParams;
 }
 

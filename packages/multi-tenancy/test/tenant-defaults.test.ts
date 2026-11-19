@@ -25,6 +25,25 @@ describe("applyTenantDefaults", () => {
     expect(result.mfa).toEqual({ policy: "confidence" });
   });
 
+  it("ignores identity and sync fields in the defaults at runtime", () => {
+    const defaults = {
+      audience: "https://shared.example.com",
+      config_sync: "synced",
+      flags: { enable_sso: true },
+    } as unknown as Parameters<typeof applyTenantDefaults>[1];
+
+    const without = applyTenantDefaults({ friendly_name: "T" }, defaults);
+    expect(without.audience).toBeUndefined();
+    expect(without.config_sync).toBeUndefined();
+    expect(without.flags).toEqual({ enable_sso: true });
+
+    const own = applyTenantDefaults(
+      { friendly_name: "T", audience: "https://own.example.com" },
+      defaults,
+    );
+    expect(own.audience).toBe("https://own.example.com");
+  });
+
   it("keeps a null the request sets", () => {
     const result = applyTenantDefaults(
       { friendly_name: "T", sender_email: null },
