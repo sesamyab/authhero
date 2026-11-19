@@ -127,6 +127,20 @@ The admin app surfaces each template at `/{tenant}/email-templates/{template}`:
 
 Clearing the subject or body field and saving is treated as "revert to default" rather than an empty save — the form re-substitutes the bundled default before sending the PUT, so the API never sees an invalid empty subject.
 
+## Sender address
+
+The `from` address of an email is the first of these that is set:
+
+1. The template's `from`.
+2. The email provider's `default_from_address`.
+3. The tenant's `sender_email`, sent as `sender_name <sender_email>`. `sender_name` defaults to the tenant's `friendly_name`. Both can be edited under Settings > General in the admin.
+4. The `DEFAULT_SENDER_EMAIL` binding.
+5. `login@<hostname of ISSUER>`.
+
+A tenant created with only a name and an id has no `sender_email`, so it falls through to the first of 2, 4 and 5 that is set. An email provider is still required to send. A tenant on the hosted service gets the control plane's provider, and with it the sender, through `sync-defaults`.
+
+The tenant's `audience` is `urn:authhero:tenant:{id}` unless it is set at creation. It is the audience of service tokens, so the admin shows it read-only.
+
 ## Differences from Auth0
 
 | Area | Auth0 | AuthHero |

@@ -20,6 +20,7 @@ import { resolveTenantLanguage } from "../utils/locale";
 import { getEnrichedClient } from "../helpers/client";
 import { cimdTenantHint } from "../helpers/cimd";
 import { getLiquid, renderEmailTemplate } from "./render";
+import { resolveFromAddress } from "./from-address";
 import { getDefaultTemplate } from "./defaults";
 import { MailgunEmailService } from "../email-services/mailgun";
 import { ResendEmailService } from "../email-services/resend";
@@ -92,8 +93,14 @@ export async function sendEmail(
       ...params,
       from:
         params.from ||
-        emailProvider.default_from_address ||
-        `login@${ctx.env.ISSUER}`,
+        resolveFromAddress({
+          env: ctx.env,
+          provider: emailProvider,
+          // Only needed when the provider has no default of its own.
+          tenant: emailProvider.default_from_address
+            ? null
+            : await ctx.env.data.tenants.get(tenantId),
+        }),
       createServiceToken: buildCreateServiceToken(ctx, tenantId),
     });
   } catch (err) {
@@ -260,8 +267,11 @@ async function sendTemplatedEmail(
 ): Promise<boolean> {
   const tenantId = resolveTenantId(ctx, tenantIdOverride);
   const provider = await ctx.env.data.emailProviders.get(tenantId);
-  const fallbackFrom =
-    provider?.default_from_address || `login@${ctx.env.ISSUER}`;
+  const fallbackFrom = resolveFromAddress({
+    env: ctx.env,
+    provider,
+    tenant: params.tenant,
+  });
 
   const tOpts = {
     vendorName: params.tenant.friendly_name,
@@ -1091,8 +1101,11 @@ export async function sendTestEmail(
   );
 
   const provider = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
-  const fallbackFrom =
-    provider?.default_from_address || `login@${ctx.env.ISSUER}`;
+  const fallbackFrom = resolveFromAddress({
+    env: ctx.env,
+    provider,
+    tenant,
+  });
 
   let bodySource = params.body;
   let subjectSource = params.subject;

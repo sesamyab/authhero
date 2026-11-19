@@ -24,6 +24,9 @@ export type Bindings = {
   ENVIRONMENT: string;
   AUTH_URL: string;
   ISSUER: string;
+  // Sender used for outgoing email when neither the email provider nor the
+  // tenant sets one. Defaults to `login@<issuer host>`.
+  DEFAULT_SENDER_EMAIL?: string;
   UNIVERSAL_LOGIN_URL?: string;
   OAUTH_API_URL?: string;
 

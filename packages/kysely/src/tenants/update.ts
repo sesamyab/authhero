@@ -9,6 +9,7 @@ const CLEARABLE_FIELDS = [
   "parent_tenant_id",
   "config_sync_hash",
   "config_synced_at",
+  "sender_email",
 ] as const;
 
 export function update(db: Kysely<Database>) {

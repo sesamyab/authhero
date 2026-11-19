@@ -29,7 +29,8 @@ export const tenantInsertSchema = z.object({
   picture_url: z.string().optional(),
   support_email: z.string().optional(),
   support_url: z.string().optional(),
-  sender_email: z.string().email().optional(),
+  // Null clears it: the admin sends null for an emptied field.
+  sender_email: z.string().email().nullish(),
   sender_name: z.string().optional(),
 
   // Tenant Settings fields (merged from TenantSettings)
