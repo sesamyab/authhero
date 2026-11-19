@@ -54,6 +54,7 @@ import type { ControlPlaneResolver } from "./middleware";
 import type { InheritanceShadowOptions } from "./inheritance";
 import {
   DatabaseIsolationConfig,
+  MultiTenancyConfig,
   TenantDeploymentTypesConfig,
   TenantCreationLimitsConfig,
   TenantEntityHooks,
@@ -114,6 +115,13 @@ export interface MultiTenantConfig extends Omit<
    * exempt. Unset leaves creation unlimited.
    */
   tenantCreationLimits?: TenantCreationLimitsConfig;
+
+  /**
+   * Settings a new tenant starts with (MFA, attack protection, flags, ...),
+   * copied once when it is created and the tenant's own after that. A value in
+   * the create request wins. May be a function. Unset changes nothing.
+   */
+  tenantDefaults?: MultiTenancyConfig["tenantDefaults"];
 
   /**
    * The hostname a new tenant gets, with `{id}` standing for the tenant id,
@@ -424,6 +432,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     databaseIsolation,
     deploymentTypes,
     tenantCreationLimits,
+    tenantDefaults,
     tenantHostTemplate,
     inheritanceShadow,
     syncDefaults,
@@ -743,6 +752,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       provisionRoles: true,
     },
     databaseIsolation,
+    tenantDefaults,
   });
 
   // Chain provisioning hooks (org creation) with sync hooks (entity syncing)

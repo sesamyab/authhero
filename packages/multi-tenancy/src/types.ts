@@ -286,7 +286,40 @@ export interface TenantCreationLimitsConfig {
   blockWhilePending?: boolean;
 }
 
+/**
+ * Settings a new tenant starts with. These are the tenant row's own settings
+ * (MFA, attack protection, flags, sessions and so on), not identity or sync
+ * fields, which a default may never set.
+ */
+export type TenantDefaults = Partial<
+  Omit<
+    CreateTenantParams,
+    | "id"
+    | "friendly_name"
+    | "audience"
+    | "parent_tenant_id"
+    | "config_sync"
+    | "config_sync_hash"
+    | "config_synced_at"
+    | "database_version"
+  >
+>;
+
 export interface MultiTenancyConfig {
+  /**
+   * Settings copied onto a new tenant when it is created, then the tenant's
+   * own: a later change to the defaults does not reach existing tenants, and
+   * the tenant can change every one of them. A value in the create request
+   * wins over the default. May be a function, so a plan can decide the values.
+   * Unset leaves creation as it was.
+   */
+  tenantDefaults?:
+    | TenantDefaults
+    | ((
+        params: CreateTenantParams,
+        ctx: TenantHookContext,
+      ) => TenantDefaults | Promise<TenantDefaults>);
+
   /**
    * Limits on how many tenants a non-operator can create. Operators (callers
    * with `delete:tenants`, `admin:organizations`, `create:tenant_operations`
