@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useController, useFormContext, useWatch } from "react-hook-form";
 import { useNotify } from "ra-core";
 import { ImageIcon, Loader2, Type, Upload, X } from "lucide-react";
@@ -68,6 +68,7 @@ export function AssetUrlInput({
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [previewBroken, setPreviewBroken] = useState(false);
+  const inputId = useId();
   const uploadingRef = useRef(false);
   // True when the field was edited by the user while an upload was in flight.
   const editedDuringUpload = useRef(false);
@@ -169,7 +170,7 @@ export function AssetUrlInput({
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
       <div className="flex items-center justify-between gap-2">
-        <Label>{label}</Label>
+        <Label htmlFor={inputId}>{label}</Label>
         <Button
           type="button"
           variant="link"
@@ -208,7 +209,7 @@ export function AssetUrlInput({
             label={false}
             parse={parse}
             inputClassName="pr-9"
-            aria-label={label}
+            id={inputId}
           />
           {value && (
             <Button

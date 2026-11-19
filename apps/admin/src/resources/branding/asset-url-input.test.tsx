@@ -15,9 +15,9 @@ vi.mock("@/TenantContext", () => ({ useTenantId: () => "t1" }));
 vi.mock("@/components/admin", async () => {
   const { useFormContext } = await import("react-hook-form");
   return {
-    TextInput: ({ source }: { source: string }) => {
+    TextInput: ({ source, id }: { source: string; id?: string }) => {
       const { register } = useFormContext();
-      return <input data-testid="url" {...register(source)} />;
+      return <input data-testid="url" id={id} {...register(source)} />;
     },
   };
 });
@@ -140,5 +140,10 @@ describe("AssetUrlInput", () => {
       expect.stringContaining("discarded"),
       expect.anything(),
     );
+  });
+
+  it("associates the visible label with the URL input", () => {
+    const { getByLabelText } = render(<Harness />);
+    expect(getByLabelText("Logo").getAttribute("data-testid")).toBe("url");
   });
 });
