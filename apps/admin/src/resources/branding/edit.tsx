@@ -77,30 +77,33 @@ function StyleTab() {
     <div className="flex max-w-2xl flex-col gap-4">
       <ColorInput source="colors.primary" label="Primary color" />
       <PageBackgroundFields />
-      <AssetUrlInput
-        source="favicon_url"
-        label="Favicon URL"
-        kind="favicon"
-        parse={keepEmptyString}
-      />
-      <AssetUrlInput
-        source="logo_url"
-        label="Logo URL"
-        kind="logo"
-        parse={keepEmptyString}
-      />
-      <AssetUrlInput
-        source="powered_by_logo_url"
-        label="Powered-by logo URL"
-        kind="powered_by_logo"
-        parse={keepEmptyString}
-      />
-      <AssetUrlInput
-        source="font.url"
-        label="Font URL"
-        kind="font"
-        parse={keepEmptyString}
-      />
+      <div className="flex flex-col gap-4 rounded-md border p-3">
+        <div className="text-sm font-medium">Assets</div>
+        <AssetUrlInput
+          source="favicon_url"
+          label="Favicon URL"
+          kind="favicon"
+          parse={keepEmptyString}
+        />
+        <AssetUrlInput
+          source="logo_url"
+          label="Logo URL"
+          kind="logo"
+          parse={keepEmptyString}
+        />
+        <AssetUrlInput
+          source="powered_by_logo_url"
+          label="Powered-by logo URL"
+          kind="powered_by_logo"
+          parse={keepEmptyString}
+        />
+        <AssetUrlInput
+          source="font.url"
+          label="Font URL"
+          kind="font"
+          parse={keepEmptyString}
+        />
+      </div>
       <SelectInput
         source="dark_mode"
         label="Dark mode"

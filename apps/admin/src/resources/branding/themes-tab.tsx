@@ -136,9 +136,10 @@ function ThemesFormFields() {
 
       <section className="flex flex-col gap-4">
         <h4 className="text-base font-semibold">Fonts</h4>
-        <TextInput
+        <AssetUrlInput
           source="themes.fonts.font_url"
           label="Font URL"
+          kind="font"
           parse={keepEmptyString}
         />
         <NumberInput
@@ -229,9 +230,10 @@ function ThemesFormFields() {
             ]}
           />
         </div>
-        <TextInput
+        <AssetUrlInput
           source="themes.widget.logo_url"
           label="Logo URL"
+          kind="logo"
           parse={keepEmptyString}
         />
       </section>

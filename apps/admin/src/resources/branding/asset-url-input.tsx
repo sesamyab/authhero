@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useController, useFormContext, useWatch } from "react-hook-form";
 import { useNotify } from "ra-core";
-import { Loader2, Upload, X } from "lucide-react";
+import { ImageIcon, Loader2, Type, Upload, X } from "lucide-react";
 import { TextInput } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { useTenantId } from "@/TenantContext";
 import { getApiUrl, getHttpClient } from "./previewClient";
 
@@ -25,6 +26,15 @@ const ACCEPT: Record<BrandingAssetKind, string> = {
     "image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico",
   background: "image/png,image/jpeg,image/webp,image/svg+xml",
   font: "font/woff2,font/woff,font/ttf,font/otf,.woff2,.woff,.ttf,.otf",
+};
+
+// Mirrors the server rules in authhero/src/helpers/branding-assets.ts.
+const HINT: Record<BrandingAssetKind, string> = {
+  logo: "PNG, JPEG, WebP, GIF or SVG · max 2 MB",
+  powered_by_logo: "PNG, JPEG, WebP, GIF or SVG · max 2 MB",
+  favicon: "PNG, JPEG, WebP, GIF, SVG or ICO · max 512 KB",
+  background: "PNG, JPEG, WebP or SVG · max 5 MB",
+  font: "WOFF2, WOFF, TTF or OTF · max 2 MB",
 };
 
 const MAX_BYTES: Record<BrandingAssetKind, number> = {
@@ -57,6 +67,7 @@ export function AssetUrlInput({
   const value = useWatch({ name: source }) as string | undefined;
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [previewBroken, setPreviewBroken] = useState(false);
   const uploadingRef = useRef(false);
   // True when the field was edited by the user while an upload was in flight.
   const editedDuringUpload = useRef(false);
@@ -143,51 +154,78 @@ export function AssetUrlInput({
     }
   };
 
+  // A new URL gets a fresh chance to load.
+  useEffect(() => setPreviewBroken(false), [value]);
+
+  const PlaceholderIcon = kind === "font" ? Type : ImageIcon;
+
   return (
     <div className="flex flex-col gap-2">
-      <TextInput source={source} label={label} parse={parse} />
-      <div className="flex items-center gap-2">
-        <input
-          ref={fileRef}
-          type="file"
-          accept={ACCEPT[kind]}
-          className="hidden"
-          onChange={(e) => handleFile(e.target.files?.[0])}
-        />
+      <input
+        ref={fileRef}
+        type="file"
+        accept={ACCEPT[kind]}
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+      <div className="flex items-center justify-between gap-2">
+        <Label>{label}</Label>
         <Button
           type="button"
-          variant="outline"
+          variant="link"
           size="sm"
+          className="h-auto p-0 text-muted-foreground hover:text-foreground"
           disabled={uploading}
           onClick={() => fileRef.current?.click()}
         >
           {uploading ? (
-            <Loader2 className="size-4 animate-spin" />
+            <Loader2 className="size-3.5 animate-spin" />
           ) : (
-            <Upload className="size-4" />
+            <Upload className="size-3.5" />
           )}
-          Upload
+          {uploading ? "Uploading…" : "Upload"}
         </Button>
-        {value && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={uploading}
-            onClick={() => setValue(source, "", { shouldDirty: true })}
-          >
-            <X className="size-4" />
-            Clear
-          </Button>
-        )}
-        {value && kind !== "font" && (
-          <img
-            src={value}
-            alt=""
-            className="h-8 max-w-24 rounded border object-contain"
-          />
-        )}
       </div>
+      <div className="flex items-center gap-2">
+        <div
+          className="flex h-9 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-[conic-gradient(#e5e5e5_25%,#fff_0_50%,#e5e5e5_0_75%,#fff_0)] bg-[length:10px_10px] text-muted-foreground"
+          aria-hidden
+        >
+          {value && kind !== "font" && !previewBroken ? (
+            <img
+              src={value}
+              alt=""
+              className="h-full w-full object-contain"
+              onError={() => setPreviewBroken(true)}
+            />
+          ) : (
+            <PlaceholderIcon className="size-4" />
+          )}
+        </div>
+        <div className="relative min-w-0 flex-1">
+          <TextInput
+            source={source}
+            label={false}
+            parse={parse}
+            inputClassName="pr-9"
+            aria-label={label}
+          />
+          {value && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-1/2 right-1.5 size-6 -translate-y-1/2 rounded-full text-muted-foreground hover:text-foreground"
+              disabled={uploading}
+              aria-label="Clear"
+              onClick={() => setValue(source, "", { shouldDirty: true })}
+            >
+              <X className="size-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">{HINT[kind]}</p>
     </div>
   );
 }
