@@ -13,3 +13,19 @@ describe("tenants list q", () => {
     }
   });
 });
+
+describe("tenants update", () => {
+  it("clears sender_email with an explicit null", async () => {
+    const { data } = await getTestServer();
+    await data.tenants.create({
+      id: "acme",
+      friendly_name: "Acme",
+      sender_email: "no-reply@example.com",
+    });
+
+    await data.tenants.update("acme", { sender_email: null });
+
+    const tenant = await data.tenants.get("acme");
+    expect(tenant?.sender_email ?? null).toBeNull();
+  });
+});

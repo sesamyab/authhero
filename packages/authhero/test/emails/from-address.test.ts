@@ -30,7 +30,21 @@ describe("resolveFromAddress", () => {
         env,
         tenant: { sender_email: "t@example.com", friendly_name: "Acme Inc." },
       }),
-    ).toBe("Acme Inc. <t@example.com>");
+    ).toBe('"Acme Inc." <t@example.com>');
+  });
+
+  it("quotes and escapes a display name that is not plain words", () => {
+    const from = (name: string) =>
+      resolveFromAddress({
+        env,
+        tenant: { sender_email: "t@example.com", sender_name: name },
+      });
+    expect(from("Acme, Inc.")).toBe('"Acme, Inc." <t@example.com>');
+    expect(from('The "Best" Co')).toBe('"The \\"Best\\" Co" <t@example.com>');
+    expect(from("Back\\slash")).toBe('"Back\\\\slash" <t@example.com>');
+    expect(from("Evil\r\nBcc: x@y.z")).toBe(
+      '"Evil  Bcc: x@y.z" <t@example.com>',
+    );
   });
 
   it("uses DEFAULT_SENDER_EMAIL when the tenant has no sender", () => {
