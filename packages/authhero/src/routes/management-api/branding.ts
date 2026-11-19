@@ -8,6 +8,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
 import { themesRoutes } from "./themes";
+import { brandingUploadsRoutes } from "./branding-uploads";
 import { DEFAULT_BRANDING } from "../../constants/defaultBranding";
 import {
   DEFAULT_UNIVERSAL_LOGIN_TEMPLATE,
@@ -376,4 +377,5 @@ export const brandingRoutes = new OpenAPIHono<{
     deleteTemplatesUniversalLogin,
     postTemplatesUniversalLoginPreview,
   ] as const)
+  .route("/uploads", brandingUploadsRoutes)
   .route("/themes", themesRoutes);

@@ -3,6 +3,7 @@ import type { R2SQLLogsAdapterConfig } from "../r2-sql-logs";
 import type { AnalyticsEngineLogsAdapterConfig } from "../analytics-engine-logs";
 import type { AnalyticsEngineActionExecutionsAdapterConfig } from "../analytics-engine-action-executions";
 import type { CloudflareRateLimitBindings } from "../rate-limit";
+import type { CloudflareStorageAdapterConfig } from "../storage";
 
 export interface CloudflareConfig {
   zoneId: string;
@@ -45,4 +46,9 @@ export interface CloudflareConfig {
    * unconfigured scope is treated as permissive.
    */
   rateLimitBindings?: CloudflareRateLimitBindings;
+  /**
+   * Shared R2 bucket for tenant branding uploads (optional). Objects are keyed
+   * `tenants/{tenant_id}/branding/...`.
+   */
+  storage?: CloudflareStorageAdapterConfig;
 }

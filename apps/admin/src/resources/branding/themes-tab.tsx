@@ -7,6 +7,7 @@ import {
 } from "@/components/admin";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ColorInput } from "./color-input";
+import { AssetUrlInput } from "./asset-url-input";
 import { ThemesRawEditor } from "./themes-raw";
 
 const keepEmptyString = (v: string | null | undefined) => v ?? "";
@@ -135,9 +136,10 @@ function ThemesFormFields() {
 
       <section className="flex flex-col gap-4">
         <h4 className="text-base font-semibold">Fonts</h4>
-        <TextInput
+        <AssetUrlInput
           source="themes.fonts.font_url"
           label="Font URL"
+          kind="font"
           parse={keepEmptyString}
         />
         <NumberInput
@@ -169,9 +171,10 @@ function ThemesFormFields() {
           source="themes.page_background.background_color"
           label="Background Color"
         />
-        <TextInput
+        <AssetUrlInput
           source="themes.page_background.background_image_url"
           label="Background Image URL"
+          kind="background"
           parse={keepEmptyString}
         />
         <SelectInput
@@ -227,9 +230,10 @@ function ThemesFormFields() {
             ]}
           />
         </div>
-        <TextInput
+        <AssetUrlInput
           source="themes.widget.logo_url"
           label="Logo URL"
+          kind="logo"
           parse={keepEmptyString}
         />
       </section>

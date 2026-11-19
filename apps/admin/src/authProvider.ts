@@ -519,6 +519,12 @@ function httpStatusError(
 // Create a debounced http client to prevent parallel token requests
 type HttpResponse = Awaited<ReturnType<typeof fetchUtils.fetchJson>>;
 const pendingRequests = new Map<string, Promise<HttpResponse>>();
+
+// FormData serializes to `{}`, so uploads must never share a dedupe key.
+const optionsKey = (options: HttpOptions) =>
+  options.body instanceof FormData
+    ? crypto.randomUUID()
+    : JSON.stringify(options);
 export interface HttpOptions extends RequestInit {
   headers?: HeadersInit;
 }
@@ -527,7 +533,7 @@ const authorizedHttpClient = (
   url: string,
   options: HttpOptions = {},
 ): Promise<HttpResponse> => {
-  const requestKey = `${url}-${JSON.stringify(options)}`;
+  const requestKey = `${url}-${optionsKey(options)}`;
 
   // If there's already a pending request for this URL and options, return it
   if (pendingRequests.has(requestKey)) {
@@ -629,7 +635,10 @@ const authorizedHttpClient = (
           // For POST, DELETE, PATCH: only send Authorization and content-type (force application/json for POST/PATCH)
           headersObj = new Headers();
           headersObj.set("Authorization", `Bearer ${token}`);
-          if (method === "POST" || method === "PATCH") {
+          if (
+            (method === "POST" || method === "PATCH") &&
+            !(options.body instanceof FormData)
+          ) {
             headersObj.set("content-type", "application/json");
           }
         } else {
@@ -698,7 +707,10 @@ const authorizedHttpClient = (
         const headersObj = new Headers();
         headersObj.set("Authorization", `Bearer ${token}`);
         const method = (options.method || "GET").toUpperCase();
-        if (method === "POST" || method === "PATCH") {
+        if (
+          (method === "POST" || method === "PATCH") &&
+          !(options.body instanceof FormData)
+        ) {
           headersObj.set("content-type", "application/json");
         }
         return fetch(url, { ...options, headers: headersObj });
@@ -788,7 +800,7 @@ export const createOrganizationHttpClient = (organizationId: string) => {
   const normalizedOrgId = organizationId.toLowerCase();
 
   return (url: string, options: HttpOptions = {}) => {
-    const requestKey = `${normalizedOrgId}:${url}-${JSON.stringify(options)}`;
+    const requestKey = `${normalizedOrgId}:${url}-${optionsKey(options)}`;
 
     // If there's already a pending request for this URL and options, return it
     if (pendingRequests.has(requestKey)) {
@@ -884,7 +896,10 @@ export const createOrganizationHttpClient = (organizationId: string) => {
           headersObj.set("tenant-id", normalizedOrgId);
           headersObj.set("Authorization", `Bearer ${token}`);
           const method = (options.method || "GET").toUpperCase();
-          if (method === "POST" || method === "PATCH") {
+          if (
+            (method === "POST" || method === "PATCH") &&
+            !(options.body instanceof FormData)
+          ) {
             headersObj.set("content-type", "application/json");
           }
           return fetch(url, { ...options, headers: headersObj });

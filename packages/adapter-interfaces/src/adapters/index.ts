@@ -47,6 +47,7 @@ import { OrganizationConnectionsAdapter } from "./OrganizationConnections";
 import { UserOrganizationsAdapter } from "./UserOrganizations";
 import { InvitesAdapter } from "./Invites";
 import { GeoAdapter } from "./Geo";
+import { StorageAdapter } from "./Storage";
 import { AuthenticationMethodsAdapter } from "./AuthenticationMethods";
 import { StatsAdapter } from "./Stats";
 import { AnalyticsAdapter } from "./Analytics";
@@ -93,6 +94,11 @@ export interface DataAdapters {
   flows: FlowsAdapter;
   forms: FormsAdapter;
   geo?: GeoAdapter;
+  /**
+   * Optional object storage for tenant branding uploads. When undefined the
+   * upload endpoint is not available (501) and branding URLs stay external.
+   */
+  storage?: StorageAdapter;
   hookCode: HookCodeAdapter;
   hooks: HooksAdapter;
   invites: InvitesAdapter;
@@ -321,3 +327,4 @@ export * from "./TenantOperationRows";
 export * from "./Rollouts";
 export * from "./ActionCodeGenerator";
 export * from "./TenantMemberRequests";
+export * from "./Storage";
