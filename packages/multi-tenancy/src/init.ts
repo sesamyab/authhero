@@ -761,7 +761,17 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     },
     async afterCreate(ctx: TenantHookContext, tenant: Tenant): Promise<void> {
       await provisioningHooks.afterCreate?.(ctx, tenant);
-      await tenantHooks.afterCreate?.(ctx, tenant);
+      // A `wfp` tenant has its own database and is seeded through
+      // `onProvision`. With the default `getAdapters`, this sync writes through
+      // the control plane's adapters, so it would only leave resource servers
+      // and roles in the control plane's database under the tenant's id, where
+      // nothing reads them. A `shared` tenant lives in this database, so it
+      // keeps the sync.
+      const hasOwnDatabase =
+        !!databaseIsolation?.onProvision && tenant.deployment_type === "wfp";
+      if (!hasOwnDatabase) {
+        await tenantHooks.afterCreate?.(ctx, tenant);
+      }
     },
     async beforeDelete(
       ctx: TenantHookContext,

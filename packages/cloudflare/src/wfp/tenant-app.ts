@@ -5,6 +5,7 @@ import {
   loadEncryptionKey,
   createEncryptedDataAdapterWithKeyRing,
   ensureSigningKey,
+  provisionDefaultClients,
   renewSigningCertificates,
   SigningCertificateRenewalError,
   TENANT_URI_PREFIX,
@@ -325,6 +326,42 @@ async function buildTenantApp<Env extends WfpTenantEnv>(
       signingKey = { created: ensured.created };
     } catch (err) {
       return errorResponse(c, "sync_defaults_signing_key_failed", err, result);
+    }
+
+    // The tenant's own interactive default client (#1007, #1754). The control
+    // plane's seed cannot create it: that would write to the control plane's
+    // database, and only this Worker holds the adapter that encrypts the client
+    // secret. Idempotent, so a re-sync keeps the client it finds. No Management
+    // API client: its secret would hold every management scope, and a tenant is
+    // managed with control plane tokens.
+    if (env.TENANT_ID) {
+      try {
+        // A push filtered to leave out the tenant's own seed row (`entities.tenants:
+        // false`) has nothing to attach a client to; it still succeeds as before.
+        if (await encrypted.tenants.get(env.TENANT_ID)) {
+          await provisionDefaultClients(encrypted, env.TENANT_ID, {
+            createManagementClient: false,
+          });
+        } else if (payload.tenants?.some((t) => t.id === env.TENANT_ID)) {
+          // The push carried this tenant's seed, so a missing row means the seed
+          // failed to write (see `result.tenants.errors`). Succeeding here would
+          // leave the tenant `ready` without a default client.
+          throw new Error(
+            `the tenants row for "${env.TENANT_ID}" is missing after the seed was applied`,
+          );
+        } else {
+          console.warn(
+            `[wfp-tenant] sync-defaults: no tenants row for "${env.TENANT_ID}", default client skipped`,
+          );
+        }
+      } catch (err) {
+        return errorResponse(
+          c,
+          "sync_defaults_default_client_failed",
+          err,
+          result,
+        );
+      }
     }
 
     if (options.onSyncResult) {

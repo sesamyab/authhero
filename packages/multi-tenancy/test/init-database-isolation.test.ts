@@ -118,20 +118,61 @@ describe("initMultiTenant: databaseIsolation", () => {
   });
 
   it("provisions and deprovisions the tenant's database, not the control plane's clients", async () => {
+    // The control plane's role and resource server, which the sync would copy.
+    await adapters.roles.create(CONTROL_PLANE, { name: "Platform Role" });
+    await adapters.resourceServers.create(CONTROL_PLANE, {
+      name: "Platform API",
+      identifier: "https://platform.example.com/api",
+    });
+
     const created = await request("POST", "/api/v2/tenants", {
       id: CHILD,
       friendly_name: CHILD,
       audience: `https://${CHILD}.example.com`,
       sender_email: "admin@example.com",
       sender_name: CHILD,
+      deployment_type: "wfp",
     });
     expect(created.status).toBe(201);
     expect(provisioned).toEqual([CHILD]);
     // Pooled provisioning would have written these here.
     expect((await adapters.clients.list(CHILD)).clients).toHaveLength(0);
+    // So would the sync of the control plane's resource servers and roles,
+    // which writes through the control plane's adapters.
+    expect(
+      (await adapters.resourceServers.list(CHILD, {})).resource_servers,
+    ).toHaveLength(0);
+    expect((await adapters.roles.list(CHILD, {})).roles).toHaveLength(0);
 
     const deleted = await request("DELETE", `/api/v2/tenants/${CHILD}`);
     expect(deleted.status).toBe(204);
     expect(deprovisioned).toEqual([CHILD]);
+  });
+
+  it("keeps the resource server and role sync for a shared tenant", async () => {
+    // The control plane's role and resource server, which the sync would copy.
+    await adapters.roles.create(CONTROL_PLANE, { name: "Platform Role" });
+    await adapters.resourceServers.create(CONTROL_PLANE, {
+      name: "Platform API",
+      identifier: "https://platform.example.com/api",
+    });
+
+    const created = await request("POST", "/api/v2/tenants", {
+      id: CHILD,
+      friendly_name: CHILD,
+      audience: `https://${CHILD}.example.com`,
+      sender_email: "admin@example.com",
+      sender_name: CHILD,
+      deployment_type: "shared",
+    });
+    expect(created.status).toBe(201);
+    expect(
+      (await adapters.roles.list(CHILD, {})).roles.map((r) => r.name),
+    ).toContain("Platform Role");
+    expect(
+      (await adapters.resourceServers.list(CHILD, {})).resource_servers.map(
+        (r) => r.identifier,
+      ),
+    ).toContain("https://platform.example.com/api");
   });
 });
