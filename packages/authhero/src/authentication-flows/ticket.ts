@@ -7,12 +7,11 @@ import {
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
-import { getOrCreateUserByProvider } from "../helpers/users";
+import { resolvePrimaryUser } from "../helpers/users";
 import { resolveClientDatabaseConnectionName } from "../helpers/database-connection-scope";
 import { createFrontChannelAuthResponse } from "./common";
 import { getEnrichedClient } from "../helpers/client";
 import {
-  getOrCreateUsernamePasswordUser,
   isUsernamePasswordProvider,
   resolveUsernamePasswordProvider,
 } from "../utils/username-password-provider";
@@ -143,23 +142,25 @@ export async function ticketAuth(
     ? StrategyType.DATABASE
     : StrategyType.PASSWORDLESS;
 
-  let user = databaseConnection
-    ? await getOrCreateUsernamePasswordUser(ctx, {
-        client,
-        username: loginSession.authParams.username,
-        // Same connection /co/authenticate verified the password in, so the
-        // ticket resolves the user that logged in.
-        connection: databaseConnection,
-        ip: ctx.var.ip,
-      })
-    : await getOrCreateUserByProvider(ctx, {
-        username: loginSession.authParams.username,
-        provider,
-        client,
-        connection: realm,
-        isSocial: false,
-        ip: ctx.var.ip,
-      });
+  // The ticket records the user /co/authenticate verified the password of.
+  // Log in that user, resolved to its cluster root, rather than looking the
+  // username up again: another row could match the same username by now. A
+  // ticket without a recorded user, or whose user no longer exists, is
+  // refused.
+  const verifiedUser = code.user_id
+    ? await env.data.users.get(tenant_id, code.user_id)
+    : null;
+  if (!verifiedUser) {
+    throw new JSONHTTPException(403, { message: "Invalid ticket" });
+  }
+  const user = await resolvePrimaryUser(
+    env.data.users,
+    tenant_id,
+    verifiedUser,
+  );
+  if (user.linked_to) {
+    throw new JSONHTTPException(403, { message: "Invalid ticket" });
+  }
 
   ctx.set("username", user.email || user.phone_number);
   ctx.set("user_id", user.user_id);

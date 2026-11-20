@@ -19,27 +19,33 @@ import { u2Screen } from "../helpers/u2-screen";
 
 const LOGIN_DB = "Username-Password-Authentication"; // seeded, oldest
 const CTE_DB = "cte-store";
+// Sorts after the seeded connection's id, so a created_at tie still orders the
+// seeded connection first.
+const CTE_DB_ID = "zz-cte-store";
 const PASSWORD = "fG%D0MV4bjb%xI";
 const CALLBACK = "https://example.com/callback";
 
 async function setup() {
   const server = await getTestServer({ testTenantLanguage: "en" });
   const { env } = server;
-  // Sorts after the seeded connection, so the fallback choice doesn't depend
-  // on the two rows' created_at differing.
+  // Created after the seeded connection. If both rows get the same created_at
+  // millisecond, the fallback order breaks the tie on id, and CTE_DB_ID sorts
+  // after the seeded id, so the seeded connection is still the oldest.
   await env.data.connections.create("tenantId", {
-    id: CTE_DB,
+    id: CTE_DB_ID,
     name: CTE_DB,
     strategy: "auth0",
     options: {},
   });
   for (const [client_id, connections] of [
     // Both database connections, the CTE one first.
-    ["cteFirstClient", [CTE_DB, LOGIN_DB, "email"]],
+    ["cteFirstClient", [CTE_DB_ID, LOGIN_DB, "email"]],
     // Both, the login one first.
-    ["loginFirstClient", [LOGIN_DB, CTE_DB, "email"]],
+    ["loginFirstClient", [LOGIN_DB, CTE_DB_ID, "email"]],
     // Only the login database: the CTE connection is not enabled.
     ["loginOnlyClient", [LOGIN_DB, "email"]],
+    // Only the CTE database: no connection carries the generic name.
+    ["cteOnlyClient", [CTE_DB_ID, "email"]],
   ] as const) {
     await env.data.clients.create("tenantId", {
       client_id,
@@ -174,20 +180,20 @@ describe("database connection selection (#1703)", () => {
       (
         await request("PATCH", "/clients/clientId/connections", [
           LOGIN_DB,
-          CTE_DB,
+          CTE_DB_ID,
         ])
       ).status,
     ).toBe(200);
     expect(
       (
-        await request("PATCH", `/connections/${CTE_DB}/clients`, [
+        await request("PATCH", `/connections/${CTE_DB_ID}/clients`, [
           { client_id: "loginOnlyClient", status: true },
         ])
       ).status,
     ).toBe(204);
     expect(
       (await env.data.clients.get("tenantId", "loginOnlyClient"))?.connections,
-    ).toEqual([LOGIN_DB, "email", CTE_DB]);
+    ).toEqual([LOGIN_DB, "email", CTE_DB_ID]);
   });
 
   describe("without a named connection", () => {
@@ -483,6 +489,66 @@ describe("database connection selection (#1703)", () => {
       });
     });
 
+    it("redeems a login ticket as the user whose password was verified", async () => {
+      const { env, coAuthenticate, oauthApp } = await setup();
+      // A legacy row whose connection names no database connection: the
+      // cte-store lookup finds it while no row is stored in cte-store itself.
+      await env.data.users.create("tenantId", {
+        user_id: "auth2|legacy",
+        email: "pinned@example.com",
+        email_verified: true,
+        provider: "auth2",
+        connection: "auth2",
+        is_social: false,
+      });
+      await env.data.passwords.create("tenantId", {
+        user_id: "auth2|legacy",
+        password: await bcryptjs.hash(PASSWORD, 4),
+        algorithm: "bcrypt",
+      });
+      const login = await coAuthenticate(
+        "cteFirstClient",
+        "pinned@example.com",
+        CTE_DB,
+      );
+      expect(login.status).toBe(200);
+      const body: { login_ticket: string } = await login.json();
+
+      // A row stored in cte-store itself now takes precedence for the same
+      // email, but its password was never checked.
+      await env.data.users.create("tenantId", {
+        user_id: "auth0|later",
+        email: "pinned@example.com",
+        email_verified: true,
+        provider: "auth0",
+        connection: CTE_DB,
+        is_social: false,
+      });
+
+      const response = await testClient(oauthApp, env).authorize.$get({
+        query: {
+          client_id: "cteFirstClient",
+          login_ticket: body.login_ticket,
+          realm: CTE_DB,
+          response_type: AuthorizationResponseType.CODE,
+          redirect_uri: CALLBACK,
+          scope: "openid",
+          state: "state",
+          nonce: "nonce",
+        },
+      });
+      expect(response.status).toBe(302);
+      const code = new URL(
+        response.headers.get("location") ?? "",
+      ).searchParams.get("code");
+      const stored = await env.data.codes.get(
+        "tenantId",
+        code ?? "",
+        "authorization_code",
+      );
+      expect(stored?.user_id).toBe("auth2|legacy");
+    });
+
     it("picks it for /dbconnections signup, and refuses one the client doesn't enable", async () => {
       const { env, signup } = await setup();
       expect(
@@ -498,6 +564,58 @@ describe("database connection selection (#1703)", () => {
         await env.data.users.list("tenantId", { q: "email:f@example.com" }),
       ).toMatchObject({ users: [] });
     });
+  });
+
+  it("treats the generic name on /authorize as the client's default database connection", async () => {
+    const { env, authorize } = await setup();
+    const response = await authorize("cteOnlyClient", LOGIN_DB);
+    expect(response.status).toBe(302);
+    const state = new URL(
+      response.headers.get("location") ?? "",
+      "https://example.com",
+    ).searchParams.get("state");
+    const loginSession = await env.data.loginSessions.get(
+      "tenantId",
+      state ?? "",
+    );
+    expect(loginSession?.authParams.connection).toBe(CTE_DB);
+  });
+
+  it("records the connection a password reset targets on its session", async () => {
+    const { env, u2App } = await setup();
+    const loginSession = await env.data.loginSessions.create("tenantId", {
+      expires_at: new Date(Date.now() + 600000).toISOString(),
+      csrf_token: "csrfToken",
+      authParams: {
+        client_id: "cteFirstClient",
+        redirect_uri: CALLBACK,
+        scope: "openid",
+        response_type: AuthorizationResponseType.CODE,
+        state: "state",
+        nonce: "nonce",
+      },
+    });
+
+    const response = await u2App.request(
+      `/screen/forgot-password?state=${encodeURIComponent(loginSession.id)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ email: "reset@example.com" }).toString(),
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+
+    const stored = await env.data.loginSessions.get(
+      "tenantId",
+      loginSession.id,
+    );
+    expect(stored?.authParams.connection).toBe(CTE_DB);
+    const { users } = await env.data.users.list("tenantId", {
+      q: "email:reset@example.com",
+    });
+    expect(users.map((u) => u.connection)).toEqual([CTE_DB]);
   });
 
   it("keeps universal login on the generic realm for clients that name none", async () => {

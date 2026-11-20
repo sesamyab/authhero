@@ -1,4 +1,9 @@
 import { describe, it, expect } from "vitest";
+import type {
+  Connection,
+  ConnectionsAdapter,
+  ListParams,
+} from "@authhero/adapter-interfaces";
 import { HTTPException } from "hono/http-exception";
 import { connectionSchema } from "@authhero/adapter-interfaces";
 import {
@@ -228,5 +233,46 @@ describe("resolveDatabaseConnectionScope", () => {
         undefined,
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("resolveDatabaseConnectionScope paging", () => {
+  it("includes database connections beyond the first page", async () => {
+    const make = (name: string): Connection => ({
+      id: name,
+      name,
+      strategy: "auth0",
+      options: {},
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    });
+    const all = ["a", "b", "c", "d"].map(make);
+    // The parameterless read returns one adapter page of two rows; explicit
+    // pages follow page/per_page.
+    const connections: Pick<ConnectionsAdapter, "list"> = {
+      list: async (_tenantId: string, params?: ListParams) => {
+        const perPage = params?.per_page ?? 2;
+        const page = params?.page ?? 0;
+        const rows = all.slice(page * perPage, (page + 1) * perPage);
+        return {
+          connections: rows,
+          start: page * perPage,
+          limit: perPage,
+          length: rows.length,
+        };
+      },
+    };
+
+    const resolved = await resolveDatabaseConnectionScope(
+      connections,
+      "tenantId",
+      "a",
+    );
+    expect([...(resolved?.databaseConnectionNames ?? [])].sort()).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
   });
 });

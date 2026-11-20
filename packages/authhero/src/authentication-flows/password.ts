@@ -51,10 +51,7 @@ import {
 import { findConnectionByName } from "../utils/connections";
 import { attemptUpstreamPasswordFallback } from "./auth0-migration";
 import { resolvePrimaryUser } from "../helpers/users";
-import {
-  resolveClientDatabaseConnection,
-  resolveClientDatabaseConnectionName,
-} from "../helpers/database-connection-scope";
+import { resolveClientDatabaseConnection } from "../helpers/database-connection-scope";
 import {
   LoginEmailVerification,
   sendLoginEmailVerificationCode,
@@ -783,6 +780,19 @@ export async function requestPasswordReset(
     loginSessionId = newSession.id;
   }
 
+  // The database connection this reset targets: the one /authorize named for
+  // the session, else the client's default (#1703). It is stored on the
+  // session so both completion paths look in the same connection even if the
+  // client's connection list changes before the reset completes. A session
+  // without a stored connection (requested before this was recorded) falls
+  // back to the client's default at completion, as it did at request time.
+  const targetConnection = resolveClientDatabaseConnection(
+    client,
+    existingSession?.authParams?.connection,
+  );
+  const databaseConnection =
+    targetConnection?.name ?? Strategy.USERNAME_PASSWORD;
+
   // Record every request before account lookup so reloads have the same flow
   // even when signup policy silently prevents issuing a reset credential.
   const requestId = nanoid();
@@ -802,6 +812,7 @@ export async function requestPasswordReset(
           ...existingSession?.authParams,
           client_id: client.client_id,
           username: email,
+          ...(targetConnection && { connection: targetConnection.name }),
         },
       },
     );
@@ -819,10 +830,6 @@ export async function requestPasswordReset(
   // Scoped like the login and reset-completion lookups, and a lazily created
   // user is written with the same connection, so the emailed reset and later
   // logins through this client find the same row.
-  const databaseConnection = resolveClientDatabaseConnectionName(
-    client,
-    existingSession?.authParams.connection,
-  );
   const existingUser = await getUsernamePasswordUser({
     env: ctx.env,
     tenant_id: client.tenant.id,

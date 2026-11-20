@@ -695,7 +695,10 @@ const authorizedHttpClient = (
           }
 
           throw httpStatusError(
-            httpErrorMessage(text, response.statusText),
+            httpErrorMessage(
+              text,
+              response.statusText || `HTTP ${response.status}`,
+            ),
             response.status,
           );
         }
@@ -761,7 +764,10 @@ const authorizedHttpClient = (
           }
 
           throw httpStatusError(
-            httpErrorMessage(text, response.statusText),
+            httpErrorMessage(
+              text,
+              response.statusText || `HTTP ${response.status}`,
+            ),
             response.status,
           );
         }
@@ -936,7 +942,12 @@ export const createOrganizationHttpClient = (organizationId: string) => {
         .then(async (response) => {
           if (response.status < 200 || response.status >= 300) {
             const text = await response.text();
-            throw new Error(httpErrorMessage(text, response.statusText));
+            throw new Error(
+              httpErrorMessage(
+                text,
+                response.statusText || `HTTP ${response.status}`,
+              ),
+            );
           }
 
           const text = await response.text();

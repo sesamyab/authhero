@@ -46,6 +46,7 @@ import { isMcpResourceUrl } from "../mcp/resource";
 import { getIssuer, getSelfCallbackWildcards } from "../../variables";
 import { formPostResponse } from "../../utils/form-post";
 import { setTenantId } from "../../helpers/set-tenant-id";
+import { resolveClientDatabaseConnection } from "../../helpers/database-connection-scope";
 import { defineRoute } from "../../utils/define-route";
 import {
   verifyRequestObject,
@@ -450,13 +451,19 @@ const getRoot = defineRoute({
 
     // A `connection` that names a database connection enabled on the client
     // picks the database connection universal login uses for password login,
-    // signup and reset (#1703). Any other connection is an external one to
+    // signup and reset (#1703). The generic `Username-Password-Authentication`
+    // names a connection only when one has that exact name; otherwise it
+    // means the client's default database connection, by the same rule as
+    // every other password flow. Any other connection is an external one to
     // redirect to; a name the client doesn't enable is refused there.
     const databaseConnection = connection
-      ? client.connections.find(
+      ? (client.connections.find(
           (c) =>
             c.name === connection && isDatabaseConnectionStrategy(c.strategy),
-        )
+        ) ??
+        (connection === Strategy.USERNAME_PASSWORD
+          ? resolveClientDatabaseConnection(client, connection)
+          : undefined))
       : undefined;
     const redirectConnection = databaseConnection ? undefined : connection;
 

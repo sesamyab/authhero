@@ -64,8 +64,9 @@ export function compareByConnectionScope(
  *   generic `Username-Password-Authentication` realm on a tenant whose
  *   connection has another name.
  *
- * Lists connections without params so the read is served from the request's
- * client bundle where one exists.
+ * The name set must cover every database connection in the tenant, or a row
+ * of a missing connection would pass the scope; see
+ * {@link listAllTenantConnections}.
  */
 export async function resolveDatabaseConnectionScope(
   connections: Pick<ConnectionsAdapter, "list">,
@@ -74,7 +75,7 @@ export async function resolveDatabaseConnectionScope(
 ): Promise<DatabaseConnectionScope | undefined> {
   if (!name) return undefined;
 
-  const { connections: all } = await connections.list(tenant_id);
+  const all = await listAllTenantConnections(connections, tenant_id);
   const databaseConnectionNames = new Set(
     all
       .filter((connection) => isDatabaseConnectionStrategy(connection.strategy))
@@ -86,6 +87,39 @@ export async function resolveDatabaseConnectionScope(
   }
 
   return { name, databaseConnectionNames };
+}
+
+// Page size assumed for an adapter that doesn't report the `limit` it used.
+// The in-repo adapters default to 50.
+const ASSUMED_DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
+
+/**
+ * Every connection of the tenant. The first read has no params, so it is
+ * served from the request's client bundle where one exists; further pages are
+ * read only when that first page came back full.
+ */
+async function listAllTenantConnections(
+  connections: Pick<ConnectionsAdapter, "list">,
+  tenant_id: string,
+): Promise<Connection[]> {
+  const first = await connections.list(tenant_id);
+  const pageSize =
+    typeof first.limit === "number" && first.limit > 0
+      ? first.limit
+      : ASSUMED_DEFAULT_PAGE_SIZE;
+  if (first.connections.length < pageSize) return first.connections;
+
+  const all: Connection[] = [];
+  for (let page = 0; ; page++) {
+    const { connections: batch } = await connections.list(tenant_id, {
+      page,
+      per_page: PAGE_SIZE,
+      include_totals: false,
+    });
+    all.push(...batch);
+    if (batch.length < PAGE_SIZE) return all;
+  }
 }
 
 /**
@@ -177,7 +211,16 @@ export function orderFallbackDatabaseConnections<T extends Connection>(
 
 function compareByAge(a: Connection, b: Connection): number {
   if (!!a.created_at !== !!b.created_at) return a.created_at ? -1 : 1;
-  const byCreated = (a.created_at || "").localeCompare(b.created_at || "");
+  const byCreated = compareInstants(a.created_at, b.created_at);
   if (byCreated !== 0) return byCreated;
   return (a.id || a.name).localeCompare(b.id || b.name);
+}
+
+// Imported rows may carry an offset (`+01:00`), so text order isn't time
+// order. Compare parsed instants; fall back to text when one doesn't parse.
+function compareInstants(a = "", b = ""): number {
+  const aTime = Date.parse(a);
+  const bTime = Date.parse(b);
+  if (Number.isNaN(aTime) || Number.isNaN(bTime)) return a.localeCompare(b);
+  return aTime - bTime;
 }
