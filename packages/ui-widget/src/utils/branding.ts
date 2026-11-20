@@ -153,6 +153,8 @@ export interface WidgetTheme {
   page_background?: {
     background_color?: string;
     background_image_url?: string;
+    background_color_dark?: string;
+    background_image_url_dark?: string;
     page_layout?: "center" | "left" | "right";
   };
   widget?: {
@@ -160,6 +162,8 @@ export interface WidgetTheme {
     logo_height?: number;
     logo_position?: "center" | "left" | "none" | "right";
     logo_url?: string;
+    /** AuthHero extension: logo for the dark scheme. */
+    logo_url_dark?: string;
     social_buttons_layout?: "bottom" | "top";
   };
 }

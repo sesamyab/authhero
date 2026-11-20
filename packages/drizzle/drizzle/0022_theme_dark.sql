@@ -1,0 +1,22 @@
+ALTER TABLE `branding` ADD `favicon_url_dark` text(512);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_base_focus_color` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_base_hover_color` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_body_text` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_error` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_header` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_icons` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_input_background` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_input_border` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_input_filled_text` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_input_labels_placeholders` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_links_focused_components` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_primary_button` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_primary_button_label` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_secondary_button_border` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_secondary_button_label` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_success` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_widget_background` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `colors_dark_widget_border` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `page_background_background_color_dark` text(24);--> statement-breakpoint
+ALTER TABLE `themes` ADD `page_background_background_image_url_dark` text(255);--> statement-breakpoint
+ALTER TABLE `themes` ADD `widget_logo_url_dark` text(255);

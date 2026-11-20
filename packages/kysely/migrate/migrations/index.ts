@@ -36,6 +36,7 @@ import * as sessionAuthentication from "./2026-11-05T12:00:00_session_authentica
 import * as authenticationMethodsTotpLastStep from "./2026-11-05T13:00:00_authentication_methods_totp_last_step";
 import * as sessionTransfer from "./2026-11-12T12:00:00_session_transfer";
 import * as connectionSelfService from "./2026-11-18T12:00:00_connection_self_service";
+import * as themeDark from "./2026-11-20T12:00:00_theme_dark";
 
 export default {
   "2026-07-16T14:00:00_baseline": baseline,
@@ -63,4 +64,5 @@ export default {
     authenticationMethodsTotpLastStep,
   "2026-11-12T12:00:00_session_transfer": sessionTransfer,
   "2026-11-18T12:00:00_connection_self_service": connectionSelfService,
+  "2026-11-20T12:00:00_theme_dark": themeDark,
 };

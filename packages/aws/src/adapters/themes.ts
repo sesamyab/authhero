@@ -23,6 +23,7 @@ interface ThemeItem extends DynamoDBBaseItem {
   displayName?: string;
   borders?: string; // JSON string
   colors?: string; // JSON string
+  colors_dark?: string; // JSON string
   fonts?: string; // JSON string
   page_background?: string; // JSON string
   widget?: string; // JSON string
@@ -35,6 +36,7 @@ function toTheme(item: ThemeItem): Theme {
     ...rest,
     borders: item.borders ? JSON.parse(item.borders) : undefined,
     colors: item.colors ? JSON.parse(item.colors) : undefined,
+    colors_dark: item.colors_dark ? JSON.parse(item.colors_dark) : undefined,
     fonts: item.fonts ? JSON.parse(item.fonts) : undefined,
     page_background: item.page_background
       ? JSON.parse(item.page_background)
@@ -68,6 +70,9 @@ export function createThemesAdapter(ctx: DynamoDBContext): ThemesAdapter {
         displayName: theme.displayName,
         borders: theme.borders ? JSON.stringify(theme.borders) : undefined,
         colors: theme.colors ? JSON.stringify(theme.colors) : undefined,
+        colors_dark: theme.colors_dark
+          ? JSON.stringify(theme.colors_dark)
+          : undefined,
         fonts: theme.fonts ? JSON.stringify(theme.fonts) : undefined,
         page_background: theme.page_background
           ? JSON.stringify(theme.page_background)
@@ -111,6 +116,9 @@ export function createThemesAdapter(ctx: DynamoDBContext): ThemesAdapter {
       }
       if (theme.colors !== undefined) {
         updates.colors = JSON.stringify(theme.colors);
+      }
+      if (theme.colors_dark !== undefined) {
+        updates.colors_dark = JSON.stringify(theme.colors_dark);
       }
       if (theme.fonts !== undefined) {
         updates.fonts = JSON.stringify(theme.fonts);
