@@ -210,7 +210,10 @@ const customTextBodySchema = z.record(z.string(), z.string().max(2000));
 const connectionOptionsBodySchema = z
   .strictObject({
     icon_url: httpsUrlSchema.nullable().optional(),
-    domain_aliases: z.array(z.string().min(1).max(255)).nullable().optional(),
+    domain_aliases: z
+      .array(z.string().trim().min(1).max(255))
+      .nullable()
+      .optional(),
     idpinitiated: unsupportedField("IdP-initiated login options."),
   })
   .superRefine((value, ctx) => {

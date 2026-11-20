@@ -679,6 +679,15 @@ describe("management-api self-service-profiles", () => {
         {
           connection_config: {
             name: "acme",
+            options: { domain_aliases: ["  "] },
+          },
+        },
+        "connection_config.options.domain_aliases.0",
+      ],
+      [
+        {
+          connection_config: {
+            name: "acme",
             options: { icon_url: "http://x" },
           },
         },
