@@ -705,7 +705,10 @@ const setCustomText = defineRoute({
     const body = ctx.req.valid("json");
     await requireProfile(ctx, tenantId, id);
     const { profiles } = requireAdapters(ctx);
-    await profiles.setCustomText(tenantId, id, language, page, body);
+    // The profile can be deleted between the check above and the write.
+    if (!(await profiles.setCustomText(tenantId, id, language, page, body))) {
+      throw notFound.selfServiceProfile();
+    }
     await auditLog(
       ctx,
       tenantId,

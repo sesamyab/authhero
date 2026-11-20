@@ -351,6 +351,41 @@ describe("management-api self-service-profiles", () => {
       expect(await json(await request(path))).toEqual({ title: "Hi" });
     });
 
+    it("answers 404 when the profile disappears before the write", async () => {
+      const { env, request, createProfile } = await setup();
+      const id = str((await createProfile()).id);
+      const path = `/${id}/custom-text/en/get-started`;
+      // The adapter reports the profile gone (deleted after the route's check).
+      vi.spyOn(
+        env.data.selfServiceProfiles!,
+        "setCustomText",
+      ).mockResolvedValue(false);
+
+      const response = await request(path, {
+        method: "PUT",
+        body: { introduction: "x" },
+      });
+      expect(response.status).toBe(404);
+      expect(await json(response)).toMatchObject({
+        message: "Self-service profile not found.",
+        errorCode: "inexistent_self_service_profile",
+      });
+    });
+
+    it("answers 200 when the same custom text is written twice", async () => {
+      const { request, createProfile } = await setup();
+      const id = str((await createProfile()).id);
+      const path = `/${id}/custom-text/en/get-started`;
+      for (let i = 0; i < 2; i++) {
+        const response = await request(path, {
+          method: "PUT",
+          body: { introduction: "Same" },
+        });
+        expect(response.status).toBe(200);
+        expect(await json(response)).toEqual({ introduction: "Same" });
+      }
+    });
+
     it("rejects unknown languages, pages, long values and missing profiles", async () => {
       const { request, createProfile } = await setup();
       const id = str((await createProfile()).id);
