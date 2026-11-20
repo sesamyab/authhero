@@ -98,7 +98,7 @@ async function setup() {
     return { ticketUrl, ticketId, stored };
   };
 
-  return { env, request, createProfile, createTicket };
+  return { env, managementApp, request, createProfile, createTicket };
 }
 
 const fullProfile = {
@@ -407,7 +407,7 @@ describe("management-api self-service-profiles", () => {
             metadata: { team: "it", dropped: null },
             options: {
               icon_url: "https://acme.com/icon.png",
-              domain_aliases: ["acme.com"],
+              domain_aliases: [" Acme.COM", "acme.com"],
             },
           },
           enabled_clients: ["clientId"],
@@ -425,6 +425,12 @@ describe("management-api self-service-profiles", () => {
       expect(url.pathname).toBe("/u2/self-service");
       const ticketId = url.searchParams.get("ticket");
       expect(ticketId).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      // No custom domain: the shared issuer host needs the tenant in the URL.
+      expect(url.searchParams.get("tenant_id")).toBe(TENANT);
+      expect([...url.searchParams.keys()].sort()).toEqual([
+        "tenant_id",
+        "ticket",
+      ]);
 
       const tickets = env.data.ssoAccessTickets!;
       const stored = await tickets.getByTicketHash(
@@ -458,6 +464,44 @@ describe("management-api self-service-profiles", () => {
       const ttl = Date.parse(stored?.expires_at ?? "") - Date.now();
       expect(ttl).toBeGreaterThan(432000 * 1000 - 60_000);
       expect(ttl).toBeLessThanOrEqual(432000 * 1000);
+    });
+
+    it("leaves tenant_id out of the URL on the tenant's custom domain", async () => {
+      const { env, managementApp, createProfile } = await setup();
+      // A token for the custom domain carries it as the issuer.
+      const token = await getAdminToken({ iss: "https://login.acme.com/" });
+      await env.data.customDomains.create(TENANT, {
+        domain: "login.acme.com",
+        custom_domain_id: "cd-acme",
+        type: "auth0_managed_certs",
+      });
+      const id = str((await createProfile()).id);
+
+      const response = await managementApp.request(
+        `/self-service-profiles/${id}/sso-ticket`,
+        {
+          method: "POST",
+          headers: {
+            host: "login.acme.com",
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ connection_config: { name: "acme" } }),
+        },
+        env,
+      );
+      expect(response.status).toBe(201);
+      const url = new URL(str((await json(response)).ticket));
+      expect(url.host).toBe("login.acme.com");
+      expect(url.pathname).toBe("/u2/self-service");
+      expect(url.searchParams.get("tenant_id")).toBeNull();
+      const ticketId = url.searchParams.get("ticket") ?? "";
+      expect(
+        await env.data.ssoAccessTickets!.getByTicketHash(
+          TENANT,
+          await hashSsoTicketId(ticketId),
+        ),
+      ).not.toBeNull();
     });
 
     it("issues an edit ticket for an existing connection with an allowed strategy", async () => {

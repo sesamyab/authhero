@@ -34,6 +34,9 @@ export interface CreateTokenParams {
   scope?: string;
   permissions?: string[];
   aud?: string;
+  // Issuer; defaults to the test ISSUER. A custom-domain request expects
+  // `https://<custom domain>/`.
+  iss?: string;
   // Authorized party — the client the token was issued to. Auth0 sets this
   // on client-credentials tokens; the management middleware copies it into
   // ctx.var.client_id.
@@ -62,7 +65,7 @@ export async function createToken(params?: CreateTokenParams) {
       scope: params?.scope ?? "openid email profile",
       permissions: params?.permissions || [],
       sub: params?.user_id || "userId",
-      iss: "http://localhost:3000/",
+      iss: params?.iss ?? "http://localhost:3000/",
       tenant_id: params?.tenant_id,
       ...(params?.azp ? { azp: params.azp } : {}),
       ...(params?.org_id ? { org_id: params.org_id } : {}),

@@ -10,6 +10,7 @@ import {
   SelfServiceProfileUpdate,
   SsoTicketConnectionConfig,
   escapeLuceneValue,
+  normalizeConnectionDomain,
   selfServiceProfileSchema,
   selfServiceProfileStrategySchema,
   ssoTicketDomainVerificationSchema,
@@ -368,8 +369,14 @@ function toStoredConnectionConfig(
   if (config.options) {
     const options: NonNullable<SsoTicketConnectionConfig["options"]> = {};
     if (config.options.icon_url) options.icon_url = config.options.icon_url;
-    if (config.options.domain_aliases)
-      options.domain_aliases = config.options.domain_aliases;
+    if (config.options.domain_aliases) {
+      // Domains compare case-insensitively; store them normalized, once each.
+      options.domain_aliases = [
+        ...new Set(
+          config.options.domain_aliases.map(normalizeConnectionDomain),
+        ),
+      ];
+    }
     stored.options = options;
   }
   return stored;
@@ -778,6 +785,11 @@ const createSsoTicket = defineRoute({
       getIssuer(ctx.env, ctx.var.custom_domain),
     );
     url.searchParams.set("ticket", ticketId);
+    // On the shared issuer host nothing else identifies the tenant, and
+    // tickets are looked up per tenant (as in tickets.ts).
+    if (!ctx.var.custom_domain) {
+      url.searchParams.set("tenant_id", tenantId);
+    }
     return ctx.json({ ticket: url.toString() }, { status: 201 });
   },
 });
