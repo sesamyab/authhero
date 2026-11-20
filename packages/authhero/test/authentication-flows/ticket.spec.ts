@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getTestServer } from "../helpers/test-server";
+import { getAdminToken } from "../helpers/token";
 import { testClient } from "hono/testing";
 import { nanoid } from "nanoid";
 import bcryptjs from "bcryptjs";
@@ -87,7 +88,7 @@ describe("ticket", () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
 
-    const ticket = await createTicket(env, undefined);
+    const ticket = await createTicket(env, Strategy.USERNAME_PASSWORD);
 
     const response = await oauthClient.authorize.$get(
       {
@@ -200,7 +201,11 @@ describe("ticket", () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
 
-    const ticket = await createTicket(env, undefined, "new@example.com");
+    const ticket = await createTicket(
+      env,
+      Strategy.USERNAME_PASSWORD,
+      "new@example.com",
+    );
 
     const response = await oauthClient.authorize.$get({
       query: {
@@ -242,5 +247,87 @@ describe("ticket", () => {
     expect(response.status).toBe(403);
     const body: unknown = await response.json();
     expect(body).toMatchObject({ message: "Invalid realm" });
+  });
+
+  it("rejects a ticket whose login session records no connection", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+
+    const ticket = await createTicket(env, undefined, "new@example.com");
+
+    const response = await oauthClient.authorize.$get({
+      query: {
+        client_id: "clientId",
+        login_ticket: ticket.code_id,
+        realm: Strategy.USERNAME_PASSWORD,
+        response_type: AuthorizationResponseType.CODE,
+        redirect_uri: "https://example.com/callback",
+        state: "state",
+      },
+    });
+
+    expect(response.status).toBe(403);
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({ message: "Invalid realm" });
+    const { users } = await env.data.users.list("tenantId", {
+      q: "email:new@example.com",
+    });
+    expect(users).toHaveLength(0);
+  });
+
+  it("rejects a guardian enrollment ticket at /authorize", async () => {
+    const { oauthApp, managementApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+    const token = await getAdminToken();
+    const headers = {
+      "tenant-id": "tenantId",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    };
+
+    const factorResponse = await managementApp.request(
+      "/guardian/factors/otp",
+      { method: "PUT", headers, body: JSON.stringify({ enabled: true }) },
+      env,
+    );
+    expect(factorResponse.status).toBe(200);
+
+    // The seeded passwordless user for foo@example.com.
+    const ticketResponse = await managementApp.request(
+      "/guardian/enrollments/ticket",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ user_id: "email|userId" }),
+      },
+      env,
+    );
+    expect(ticketResponse.status).toBe(201);
+    const ticketBody: unknown = await ticketResponse.json();
+    if (
+      typeof ticketBody !== "object" ||
+      ticketBody === null ||
+      !("ticket_id" in ticketBody) ||
+      typeof ticketBody.ticket_id !== "string"
+    ) {
+      throw new Error("no ticket_id from the enrollment ticket endpoint");
+    }
+
+    const response = await oauthClient.authorize.$get({
+      query: {
+        client_id: "clientId",
+        login_ticket: ticketBody.ticket_id,
+        realm: Strategy.USERNAME_PASSWORD,
+        response_type: AuthorizationResponseType.CODE,
+        redirect_uri: "https://example.com/callback",
+        state: "state",
+      },
+    });
+
+    expect(response.status).toBe(403);
+    const { users } = await env.data.users.list("tenantId", {
+      q: "email:foo@example.com",
+    });
+    expect(users.map((user) => user.user_id)).toEqual(["email|userId"]);
   });
 });

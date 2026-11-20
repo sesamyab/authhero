@@ -92,16 +92,19 @@ export async function ticketAuth(
 
   await env.data.codes.used(tenant_id, ticketId);
 
-  // A login ticket is only minted by the password branch of /co/authenticate,
-  // so it only proves a password in the connection that verified it, which
-  // /co/authenticate records on the login session. The realm sent here must
-  // be that same database connection; any other realm, including `email`, is
-  // refused. A ticket without a recorded connection was minted before the
-  // connection was recorded and can only have been verified in
-  // Username-Password-Authentication.
-  const verifiedConnection =
-    loginSession.authParams.connection ?? Strategy.USERNAME_PASSWORD;
-  if (realm !== Strategy.USERNAME_PASSWORD || realm !== verifiedConnection) {
+  // A login ticket only proves a password in the connection that verified it,
+  // which the password branch of /co/authenticate records on the login
+  // session. The realm sent here must be that same database connection; any
+  // other realm, including `email`, is refused. Other `ticket` codes (for
+  // example guardian enrollment tickets) point at login sessions without a
+  // recorded connection and never proved a password, so a missing connection
+  // is refused too.
+  const verifiedConnection = loginSession.authParams.connection;
+  if (
+    !verifiedConnection ||
+    realm !== Strategy.USERNAME_PASSWORD ||
+    realm !== verifiedConnection
+  ) {
     throw new JSONHTTPException(403, { message: "Invalid realm" });
   }
 
