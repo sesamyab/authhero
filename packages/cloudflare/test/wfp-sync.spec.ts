@@ -165,7 +165,23 @@ describe("createDispatchSyncDefaults", () => {
     // D1" bug where the tenant's own `tenants` FK-target row was never seeded,
     // so every tenant-scoped insert FK-failed.
     const cp = await makeAdapters();
-    await cp.tenants.create({ id: CP, friendly_name: "Control Plane" });
+    await cp.tenants.create({
+      id: CP,
+      friendly_name: "Control Plane",
+      session_lifetime: 999,
+    });
+    // The tenant's own row on the control plane, as `tenantDefaults` left it on
+    // create, plus deployment fields that must stay on the control plane.
+    await cp.tenants.create({
+      id: "acme",
+      friendly_name: "Acme",
+      audience: "urn:authhero:tenant:acme",
+      session_lifetime: 168,
+      idle_session_lifetime: 72,
+      deployment_type: "wfp",
+      d1_database_id: "d1-acme",
+      worker_script_name: "tenant-acme-auth",
+    });
     // A control-plane signing key (no tenant_id) — projected so the tenant can
     // verify control-plane-minted tokens.
     await cp.keys.create({
@@ -223,6 +239,19 @@ describe("createDispatchSyncDefaults", () => {
     expect(result.tenants.upserted).toBe(2);
     const { tenants } = await tenantAdapters.tenants.list();
     expect(tenants.map((t) => t.id).sort()).toEqual([CP, "acme"].sort());
+
+    // The tenant's own settings (e.g. from `tenantDefaults`) reached its own
+    // row; deployment fields and the control plane's settings did not.
+    const own = await tenantAdapters.tenants.get("acme");
+    expect(own?.friendly_name).toBe("Acme");
+    expect(own?.session_lifetime).toBe(168);
+    expect(own?.idle_session_lifetime).toBe(72);
+    expect(own?.audience).toBeFalsy();
+    expect(own?.d1_database_id).toBeFalsy();
+    expect(own?.worker_script_name).toBeFalsy();
+    expect(
+      (await tenantAdapters.tenants.get(CP))?.session_lifetime,
+    ).toBeFalsy();
 
     // The control-plane verify key landed as a shared (no tenant_id) key.
     expect(result.signingKeys.upserted).toBe(1);

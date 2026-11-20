@@ -52,6 +52,7 @@ export type {
   ControlPlaneDefaultsPayload,
   ControlPlaneDefaultsApplyResult,
   ControlPlaneTenantSeed,
+  SeededTenantSettings,
   DefaultsPayloadEntities,
   ApplyResolvedBlockOptions,
   ApplyResolvedBlockResult,

@@ -163,10 +163,68 @@ describe("buildControlPlaneDefaultsPayload", () => {
       {},
       "t1",
     );
-    expect(payload.tenants).toEqual([
+    expect(payload.tenants).toMatchObject([
       { id: CP, friendly_name: CP },
-      { id: "t1", friendly_name: "t1" },
+      {
+        id: "t1",
+        friendly_name: "t1",
+        settings: { sender_email: "login@example.com", sender_name: "Sender" },
+      },
     ]);
+    expect(payload.tenants[0]).not.toHaveProperty("settings");
+  });
+
+  it("carries the target tenant's own settings, allowlisted, and none for the control plane", async () => {
+    await ctx.cp.raw.tenants.update("t1", {
+      session_lifetime: 168,
+      idle_session_lifetime: 72,
+      flags: { enable_sso: true },
+      mfa: {
+        policy: "confidence",
+        twilio: { sid: "AC123", auth_token: "twilio-secret", from: "+1555" },
+      },
+      deployment_type: "wfp",
+      provisioning_state: "ready",
+      d1_database_id: "d1-abc",
+      worker_script_name: "tenant-t1",
+      default_client_id: "client-1",
+      parent_tenant_id: CP,
+    });
+    await ctx.cp.raw.tenants.update(CP, { session_lifetime: 999 });
+
+    const payload = await buildControlPlaneDefaultsPayload(
+      ctx.cpData,
+      CP,
+      {},
+      "t1",
+    );
+    const [cpSeed, ownSeed] = payload.tenants;
+
+    expect(cpSeed).toEqual({ id: CP, friendly_name: CP });
+    expect(ownSeed?.settings).toMatchObject({
+      session_lifetime: 168,
+      idle_session_lifetime: 72,
+      flags: { enable_sso: true },
+      mfa: { policy: "confidence", twilio: { sid: "AC123", from: "+1555" } },
+      sender_email: "login@example.com",
+    });
+    const settings = ownSeed?.settings as Record<string, unknown>;
+    for (const key of [
+      "id",
+      "friendly_name",
+      "audience",
+      "default_audience",
+      "deployment_type",
+      "provisioning_state",
+      "d1_database_id",
+      "worker_script_name",
+      "default_client_id",
+      "parent_tenant_id",
+      "created_at",
+    ]) {
+      expect(settings).not.toHaveProperty(key);
+    }
+    expect(JSON.stringify(payload)).not.toContain("twilio-secret");
   });
 
   it("does not duplicate the seed when the target id is the control plane", async () => {
@@ -246,6 +304,108 @@ describe("applyControlPlaneDefaultsPayload", () => {
     expect((await ctx.tenant.raw.tenants.get("t1"))?.friendly_name).toBe(
       "Renamed",
     );
+  });
+
+  it("creates the target tenant's own row with its settings on a fresh DB", async () => {
+    await ctx.cp.raw.tenants.update("t1", {
+      session_lifetime: 168,
+      idle_session_lifetime: 72,
+      mfa: { policy: "confidence" },
+      deployment_type: "wfp",
+      d1_database_id: "d1-abc",
+    });
+    await ctx.cp.raw.tenants.update(CP, { session_lifetime: 999 });
+
+    const payload = await buildControlPlaneDefaultsPayload(
+      ctx.cpData,
+      CP,
+      {},
+      "t1",
+    );
+    await applyControlPlaneDefaultsPayload(payload, ctx.tenantData, CP);
+
+    const own = await ctx.tenant.raw.tenants.get("t1");
+    expect(own?.session_lifetime).toBe(168);
+    expect(own?.idle_session_lifetime).toBe(72);
+    expect(own?.mfa?.policy).toBe("confidence");
+    expect(own?.sender_email).toBe("login@example.com");
+    expect(own?.audience).toBeFalsy();
+    expect(own?.d1_database_id).toBeFalsy();
+    expect(own?.deployment_type).not.toBe("wfp");
+
+    // The control plane's seeded row stays minimal.
+    const cp = await ctx.tenant.raw.tenants.get(CP);
+    expect(cp?.friendly_name).toBe(CP);
+    expect(cp?.session_lifetime).toBeFalsy();
+    expect(cp?.sender_email).toBeFalsy();
+  });
+
+  it("never overwrites an existing row with the seed's settings", async () => {
+    await ctx.cp.raw.tenants.update("t1", { session_lifetime: 168 });
+    const payload = await buildControlPlaneDefaultsPayload(
+      ctx.cpData,
+      CP,
+      {},
+      "t1",
+    );
+    await applyControlPlaneDefaultsPayload(payload, ctx.tenantData, CP);
+
+    // The tenant changes its own setting; a later sync carries other values.
+    await ctx.tenant.raw.tenants.update("t1", { session_lifetime: 24 });
+    await ctx.cp.raw.tenants.update("t1", {
+      session_lifetime: 500,
+      idle_session_lifetime: 10,
+    });
+    const next = await buildControlPlaneDefaultsPayload(
+      ctx.cpData,
+      CP,
+      {},
+      "t1",
+    );
+    const result = await applyControlPlaneDefaultsPayload(
+      next,
+      ctx.tenantData,
+      CP,
+    );
+
+    expect(result.tenants.upserted).toBe(0);
+    const own = await ctx.tenant.raw.tenants.get("t1");
+    expect(own?.session_lifetime).toBe(24);
+    expect(own?.idle_session_lifetime).toBeFalsy();
+  });
+
+  it("re-filters the settings on apply, so a tampered payload can't write other fields", async () => {
+    const payload = await buildControlPlaneDefaultsPayload(ctx.cpData, CP);
+    payload.tenants = [
+      {
+        id: CP,
+        friendly_name: CP,
+        settings: { session_lifetime: 999 },
+      },
+      {
+        id: "t1",
+        friendly_name: "t1",
+        settings: {
+          session_lifetime: 168,
+          audience: "https://evil.example.com",
+          deployment_type: "wfp",
+          default_client_id: "smuggled",
+          mfa: { twilio: { sid: "AC1", auth_token: "smuggled-secret" } },
+        } as never,
+      },
+    ];
+    await applyControlPlaneDefaultsPayload(payload, ctx.tenantData, CP);
+
+    const own = await ctx.tenant.raw.tenants.get("t1");
+    expect(own?.session_lifetime).toBe(168);
+    expect(own?.audience).toBeFalsy();
+    expect(own?.deployment_type).not.toBe("wfp");
+    expect(own?.default_client_id).toBeFalsy();
+    expect(own?.mfa?.twilio?.sid).toBe("AC1");
+    expect(own?.mfa?.twilio?.auth_token).toBeUndefined();
+    expect(
+      (await ctx.tenant.raw.tenants.get(CP))?.session_lifetime,
+    ).toBeFalsy();
   });
 
   it("without tenant seeding the keyed defaults FK-fail (the #972 bug)", async () => {
