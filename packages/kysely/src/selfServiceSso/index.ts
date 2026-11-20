@@ -161,7 +161,17 @@ export function createSelfServiceProfilesAdapter(
           // change the profile's updated_at.
         })
         .executeTakeFirst();
-      return Number(result.numUpdatedRows) > 0;
+      if (Number(result.numUpdatedRows) > 0) return true;
+      // MySQL counts only rows whose value changed, so writing the same text
+      // reports 0 rows. Tell that apart from a profile deleted since the
+      // select above.
+      const stillThere = await db
+        .selectFrom("self_service_profiles")
+        .where("tenant_id", "=", tenant_id)
+        .where("id", "=", profile_id)
+        .select("id")
+        .executeTakeFirst();
+      return stillThere !== undefined;
     },
   };
 }
