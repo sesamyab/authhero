@@ -85,10 +85,12 @@ async function loginForTicket({ oauthApp, env }: TestServer) {
 
 describe("ticket", () => {
   it("should return a auth response for a valid ticket", async () => {
-    const { oauthApp, env } = await getTestServer();
+    const server = await getTestServer();
+    const { oauthApp, env } = server;
     const oauthClient = testClient(oauthApp, env);
+    await createPasswordUser(env);
 
-    const ticket = await createTicket(env, Strategy.USERNAME_PASSWORD);
+    const login_ticket = await loginForTicket(server);
 
     const response = await oauthClient.authorize.$get(
       {
@@ -96,7 +98,7 @@ describe("ticket", () => {
           client_id: "clientId",
           redirect_uri: "https://example.com/callback",
           state: "state",
-          login_ticket: ticket.code_id,
+          login_ticket,
           realm: Strategy.USERNAME_PASSWORD,
           response_type: AuthorizationResponseType.CODE,
         },
