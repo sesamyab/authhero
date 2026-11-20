@@ -36,7 +36,6 @@ import { createPromptPartialsAdapter } from "./promptPartials";
 import { createProxyRoutesAdapter } from "./proxyRoutes";
 import { createTokenExchangeProfilesAdapter } from "./tokenExchangeProfiles";
 import {
-  createConnectionDomainsAdapter,
   createSelfServiceProfilesAdapter,
   createSsoAccessTicketsAdapter,
 } from "./selfServiceSso";
@@ -137,7 +136,6 @@ export default function createAdapters(
     tokenExchangeProfiles: createTokenExchangeProfilesAdapter(db),
     selfServiceProfiles: createSelfServiceProfilesAdapter(db),
     ssoAccessTickets: createSsoAccessTicketsAdapter(db),
-    connectionDomains: createConnectionDomainsAdapter(db),
     ...(databaseOptions.controlPlane
       ? {
           tenantOperations: createTenantOperationsAdapter(db),

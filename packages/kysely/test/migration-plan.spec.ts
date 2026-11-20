@@ -75,12 +75,7 @@ describe("planMigrations", () => {
     expect(plan.pending.map((it) => it.name)).toEqual([last]);
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
-    for (const table of [
-      "self_service_profiles",
-      "self_service_profile_custom_texts",
-      "sso_access_tickets",
-      "connection_domains",
-    ]) {
+    for (const table of ["self_service_profiles", "sso_access_tickets"]) {
       expect(output).toMatch(
         new RegExp(`create table if not exists "${table}"`, "i"),
       );
@@ -92,12 +87,7 @@ describe("planMigrations", () => {
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    for (const table of [
-      "self_service_profiles",
-      "self_service_profile_custom_texts",
-      "sso_access_tickets",
-      "connection_domains",
-    ]) {
+    for (const table of ["self_service_profiles", "sso_access_tickets"]) {
       expect(await tableNames(db)).toContain(table);
     }
     await db.destroy();

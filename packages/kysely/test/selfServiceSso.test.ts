@@ -138,6 +138,39 @@ describe("Self-Service SSO storage (#1763)", () => {
       expect(
         await adapter.getCustomText(OTHER, profile.id, "en", "get-started"),
       ).toEqual({});
+
+      // Another page is stored on its own; a profile update keeps the text.
+      await adapter.setCustomText(TENANT, profile.id, "en", "other-page", {
+        title: "Other",
+      });
+      await adapter.update(TENANT, profile.id, { name: "Renamed" });
+      expect(
+        await adapter.getCustomText(TENANT, profile.id, "en", "get-started"),
+      ).toEqual({ introduction: "Hello" });
+      expect(
+        await adapter.getCustomText(TENANT, profile.id, "en", "other-page"),
+      ).toEqual({ title: "Other" });
+
+      // Another tenant, or a missing profile, cannot write it.
+      expect(
+        await adapter.setCustomText(OTHER, profile.id, "en", "get-started", {
+          introduction: "Tenant B",
+        }),
+      ).toBe(false);
+      expect(
+        await adapter.setCustomText(
+          TENANT,
+          "ssp_missing",
+          "en",
+          "get-started",
+          {
+            introduction: "x",
+          },
+        ),
+      ).toBe(false);
+      expect(
+        await adapter.getCustomText(TENANT, profile.id, "en", "get-started"),
+      ).toEqual({ introduction: "Hello" });
     });
 
     it("removes the profile's custom text and tickets with it", async () => {
@@ -270,99 +303,6 @@ describe("Self-Service SSO storage (#1763)", () => {
     });
   });
 
-  describe("connectionDomains", () => {
-    it("stores domains lowercased and filters by connection and domain", async () => {
-      const domains = data.connectionDomains!;
-      const a = await domains.create(TENANT, {
-        connection_id: "con_a",
-        domain: " Acme.COM ",
-        verification_value: "v-a",
-      });
-      expect(a).toMatchObject({
-        connection_id: "con_a",
-        domain: "acme.com",
-        status: "pending",
-        verification_value: "v-a",
-      });
-      expect(a.verified_at).toBeUndefined();
-
-      // A pending claim on the same domain by another connection is allowed.
-      const b = await domains.create(TENANT, {
-        connection_id: "con_b",
-        domain: "acme.com",
-        verification_value: "v-b",
-      });
-      await domains.create(TENANT, {
-        connection_id: "con_b",
-        domain: "other.com",
-        verification_value: "v-c",
-      });
-
-      expect(
-        (await domains.list(TENANT, { domain: "ACME.com" }))
-          .map((d) => d.id)
-          .sort(),
-      ).toEqual([a.id, b.id].sort());
-      expect(
-        (await domains.list(TENANT, { connection_id: "con_b" }))
-          .map((d) => d.domain)
-          .sort(),
-      ).toEqual(["acme.com", "other.com"]);
-      expect(await domains.list(OTHER)).toEqual([]);
-    });
-
-    it("rejects the same domain twice on one connection", async () => {
-      const domains = data.connectionDomains!;
-      await domains.create(TENANT, {
-        connection_id: "con_a",
-        domain: "acme.com",
-        verification_value: "v1",
-      });
-      await expect(
-        domains.create(TENANT, {
-          connection_id: "con_a",
-          domain: "ACME.com",
-          verification_value: "v2",
-        }),
-      ).rejects.toThrow();
-    });
-
-    it("verifies, un-verifies and removes within the tenant only", async () => {
-      const domains = data.connectionDomains!;
-      const created = await domains.create(TENANT, {
-        connection_id: "con_a",
-        domain: "acme.com",
-        verification_value: "v1",
-      });
-
-      expect(
-        await domains.update(OTHER, created.id, { status: "verified" }),
-      ).toBe(false);
-      expect(
-        await domains.update(TENANT, created.id, {
-          status: "verified",
-          verified_at: "2026-01-01T00:00:00.000Z",
-        }),
-      ).toBe(true);
-      expect(await domains.get(TENANT, created.id)).toMatchObject({
-        status: "verified",
-        verified_at: "2026-01-01T00:00:00.000Z",
-      });
-
-      await domains.update(TENANT, created.id, {
-        status: "pending",
-        verified_at: null,
-      });
-      const pending = await domains.get(TENANT, created.id);
-      expect(pending?.status).toBe("pending");
-      expect(pending?.verified_at).toBeUndefined();
-
-      expect(await domains.get(OTHER, created.id)).toBeNull();
-      expect(await domains.remove(OTHER, created.id)).toBe(false);
-      expect(await domains.remove(TENANT, created.id)).toBe(true);
-    });
-  });
-
   describe("cleanup and edge cases", () => {
     it("stores a long description unchanged", async () => {
       const description = "d".repeat(1000);
@@ -375,7 +315,7 @@ describe("Self-Service SSO storage (#1763)", () => {
       ).toBe(description);
     });
 
-    it("lets concurrent first saves of custom text both succeed", async () => {
+    it("lets concurrent saves of custom text both succeed", async () => {
       const profiles = data.selfServiceProfiles!;
       const profile = await profiles.create(TENANT, { name: "Partners" });
       await Promise.all([
@@ -398,35 +338,6 @@ describe("Self-Service SSO storage (#1763)", () => {
           ).introduction ?? "",
         ),
       ).toBe(true);
-    });
-
-    it("removes a connection's domain claims with the connection only", async () => {
-      for (const id of ["con_a", "con_b"]) {
-        await data.connections.create(TENANT, {
-          id,
-          name: id,
-          strategy: "oidc",
-          options: {},
-        });
-      }
-      const domains = data.connectionDomains!;
-      await domains.create(TENANT, {
-        connection_id: "con_a",
-        domain: "acme.com",
-        verification_value: "v-a",
-      });
-      const kept = await domains.create(TENANT, {
-        connection_id: "con_b",
-        domain: "acme.com",
-        verification_value: "v-b",
-      });
-
-      expect(await data.connections.remove(TENANT, "con_a")).toBe(true);
-
-      expect(await domains.list(TENANT, { domain: "acme.com" })).toEqual([
-        kept,
-      ]);
-      expect(await data.connections.remove(TENANT, "con_a")).toBe(false);
     });
   });
 });

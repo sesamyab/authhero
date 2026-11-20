@@ -1,21 +1,15 @@
 import { and, asc, eq } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import {
-  connectionDomainFromRow,
-  normalizeConnectionDomain,
-  selfServiceProfileCustomTextFromJson,
+  selfServiceProfileCustomTextFromRow,
+  selfServiceProfileCustomTextToRow,
   selfServiceProfileFromRow,
   selfServiceProfileUpdateToRow,
   ssoAccessTicketFromRow,
   ssoAccessTicketToRow,
 } from "@authhero/adapter-interfaces";
 import type {
-  ConnectionDomain,
-  ConnectionDomainInsert,
-  ConnectionDomainUpdate,
-  ConnectionDomainsAdapter,
   CreateOptions,
-  ListConnectionDomainsParams,
   SelfServiceProfile,
   SelfServiceProfileCustomText,
   SelfServiceProfileInsert,
@@ -26,12 +20,7 @@ import type {
   SsoAccessTicketUpdate,
   SsoAccessTicketsAdapter,
 } from "@authhero/adapter-interfaces";
-import {
-  connectionDomains,
-  selfServiceProfileCustomTexts,
-  selfServiceProfiles,
-  ssoAccessTickets,
-} from "../schema/sqlite";
+import { selfServiceProfiles, ssoAccessTickets } from "../schema/sqlite";
 import type { DrizzleDb } from "./types";
 import { runAtomic } from "./atomic";
 
@@ -69,6 +58,7 @@ export function createSelfServiceProfilesAdapter(
           ? JSON.stringify(input.user_attributes)
           : null,
         branding: input.branding ? JSON.stringify(input.branding) : null,
+        custom_text: null,
         created_at: importMetadata?.created_at ?? now,
         updated_at: importMetadata?.updated_at ?? now,
       };
@@ -114,9 +104,9 @@ export function createSelfServiceProfilesAdapter(
     },
 
     async remove(tenant_id: string, id: string): Promise<boolean> {
-      // One atomic unit, so a failure leaves the profile, its tickets and its
-      // custom text as they were. The foreign keys also cascade from the
-      // profile where SQLite enforces them (D1 does).
+      // One atomic unit, so a failure leaves the profile and its tickets as
+      // they were. The foreign key also cascades from the profile where
+      // SQLite enforces it (D1 does). Custom text is a column of the profile.
       const existing = await db
         .select({ id: selfServiceProfiles.id })
         .from(selfServiceProfiles)
@@ -132,14 +122,6 @@ export function createSelfServiceProfilesAdapter(
               eq(ssoAccessTickets.profile_id, id),
             ),
           ),
-        db
-          .delete(selfServiceProfileCustomTexts)
-          .where(
-            and(
-              eq(selfServiceProfileCustomTexts.tenant_id, tenant_id),
-              eq(selfServiceProfileCustomTexts.profile_id, id),
-            ),
-          ),
         db.delete(selfServiceProfiles).where(byId(tenant_id, id)),
       ]);
       return true;
@@ -152,18 +134,15 @@ export function createSelfServiceProfilesAdapter(
       page: string,
     ): Promise<SelfServiceProfileCustomText> {
       const rows = await db
-        .select({ custom_text: selfServiceProfileCustomTexts.custom_text })
-        .from(selfServiceProfileCustomTexts)
-        .where(
-          and(
-            eq(selfServiceProfileCustomTexts.tenant_id, tenant_id),
-            eq(selfServiceProfileCustomTexts.profile_id, profile_id),
-            eq(selfServiceProfileCustomTexts.language, language),
-            eq(selfServiceProfileCustomTexts.page, page),
-          ),
-        )
+        .select({ custom_text: selfServiceProfiles.custom_text })
+        .from(selfServiceProfiles)
+        .where(byId(tenant_id, profile_id))
         .limit(1);
-      return selfServiceProfileCustomTextFromJson(rows[0]?.custom_text ?? null);
+      return selfServiceProfileCustomTextFromRow(
+        rows[0]?.custom_text ?? null,
+        language,
+        page,
+      );
     },
 
     async setCustomText(
@@ -172,29 +151,28 @@ export function createSelfServiceProfilesAdapter(
       language: string,
       page: string,
       custom_text: SelfServiceProfileCustomText,
-    ): Promise<void> {
-      const now = new Date().toISOString();
-      const json = JSON.stringify(custom_text);
-      await db
-        .insert(selfServiceProfileCustomTexts)
-        .values({
-          tenant_id,
-          profile_id,
-          language,
-          page,
-          custom_text: json,
-          created_at: now,
-          updated_at: now,
+    ): Promise<boolean> {
+      const rows = await db
+        .select({ custom_text: selfServiceProfiles.custom_text })
+        .from(selfServiceProfiles)
+        .where(byId(tenant_id, profile_id))
+        .limit(1);
+      const row = rows[0];
+      if (!row) return false;
+      const updated = await db
+        .update(selfServiceProfiles)
+        .set({
+          custom_text: selfServiceProfileCustomTextToRow(
+            row.custom_text,
+            language,
+            page,
+            custom_text,
+          ),
+          updated_at: new Date().toISOString(),
         })
-        .onConflictDoUpdate({
-          target: [
-            selfServiceProfileCustomTexts.tenant_id,
-            selfServiceProfileCustomTexts.profile_id,
-            selfServiceProfileCustomTexts.language,
-            selfServiceProfileCustomTexts.page,
-          ],
-          set: { custom_text: json, updated_at: now },
-        });
+        .where(byId(tenant_id, profile_id))
+        .returning({ id: selfServiceProfiles.id });
+      return updated.length > 0;
     },
   };
 }
@@ -272,99 +250,6 @@ export function createSsoAccessTicketsAdapter(
         .delete(ssoAccessTickets)
         .where(byId(tenant_id, id))
         .returning({ id: ssoAccessTickets.id });
-      return deleted.length > 0;
-    },
-  };
-}
-
-export function createConnectionDomainsAdapter(
-  db: DrizzleDb,
-): ConnectionDomainsAdapter {
-  const byId = (tenant_id: string, id: string) =>
-    and(
-      eq(connectionDomains.tenant_id, tenant_id),
-      eq(connectionDomains.id, id),
-    );
-
-  return {
-    async create(
-      tenant_id: string,
-      input: ConnectionDomainInsert,
-    ): Promise<ConnectionDomain> {
-      const now = new Date().toISOString();
-      const row = {
-        id: `cd_${generateId()}`,
-        tenant_id,
-        connection_id: input.connection_id,
-        domain: normalizeConnectionDomain(input.domain),
-        status: input.status ?? "pending",
-        verification_value: input.verification_value,
-        verified_at: input.verified_at ?? null,
-        created_at: now,
-        updated_at: now,
-      };
-      await db.insert(connectionDomains).values(row);
-      return connectionDomainFromRow(row);
-    },
-
-    async get(tenant_id: string, id: string): Promise<ConnectionDomain | null> {
-      const rows = await db
-        .select()
-        .from(connectionDomains)
-        .where(byId(tenant_id, id))
-        .limit(1);
-      return rows[0] ? connectionDomainFromRow(rows[0]) : null;
-    },
-
-    async list(
-      tenant_id: string,
-      params?: ListConnectionDomainsParams,
-    ): Promise<ConnectionDomain[]> {
-      const conditions = [eq(connectionDomains.tenant_id, tenant_id)];
-      if (params?.connection_id !== undefined)
-        conditions.push(
-          eq(connectionDomains.connection_id, params.connection_id),
-        );
-      if (params?.domain !== undefined)
-        conditions.push(
-          eq(
-            connectionDomains.domain,
-            normalizeConnectionDomain(params.domain),
-          ),
-        );
-      const rows = await db
-        .select()
-        .from(connectionDomains)
-        .where(and(...conditions))
-        .orderBy(asc(connectionDomains.created_at), asc(connectionDomains.id));
-      return rows.map(connectionDomainFromRow);
-    },
-
-    async update(
-      tenant_id: string,
-      id: string,
-      input: ConnectionDomainUpdate,
-    ): Promise<boolean> {
-      const set: Partial<typeof connectionDomains.$inferInsert> = {
-        updated_at: new Date().toISOString(),
-      };
-      if (input.status !== undefined) set.status = input.status;
-      if (input.verification_value !== undefined)
-        set.verification_value = input.verification_value;
-      if (input.verified_at !== undefined) set.verified_at = input.verified_at;
-      const updated = await db
-        .update(connectionDomains)
-        .set(set)
-        .where(byId(tenant_id, id))
-        .returning({ id: connectionDomains.id });
-      return updated.length > 0;
-    },
-
-    async remove(tenant_id: string, id: string): Promise<boolean> {
-      const deleted = await db
-        .delete(connectionDomains)
-        .where(byId(tenant_id, id))
-        .returning({ id: connectionDomains.id });
       return deleted.length > 0;
     },
   };

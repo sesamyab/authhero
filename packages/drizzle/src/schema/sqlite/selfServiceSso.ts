@@ -1,18 +1,11 @@
-import {
-  index,
-  primaryKey,
-  sqliteTable,
-  text,
-  uniqueIndex,
-} from "drizzle-orm/sqlite-core";
+import { index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants";
-import { connections } from "./connections";
 
-// Self-Service SSO (#1763): profiles, their custom text, SSO access tickets
-// and connection domains. Every row cascades from its tenant; custom text and
-// tickets cascade from their profile (so a ticket inserted while its profile
-// is being deleted cannot outlive it), and domain claims from their
-// connection.
+// Self-Service SSO (#1763): profiles (with their custom text) and SSO access
+// tickets. Every row cascades from its tenant, and tickets from their profile,
+// so a ticket inserted while its profile is being deleted cannot outlive it.
+// A self-service connection's email domains live on the connection
+// (`connections.self_service`).
 
 const tenantId = () =>
   text("tenant_id", { length: 191 })
@@ -30,32 +23,12 @@ export const selfServiceProfiles = sqliteTable(
     allowed_strategies: text("allowed_strategies"),
     user_attributes: text("user_attributes"),
     branding: text("branding"),
+    // JSON: language → page → custom text (Auth0: `en` / `get-started`).
+    custom_text: text("custom_text"),
     created_at: text("created_at", { length: 35 }).notNull(),
     updated_at: text("updated_at", { length: 35 }).notNull(),
   },
   (table) => [index("self_service_profiles_tenant_id_idx").on(table.tenant_id)],
-);
-
-export const selfServiceProfileCustomTexts = sqliteTable(
-  "self_service_profile_custom_texts",
-  {
-    tenant_id: tenantId(),
-    profile_id: text("profile_id", { length: 64 })
-      .notNull()
-      .references(() => selfServiceProfiles.id, { onDelete: "cascade" }),
-    language: text("language", { length: 32 }).notNull(),
-    page: text("page", { length: 64 }).notNull(),
-    // JSON object: text key → text.
-    custom_text: text("custom_text").notNull(),
-    created_at: text("created_at", { length: 35 }).notNull(),
-    updated_at: text("updated_at", { length: 35 }).notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.tenant_id, table.profile_id, table.language, table.page],
-      name: "self_service_profile_custom_texts_pk",
-    }),
-  ],
 );
 
 // The ticket id is the bearer value in the ticket URL and is never stored:
@@ -86,36 +59,6 @@ export const ssoAccessTickets = sqliteTable(
     index("sso_access_tickets_tenant_profile_idx").on(
       table.tenant_id,
       table.profile_id,
-    ),
-  ],
-);
-
-// Several connections may hold a pending claim on one domain (see
-// `ConnectionDomain`), so uniqueness is per connection.
-export const connectionDomains = sqliteTable(
-  "connection_domains",
-  {
-    id: text("id", { length: 64 }).primaryKey(),
-    tenant_id: tenantId(),
-    connection_id: text("connection_id", { length: 255 })
-      .notNull()
-      .references(() => connections.id, { onDelete: "cascade" }),
-    domain: text("domain", { length: 255 }).notNull(),
-    status: text("status", { length: 16 }).notNull(),
-    verification_value: text("verification_value", { length: 255 }).notNull(),
-    verified_at: text("verified_at", { length: 35 }),
-    created_at: text("created_at", { length: 35 }).notNull(),
-    updated_at: text("updated_at", { length: 35 }).notNull(),
-  },
-  (table) => [
-    uniqueIndex("connection_domains_tenant_connection_domain_idx").on(
-      table.tenant_id,
-      table.connection_id,
-      table.domain,
-    ),
-    index("connection_domains_tenant_domain_idx").on(
-      table.tenant_id,
-      table.domain,
     ),
   ],
 );

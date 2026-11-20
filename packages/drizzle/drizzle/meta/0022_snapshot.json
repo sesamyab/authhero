@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2cf9e125-43b7-40bf-8c5d-b8bd5ae7eb66",
+  "id": "9340e517-ee06-47e2-8971-ca6617b3bdeb",
   "prevId": "421bd681-6696-4caf-ba5a-1ec0217f10a8",
   "tables": {
     "tenants": {
@@ -7099,220 +7099,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "connection_domains": {
-      "name": "connection_domains",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text(64)",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text(191)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text(255)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "domain": {
-          "name": "domain",
-          "type": "text(255)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "verification_value": {
-          "name": "verification_value",
-          "type": "text(255)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "verified_at": {
-          "name": "verified_at",
-          "type": "text(35)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text(35)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text(35)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "connection_domains_tenant_connection_domain_idx": {
-          "name": "connection_domains_tenant_connection_domain_idx",
-          "columns": [
-            "tenant_id",
-            "connection_id",
-            "domain"
-          ],
-          "isUnique": true
-        },
-        "connection_domains_tenant_domain_idx": {
-          "name": "connection_domains_tenant_domain_idx",
-          "columns": [
-            "tenant_id",
-            "domain"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "connection_domains_tenant_id_tenants_id_fk": {
-          "name": "connection_domains_tenant_id_tenants_id_fk",
-          "tableFrom": "connection_domains",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "connection_domains_connection_id_connections_id_fk": {
-          "name": "connection_domains_connection_id_connections_id_fk",
-          "tableFrom": "connection_domains",
-          "tableTo": "connections",
-          "columnsFrom": [
-            "connection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "self_service_profile_custom_texts": {
-      "name": "self_service_profile_custom_texts",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text(191)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "profile_id": {
-          "name": "profile_id",
-          "type": "text(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "language": {
-          "name": "language",
-          "type": "text(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "page": {
-          "name": "page",
-          "type": "text(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "custom_text": {
-          "name": "custom_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text(35)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text(35)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "self_service_profile_custom_texts_tenant_id_tenants_id_fk": {
-          "name": "self_service_profile_custom_texts_tenant_id_tenants_id_fk",
-          "tableFrom": "self_service_profile_custom_texts",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "self_service_profile_custom_texts_profile_id_self_service_profiles_id_fk": {
-          "name": "self_service_profile_custom_texts_profile_id_self_service_profiles_id_fk",
-          "tableFrom": "self_service_profile_custom_texts",
-          "tableTo": "self_service_profiles",
-          "columnsFrom": [
-            "profile_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "self_service_profile_custom_texts_pk": {
-          "columns": [
-            "tenant_id",
-            "profile_id",
-            "language",
-            "page"
-          ],
-          "name": "self_service_profile_custom_texts_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "self_service_profiles": {
       "name": "self_service_profiles",
       "columns": {
@@ -7360,6 +7146,13 @@
         },
         "branding": {
           "name": "branding",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "custom_text": {
+          "name": "custom_text",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

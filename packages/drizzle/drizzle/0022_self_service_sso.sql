@@ -1,32 +1,3 @@
-CREATE TABLE `connection_domains` (
-	`id` text(64) PRIMARY KEY NOT NULL,
-	`tenant_id` text(191) NOT NULL,
-	`connection_id` text(255) NOT NULL,
-	`domain` text(255) NOT NULL,
-	`status` text(16) NOT NULL,
-	`verification_value` text(255) NOT NULL,
-	`verified_at` text(35),
-	`created_at` text(35) NOT NULL,
-	`updated_at` text(35) NOT NULL,
-	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`connection_id`) REFERENCES `connections`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `connection_domains_tenant_connection_domain_idx` ON `connection_domains` (`tenant_id`,`connection_id`,`domain`);--> statement-breakpoint
-CREATE INDEX `connection_domains_tenant_domain_idx` ON `connection_domains` (`tenant_id`,`domain`);--> statement-breakpoint
-CREATE TABLE `self_service_profile_custom_texts` (
-	`tenant_id` text(191) NOT NULL,
-	`profile_id` text(64) NOT NULL,
-	`language` text(32) NOT NULL,
-	`page` text(64) NOT NULL,
-	`custom_text` text NOT NULL,
-	`created_at` text(35) NOT NULL,
-	`updated_at` text(35) NOT NULL,
-	PRIMARY KEY(`tenant_id`, `profile_id`, `language`, `page`),
-	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`profile_id`) REFERENCES `self_service_profiles`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
 CREATE TABLE `self_service_profiles` (
 	`id` text(64) PRIMARY KEY NOT NULL,
 	`tenant_id` text(191) NOT NULL,
@@ -35,6 +6,7 @@ CREATE TABLE `self_service_profiles` (
 	`allowed_strategies` text,
 	`user_attributes` text,
 	`branding` text,
+	`custom_text` text,
 	`created_at` text(35) NOT NULL,
 	`updated_at` text(35) NOT NULL,
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade

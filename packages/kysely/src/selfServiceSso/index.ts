@@ -1,13 +1,7 @@
 import { Kysely } from "kysely";
 import { customAlphabet } from "nanoid";
 import {
-  ConnectionDomain,
-  ConnectionDomainInsert,
-  ConnectionDomainRow,
-  ConnectionDomainUpdate,
-  ConnectionDomainsAdapter,
   CreateOptions,
-  ListConnectionDomainsParams,
   SelfServiceProfile,
   SelfServiceProfileCustomText,
   SelfServiceProfileInsert,
@@ -18,10 +12,8 @@ import {
   SsoAccessTicketRow,
   SsoAccessTicketUpdate,
   SsoAccessTicketsAdapter,
-  connectionDomainFromRow,
-  isUniqueViolation,
-  normalizeConnectionDomain,
-  selfServiceProfileCustomTextFromJson,
+  selfServiceProfileCustomTextFromRow,
+  selfServiceProfileCustomTextToRow,
   selfServiceProfileFromRow,
   selfServiceProfileUpdateToRow,
   ssoAccessTicketFromRow,
@@ -57,6 +49,7 @@ export function createSelfServiceProfilesAdapter(
           ? JSON.stringify(input.user_attributes)
           : null,
         branding: input.branding ? JSON.stringify(input.branding) : null,
+        custom_text: null,
         created_at: importMetadata?.created_at ?? now,
         updated_at: importMetadata?.updated_at ?? now,
       };
@@ -103,16 +96,11 @@ export function createSelfServiceProfilesAdapter(
     },
 
     async remove(tenant_id: string, id: string): Promise<boolean> {
-      // One transaction, so a failure leaves the profile, its tickets and its
-      // custom text as they were.
+      // One transaction, so a failure leaves the profile and its tickets as
+      // they were. Custom text is a column of the profile.
       return db.transaction().execute(async (trx) => {
         await trx
           .deleteFrom("sso_access_tickets")
-          .where("tenant_id", "=", tenant_id)
-          .where("profile_id", "=", id)
-          .execute();
-        await trx
-          .deleteFrom("self_service_profile_custom_texts")
           .where("tenant_id", "=", tenant_id)
           .where("profile_id", "=", id)
           .execute();
@@ -132,14 +120,16 @@ export function createSelfServiceProfilesAdapter(
       page: string,
     ): Promise<SelfServiceProfileCustomText> {
       const row = await db
-        .selectFrom("self_service_profile_custom_texts")
+        .selectFrom("self_service_profiles")
         .where("tenant_id", "=", tenant_id)
-        .where("profile_id", "=", profile_id)
-        .where("language", "=", language)
-        .where("page", "=", page)
+        .where("id", "=", profile_id)
         .select("custom_text")
         .executeTakeFirst();
-      return selfServiceProfileCustomTextFromJson(row?.custom_text ?? null);
+      return selfServiceProfileCustomTextFromRow(
+        row?.custom_text ?? null,
+        language,
+        page,
+      );
     },
 
     async setCustomText(
@@ -148,40 +138,29 @@ export function createSelfServiceProfilesAdapter(
       language: string,
       page: string,
       custom_text: SelfServiceProfileCustomText,
-    ): Promise<void> {
-      const now = new Date().toISOString();
-      const json = JSON.stringify(custom_text);
-      const update = async () => {
-        const result = await db
-          .updateTable("self_service_profile_custom_texts")
-          .where("tenant_id", "=", tenant_id)
-          .where("profile_id", "=", profile_id)
-          .where("language", "=", language)
-          .where("page", "=", page)
-          .set({ custom_text: json, updated_at: now })
-          .executeTakeFirst();
-        return Number(result.numUpdatedRows) > 0;
-      };
-      if (await update()) return;
-      try {
-        await db
-          .insertInto("self_service_profile_custom_texts")
-          .values({
-            tenant_id,
-            profile_id,
+    ): Promise<boolean> {
+      const row = await db
+        .selectFrom("self_service_profiles")
+        .where("tenant_id", "=", tenant_id)
+        .where("id", "=", profile_id)
+        .select("custom_text")
+        .executeTakeFirst();
+      if (!row) return false;
+      const result = await db
+        .updateTable("self_service_profiles")
+        .where("tenant_id", "=", tenant_id)
+        .where("id", "=", profile_id)
+        .set({
+          custom_text: selfServiceProfileCustomTextToRow(
+            row.custom_text,
             language,
             page,
-            custom_text: json,
-            created_at: now,
-            updated_at: now,
-          })
-          .execute();
-      } catch (error: unknown) {
-        // A concurrent first save inserted the row between our update and
-        // insert (works on SQLite and MySQL alike): replace it instead.
-        if (!isUniqueViolation(error)) throw error;
-        await update();
-      }
+            custom_text,
+          ),
+          updated_at: new Date().toISOString(),
+        })
+        .executeTakeFirst();
+      return Number(result.numUpdatedRows) > 0;
     },
   };
 }
@@ -252,95 +231,6 @@ export function createSsoAccessTicketsAdapter(
     async remove(tenant_id: string, id: string): Promise<boolean> {
       const result = await db
         .deleteFrom("sso_access_tickets")
-        .where("tenant_id", "=", tenant_id)
-        .where("id", "=", id)
-        .executeTakeFirst();
-      return Number(result.numDeletedRows) > 0;
-    },
-  };
-}
-
-export function createConnectionDomainsAdapter(
-  db: Kysely<Database>,
-): ConnectionDomainsAdapter {
-  return {
-    async create(
-      tenant_id: string,
-      input: ConnectionDomainInsert,
-    ): Promise<ConnectionDomain> {
-      const now = new Date().toISOString();
-      const row: ConnectionDomainRow = {
-        id: `cd_${generateId()}`,
-        tenant_id,
-        connection_id: input.connection_id,
-        domain: normalizeConnectionDomain(input.domain),
-        status: input.status ?? "pending",
-        verification_value: input.verification_value,
-        verified_at: input.verified_at ?? null,
-        created_at: now,
-        updated_at: now,
-      };
-      await db.insertInto("connection_domains").values(row).execute();
-      return connectionDomainFromRow(row);
-    },
-
-    async get(tenant_id: string, id: string): Promise<ConnectionDomain | null> {
-      const row = await db
-        .selectFrom("connection_domains")
-        .where("tenant_id", "=", tenant_id)
-        .where("id", "=", id)
-        .selectAll()
-        .executeTakeFirst();
-      return row ? connectionDomainFromRow(row) : null;
-    },
-
-    async list(
-      tenant_id: string,
-      params?: ListConnectionDomainsParams,
-    ): Promise<ConnectionDomain[]> {
-      let query = db
-        .selectFrom("connection_domains")
-        .where("tenant_id", "=", tenant_id);
-      if (params?.connection_id !== undefined)
-        query = query.where("connection_id", "=", params.connection_id);
-      if (params?.domain !== undefined)
-        query = query.where(
-          "domain",
-          "=",
-          normalizeConnectionDomain(params.domain),
-        );
-      const rows = await query
-        .selectAll()
-        .orderBy("created_at", "asc")
-        .orderBy("id", "asc")
-        .execute();
-      return rows.map(connectionDomainFromRow);
-    },
-
-    async update(
-      tenant_id: string,
-      id: string,
-      input: ConnectionDomainUpdate,
-    ): Promise<boolean> {
-      const set: Partial<ConnectionDomainRow> = {
-        updated_at: new Date().toISOString(),
-      };
-      if (input.status !== undefined) set.status = input.status;
-      if (input.verification_value !== undefined)
-        set.verification_value = input.verification_value;
-      if (input.verified_at !== undefined) set.verified_at = input.verified_at;
-      const result = await db
-        .updateTable("connection_domains")
-        .where("tenant_id", "=", tenant_id)
-        .where("id", "=", id)
-        .set(set)
-        .executeTakeFirst();
-      return Number(result.numUpdatedRows) > 0;
-    },
-
-    async remove(tenant_id: string, id: string): Promise<boolean> {
-      const result = await db
-        .deleteFrom("connection_domains")
         .where("tenant_id", "=", tenant_id)
         .where("id", "=", id)
         .executeTakeFirst();

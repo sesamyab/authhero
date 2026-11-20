@@ -16,10 +16,6 @@ import {
   ssoTicketDomainVerificationSchema,
   ssoTicketEnabledOrganizationSchema,
 } from "../types/SsoAccessTicket";
-import {
-  ConnectionDomain,
-  connectionDomainStatusSchema,
-} from "../types/ConnectionDomain";
 
 /**
  * Row mapping shared by the SQL adapters (drizzle, kysely) for the
@@ -73,6 +69,8 @@ export type SelfServiceProfileRow = {
   allowed_strategies: string | null;
   user_attributes: string | null;
   branding: string | null;
+  /** JSON: language → page → custom text. */
+  custom_text: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -115,10 +113,35 @@ export function selfServiceProfileUpdateToRow(
   return set;
 }
 
-export function selfServiceProfileCustomTextFromJson(
+const profileCustomTextsSchema = z.record(
+  z.string(),
+  z.record(z.string(), selfServiceProfileCustomTextSchema),
+);
+type ProfileCustomTexts = z.infer<typeof profileCustomTextsSchema>;
+
+/**
+ * The custom text for a language and page from a profile's `custom_text`
+ * column; `{}` when none is set (or the stored value no longer parses).
+ */
+export function selfServiceProfileCustomTextFromRow(
   raw: string | null,
+  language: string,
+  page: string,
 ): SelfServiceProfileCustomText {
-  return parseJson(raw, selfServiceProfileCustomTextSchema) ?? {};
+  return parseJson(raw, profileCustomTextsSchema)?.[language]?.[page] ?? {};
+}
+
+/** The `custom_text` column with one language and page replaced. */
+export function selfServiceProfileCustomTextToRow(
+  raw: string | null,
+  language: string,
+  page: string,
+  customText: SelfServiceProfileCustomText,
+): string {
+  const all: ProfileCustomTexts =
+    parseJson(raw, profileCustomTextsSchema) ?? {};
+  all[language] = { ...all[language], [page]: customText };
+  return JSON.stringify(all);
 }
 
 export type SsoAccessTicketRow = {
@@ -199,37 +222,7 @@ export function ssoAccessTicketFromRow(
   return ticket;
 }
 
-export type ConnectionDomainRow = {
-  id: string;
-  tenant_id: string;
-  connection_id: string;
-  domain: string;
-  status: string;
-  verification_value: string;
-  verified_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-/** Domains are stored and matched lowercased. */
+/** Email domains are compared and stored lowercased and trimmed. */
 export function normalizeConnectionDomain(domain: string): string {
   return domain.trim().toLowerCase();
-}
-
-/** An unreadable `status` reads back as `pending`, i.e. not trusted. */
-export function connectionDomainFromRow(
-  row: ConnectionDomainRow,
-): ConnectionDomain {
-  const status = connectionDomainStatusSchema.safeParse(row.status);
-  const domain: ConnectionDomain = {
-    id: row.id,
-    connection_id: row.connection_id,
-    domain: row.domain,
-    status: status.success ? status.data : "pending",
-    verification_value: row.verification_value,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-  if (row.verified_at !== null) domain.verified_at = row.verified_at;
-  return domain;
 }
