@@ -21,14 +21,6 @@ describe("Self-Service SSO storage (#1763)", () => {
     server.db.run(sql`PRAGMA foreign_keys = ON`);
     await data.tenants.create({ id: TENANT, name: "Tenant 1" });
     await data.tenants.create({ id: OTHER, name: "Tenant 2" });
-    for (const id of ["con_a", "con_b"]) {
-      await data.connections.create(TENANT, {
-        id,
-        name: id,
-        strategy: "oidc",
-        options: {},
-      });
-    }
     profileId = (await data.selfServiceProfiles!.create(TENANT, { name: "P" }))
       .id;
   });
@@ -146,6 +138,28 @@ describe("Self-Service SSO storage (#1763)", () => {
       expect(
         await adapter.getCustomText(OTHER, profile.id, "en", "get-started"),
       ).toEqual({});
+
+      // Another page is stored on its own; a profile update keeps the text.
+      await adapter.setCustomText(TENANT, profile.id, "en", "other-page", {
+        title: "Other",
+      });
+      await adapter.update(TENANT, profile.id, { name: "Renamed" });
+      expect(
+        await adapter.getCustomText(TENANT, profile.id, "en", "get-started"),
+      ).toEqual({ introduction: "Hello" });
+      expect(
+        await adapter.getCustomText(TENANT, profile.id, "en", "other-page"),
+      ).toEqual({ title: "Other" });
+
+      // Another tenant cannot write it.
+      expect(
+        await adapter.setCustomText(OTHER, profile.id, "en", "get-started", {
+          introduction: "Tenant B",
+        }),
+      ).toBe(false);
+      expect(
+        await adapter.getCustomText(TENANT, profile.id, "en", "get-started"),
+      ).toEqual({ introduction: "Hello" });
     });
 
     it("removes the profile's custom text and tickets with it", async () => {
@@ -278,101 +292,8 @@ describe("Self-Service SSO storage (#1763)", () => {
     });
   });
 
-  describe("connectionDomains", () => {
-    it("stores domains lowercased and filters by connection and domain", async () => {
-      const domains = data.connectionDomains!;
-      const a = await domains.create(TENANT, {
-        connection_id: "con_a",
-        domain: " Acme.COM ",
-        verification_value: "v-a",
-      });
-      expect(a).toMatchObject({
-        connection_id: "con_a",
-        domain: "acme.com",
-        status: "pending",
-        verification_value: "v-a",
-      });
-      expect(a.verified_at).toBeUndefined();
-
-      // A pending claim on the same domain by another connection is allowed.
-      const b = await domains.create(TENANT, {
-        connection_id: "con_b",
-        domain: "acme.com",
-        verification_value: "v-b",
-      });
-      await domains.create(TENANT, {
-        connection_id: "con_b",
-        domain: "other.com",
-        verification_value: "v-c",
-      });
-
-      expect(
-        (await domains.list(TENANT, { domain: "ACME.com" }))
-          .map((d) => d.id)
-          .sort(),
-      ).toEqual([a.id, b.id].sort());
-      expect(
-        (await domains.list(TENANT, { connection_id: "con_b" }))
-          .map((d) => d.domain)
-          .sort(),
-      ).toEqual(["acme.com", "other.com"]);
-      expect(await domains.list(OTHER)).toEqual([]);
-    });
-
-    it("rejects the same domain twice on one connection", async () => {
-      const domains = data.connectionDomains!;
-      await domains.create(TENANT, {
-        connection_id: "con_a",
-        domain: "acme.com",
-        verification_value: "v1",
-      });
-      await expect(
-        domains.create(TENANT, {
-          connection_id: "con_a",
-          domain: "ACME.com",
-          verification_value: "v2",
-        }),
-      ).rejects.toThrow();
-    });
-
-    it("verifies, un-verifies and removes within the tenant only", async () => {
-      const domains = data.connectionDomains!;
-      const created = await domains.create(TENANT, {
-        connection_id: "con_a",
-        domain: "acme.com",
-        verification_value: "v1",
-      });
-
-      expect(
-        await domains.update(OTHER, created.id, { status: "verified" }),
-      ).toBe(false);
-      expect(
-        await domains.update(TENANT, created.id, {
-          status: "verified",
-          verified_at: "2026-01-01T00:00:00.000Z",
-        }),
-      ).toBe(true);
-      expect(await domains.get(TENANT, created.id)).toMatchObject({
-        status: "verified",
-        verified_at: "2026-01-01T00:00:00.000Z",
-      });
-
-      await domains.update(TENANT, created.id, {
-        status: "pending",
-        verified_at: null,
-      });
-      const pending = await domains.get(TENANT, created.id);
-      expect(pending?.status).toBe("pending");
-      expect(pending?.verified_at).toBeUndefined();
-
-      expect(await domains.get(OTHER, created.id)).toBeNull();
-      expect(await domains.remove(OTHER, created.id)).toBe(false);
-      expect(await domains.remove(TENANT, created.id)).toBe(true);
-    });
-  });
-
   describe("foreign keys", () => {
-    it("rejects a ticket or custom text for a profile that does not exist", async () => {
+    it("rejects a ticket, and ignores custom text, for a profile that does not exist", async () => {
       await expect(
         data.ssoAccessTickets!.create(TENANT, {
           profile_id: "ssp_missing",
@@ -381,45 +302,19 @@ describe("Self-Service SSO storage (#1763)", () => {
           expires_at: "2030-01-01T00:00:00.000Z",
         }),
       ).rejects.toThrow();
-      await expect(
-        data.selfServiceProfiles!.setCustomText(
+      expect(
+        await data.selfServiceProfiles!.setCustomText(
           TENANT,
           "ssp_missing",
           "en",
           "get-started",
           { introduction: "x" },
         ),
-      ).rejects.toThrow();
-    });
-
-    it("removes a connection's domain claims with the connection only", async () => {
-      const domains = data.connectionDomains!;
-      await domains.create(TENANT, {
-        connection_id: "con_a",
-        domain: "acme.com",
-        verification_value: "v-a",
-      });
-      const kept = await domains.create(TENANT, {
-        connection_id: "con_b",
-        domain: "acme.com",
-        verification_value: "v-b",
-      });
-
-      await data.connections.remove(TENANT, "con_a");
-
-      expect(await domains.list(TENANT, { domain: "acme.com" })).toEqual([
-        kept,
-      ]);
+      ).toBe(false);
     });
 
     it("removes a tenant's Self-Service SSO state with the tenant only", async () => {
-      await data.connections.create(OTHER, {
-        id: "con_other",
-        name: "con_other",
-        strategy: "oidc",
-        options: {},
-      });
-      const seed = async (tenant: string, connectionId: string) => {
+      const seed = async (tenant: string) => {
         const profile = await data.selfServiceProfiles!.create(tenant, {
           name: "Partners",
         });
@@ -436,15 +331,10 @@ describe("Self-Service SSO storage (#1763)", () => {
           domain_verification: "required",
           expires_at: "2030-01-01T00:00:00.000Z",
         });
-        const domain = await data.connectionDomains!.create(tenant, {
-          connection_id: connectionId,
-          domain: "acme.com",
-          verification_value: "v",
-        });
-        return { profile, ticket, domain };
+        return { profile, ticket };
       };
-      const a = await seed(TENANT, "con_a");
-      const b = await seed(OTHER, "con_other");
+      const a = await seed(TENANT);
+      const b = await seed(OTHER);
 
       await data.tenants.remove(TENANT);
 
@@ -458,7 +348,6 @@ describe("Self-Service SSO storage (#1763)", () => {
         ),
       ).toEqual({});
       expect(await data.ssoAccessTickets!.get(TENANT, a.ticket.id)).toBeNull();
-      expect(await data.connectionDomains!.list(TENANT)).toEqual([]);
 
       expect(await data.selfServiceProfiles!.list(OTHER)).toEqual([b.profile]);
       expect(
@@ -472,7 +361,6 @@ describe("Self-Service SSO storage (#1763)", () => {
       expect(await data.ssoAccessTickets!.get(OTHER, b.ticket.id)).toEqual(
         b.ticket,
       );
-      expect(await data.connectionDomains!.list(OTHER)).toEqual([b.domain]);
     });
   });
 });
@@ -513,12 +401,7 @@ describe("migration 0022_self_service_sso", () => {
       for (const stmt of statements(file)) sqlite.exec(stmt);
     }
     const before = tableNames(sqlite);
-    const added = [
-      "self_service_profiles",
-      "self_service_profile_custom_texts",
-      "sso_access_tickets",
-      "connection_domains",
-    ];
+    const added = ["self_service_profiles", "sso_access_tickets"];
     for (const table of added) expect(before).not.toContain(table);
 
     for (const stmt of statements(files[index]!)) sqlite.exec(stmt);

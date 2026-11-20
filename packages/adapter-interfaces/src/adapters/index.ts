@@ -29,7 +29,6 @@ import { PromptSettingsAdapter } from "./PromptSettings";
 import { ProxyRoutesAdapter } from "./ProxyRoutes";
 import { TokenExchangeProfilesAdapter } from "./TokenExchangeProfiles";
 import {
-  ConnectionDomainsAdapter,
   SelfServiceProfilesAdapter,
   SsoAccessTicketsAdapter,
 } from "./SelfServiceSso";
@@ -181,13 +180,13 @@ export interface DataAdapters {
   tokenExchangeProfiles?: TokenExchangeProfilesAdapter;
   /**
    * Optional Self-Service SSO storage (issue #1763): profiles with their
-   * custom text, SSO access tickets (stored hashed) and connection domains.
-   * When `selfServiceProfiles` and `ssoAccessTickets` are set, the
-   * `/api/v2/self-service-profiles` management API is mounted.
+   * custom text, and SSO access tickets (stored hashed). When both are set,
+   * the `/api/v2/self-service-profiles` management API is mounted. The email
+   * domains of a self-service connection live on the connection itself
+   * (`connection.self_service.domains`).
    */
   selfServiceProfiles?: SelfServiceProfilesAdapter;
   ssoAccessTickets?: SsoAccessTicketsAdapter;
-  connectionDomains?: ConnectionDomainsAdapter;
   /**
    * Optional control-plane log of durable tenant lifecycle operations
    * (provision / seed / upgrade / backup / deprovision — issue #1026).

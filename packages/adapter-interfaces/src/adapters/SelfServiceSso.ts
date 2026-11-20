@@ -9,12 +9,6 @@ import {
   SsoAccessTicketInsert,
   SsoAccessTicketUpdate,
 } from "../types/SsoAccessTicket";
-import {
-  ConnectionDomain,
-  ConnectionDomainInsert,
-  ConnectionDomainUpdate,
-  ListConnectionDomainsParams,
-} from "../types/ConnectionDomain";
 import { CreateOptions } from "../types/ImportMetadata";
 
 /** Self-Service SSO profiles and their custom text (issue #1763). */
@@ -36,8 +30,9 @@ export interface SelfServiceProfilesAdapter {
     profile: SelfServiceProfileUpdate,
   ): Promise<boolean>;
   /**
-   * Removes the profile together with its custom text and SSO access
-   * tickets, so no ticket outlives the profile it was issued from.
+   * Removes the profile together with its SSO access tickets, so no ticket
+   * outlives the profile it was issued from. Custom text is stored on the
+   * profile and goes with it.
    */
   remove(tenant_id: string, id: string): Promise<boolean>;
   /** The custom text for a language and page; `{}` when none is set. */
@@ -47,14 +42,17 @@ export interface SelfServiceProfilesAdapter {
     language: string,
     page: string,
   ): Promise<SelfServiceProfileCustomText>;
-  /** Replaces the custom text for a language and page. */
+  /**
+   * Replaces the custom text for a language and page. Returns `false` when
+   * the profile does not exist.
+   */
   setCustomText(
     tenant_id: string,
     profile_id: string,
     language: string,
     page: string,
     custom_text: SelfServiceProfileCustomText,
-  ): Promise<void>;
+  ): Promise<boolean>;
 }
 
 /**
@@ -77,26 +75,6 @@ export interface SsoAccessTicketsAdapter {
     tenant_id: string,
     id: string,
     ticket: SsoAccessTicketUpdate,
-  ): Promise<boolean>;
-  remove(tenant_id: string, id: string): Promise<boolean>;
-}
-
-/** Email domains claimed by connections and their verification state. */
-export interface ConnectionDomainsAdapter {
-  create(
-    tenant_id: string,
-    domain: ConnectionDomainInsert,
-  ): Promise<ConnectionDomain>;
-  get(tenant_id: string, id: string): Promise<ConnectionDomain | null>;
-  /** Oldest first. `domain` matches case-insensitively. */
-  list(
-    tenant_id: string,
-    params?: ListConnectionDomainsParams,
-  ): Promise<ConnectionDomain[]>;
-  update(
-    tenant_id: string,
-    id: string,
-    domain: ConnectionDomainUpdate,
   ): Promise<boolean>;
   remove(tenant_id: string, id: string): Promise<boolean>;
 }
