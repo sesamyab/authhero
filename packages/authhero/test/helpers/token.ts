@@ -34,6 +34,9 @@ export interface CreateTokenParams {
   scope?: string;
   permissions?: string[];
   aud?: string;
+  // Issuer; defaults to the test ISSUER. A custom-domain request expects
+  // `https://<custom domain>/`.
+  iss?: string;
   // Authorized party — the client the token was issued to. Auth0 sets this
   // on client-credentials tokens; the management middleware copies it into
   // ctx.var.client_id.
@@ -62,7 +65,7 @@ export async function createToken(params?: CreateTokenParams) {
       scope: params?.scope ?? "openid email profile",
       permissions: params?.permissions || [],
       sub: params?.user_id || "userId",
-      iss: "http://localhost:3000/",
+      iss: params?.iss ?? "http://localhost:3000/",
       tenant_id: params?.tenant_id,
       ...(params?.azp ? { azp: params.azp } : {}),
       ...(params?.org_id ? { org_id: params.org_id } : {}),
@@ -108,6 +111,8 @@ const ADMIN_PERMISSIONS = [
   "create:signing_keys",
   "create:user_tickets",
   "create:token_exchange_profiles",
+  "create:self_service_profiles",
+  "create:sso_access_tickets",
   "create:users",
   "delete:actions",
   "delete:branding",
@@ -134,6 +139,8 @@ const ADMIN_PERMISSIONS = [
   "delete:scim_token",
   "delete:sessions",
   "delete:token_exchange_profiles",
+  "delete:self_service_profiles",
+  "delete:sso_access_tickets",
   "delete:users",
   "read:actions",
   "read:attack_protection",
@@ -169,6 +176,8 @@ const ADMIN_PERMISSIONS = [
   "create:tenant_operations",
   "read:tenants",
   "read:token_exchange_profiles",
+  "read:self_service_profiles",
+  "read:self_service_profile_custom_texts",
   "read:users",
   "update:actions",
   "update:attack_protection",
@@ -197,6 +206,8 @@ const ADMIN_PERMISSIONS = [
   "update:signing_keys",
   "update:tenants",
   "update:token_exchange_profiles",
+  "update:self_service_profiles",
+  "update:self_service_profile_custom_texts",
   "update:users",
 ];
 
