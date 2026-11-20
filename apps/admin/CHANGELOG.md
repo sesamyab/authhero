@@ -1,5 +1,19 @@
 # @authhero/admin
 
+## 0.31.0
+
+### Minor Changes
+
+- b0cb2c3: Branding file uploads (#1738). New optional `StorageAdapter` (`data.storage`) with an R2 implementation in `@authhero/cloudflare-adapter` (`storage: { bucket, publicBaseUrl? }`). `POST /api/v2/branding/uploads/{kind}` validates type, size and content (SVG is checked and served with a restrictive CSP), stores objects under `tenants/{tenant_id}/branding/{kind}/`, and returns a URL. Files are served publicly with cache headers and CORS at `/assets/...`; `publicBaseUrl` only changes the URL returned by the upload API (the `/assets` route stays mounted, and SVGs always use it for its CSP). The admin branding page gets upload buttons for logo, favicon, powered-by logo, font and background image.
+
+### Patch Changes
+
+- 9c185ad: Outgoing email is sent from the template's own `from` if it has one, then the email provider's `default_from_address`. When neither is set it now uses the tenant's `sender_email` and `sender_name`, then the new optional `DEFAULT_SENDER_EMAIL` binding, and last `login@` followed by the hostname of `ISSUER` instead of the whole URL, which gave an invalid address such as `login@https://localhost:3000/`. A sender name with punctuation is sent as a quoted display name. Settings > General in the admin edits `sender_email` and `sender_name` and shows the tenant's `audience` read-only. `sender_email` can now be cleared with `null` in a tenant update; the Kysely and Drizzle adapters store it as unset.
+- Updated dependencies [b0cb2c3]
+- Updated dependencies [a6e447d]
+- Updated dependencies [9c185ad]
+  - @authhero/adapter-interfaces@4.30.0
+
 ## 0.30.0
 
 ### Minor Changes

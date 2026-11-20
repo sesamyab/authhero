@@ -1,5 +1,24 @@
 # @authhero/cloudflare-adapter
 
+## 4.3.0
+
+### Minor Changes
+
+- b0cb2c3: Branding file uploads (#1738). New optional `StorageAdapter` (`data.storage`) with an R2 implementation in `@authhero/cloudflare-adapter` (`storage: { bucket, publicBaseUrl? }`). `POST /api/v2/branding/uploads/{kind}` validates type, size and content (SVG is checked and served with a restrictive CSP), stores objects under `tenants/{tenant_id}/branding/{kind}/`, and returns a URL. Files are served publicly with cache headers and CORS at `/assets/...`; `publicBaseUrl` only changes the URL returned by the upload API (the `/assets` route stays mounted, and SVGs always use it for its CSP). The admin branding page gets upload buttons for logo, favicon, powered-by logo, font and background image.
+- 1784005: A new tenant with its own database gets its default client in that database. `createWfpTenantApp` now runs `provisionDefaultClients` at the end of `/internal/sync-defaults` (needs `TENANT_ID` in the Worker's environment), through the adapter that encrypts the client secret, and skips the Management API client. `initMultiTenant` no longer runs the tenant `afterCreate` sync of the control plane's resource servers and roles for a `wfp` tenant when `databaseIsolation.onProvision` is set. With the default `getAdapters` that sync wrote them to the control plane's own database under the tenant's id, where nothing reads them; a `shared` tenant keeps it.
+
+### Patch Changes
+
+- Updated dependencies [b0cb2c3]
+- Updated dependencies [a6e447d]
+- Updated dependencies [7e13f47]
+- Updated dependencies [9c185ad]
+- Updated dependencies [1784005]
+  - @authhero/adapter-interfaces@4.30.0
+  - authhero@9.35.0
+  - @authhero/kysely-adapter@12.21.0
+  - @authhero/multi-tenancy@15.13.0
+
 ## 4.2.5
 
 ### Patch Changes
