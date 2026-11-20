@@ -875,25 +875,23 @@ const patchByUser_id = defineRoute({
         exactMatch = exact.find((u) => u.provider === "auth2") ?? exact[0];
       }
 
-      // For password connections, prefer a linked "auth2" identity over an
-      // "auth0" primary so the bcrypt password row lands where login reads
-      // it from. See username-password-provider.ts for the same auth2-first
-      // rule applied at READ sites.
-      const preferAuth2Linked =
-        !exactMatch && isPasswordConnection && userToPatch.provider === "auth0";
-
-      const auth2Linked = preferAuth2Linked
-        ? (await listLinkedUsers()).find(
-            (u) => u.provider === "auth2" && matchesTarget(u),
-          )
-        : undefined;
+      // Without an exact match, prefer an in-scope "auth2" identity of the
+      // cluster, the primary first, whatever the primary's provider: login
+      // reads the auth2 row first (see getUsernamePasswordUser), so the bcrypt
+      // password must land there. An auth2 primary stays the target.
+      const auth2Identity =
+        !exactMatch && isPasswordConnection
+          ? [userToPatch, ...(await listLinkedUsers())].find(
+              (u) => u.provider === "auth2" && matchesTarget(u),
+            )
+          : undefined;
 
       if (exactMatch) {
         targetUserId = exactMatch.user_id;
         targetUser = exactMatch;
-      } else if (auth2Linked) {
-        targetUserId = auth2Linked.user_id;
-        targetUser = auth2Linked;
+      } else if (auth2Identity) {
+        targetUserId = auth2Identity.user_id;
+        targetUser = auth2Identity;
       } else if (matchesTarget(userToPatch)) {
         // Target is the primary user
         targetUserId = user_id;

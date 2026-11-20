@@ -311,6 +311,44 @@ describe("PATCH /api/v2/users within the user's own connection", () => {
     expect(login.status).toBe(200);
   });
 
+  it("sets the password on the auth2 identity when the primary is a social user", async () => {
+    const { request, env } = await setup({ secondConnection: false });
+    await env.data.users.create("tenantId", {
+      user_id: "google-oauth2|social",
+      email: "social@example.com",
+      email_verified: true,
+      provider: "google-oauth2",
+      connection: "google-oauth2",
+      is_social: true,
+    });
+    // The auth0 row is created first, so a plain "first linked row" pick
+    // would choose it.
+    for (const provider of ["auth0", "auth2"]) {
+      await env.data.users.create("tenantId", {
+        user_id: `${provider}|linked`,
+        email: "social@example.com",
+        email_verified: true,
+        provider,
+        connection: MAIN,
+        is_social: false,
+        linked_to: "google-oauth2|social",
+      });
+    }
+
+    const patch = await request(
+      "PATCH",
+      `/users/${encodeURIComponent("google-oauth2|social")}`,
+      { connection: MAIN, password: "NewPassword123!" },
+    );
+    expect(patch.status).toBe(200);
+    expect(
+      await env.data.passwords.get("tenantId", "auth2|linked"),
+    ).toBeTruthy();
+    expect(
+      await env.data.passwords.get("tenantId", "auth0|linked"),
+    ).toBeFalsy();
+  });
+
   it("does not target a database identity of another connection", async () => {
     const { request } = await setup();
     const created = await (
