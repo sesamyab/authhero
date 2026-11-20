@@ -157,7 +157,8 @@ export function createSelfServiceProfilesAdapter(
             page,
             custom_text,
           ),
-          updated_at: new Date().toISOString(),
+          // Custom text is its own resource in Auth0: writing it does not
+          // change the profile's updated_at.
         })
         .executeTakeFirst();
       return Number(result.numUpdatedRows) > 0;
