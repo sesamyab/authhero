@@ -446,3 +446,65 @@ describe("password authentication - pre-login rate limiting", () => {
     expect(consumed[0]?.key).toBe("tenantId:203.0.113.10");
   });
 });
+
+describe("password authentication - database connection scope (#1702)", () => {
+  async function createPasswordUser(
+    env: Bindings,
+    user_id: string,
+    email: string,
+    connection: string,
+  ) {
+    await env.data.users.create("tenantId", {
+      user_id,
+      email,
+      email_verified: true,
+      provider: "auth0",
+      connection,
+      is_social: false,
+    });
+    await env.data.passwords.create("tenantId", {
+      user_id,
+      password: await bcryptjs.hash("CorrectPassword123!", 10),
+      algorithm: "bcrypt",
+    });
+  }
+
+  it("does not log in a user of another database connection", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+
+    // A second database connection, as used by a token exchange profile.
+    await env.data.connections.create("tenantId", {
+      id: "cte-store",
+      name: "cte-store",
+      strategy: "auth0",
+      options: {},
+    });
+    await createPasswordUser(
+      env,
+      "auth0|exchanged",
+      "exchanged@example.com",
+      "cte-store",
+    );
+    await createPasswordUser(
+      env,
+      "auth0|main",
+      "main@example.com",
+      Strategy.USERNAME_PASSWORD,
+    );
+
+    const login = (username: string) =>
+      oauthClient.co.authenticate.$post({
+        json: {
+          client_id: "clientId",
+          credential_type: "http://auth0.com/oauth/grant-type/password-realm",
+          realm: Strategy.USERNAME_PASSWORD,
+          password: "CorrectPassword123!",
+          username,
+        },
+      });
+
+    expect((await login("exchanged@example.com")).status).toEqual(403);
+    expect((await login("main@example.com")).status).toEqual(200);
+  });
+});

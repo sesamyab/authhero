@@ -20,6 +20,7 @@ import {
   getUsernamePasswordUser,
   resolveUsernamePasswordProvider,
 } from "../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import { userIdGenerate } from "../../utils/user-id";
 import MessagePage from "../../components/MessagePage";
 import { sendValidateEmailAddress } from "../../emails";
@@ -224,6 +225,8 @@ const postRoot = defineRoute({
           )
         : undefined;
 
+      // Deliberately unscoped until #1704 makes the unique index per
+      // connection; see the same check in screens/signup.ts.
       const existingUser = await getUsernamePasswordUser({
         env: ctx.env,
         tenant_id: client.tenant.id,
@@ -261,7 +264,8 @@ const postRoot = defineRoute({
         email: loginSession.authParams.username,
         email_verified,
         provider,
-        connection,
+        // The connection this client's login lookups scope to (#1702).
+        connection: resolveClientDatabaseConnectionName(client),
         is_social: false,
       });
 
