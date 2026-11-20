@@ -10,6 +10,7 @@ import { LoginSessionState, LogTypes } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import bcryptjs from "bcryptjs";
 import { getUsernamePasswordUser } from "../../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../../helpers/database-connection-scope";
 import {
   recordPasswordReset,
   recordPasswordResetCompletion,
@@ -78,6 +79,7 @@ export async function executePasswordReset(params: {
     env,
     tenant_id: client.tenant.id,
     username,
+    connection: resolveClientDatabaseConnectionName(client),
   });
 
   if (!user) {

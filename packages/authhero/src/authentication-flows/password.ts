@@ -9,6 +9,7 @@ import {
 import { Context } from "hono";
 import bcryptjs from "bcryptjs";
 import { logMessage } from "../helpers/logging";
+import { HTTPException } from "hono/http-exception";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import {
   AuthParams,
@@ -51,6 +52,7 @@ import {
 import { findConnectionByName } from "../utils/connections";
 import { attemptUpstreamPasswordFallback } from "./auth0-migration";
 import { resolvePrimaryUser } from "../helpers/users";
+import { resolveClientDatabaseConnectionName } from "../helpers/database-connection-scope";
 import {
   LoginEmailVerification,
   sendLoginEmailVerificationCode,
@@ -362,6 +364,7 @@ export async function passwordGrant(
     env: ctx.env,
     tenant_id: client.tenant.id,
     username,
+    connection: resolveClientDatabaseConnectionName(client, realm),
   });
 
   // Lazy migration: a DB connection flagged `import_mode: true` AND carrying
@@ -833,10 +836,15 @@ export async function requestPasswordReset(
   // connection still permits signups — otherwise creation would throw (signup
   // disabled) and surface a raw error on the page. Stopping silently keeps the
   // UX identical whether or not the account exists, avoiding enumeration.
+  // Scoped like the login and reset-completion lookups, and a lazily created
+  // user is written with the same connection, so the emailed reset and later
+  // logins through this client find the same row.
+  const databaseConnection = resolveClientDatabaseConnectionName(client);
   const existingUser = await getUsernamePasswordUser({
     env: ctx.env,
     tenant_id: client.tenant.id,
     username: email,
+    connection: databaseConnection,
   });
 
   if (!existingUser) {
@@ -854,12 +862,21 @@ export async function requestPasswordReset(
       return;
     }
 
-    await getOrCreateUsernamePasswordUser(ctx, {
-      client,
-      username: email,
-      connection: Strategy.USERNAME_PASSWORD,
-      ip: ctx.var.ip,
-    });
+    try {
+      await getOrCreateUsernamePasswordUser(ctx, {
+        client,
+        username: email,
+        connection: databaseConnection,
+        ip: ctx.var.ip,
+      });
+    } catch (error) {
+      // The address belongs to a user of another database connection: the
+      // provider-scoped unique index rejects a second row until #1704. Stop
+      // silently, like the signup-not-allowed branch above, so the page
+      // doesn't reveal the account.
+      if (error instanceof HTTPException && error.status === 409) return;
+      throw error;
+    }
   }
 
   let code_id = generateOTP();

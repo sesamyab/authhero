@@ -13,6 +13,12 @@ import { userIdGenerate } from "../utils/user-id";
 import { isUsernamePasswordProvider } from "../utils/username-password-provider";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { normalizeEmail } from "../utils/email";
+import {
+  DatabaseConnectionScope,
+  compareByConnectionScope,
+  isUserInConnectionScope,
+  resolveDatabaseConnectionScope,
+} from "./database-connection-scope";
 
 export async function getUsersByEmail(
   userAdapter: UserDataAdapter,
@@ -69,6 +75,13 @@ interface GetUserByProviderParams {
   tenant_id: string;
   username: string;
   provider: string;
+  /**
+   * Limit the match to one database connection. Every database connection
+   * shares the `auth0` provider, so without a scope a lookup can return a
+   * user from another database connection. Build it with
+   * `resolveDatabaseConnectionScope`; `undefined` keeps the unscoped lookup.
+   */
+  connection?: DatabaseConnectionScope;
 }
 
 export async function getUserByProvider({
@@ -76,6 +89,7 @@ export async function getUserByProvider({
   tenant_id,
   username,
   provider,
+  connection,
 }: GetUserByProviderParams): Promise<User | null> {
   let userIdQuery: string;
 
@@ -99,11 +113,17 @@ export async function getUserByProvider({
     q: `${userIdQuery} provider:${escapeLuceneValue(provider)}`,
   });
 
-  if (users.length > 1) {
+  const matches = connection
+    ? users
+        .filter((user) => isUserInConnectionScope(user, connection))
+        .sort(compareByConnectionScope(connection))
+    : users;
+
+  if (!connection && matches.length > 1) {
     console.error("More than one user found for same username and provider");
   }
 
-  return users[0] || null;
+  return matches[0] || null;
 }
 
 /**
@@ -697,6 +717,8 @@ interface GetPrimaryUserByProviderParams {
   tenant_id: string;
   username: string;
   provider: string;
+  /** See {@link GetUserByProviderParams.connection}. */
+  connection?: DatabaseConnectionScope;
 }
 
 export async function getPrimaryUserByProvider({
@@ -704,12 +726,14 @@ export async function getPrimaryUserByProvider({
   tenant_id,
   username,
   provider,
+  connection,
 }: GetPrimaryUserByProviderParams): Promise<User | null> {
   const user = await getUserByProvider({
     userAdapter,
     tenant_id,
     username,
     provider,
+    connection,
   });
 
   if (!user) {
@@ -926,6 +950,16 @@ export async function getOrCreateUserByProvider(
   // admin edit, an import, an IdP-side rename). Look up by id first and only
   // fall back to email + provider for older rows whose id isn't `provider|sub`.
   const expectedUserId = userId ? `${provider}|${userId}` : undefined;
+  // Database users of several connections share one provider, so their
+  // identifier lookup is scoped to the target connection (#1702). Other
+  // providers identify one connection already.
+  const connectionScope = isUsernamePasswordProvider(provider)
+    ? await resolveDatabaseConnectionScope(
+        ctx.env.data.connections,
+        client.tenant.id,
+        connection,
+      )
+    : undefined;
   const findExistingIdentity = async (): Promise<User | null> => {
     if (expectedUserId) {
       const byId = await ctx.env.data.users.get(
@@ -941,6 +975,7 @@ export async function getOrCreateUserByProvider(
       tenant_id: client.tenant.id,
       username,
       provider,
+      connection: connectionScope,
     });
   };
 

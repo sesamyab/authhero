@@ -23,6 +23,7 @@ import {
 import { validateSignupEmail } from "../../../hooks";
 import { getConnectionFromIdentifier } from "../../../utils/username";
 import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../../helpers/database-connection-scope";
 import { findHrdConnection } from "../../../helpers/hrd";
 import { connectionAuth } from "../../../authentication-flows/connection";
 import { getLoginStrategy } from "../common";
@@ -588,6 +589,7 @@ export const identifierScreenDefinition: ScreenDefinition = {
                 env: ctx.env,
                 tenant_id: client.tenant.id,
                 username: normalized,
+                connection: resolveClientDatabaseConnectionName(client),
               }))
             : !!(await getPrimaryUserByProvider({
                 userAdapter: ctx.env.data.users,

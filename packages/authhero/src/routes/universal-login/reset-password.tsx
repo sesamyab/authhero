@@ -14,6 +14,7 @@ import { initJSXRoute } from "./common";
 import ResetPasswordPage from "../../components/ResetPasswordPage";
 import MessagePage from "../../components/MessagePage";
 import { getUsernamePasswordUser } from "../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import {
   recordPasswordReset,
   recordPasswordResetCompletion,
@@ -136,6 +137,7 @@ const postRoot = defineRoute({
       env,
       tenant_id: client.tenant.id,
       username: loginSession.authParams.username,
+      connection: resolveClientDatabaseConnectionName(client),
     });
 
     if (!user) {
