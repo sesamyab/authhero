@@ -12,7 +12,20 @@ import { Database } from "../../src/db";
  */
 
 // MySQL has no `CREATE INDEX IF NOT EXISTS`, so tolerate "duplicate key name"
-// (errno 1061) / SQLite's "already exists" instead of asking for it.
+// (errno 1061) / SQLite's "already exists" instead of asking for it. mysql2
+// reports errno 1061 in `errno` with a "Duplicate key name '...'" message.
+function isDuplicateIndexError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ("errno" in error && error.errno === 1061) return true;
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("1061") ||
+    message.includes("duplicate key name") ||
+    message.includes("already exists")
+  );
+}
+
 async function safeCreateIndex(
   db: Kysely<Database>,
   indexName: string,
@@ -28,13 +41,7 @@ async function safeCreateIndex(
     if (unique) builder = builder.unique();
     await builder.execute();
   } catch (error: unknown) {
-    if (
-      error instanceof Error &&
-      (error.message.includes("1061") ||
-        error.message.toLowerCase().includes("already exists"))
-    ) {
-      return;
-    }
+    if (isDuplicateIndexError(error)) return;
     throw error;
   }
 }
