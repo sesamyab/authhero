@@ -92,6 +92,10 @@ const postRoot = defineRoute({
           otp: body.otp,
         });
       } else if ("password" in body) {
+        // The connection the password is checked in. It is recorded on the
+        // login session so the ticket can only be redeemed in the same
+        // connection.
+        const connection = body.realm;
         const loginSession = await ctx.env.data.loginSessions.create(
           client.tenant.id,
           {
@@ -108,6 +112,7 @@ const postRoot = defineRoute({
               // accepting and ignoring it. ticketAuth lets the scope from
               // /authorize override this.
               scope: body.scope,
+              connection,
             },
             csrf_token: nanoid(),
             ip,
