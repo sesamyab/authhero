@@ -129,6 +129,9 @@ describe("Self-Service SSO storage (#1763)", () => {
       await adapter.setCustomText(TENANT, profile.id, "en", "get-started", {
         introduction: "Welcome",
       });
+      expect((await adapter.get(TENANT, profile.id))?.updated_at).toBe(
+        profile.updated_at,
+      );
       await adapter.setCustomText(TENANT, profile.id, "en", "get-started", {
         introduction: "Hello",
       });
