@@ -251,6 +251,11 @@ describe("management-api self-service-profiles", () => {
         { name: "p", branding: { logo_url: "http://example.com/a.png" } },
         "branding.logo_url",
       ],
+      [{ name: "p", branding: { logo_url: "https://" } }, "branding.logo_url"],
+      [
+        { name: "p", branding: { logo_url: "https:// spaces .com" } },
+        "branding.logo_url",
+      ],
       [
         { name: "p", branding: { colors: { primary: "blue" } } },
         "branding.colors.primary",
@@ -724,6 +729,15 @@ describe("management-api self-service-profiles", () => {
           connection_config: {
             name: "acme",
             options: { icon_url: "http://x" },
+          },
+        },
+        "connection_config.options.icon_url",
+      ],
+      [
+        {
+          connection_config: {
+            name: "acme",
+            options: { icon_url: "https://" },
           },
         },
         "connection_config.options.icon_url",

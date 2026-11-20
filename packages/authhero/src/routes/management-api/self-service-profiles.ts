@@ -145,10 +145,21 @@ function rejectUnsupportedStrategies(
   });
 }
 
+/** An absolute https URL with a host (Auth0: `format: uri`, `^https://`). */
+function isHttpsUrl(value: string): boolean {
+  if (!value.startsWith("https://")) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 const httpsUrlSchema = z
   .string()
   .max(1024)
-  .regex(/^https:\/\//, "Must be an https URL");
+  .refine(isHttpsUrl, { message: "Must be an https URL" });
 
 const brandingBodySchema = z.strictObject({
   logo_url: httpsUrlSchema.optional(),
