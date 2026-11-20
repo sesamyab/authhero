@@ -103,3 +103,14 @@ describe("planMigrations", () => {
     await db.destroy();
   });
 });
+
+describe("2026-11-20T12:00:00_self_service_sso", () => {
+  it("can be re-run when its tables and indexes already exist", async () => {
+    const db = createDb();
+    await migrateToLatest(db, false);
+    await expect(
+      migrations["2026-11-20T12:00:00_self_service_sso"].up(db),
+    ).resolves.toBeUndefined();
+    await db.destroy();
+  });
+});
