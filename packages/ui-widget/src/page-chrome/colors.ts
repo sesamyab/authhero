@@ -98,23 +98,121 @@ export type ColorsDark = Partial<{
 
 const HEX = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
+const NAMED: Record<string, string> = {
+  black: "#000000",
+  white: "#ffffff",
+  red: "#ff0000",
+  green: "#008000",
+  blue: "#0000ff",
+  yellow: "#ffff00",
+  orange: "#ffa500",
+  purple: "#800080",
+  gray: "#808080",
+  grey: "#808080",
+  silver: "#c0c0c0",
+  maroon: "#800000",
+  navy: "#000080",
+  teal: "#008080",
+  lime: "#00ff00",
+  aqua: "#00ffff",
+  cyan: "#00ffff",
+  fuchsia: "#ff00ff",
+  magenta: "#ff00ff",
+  pink: "#ffc0cb",
+  brown: "#a52a2a",
+  gold: "#ffd700",
+  indigo: "#4b0082",
+  violet: "#ee82ee",
+  crimson: "#dc143c",
+  transparent: "",
+};
+
 /**
- * Lighten a brand colour until it reads on the dark card (contrast >= `min`).
- * Non-hex input is returned as is. Used to keep the brand link colour in dark
- * instead of falling back to the stock blue.
+ * Resolve any colour `sanitizeCssColor` accepts to `#rrggbb`: hex, `rgb()`,
+ * `hsl()` and the common named colours. Returns null for anything else
+ * (including `transparent` and exotic names), so callers can skip maths they
+ * cannot do instead of computing on garbage.
+ */
+export function toHex(color: string | undefined): string | null {
+  if (!color) return null;
+  const v = color.trim().toLowerCase();
+  if (HEX.test(v)) {
+    const [r, g, b] = parseDarkHex(v);
+    return rgbToHex(r, g, b);
+  }
+  const named = NAMED[v];
+  if (named) return named;
+  const fn = v.match(/^(rgba?|hsla?)\(([^)]+)\)$/);
+  if (!fn) return null;
+  const parts = fn[2]!
+    .split(/[\s,/]+/)
+    .filter(Boolean)
+    .map((p) => parseFloat(p));
+  if (parts.length < 3 || parts.slice(0, 3).some((n) => Number.isNaN(n)))
+    return null;
+  if (fn[1]!.startsWith("rgb")) {
+    const pct = /%/.test(fn[2]!.split(/[\s,/]+/)[0] ?? "");
+    const s = (n: number) => (pct ? (n / 100) * 255 : n);
+    return rgbToHex(s(parts[0]!), s(parts[1]!), s(parts[2]!));
+  }
+  const h = (((parts[0]! % 360) + 360) % 360) / 360;
+  const s = parts[1]! / 100;
+  const l = parts[2]! / 100;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = (t: number) => {
+    const x = (t + 1) % 1;
+    if (x < 1 / 6) return p + (q - p) * 6 * x;
+    if (x < 1 / 2) return q;
+    if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+    return p;
+  };
+  return rgbToHex(f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255);
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const c = (n: number) =>
+    Math.max(0, Math.min(255, Math.round(n)))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+/** True when the colour is light (would need dark text); false if unknown. */
+export function isLightColor(color: string | undefined): boolean {
+  const hex = toHex(color);
+  return hex ? darkLuminance(hex) > 0.5 : false;
+}
+
+function darkenHexDark(hex: string, pct: number): string {
+  const [r, g, b] = parseDarkHex(hex);
+  return rgbToHex(r * (1 - pct), g * (1 - pct), b * (1 - pct));
+}
+
+/**
+ * Adjust a brand colour until it reads on the card colour `bg` (contrast >=
+ * `min`): lighten on a dark card, darken on a light one (a card set light in
+ * dark via `colors_dark.widget_background`). Colours it cannot resolve are
+ * returned as is. Used to keep the brand link colour in dark instead of
+ * falling back to the stock blue.
  */
 export function ensureDarkContrast(
   color: string,
   bg: string,
   min = 4.5,
 ): string {
-  if (!HEX.test(color) || !HEX.test(bg)) return color;
-  if (darkContrastRatio(color, bg) >= min) return color;
+  const fg = toHex(color);
+  const surface = toHex(bg);
+  if (!fg || !surface) return color;
+  if (darkContrastRatio(fg, surface) >= min) return color;
+  const towardLight = darkLuminance(surface) <= 0.5;
   for (let i = 1; i <= 10; i++) {
-    const adjusted = lightenHexDark(color, i * 0.1);
-    if (darkContrastRatio(adjusted, bg) >= min) return adjusted;
+    const adjusted = towardLight
+      ? lightenHexDark(fg, i * 0.1)
+      : darkenHexDark(fg, i * 0.1);
+    if (darkContrastRatio(adjusted, surface) >= min) return adjusted;
   }
-  return "#ffffff";
+  return towardLight ? "#ffffff" : "#000000";
 }
 
 /**
@@ -151,13 +249,10 @@ export function colorsDarkToCssVars(
   set("--ah-color-success", c.success);
   set("--ah-color-icon", c.icons);
   // An explicit dark primary without a label gets an auto-picked one.
-  if (
-    c.primary_button &&
-    !c.primary_button_label &&
-    HEX.test(c.primary_button)
-  ) {
-    const w = darkContrastRatio(c.primary_button, "#ffffff");
-    const b = darkContrastRatio(c.primary_button, "#000000");
+  const explicitPrimary = toHex(c.primary_button);
+  if (explicitPrimary && !c.primary_button_label) {
+    const w = darkContrastRatio(explicitPrimary, "#ffffff");
+    const b = darkContrastRatio(explicitPrimary, "#000000");
     v["--ah-color-text-on-primary"] = b > w * 1.35 ? "#000000" : "#ffffff";
   }
   return v;
@@ -205,6 +300,16 @@ export function buildDarkVars(
     const blackContrast = darkContrastRatio(btnBg, "#000000");
     vars["--ah-color-text-on-primary"] =
       blackContrast > whiteContrast * BIAS ? "#000000" : "#ffffff";
+  }
+  // The derived label belongs to the derived primary. If the tenant set an
+  // explicit primary we could not resolve (and no label), drop it so the
+  // button text cannot match a button colour it was not computed for.
+  if (
+    opts.colorsDark?.primary_button &&
+    !opts.colorsDark.primary_button_label &&
+    !explicit["--ah-color-text-on-primary"]
+  ) {
+    delete vars["--ah-color-text-on-primary"];
   }
   return { ...vars, ...explicit };
 }

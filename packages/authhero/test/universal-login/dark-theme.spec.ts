@@ -253,6 +253,120 @@ describe("color-scheme and social icons", () => {
   });
 });
 
+describe("review fixes", () => {
+  it("escapes logo URLs once (light and dark)", async () => {
+    const html = await render({
+      ...light,
+      widget: {
+        ...light.widget,
+        logo_url: "https://example.com/l.svg?size=2&sig=abc",
+        logo_url_dark: "https://example.com/d.svg?size=2&sig=def",
+      },
+    });
+    expect(html).toContain("l.svg?size=2&amp;sig=abc");
+    expect(html).toContain("d.svg?size=2&amp;sig=def");
+    expect(html).not.toContain("&amp;amp;");
+  });
+
+  it("floats the widget when only a dark background image is set", async () => {
+    const html = await render({
+      ...light,
+      page_background: {
+        ...light.page_background,
+        background_image_url: "",
+        background_image_url_dark: "https://example.com/bg-dark.jpg",
+      },
+    });
+    expect(html).toMatch(/<authhero-widget[^>]*\sfloating/);
+    const plain = await render(light);
+    expect(plain).not.toMatch(/<authhero-widget[^>]*\sfloating/);
+  });
+
+  it("darkens a pale link when the dark card is light", async () => {
+    const block = darkVarBlock(
+      pageCss(
+        await render({
+          ...light,
+          colors: { ...light.colors, links_focused_components: "#eeeeee" },
+          colors_dark: { widget_background: "#ffffff" },
+        }),
+      ),
+    );
+    const m = block.match(/--ah-color-link: (#[0-9a-f]{6}) !important/i);
+    expect(m).not.toBeNull();
+    expect(m![1]!.toLowerCase()).not.toBe("#ffffff");
+    expect(m![1]!.toLowerCase()).not.toBe("#eeeeee");
+  });
+
+  it("does not invert black icons on a light card in dark", async () => {
+    const css = pageCss(
+      await render({ ...light, colors_dark: { widget_background: "#ffffff" } }),
+    );
+    expect(css).not.toContain("social-icon-apple");
+  });
+
+  it("derives the dark primary from the theme before branding, like the runtime", async () => {
+    // branding primary #6366f1 is readable on the dark card; the theme's
+    // #101010 is not and must be lightened in the stylesheet as well.
+    const block = darkVarBlock(
+      pageCss(
+        await render({
+          ...light,
+          colors: { ...light.colors, primary_button: "#101010" },
+        }),
+      ),
+    );
+    expect(block).toContain("--ah-color-primary:");
+  });
+
+  it.each([
+    ["black", "#ffffff"],
+    ["white", "#000000"],
+    ["rgb(0, 0, 0)", "#ffffff"],
+    ["hsl(0, 0%, 100%)", "#000000"],
+  ])(
+    "derives the button label from explicit primary %s",
+    async (color, label) => {
+      const block = darkVarBlock(
+        pageCss(
+          await render({ ...light, colors_dark: { primary_button: color } }),
+        ),
+      );
+      expect(block).toContain(
+        `--ah-color-text-on-primary: ${label} !important`,
+      );
+    },
+  );
+
+  it("an explicit label wins over the derived one", async () => {
+    const block = darkVarBlock(
+      pageCss(
+        await render({
+          ...light,
+          colors_dark: {
+            primary_button: "black",
+            primary_button_label: "#abcdef",
+          },
+        }),
+      ),
+    );
+    expect(block).toContain("--ah-color-text-on-primary: #abcdef !important");
+  });
+
+  it("drops the derived label for an explicit primary it cannot resolve", async () => {
+    const block = darkVarBlock(
+      pageCss(
+        await render({
+          ...light,
+          colors_dark: { primary_button: "papayawhip" },
+        }),
+      ),
+    );
+    expect(block).toContain("--ah-color-primary: papayawhip !important");
+    expect(block).not.toContain("--ah-color-text-on-primary");
+  });
+});
+
 describe("sanitizeColorsDark", () => {
   it("drops unsafe values and returns undefined when nothing is left", () => {
     expect(sanitizeColorsDark({ error: "red;}" })).toBeUndefined();

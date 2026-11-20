@@ -14,7 +14,7 @@
  */
 import { buildThemePageBackground } from "@authhero/widget/page-chrome";
 import type { ColorsDark } from "@authhero/widget/page-chrome";
-import { sanitizeCssColor, sanitizeUrl } from "./sanitization-utils";
+import { sanitizeCssColor } from "./sanitization-utils";
 
 // Values end up inside a <style> block; keep anything that could close a
 // declaration or the block out, on top of the generic colour check.
@@ -23,6 +23,21 @@ const UNSAFE_CSS_CHARS = /[;{}<>"'\\]/;
 function safeColor(value: unknown): string {
   if (typeof value !== "string" || UNSAFE_CSS_CHARS.test(value)) return "";
   return sanitizeCssColor(value);
+}
+
+/**
+ * Validate the protocol of a logo URL without HTML-escaping it. The chip
+ * renderer escapes for the attribute, and escaping here as well turns `&`
+ * into `&amp;amp;`, which breaks URLs with several query parameters.
+ */
+function safeLogoUrl(url: unknown): string | null {
+  if (typeof url !== "string" || !url) return null;
+  try {
+    const parsed = new URL(url);
+    return ["http:", "https:", "data:"].includes(parsed.protocol) ? url : null;
+  } catch {
+    return url.startsWith("/") && !url.startsWith("//") ? url : null;
+  }
 }
 
 export function sanitizeColorsDark(
@@ -67,9 +82,10 @@ export function resolveDarkPageInputs(
 ): DarkPageInputs {
   const pb = themePageBackground ?? theme?.page_background;
   const logo = theme?.widget?.logo_url || branding?.logo_url;
-  const logoUrl = logo ? sanitizeUrl(logo) || null : null;
-  const darkLogo = logoUrl ? theme?.widget?.logo_url_dark : undefined;
-  const logoUrlDark = darkLogo ? sanitizeUrl(darkLogo) || null : null;
+  const logoUrl = safeLogoUrl(logo);
+  const logoUrlDark = logoUrl
+    ? safeLogoUrl(theme?.widget?.logo_url_dark)
+    : null;
 
   const darkColor = safeColor(pb?.background_color_dark);
   const darkImage = pb?.background_image_url_dark;

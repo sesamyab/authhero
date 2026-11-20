@@ -7,7 +7,7 @@
  * and the widget demo server render from this, so a change to the phone
  * layout can't show up in one and not the other.
  */
-import { darkModeCssVarRules } from "./colors";
+import { darkModeCssVarRules, isLightColor } from "./colors";
 import type { ColorsDark } from "./colors";
 import { buildThemePageBackground } from "./html";
 import type { BrandingPageBackground, ThemePageBackground } from "./html";
@@ -127,11 +127,16 @@ export function buildPageCss(opts: {
         : ""
     }
     /* Provider icons are images, so they cannot use currentColor. The ones
-       drawn in black (Apple, GitHub) vanish on the dark card; invert them. */
-    ${darkScheme(
-      (h) => `${h} authhero-widget::part(social-icon-apple),
+       drawn in black (Apple, GitHub) vanish on the dark card; invert them,
+       unless the tenant set a light card for dark, where black reads fine. */
+    ${
+      isLightColor(colorsDark?.widget_background)
+        ? ""
+        : darkScheme(
+            (h) => `${h} authhero-widget::part(social-icon-apple),
     ${h} authhero-widget::part(social-icon-github) { filter: invert(1); }`,
-    )}`;
+          )
+    }`;
   const bodyRule = bodyLayout
     ? `
     body {
@@ -545,9 +550,9 @@ export function buildPageCss(opts: {
        The page-level dark/light is controlled by data-mode (above).
        The widget itself has its own --ah-color-* vars set via JS.
        html.ah-dark-mode is the legacy class kept for the widget toggle. */
-    ${darkModeCssVarRules("html.ah-dark-mode authhero-widget", primaryColor || themePrimary, darkVarOpts)}
+    ${darkModeCssVarRules("html.ah-dark-mode authhero-widget", themePrimary || primaryColor, darkVarOpts)}
     @media (prefers-color-scheme: dark) {
-      ${darkModeCssVarRules("html:not(.ah-light-mode) authhero-widget", primaryColor || themePrimary, darkVarOpts)}
+      ${darkModeCssVarRules("html:not(.ah-light-mode) authhero-widget", themePrimary || primaryColor, darkVarOpts)}
     }
     ${darkPageRules}
 

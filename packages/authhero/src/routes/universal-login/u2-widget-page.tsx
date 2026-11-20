@@ -845,7 +845,8 @@ export async function renderWidgetPageResponse(
     // block and the widget stylesheet's `[floating]` variant. An embedded
     // page is a card inside the application's modal at any width, so it
     // always floats.
-    floating: !!embed || !!opts.theme?.page_background?.background_image_url,
+    floating:
+      !!embed || resolveDarkPageInputs(opts.theme, opts.branding).hasBgImage,
   });
 
   // Shared slot inputs for both the body-fragment and full-document paths.
