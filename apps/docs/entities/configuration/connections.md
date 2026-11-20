@@ -127,6 +127,7 @@ Not implemented yet, compared with Auth0:
 
 - **Organization logins** use the application's connections. Auth0 replaces them with the organization's enabled connections.
 - **`default_directory`** (the tenant setting Auth0 uses for the `password` grant without a realm) is stored but unused: AuthHero has no `password` grant on `/oauth/token`.
+- **Resuming a login with `/authorize?state=`** fills in the parameters the request leaves out from the stored login session, but not `connection`. A request that resumes a session without sending `connection` again uses the application's default database connection.
 
 ## API Reference
 

@@ -19,6 +19,7 @@ import { logMessage } from "../../helpers/logging";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
 import { resolveClientDatabaseConnection } from "../../helpers/database-connection-scope";
+import { createLoginSessionWithData } from "../../state-machines/login-session-data";
 const postRoot = defineRoute({
   route: createRoute({
     tags: ["oauth"],
@@ -96,14 +97,15 @@ const postRoot = defineRoute({
           otp: body.otp,
         });
       } else if ("password" in body) {
-        // The database connection the password is checked in (#1703). It is
-        // recorded on the login session so the ticket can only be redeemed in
-        // the same connection; a realm the client doesn't enable is refused.
+        // The database connection the password is checked in (#1703); a realm
+        // the client doesn't enable is refused. It is recorded in the login
+        // session's state_data as ticket_connection (see below).
         const connection = resolveClientDatabaseConnection(
           client,
           body.realm,
         )?.name;
-        const loginSession = await ctx.env.data.loginSessions.create(
+        const loginSession = await createLoginSessionWithData(
+          ctx.env.data.loginSessions,
           client.tenant.id,
           {
             expires_at: new Date(
@@ -126,6 +128,9 @@ const postRoot = defineRoute({
             useragent,
             auth0Client: stringifyAuth0Client(auth0_client),
           },
+          // Only this route writes ticket_connection: the ticket minted after
+          // the password check below can be redeemed in this connection only.
+          { ticket_connection: connection },
         );
 
         // This will throw if the login fails

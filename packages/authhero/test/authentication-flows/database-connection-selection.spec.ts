@@ -489,6 +489,58 @@ describe("database connection selection (#1703)", () => {
       });
     });
 
+    it("refuses a ticket whose login session got its connection from /authorize", async () => {
+      const { env, createUser, oauthApp } = await setup();
+      const cteUser = await createUser(CTE_DB, "hinted@example.com");
+      const client = testClient(oauthApp, env);
+
+      // /authorize records the requested connection and the login_hint, but
+      // checks no password.
+      const started = await client.authorize.$get({
+        query: {
+          client_id: "cteFirstClient",
+          redirect_uri: CALLBACK,
+          state: "state",
+          nonce: "nonce",
+          scope: "openid",
+          response_type: AuthorizationResponseType.CODE,
+          connection: CTE_DB,
+          login_hint: "hinted@example.com",
+        },
+      });
+      expect(started.status).toBe(302);
+      const state =
+        new URL(
+          started.headers.get("location") ?? "",
+          "https://example.com",
+        ).searchParams.get("state") ?? "";
+      const loginSession = await env.data.loginSessions.get("tenantId", state);
+      expect(loginSession?.authParams.connection).toBe(CTE_DB);
+
+      // A ticket pointing at that session, even one that names the user.
+      const ticket = await env.data.codes.create("tenantId", {
+        code_id: "ticket-for-authorize-session",
+        code_type: "ticket",
+        login_id: state,
+        user_id: cteUser,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+      });
+
+      const response = await client.authorize.$get({
+        query: {
+          client_id: "cteFirstClient",
+          login_ticket: ticket.code_id,
+          realm: CTE_DB,
+          response_type: AuthorizationResponseType.CODE,
+          redirect_uri: CALLBACK,
+          scope: "openid",
+          state: "state2",
+          nonce: "nonce",
+        },
+      });
+      expect(response.status).toBe(403);
+    });
+
     it("redeems a login ticket as the user whose password was verified", async () => {
       const { env, coAuthenticate, oauthApp } = await setup();
       // A legacy row whose connection names no database connection: the

@@ -503,13 +503,6 @@ export const getAuthProvider = (
 const authProvider = getAuthProvider(getSelectedDomainFromStorage());
 
 /**
- * An error that keeps the HTTP status of the response it stands for, so a
- * caller can tell a route the server does not have (404, 405) from a refusal
- * (403). It is `httpStatus` and not `status` on purpose: react-admin's
- * `checkError` signs the user out on a `status` of 401 or 403, which these
- * errors have never done.
- */
-/**
  * The message for a failed request, the way react-admin's `fetchJson` builds
  * `HttpError`: the JSON body's `message` when there is one, else the status
  * text. Never the raw body, which may be JSON or a proxy's HTML page.
@@ -532,6 +525,13 @@ export function httpErrorMessage(text: string, statusText: string): string {
   return statusText;
 }
 
+/**
+ * An error that keeps the HTTP status of the response it stands for, so a
+ * caller can tell a route the server does not have (404, 405) from a refusal
+ * (403). It is `httpStatus` and not `status` on purpose: react-admin's
+ * `checkError` signs the user out on a `status` of 401 or 403, which these
+ * errors have never done.
+ */
 function httpStatusError(
   message: string,
   status: number,

@@ -10,6 +10,7 @@ import { Bindings, Variables } from "../types";
 import { resolvePrimaryUser } from "../helpers/users";
 import { resolveClientDatabaseConnectionName } from "../helpers/database-connection-scope";
 import { createFrontChannelAuthResponse } from "./common";
+import { readLoginSessionData } from "../state-machines/login-session";
 import { getEnrichedClient } from "../helpers/client";
 import {
   isUsernamePasswordProvider,
@@ -102,12 +103,17 @@ export async function ticketAuth(
     );
 
   // A login ticket only covers a password in the connection /co/authenticate
-  // verified it in, which it records on the login session. The realm sent
-  // here must resolve to that same database connection; any other realm,
-  // including `email`, is refused. Other `ticket` codes (for example guardian
-  // enrollment tickets) point at login sessions without a recorded connection
-  // and never covered a password, so a missing connection is refused too.
-  const verifiedConnection = loginSession.authParams.connection;
+  // checked it in, which only that route records, as `ticket_connection` in
+  // the login session's state_data. `authParams.connection` is not used: other
+  // routes set it from the request without checking a password. The realm
+  // sent here must resolve to the recorded database connection; any other
+  // realm, including `email`, is refused. Other `ticket` codes (for example
+  // guardian enrollment tickets) point at login sessions without a recorded
+  // connection and never covered a password, so a missing connection is
+  // refused too.
+  const verifiedConnection = readLoginSessionData(
+    loginSession.state_data,
+  ).ticket_connection;
   const databaseConnection = isDatabaseRealm
     ? resolveClientDatabaseConnectionName(client, realm)
     : undefined;
@@ -186,8 +192,8 @@ export async function ticketAuth(
     ...omitUndefined(authParams),
     client_id: loginSession.authParams.client_id,
     username: loginSession.authParams.username,
-    // Likewise the connection the password was verified in.
-    connection: loginSession.authParams.connection,
+    // Likewise the connection the password was checked in.
+    connection: verifiedConnection,
   };
 
   await env.data.loginSessions.update(tenant_id, loginSession.id, {
