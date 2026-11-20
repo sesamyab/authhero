@@ -73,6 +73,7 @@ import { authenticationMethodsRoutes } from "./authentication-methods";
 import { ticketsRoutes } from "./tickets";
 import { proxyRoutesRoutes } from "./proxy-routes";
 import { tokenExchangeProfilesRoutes } from "./token-exchange-profiles";
+import { selfServiceProfilesRoutes } from "./self-service-profiles";
 import { operationRoutes, tenantOperationsRoutes } from "./tenant-operations";
 import { rolloutRoutes } from "./rollouts";
 import { tenantExportImportRoutes } from "./tenant-export-import";
@@ -730,6 +731,15 @@ export default function create(config: AuthHeroConfig) {
       "/token-exchange-profiles",
       tokenExchangeProfilesRoutes,
     );
+  }
+
+  // Self-Service SSO profiles and tickets (#1763), when the adapters exist.
+  if (
+    !extensionPaths.has("/self-service-profiles") &&
+    managementAdapter.selfServiceProfiles &&
+    managementAdapter.ssoAccessTickets
+  ) {
+    managementApp.route("/self-service-profiles", selfServiceProfilesRoutes);
   }
 
   // SCIM inbound provisioning config + tokens (#1191). Mounted per connection
