@@ -124,42 +124,73 @@ const NAMED: Record<string, string> = {
   indigo: "#4b0082",
   violet: "#ee82ee",
   crimson: "#dc143c",
-  transparent: "",
+  transparent: "#000000",
 };
 
+export type ParsedColor = { hex: string; alpha: number };
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+/** One `rgb()` channel or alpha token: a number, or a percentage. */
+function channel(token: string, full: number): number {
+  return token.endsWith("%")
+    ? (parseFloat(token) / 100) * full
+    : parseFloat(token);
+}
+
+/** An `hsl()` hue in degrees; `turn`, `rad` and `grad` are converted. */
+function hueDegrees(token: string): number {
+  const n = parseFloat(token);
+  if (token.endsWith("grad")) return n * 0.9;
+  if (token.endsWith("turn")) return n * 360;
+  if (token.endsWith("rad")) return (n * 180) / Math.PI;
+  return n;
+}
+
 /**
- * Resolve any colour `sanitizeCssColor` accepts to `#rrggbb`: hex, `rgb()`,
- * `hsl()` and the common named colours. Returns null for anything else
- * (including `transparent` and exotic names), so callers can skip maths they
- * cannot do instead of computing on garbage.
+ * Resolve any colour `sanitizeCssColor` accepts to `#rrggbb` plus alpha: hex
+ * (with or without alpha), `rgb()`/`rgba()`, `hsl()`/`hsla()` and the common
+ * named colours. Returns null for anything else (exotic names, malformed
+ * values), so callers skip maths they cannot do instead of computing on
+ * garbage.
  */
-export function toHex(color: string | undefined): string | null {
+export function parseColor(color: string | undefined): ParsedColor | null {
   if (!color) return null;
   const v = color.trim().toLowerCase();
   if (HEX.test(v)) {
+    const digits = v.slice(1);
+    const long =
+      digits.length <= 4 ? [...digits].map((d) => d + d).join("") : digits;
     const [r, g, b] = parseDarkHex(v);
-    return rgbToHex(r, g, b);
+    const alpha = long.length === 8 ? parseInt(long.slice(6), 16) / 255 : 1;
+    return { hex: rgbToHex(r, g, b), alpha };
   }
-  const named = NAMED[v];
-  if (named) return named;
+  // Own-property lookup: "constructor" and friends must not resolve.
+  if (Object.prototype.hasOwnProperty.call(NAMED, v)) {
+    const named = NAMED[v];
+    if (typeof named !== "string") return null;
+    return v === "transparent"
+      ? { hex: "#000000", alpha: 0 }
+      : { hex: named, alpha: 1 };
+  }
   const fn = v.match(/^(rgba?|hsla?)\(([^)]+)\)$/);
   if (!fn) return null;
-  const parts = fn[2]!
-    .split(/[\s,/]+/)
-    .filter(Boolean)
-    .map((p) => parseFloat(p));
-  if (parts.length < 3 || parts.slice(0, 3).some((n) => Number.isNaN(n)))
-    return null;
+  const tokens = fn[2]!.split(/[\s,/]+/).filter(Boolean);
+  if (tokens.length < 3 || tokens.length > 4) return null;
+  const alpha = tokens[3] === undefined ? 1 : clamp01(channel(tokens[3], 1));
+  if (Number.isNaN(alpha)) return null;
   if (fn[1]!.startsWith("rgb")) {
-    const pct = /%/.test(fn[2]!.split(/[\s,/]+/)[0] ?? "");
-    const s = (n: number) => (pct ? (n / 100) * 255 : n);
-    return rgbToHex(s(parts[0]!), s(parts[1]!), s(parts[2]!));
+    const [r, g, b] = tokens.slice(0, 3).map((t) => channel(t, 255));
+    if ([r, g, b].some((n) => n === undefined || Number.isNaN(n))) return null;
+    return { hex: rgbToHex(r!, g!, b!), alpha };
   }
-  const h = (((parts[0]! % 360) + 360) % 360) / 360;
-  const s = parts[1]! / 100;
-  const l = parts[2]! / 100;
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
+  const hue = hueDegrees(tokens[0]!);
+  const sat = parseFloat(tokens[1]!) / 100;
+  const light = parseFloat(tokens[2]!) / 100;
+  if ([hue, sat, light].some((n) => Number.isNaN(n))) return null;
+  const h = (((hue % 360) + 360) % 360) / 360;
+  const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+  const p = 2 * light - q;
   const f = (t: number) => {
     const x = (t + 1) % 1;
     if (x < 1 / 6) return p + (q - p) * 6 * x;
@@ -167,7 +198,23 @@ export function toHex(color: string | undefined): string | null {
     if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
     return p;
   };
-  return rgbToHex(f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255);
+  return {
+    hex: rgbToHex(f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255),
+    alpha,
+  };
+}
+
+/** `#rrggbb` for any colour `parseColor` understands, else null. */
+export function toHex(color: string | undefined): string | null {
+  return parseColor(color)?.hex ?? null;
+}
+
+/** `fg` over `bg` at `alpha`, as `#rrggbb`. */
+function compositeOver(fg: string, bg: string, alpha: number): string {
+  const [fr, fgc, fb] = parseDarkHex(fg);
+  const [br, bgc, bb] = parseDarkHex(bg);
+  const mix = (f: number, b: number) => f * alpha + b * (1 - alpha);
+  return rgbToHex(mix(fr, br), mix(fgc, bgc), mix(fb, bb));
 }
 
 function rgbToHex(r: number, g: number, b: number): string {
@@ -249,10 +296,20 @@ export function colorsDarkToCssVars(
   set("--ah-color-success", c.success);
   set("--ah-color-icon", c.icons);
   // An explicit dark primary without a label gets an auto-picked one.
-  const explicitPrimary = toHex(c.primary_button);
+  const explicitPrimary = parseColor(c.primary_button);
   if (explicitPrimary && !c.primary_button_label) {
-    const w = darkContrastRatio(explicitPrimary, "#ffffff");
-    const b = darkContrastRatio(explicitPrimary, "#000000");
+    // A translucent button shows the card through it, so pick the label for
+    // the colour the user actually sees.
+    const card =
+      toHex(c.widget_background) ||
+      DARK_MODE_CSS_VARS["--ah-color-bg"] ||
+      "#1f2937";
+    const seen =
+      explicitPrimary.alpha < 1
+        ? compositeOver(explicitPrimary.hex, card, explicitPrimary.alpha)
+        : explicitPrimary.hex;
+    const w = darkContrastRatio(seen, "#ffffff");
+    const b = darkContrastRatio(seen, "#000000");
     v["--ah-color-text-on-primary"] = b > w * 1.35 ? "#000000" : "#ffffff";
   }
   return v;

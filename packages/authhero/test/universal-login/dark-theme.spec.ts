@@ -338,6 +338,41 @@ describe("review fixes", () => {
     },
   );
 
+  it.each([
+    // percentages with stray whitespace are still percentages: white button
+    ["rgb( 100%, 100%, 100%)", "#000000"],
+    // zero alpha shows the (dark) card, not the underlying colour
+    ["rgba(255,255,255,0)", "#ffffff"],
+    ["#ffffff00", "#ffffff"],
+    ["hsla(0, 0%, 100%, 0)", "#ffffff"],
+    ["transparent", "#ffffff"],
+    // angle units: 0.5turn = 180deg = cyan, light enough for black text
+    ["hsl(0.5turn, 100%, 50%)", "#000000"],
+    ["hsl(200grad, 100%, 50%)", "#000000"],
+    ["hsl(3.14159rad, 100%, 50%)", "#000000"],
+    // unitless hue is degrees: 0 = red, white text
+    ["hsl(0, 100%, 40%)", "#ffffff"],
+  ])("derives the label for %s as %s", async (color, label) => {
+    const block = darkVarBlock(
+      pageCss(
+        await render({ ...light, colors_dark: { primary_button: color } }),
+      ),
+    );
+    expect(block).toContain(`--ah-color-text-on-primary: ${label} !important`);
+  });
+
+  it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
+    "does not throw on the inherited name %s as a colour",
+    async (name) => {
+      const theme = {
+        ...light,
+        colors: { ...light.colors, links_focused_components: name },
+        colors_dark: { links_focused_components: name, primary_button: name },
+      };
+      await expect(render(theme)).resolves.toContain("authhero-widget");
+    },
+  );
+
   it("an explicit label wins over the derived one", async () => {
     const block = darkVarBlock(
       pageCss(
