@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import {
   SelfServiceProfile,
   SelfServiceProfileCustomText,
+  SelfServiceProfileStrategy,
   SelfServiceProfileUpdate,
   selfServiceProfileBrandingSchema,
   selfServiceProfileCustomTextSchema,
@@ -40,6 +41,30 @@ function jsonOrNull(value: unknown): string | null {
   return value === undefined || value === null ? null : JSON.stringify(value);
 }
 
+/**
+ * A profile's stored `allowed_strategies`, failing closed: an entry that is
+ * not a known strategy is dropped on its own, and a value that is not a JSON
+ * array reads back as `[]` (no strategy allowed). Only a NULL column, i.e. no
+ * restriction was ever set, reads back as absent. A corrupt value must never
+ * widen what a profile allows.
+ */
+export function parseAllowedStrategies(
+  raw: string | null,
+): SelfServiceProfileStrategy[] | undefined {
+  if (raw === null) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((entry) => {
+    const strategy = selfServiceProfileStrategySchema.safeParse(entry);
+    return strategy.success ? [strategy.data] : [];
+  });
+}
+
 export type SelfServiceProfileRow = {
   id: string;
   tenant_id: string;
@@ -62,10 +87,7 @@ export function selfServiceProfileFromRow(
     updated_at: row.updated_at,
   };
   if (row.description !== null) profile.description = row.description;
-  const allowedStrategies = parseJson(
-    row.allowed_strategies,
-    z.array(selfServiceProfileStrategySchema),
-  );
+  const allowedStrategies = parseAllowedStrategies(row.allowed_strategies);
   if (allowedStrategies) profile.allowed_strategies = allowedStrategies;
   const userAttributes = parseJson(
     row.user_attributes,

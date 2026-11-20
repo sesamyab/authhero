@@ -6,9 +6,12 @@ const OTHER = "tenant2";
 
 describe("Self-Service SSO storage (#1763)", () => {
   let data: Awaited<ReturnType<typeof getTestServer>>["data"];
+  let db: Awaited<ReturnType<typeof getTestServer>>["db"];
 
   beforeEach(async () => {
-    data = (await getTestServer()).data;
+    const server = await getTestServer();
+    data = server.data;
+    db = server.db;
     for (const id of [TENANT, OTHER]) {
       await data.tenants.create({
         id,
@@ -64,6 +67,42 @@ describe("Self-Service SSO storage (#1763)", () => {
       expect(await adapter.remove(TENANT, created.id)).toBe(true);
       expect(await adapter.get(TENANT, created.id)).toBeNull();
       expect(await adapter.remove(TENANT, created.id)).toBe(false);
+    });
+
+    it.each([
+      ['["oidc","not-a-strategy"]', ["oidc"]],
+      ['["not-a-strategy"]', []],
+      ['["oidc",42,null]', ["oidc"]],
+      ['{"oidc":true}', []],
+      ["not json", []],
+    ])(
+      "reads stored allowed_strategies %s fail-closed as %j",
+      async (raw, expected) => {
+        const adapter = data.selfServiceProfiles!;
+        const created = await adapter.create(TENANT, {
+          name: "Partners",
+          allowed_strategies: ["oidc", "samlp", "waad"],
+        });
+        await db
+          .updateTable("self_service_profiles")
+          .set({ allowed_strategies: raw })
+          .where("id", "=", created.id)
+          .execute();
+        const read = await adapter.get(TENANT, created.id);
+        expect(read?.allowed_strategies).toEqual(expected);
+        expect(
+          (await adapter.list(TENANT)).find((p) => p.id === created.id)
+            ?.allowed_strategies,
+        ).toEqual(expected);
+      },
+    );
+
+    it("reads a profile without allowed_strategies as unrestricted", async () => {
+      const adapter = data.selfServiceProfiles!;
+      const created = await adapter.create(TENANT, { name: "Partners" });
+      expect(
+        (await adapter.get(TENANT, created.id))?.allowed_strategies,
+      ).toBeUndefined();
     });
 
     it("never reads, changes or removes another tenant's profile", async () => {
