@@ -10,11 +10,13 @@ const OTHER = "tenant2";
 
 describe("Self-Service SSO storage (#1763)", () => {
   let data: ReturnType<typeof getTestServer>["data"];
+  let db: ReturnType<typeof getTestServer>["db"];
   let profileId: string;
 
   beforeEach(async () => {
     const server = getTestServer();
     data = server.data;
+    db = server.db;
     // D1 enforces foreign keys; better-sqlite3 needs it switched on.
     server.db.run(sql`PRAGMA foreign_keys = ON`);
     await data.tenants.create({ id: TENANT, name: "Tenant 1" });
@@ -75,6 +77,40 @@ describe("Self-Service SSO storage (#1763)", () => {
       expect(await adapter.remove(TENANT, created.id)).toBe(true);
       expect(await adapter.get(TENANT, created.id)).toBeNull();
       expect(await adapter.remove(TENANT, created.id)).toBe(false);
+    });
+
+    it.each([
+      ['["oidc","not-a-strategy"]', ["oidc"]],
+      ['["not-a-strategy"]', []],
+      ['["oidc",42,null]', ["oidc"]],
+      ['{"oidc":true}', []],
+      ["not json", []],
+    ])(
+      "reads stored allowed_strategies %s fail-closed as %j",
+      async (raw, expected) => {
+        const adapter = data.selfServiceProfiles!;
+        const created = await adapter.create(TENANT, {
+          name: "Partners",
+          allowed_strategies: ["oidc", "samlp", "waad"],
+        });
+        db.run(
+          sql`UPDATE self_service_profiles SET allowed_strategies = ${raw} WHERE id = ${created.id}`,
+        );
+        const read = await adapter.get(TENANT, created.id);
+        expect(read?.allowed_strategies).toEqual(expected);
+        expect(
+          (await adapter.list(TENANT)).find((p) => p.id === created.id)
+            ?.allowed_strategies,
+        ).toEqual(expected);
+      },
+    );
+
+    it("reads a profile without allowed_strategies as unrestricted", async () => {
+      const adapter = data.selfServiceProfiles!;
+      const created = await adapter.create(TENANT, { name: "Partners" });
+      expect(
+        (await adapter.get(TENANT, created.id))?.allowed_strategies,
+      ).toBeUndefined();
     });
 
     it("never reads, changes or removes another tenant's profile", async () => {
