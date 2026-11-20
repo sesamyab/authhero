@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { sql } from "drizzle-orm";
 import { getTestServer } from "../helpers/test-server";
 
 const TENANT = "tenant1";
@@ -9,11 +10,25 @@ const OTHER = "tenant2";
 
 describe("Self-Service SSO storage (#1763)", () => {
   let data: ReturnType<typeof getTestServer>["data"];
+  let profileId: string;
 
   beforeEach(async () => {
-    data = getTestServer().data;
+    const server = getTestServer();
+    data = server.data;
+    // D1 enforces foreign keys; better-sqlite3 needs it switched on.
+    server.db.run(sql`PRAGMA foreign_keys = ON`);
     await data.tenants.create({ id: TENANT, name: "Tenant 1" });
     await data.tenants.create({ id: OTHER, name: "Tenant 2" });
+    for (const id of ["con_a", "con_b"]) {
+      await data.connections.create(TENANT, {
+        id,
+        name: id,
+        strategy: "oidc",
+        options: {},
+      });
+    }
+    profileId = (await data.selfServiceProfiles!.create(TENANT, { name: "P" }))
+      .id;
   });
 
   describe("selfServiceProfiles", () => {
@@ -40,7 +55,7 @@ describe("Self-Service SSO storage (#1763)", () => {
       });
 
       expect(await adapter.get(TENANT, created.id)).toEqual(created);
-      expect(await adapter.list(TENANT)).toEqual([created]);
+      expect(await adapter.list(TENANT)).toContainEqual(created);
 
       expect(
         await adapter.update(TENANT, created.id, {
@@ -133,7 +148,7 @@ describe("Self-Service SSO storage (#1763)", () => {
     it("stores a ticket by hash and never returns the hash", async () => {
       const tickets = data.ssoAccessTickets!;
       const created = await tickets.create(TENANT, {
-        profile_id: "ssp_1",
+        profile_id: profileId,
         ticket_hash: "abc123",
         connection_config: {
           name: "acme-sso",
@@ -152,7 +167,7 @@ describe("Self-Service SSO storage (#1763)", () => {
       expect(created).not.toHaveProperty("ticket_hash");
       expect(JSON.stringify(created)).not.toContain("abc123");
       expect(created).toMatchObject({
-        profile_id: "ssp_1",
+        profile_id: profileId,
         connection_config: { name: "acme-sso" },
         enabled_clients: ["client1"],
         enabled_organizations: [{ organization_id: "org_1" }],
@@ -171,7 +186,7 @@ describe("Self-Service SSO storage (#1763)", () => {
 
     it("defaults clients and organizations to empty lists", async () => {
       const created = await data.ssoAccessTickets!.create(TENANT, {
-        profile_id: "ssp_1",
+        profile_id: profileId,
         ticket_hash: "h",
         connection_id: "con_1",
         domain_verification: "none",
@@ -185,7 +200,7 @@ describe("Self-Service SSO storage (#1763)", () => {
     it("rejects a duplicate ticket hash", async () => {
       const tickets = data.ssoAccessTickets!;
       const input = {
-        profile_id: "ssp_1",
+        profile_id: profileId,
         ticket_hash: "same",
         domain_verification: "required" as const,
         expires_at: "2030-01-01T00:00:00.000Z",
@@ -197,7 +212,7 @@ describe("Self-Service SSO storage (#1763)", () => {
     it("records connection, revocation and completion", async () => {
       const tickets = data.ssoAccessTickets!;
       const created = await tickets.create(TENANT, {
-        profile_id: "ssp_1",
+        profile_id: profileId,
         ticket_hash: "h",
         domain_verification: "required",
         expires_at: "2030-01-01T00:00:00.000Z",
@@ -317,6 +332,111 @@ describe("Self-Service SSO storage (#1763)", () => {
       expect(await domains.get(OTHER, created.id)).toBeNull();
       expect(await domains.remove(OTHER, created.id)).toBe(false);
       expect(await domains.remove(TENANT, created.id)).toBe(true);
+    });
+  });
+
+  describe("foreign keys", () => {
+    it("rejects a ticket or custom text for a profile that does not exist", async () => {
+      await expect(
+        data.ssoAccessTickets!.create(TENANT, {
+          profile_id: "ssp_missing",
+          ticket_hash: "h",
+          domain_verification: "required",
+          expires_at: "2030-01-01T00:00:00.000Z",
+        }),
+      ).rejects.toThrow();
+      await expect(
+        data.selfServiceProfiles!.setCustomText(
+          TENANT,
+          "ssp_missing",
+          "en",
+          "get-started",
+          { introduction: "x" },
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("removes a connection's domain claims with the connection only", async () => {
+      const domains = data.connectionDomains!;
+      await domains.create(TENANT, {
+        connection_id: "con_a",
+        domain: "acme.com",
+        verification_value: "v-a",
+      });
+      const kept = await domains.create(TENANT, {
+        connection_id: "con_b",
+        domain: "acme.com",
+        verification_value: "v-b",
+      });
+
+      await data.connections.remove(TENANT, "con_a");
+
+      expect(await domains.list(TENANT, { domain: "acme.com" })).toEqual([
+        kept,
+      ]);
+    });
+
+    it("removes a tenant's Self-Service SSO state with the tenant only", async () => {
+      await data.connections.create(OTHER, {
+        id: "con_other",
+        name: "con_other",
+        strategy: "oidc",
+        options: {},
+      });
+      const seed = async (tenant: string, connectionId: string) => {
+        const profile = await data.selfServiceProfiles!.create(tenant, {
+          name: "Partners",
+        });
+        await data.selfServiceProfiles!.setCustomText(
+          tenant,
+          profile.id,
+          "en",
+          "get-started",
+          { introduction: tenant },
+        );
+        const ticket = await data.ssoAccessTickets!.create(tenant, {
+          profile_id: profile.id,
+          ticket_hash: `hash-${tenant}`,
+          domain_verification: "required",
+          expires_at: "2030-01-01T00:00:00.000Z",
+        });
+        const domain = await data.connectionDomains!.create(tenant, {
+          connection_id: connectionId,
+          domain: "acme.com",
+          verification_value: "v",
+        });
+        return { profile, ticket, domain };
+      };
+      const a = await seed(TENANT, "con_a");
+      const b = await seed(OTHER, "con_other");
+
+      await data.tenants.remove(TENANT);
+
+      expect(await data.selfServiceProfiles!.list(TENANT)).toEqual([]);
+      expect(
+        await data.selfServiceProfiles!.getCustomText(
+          TENANT,
+          a.profile.id,
+          "en",
+          "get-started",
+        ),
+      ).toEqual({});
+      expect(await data.ssoAccessTickets!.get(TENANT, a.ticket.id)).toBeNull();
+      expect(await data.connectionDomains!.list(TENANT)).toEqual([]);
+
+      expect(await data.selfServiceProfiles!.list(OTHER)).toEqual([b.profile]);
+      expect(
+        await data.selfServiceProfiles!.getCustomText(
+          OTHER,
+          b.profile.id,
+          "en",
+          "get-started",
+        ),
+      ).toEqual({ introduction: OTHER });
+      expect(await data.ssoAccessTickets!.get(OTHER, b.ticket.id)).toEqual(
+        b.ticket,
+      );
+      expect(await data.connectionDomains!.list(OTHER)).toEqual([b.domain]);
     });
   });
 });

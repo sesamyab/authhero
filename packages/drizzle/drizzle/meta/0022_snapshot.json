@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "68b4bd9b-30ce-40f7-9d9b-30e24c752cea",
+  "id": "2cf9e125-43b7-40bf-8c5d-b8bd5ae7eb66",
   "prevId": "421bd681-6696-4caf-ba5a-1ec0217f10a8",
   "tables": {
     "tenants": {
@@ -7111,7 +7111,7 @@
         },
         "tenant_id": {
           "name": "tenant_id",
-          "type": "text(255)",
+          "type": "text(191)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -7185,7 +7185,34 @@
           "isUnique": false
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "connection_domains_tenant_id_tenants_id_fk": {
+          "name": "connection_domains_tenant_id_tenants_id_fk",
+          "tableFrom": "connection_domains",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "connection_domains_connection_id_connections_id_fk": {
+          "name": "connection_domains_connection_id_connections_id_fk",
+          "tableFrom": "connection_domains",
+          "tableTo": "connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -7195,7 +7222,7 @@
       "columns": {
         "tenant_id": {
           "name": "tenant_id",
-          "type": "text(255)",
+          "type": "text(191)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -7244,7 +7271,34 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "self_service_profile_custom_texts_tenant_id_tenants_id_fk": {
+          "name": "self_service_profile_custom_texts_tenant_id_tenants_id_fk",
+          "tableFrom": "self_service_profile_custom_texts",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "self_service_profile_custom_texts_profile_id_self_service_profiles_id_fk": {
+          "name": "self_service_profile_custom_texts_profile_id_self_service_profiles_id_fk",
+          "tableFrom": "self_service_profile_custom_texts",
+          "tableTo": "self_service_profiles",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {
         "self_service_profile_custom_texts_pk": {
           "columns": [
@@ -7271,7 +7325,7 @@
         },
         "tenant_id": {
           "name": "tenant_id",
-          "type": "text(255)",
+          "type": "text(191)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -7335,7 +7389,21 @@
           "isUnique": false
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "self_service_profiles_tenant_id_tenants_id_fk": {
+          "name": "self_service_profiles_tenant_id_tenants_id_fk",
+          "tableFrom": "self_service_profiles",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -7352,7 +7420,7 @@
         },
         "tenant_id": {
           "name": "tenant_id",
-          "type": "text(255)",
+          "type": "text(191)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -7459,7 +7527,34 @@
           "isUnique": false
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "sso_access_tickets_tenant_id_tenants_id_fk": {
+          "name": "sso_access_tickets_tenant_id_tenants_id_fk",
+          "tableFrom": "sso_access_tickets",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "sso_access_tickets_profile_id_self_service_profiles_id_fk": {
+          "name": "sso_access_tickets_profile_id_self_service_profiles_id_fk",
+          "tableFrom": "sso_access_tickets",
+          "tableTo": "self_service_profiles",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

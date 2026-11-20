@@ -323,4 +323,71 @@ describe("Self-Service SSO storage (#1763)", () => {
       expect(await domains.remove(TENANT, created.id)).toBe(true);
     });
   });
+
+  describe("cleanup and edge cases", () => {
+    it("stores a long description unchanged", async () => {
+      const description = "d".repeat(1000);
+      const created = await data.selfServiceProfiles!.create(TENANT, {
+        name: "Partners",
+        description,
+      });
+      expect(
+        (await data.selfServiceProfiles!.get(TENANT, created.id))?.description,
+      ).toBe(description);
+    });
+
+    it("lets concurrent first saves of custom text both succeed", async () => {
+      const profiles = data.selfServiceProfiles!;
+      const profile = await profiles.create(TENANT, { name: "Partners" });
+      await Promise.all([
+        profiles.setCustomText(TENANT, profile.id, "en", "get-started", {
+          introduction: "one",
+        }),
+        profiles.setCustomText(TENANT, profile.id, "en", "get-started", {
+          introduction: "two",
+        }),
+      ]);
+      expect(
+        ["one", "two"].includes(
+          (
+            await profiles.getCustomText(
+              TENANT,
+              profile.id,
+              "en",
+              "get-started",
+            )
+          ).introduction ?? "",
+        ),
+      ).toBe(true);
+    });
+
+    it("removes a connection's domain claims with the connection only", async () => {
+      for (const id of ["con_a", "con_b"]) {
+        await data.connections.create(TENANT, {
+          id,
+          name: id,
+          strategy: "oidc",
+          options: {},
+        });
+      }
+      const domains = data.connectionDomains!;
+      await domains.create(TENANT, {
+        connection_id: "con_a",
+        domain: "acme.com",
+        verification_value: "v-a",
+      });
+      const kept = await domains.create(TENANT, {
+        connection_id: "con_b",
+        domain: "acme.com",
+        verification_value: "v-b",
+      });
+
+      expect(await data.connections.remove(TENANT, "con_a")).toBe(true);
+
+      expect(await domains.list(TENANT, { domain: "acme.com" })).toEqual([
+        kept,
+      ]);
+      expect(await data.connections.remove(TENANT, "con_a")).toBe(false);
+    });
+  });
 });
