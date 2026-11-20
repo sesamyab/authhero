@@ -53,7 +53,8 @@ export async function up(db: Kysely<Database>): Promise<void> {
     .addColumn("id", sql`varchar(64)`, (col) => col.notNull())
     .addColumn("tenant_id", sql`varchar(255)`, (col) => col.notNull())
     .addColumn("name", sql`varchar(255)`, (col) => col.notNull())
-    .addColumn("description", sql`varchar(255)`)
+    // text: the adapter stores descriptions as given, whatever their length.
+    .addColumn("description", sql`text`)
     .addColumn("allowed_strategies", sql`text`)
     .addColumn("user_attributes", sql`text`)
     .addColumn("branding", sql`text`)

@@ -5,15 +5,25 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { tenants } from "./tenants";
+import { connections } from "./connections";
 
 // Self-Service SSO (#1763): profiles, their custom text, SSO access tickets
-// and connection domains.
+// and connection domains. Every row cascades from its tenant; custom text and
+// tickets cascade from their profile (so a ticket inserted while its profile
+// is being deleted cannot outlive it), and domain claims from their
+// connection.
+
+const tenantId = () =>
+  text("tenant_id", { length: 191 })
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" });
 
 export const selfServiceProfiles = sqliteTable(
   "self_service_profiles",
   {
     id: text("id", { length: 64 }).primaryKey(),
-    tenant_id: text("tenant_id", { length: 255 }).notNull(),
+    tenant_id: tenantId(),
     name: text("name", { length: 255 }).notNull(),
     description: text("description", { length: 255 }),
     // JSON arrays/objects.
@@ -29,8 +39,10 @@ export const selfServiceProfiles = sqliteTable(
 export const selfServiceProfileCustomTexts = sqliteTable(
   "self_service_profile_custom_texts",
   {
-    tenant_id: text("tenant_id", { length: 255 }).notNull(),
-    profile_id: text("profile_id", { length: 64 }).notNull(),
+    tenant_id: tenantId(),
+    profile_id: text("profile_id", { length: 64 })
+      .notNull()
+      .references(() => selfServiceProfiles.id, { onDelete: "cascade" }),
     language: text("language", { length: 32 }).notNull(),
     page: text("page", { length: 64 }).notNull(),
     // JSON object: text key → text.
@@ -52,8 +64,10 @@ export const ssoAccessTickets = sqliteTable(
   "sso_access_tickets",
   {
     id: text("id", { length: 64 }).primaryKey(),
-    tenant_id: text("tenant_id", { length: 255 }).notNull(),
-    profile_id: text("profile_id", { length: 64 }).notNull(),
+    tenant_id: tenantId(),
+    profile_id: text("profile_id", { length: 64 })
+      .notNull()
+      .references(() => selfServiceProfiles.id, { onDelete: "cascade" }),
     ticket_hash: text("ticket_hash", { length: 128 }).notNull(),
     connection_id: text("connection_id", { length: 255 }),
     // JSON.
@@ -82,8 +96,10 @@ export const connectionDomains = sqliteTable(
   "connection_domains",
   {
     id: text("id", { length: 64 }).primaryKey(),
-    tenant_id: text("tenant_id", { length: 255 }).notNull(),
-    connection_id: text("connection_id", { length: 255 }).notNull(),
+    tenant_id: tenantId(),
+    connection_id: text("connection_id", { length: 255 })
+      .notNull()
+      .references(() => connections.id, { onDelete: "cascade" }),
     domain: text("domain", { length: 255 }).notNull(),
     status: text("status", { length: 16 }).notNull(),
     verification_value: text("verification_value", { length: 255 }).notNull(),

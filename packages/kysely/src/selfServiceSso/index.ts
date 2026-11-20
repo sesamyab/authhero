@@ -19,6 +19,7 @@ import {
   SsoAccessTicketUpdate,
   SsoAccessTicketsAdapter,
   connectionDomainFromRow,
+  isUniqueViolation,
   normalizeConnectionDomain,
   selfServiceProfileCustomTextFromJson,
   selfServiceProfileFromRow,
@@ -102,24 +103,26 @@ export function createSelfServiceProfilesAdapter(
     },
 
     async remove(tenant_id: string, id: string): Promise<boolean> {
-      // Tickets first: a failure part-way leaves a profile with fewer usable
-      // tickets, never a ticket without its profile.
-      await db
-        .deleteFrom("sso_access_tickets")
-        .where("tenant_id", "=", tenant_id)
-        .where("profile_id", "=", id)
-        .execute();
-      await db
-        .deleteFrom("self_service_profile_custom_texts")
-        .where("tenant_id", "=", tenant_id)
-        .where("profile_id", "=", id)
-        .execute();
-      const result = await db
-        .deleteFrom("self_service_profiles")
-        .where("tenant_id", "=", tenant_id)
-        .where("id", "=", id)
-        .executeTakeFirst();
-      return Number(result.numDeletedRows) > 0;
+      // One transaction, so a failure leaves the profile, its tickets and its
+      // custom text as they were.
+      return db.transaction().execute(async (trx) => {
+        await trx
+          .deleteFrom("sso_access_tickets")
+          .where("tenant_id", "=", tenant_id)
+          .where("profile_id", "=", id)
+          .execute();
+        await trx
+          .deleteFrom("self_service_profile_custom_texts")
+          .where("tenant_id", "=", tenant_id)
+          .where("profile_id", "=", id)
+          .execute();
+        const result = await trx
+          .deleteFrom("self_service_profiles")
+          .where("tenant_id", "=", tenant_id)
+          .where("id", "=", id)
+          .executeTakeFirst();
+        return Number(result.numDeletedRows) > 0;
+      });
     },
 
     async getCustomText(
@@ -148,27 +151,37 @@ export function createSelfServiceProfilesAdapter(
     ): Promise<void> {
       const now = new Date().toISOString();
       const json = JSON.stringify(custom_text);
-      const result = await db
-        .updateTable("self_service_profile_custom_texts")
-        .where("tenant_id", "=", tenant_id)
-        .where("profile_id", "=", profile_id)
-        .where("language", "=", language)
-        .where("page", "=", page)
-        .set({ custom_text: json, updated_at: now })
-        .executeTakeFirst();
-      if (Number(result.numUpdatedRows) > 0) return;
-      await db
-        .insertInto("self_service_profile_custom_texts")
-        .values({
-          tenant_id,
-          profile_id,
-          language,
-          page,
-          custom_text: json,
-          created_at: now,
-          updated_at: now,
-        })
-        .execute();
+      const update = async () => {
+        const result = await db
+          .updateTable("self_service_profile_custom_texts")
+          .where("tenant_id", "=", tenant_id)
+          .where("profile_id", "=", profile_id)
+          .where("language", "=", language)
+          .where("page", "=", page)
+          .set({ custom_text: json, updated_at: now })
+          .executeTakeFirst();
+        return Number(result.numUpdatedRows) > 0;
+      };
+      if (await update()) return;
+      try {
+        await db
+          .insertInto("self_service_profile_custom_texts")
+          .values({
+            tenant_id,
+            profile_id,
+            language,
+            page,
+            custom_text: json,
+            created_at: now,
+            updated_at: now,
+          })
+          .execute();
+      } catch (error: unknown) {
+        // A concurrent first save inserted the row between our update and
+        // insert (works on SQLite and MySQL alike): replace it instead.
+        if (!isUniqueViolation(error)) throw error;
+        await update();
+      }
     },
   };
 }

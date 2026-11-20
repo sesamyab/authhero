@@ -33,6 +33,7 @@ import {
   ssoAccessTickets,
 } from "../schema/sqlite";
 import type { DrizzleDb } from "./types";
+import { runAtomic } from "./atomic";
 
 const generateId = customAlphabet(
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
@@ -113,29 +114,35 @@ export function createSelfServiceProfilesAdapter(
     },
 
     async remove(tenant_id: string, id: string): Promise<boolean> {
-      // Tickets first: a failure part-way leaves a profile with fewer usable
-      // tickets, never a ticket without its profile.
-      await db
-        .delete(ssoAccessTickets)
-        .where(
-          and(
-            eq(ssoAccessTickets.tenant_id, tenant_id),
-            eq(ssoAccessTickets.profile_id, id),
-          ),
-        );
-      await db
-        .delete(selfServiceProfileCustomTexts)
-        .where(
-          and(
-            eq(selfServiceProfileCustomTexts.tenant_id, tenant_id),
-            eq(selfServiceProfileCustomTexts.profile_id, id),
-          ),
-        );
-      const deleted = await db
-        .delete(selfServiceProfiles)
+      // One atomic unit, so a failure leaves the profile, its tickets and its
+      // custom text as they were. The foreign keys also cascade from the
+      // profile where SQLite enforces them (D1 does).
+      const existing = await db
+        .select({ id: selfServiceProfiles.id })
+        .from(selfServiceProfiles)
         .where(byId(tenant_id, id))
-        .returning({ id: selfServiceProfiles.id });
-      return deleted.length > 0;
+        .limit(1);
+      if (existing.length === 0) return false;
+      await runAtomic(db, [
+        db
+          .delete(ssoAccessTickets)
+          .where(
+            and(
+              eq(ssoAccessTickets.tenant_id, tenant_id),
+              eq(ssoAccessTickets.profile_id, id),
+            ),
+          ),
+        db
+          .delete(selfServiceProfileCustomTexts)
+          .where(
+            and(
+              eq(selfServiceProfileCustomTexts.tenant_id, tenant_id),
+              eq(selfServiceProfileCustomTexts.profile_id, id),
+            ),
+          ),
+        db.delete(selfServiceProfiles).where(byId(tenant_id, id)),
+      ]);
+      return true;
     },
 
     async getCustomText(
