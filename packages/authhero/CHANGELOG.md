@@ -1,5 +1,28 @@
 # authhero
 
+## 9.35.0
+
+### Minor Changes
+
+- b0cb2c3: Branding file uploads (#1738). New optional `StorageAdapter` (`data.storage`) with an R2 implementation in `@authhero/cloudflare-adapter` (`storage: { bucket, publicBaseUrl? }`). `POST /api/v2/branding/uploads/{kind}` validates type, size and content (SVG is checked and served with a restrictive CSP), stores objects under `tenants/{tenant_id}/branding/{kind}/`, and returns a URL. Files are served publicly with cache headers and CORS at `/assets/...`; `publicBaseUrl` only changes the URL returned by the upload API (the `/assets` route stays mounted, and SVGs always use it for its CSP). The admin branding page gets upload buttons for logo, favicon, powered-by logo, font and background image.
+- a6e447d: Self-Service SSO (#1763), account-linking guard. Connections get an internal `self_service` field (a new nullable `self_service` column; run the drizzle and kysely migrations) recording that a connection is set up through Self-Service SSO and which email domains are verified for it. It is not part of the Auth0 connection object: the Management API neither accepts nor returns it, and tenant export, import and config sync do not copy it.
+
+  For a self-service connection, an email is only trusted inside its verified domains. Outside verified domains, new users are stored with `email_verified: false`. The guard also clears a previously stored `true` outside verified domains in every root-attribute sync mode. Built-in linking, the `account-linking` template hook and code hooks' `link_candidates` exclude users whose email domain is unverified for their self-service connection. This keeps an identity provider configured by an outside admin from taking over existing accounts or capturing accounts created later with the same email. Ordinary connections are unchanged.
+
+  The Management API rejects name changes for self-service connections so existing identities retain their domain trust checks. Display names remain editable.
+
+- 9c185ad: Outgoing email is sent from the template's own `from` if it has one, then the email provider's `default_from_address`. When neither is set it now uses the tenant's `sender_email` and `sender_name`, then the new optional `DEFAULT_SENDER_EMAIL` binding, and last `login@` followed by the hostname of `ISSUER` instead of the whole URL, which gave an invalid address such as `login@https://localhost:3000/`. A sender name with punctuation is sent as a quoted display name. Settings > General in the admin edits `sender_email` and `sender_name` and shows the tenant's `audience` read-only. `sender_email` can now be cleared with `null` in a tenant update; the Kysely and Drizzle adapters store it as unset.
+
+### Patch Changes
+
+- Updated dependencies [b0cb2c3]
+- Updated dependencies [a6e447d]
+- Updated dependencies [9c185ad]
+  - @authhero/adapter-interfaces@4.30.0
+  - @authhero/proxy@0.11.17
+  - @authhero/saml@0.6.10
+  - @authhero/widget@0.41.14
+
 ## 9.34.0
 
 ### Minor Changes
