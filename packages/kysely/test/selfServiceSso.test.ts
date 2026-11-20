@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { KyselyPlugin } from "kysely";
 import { getTestServer } from "./helpers/test-server";
+import { createSelfServiceProfilesAdapter } from "../src/selfServiceSso";
 
 const TENANT = "tenant1";
 const OTHER = "tenant2";
@@ -341,6 +343,72 @@ describe("Self-Service SSO storage (#1763)", () => {
           ).introduction ?? "",
         ),
       ).toBe(true);
+    });
+  });
+
+  describe("setCustomText return value", () => {
+    it("returns true when the same text is written twice", async () => {
+      const profiles = data.selfServiceProfiles!;
+      const profile = await profiles.create(TENANT, { name: "Partners" });
+      const text = { introduction: "Same" };
+      expect(
+        await profiles.setCustomText(
+          TENANT,
+          profile.id,
+          "en",
+          "get-started",
+          text,
+        ),
+      ).toBe(true);
+      expect(
+        await profiles.setCustomText(
+          TENANT,
+          profile.id,
+          "en",
+          "get-started",
+          text,
+        ),
+      ).toBe(true);
+    });
+
+    // MySQL reports only changed rows, so an update that writes the same
+    // value affects 0 rows. Simulate that driver behaviour on SQLite.
+    const mysqlChangedRows: KyselyPlugin = {
+      transformQuery: (args) => args.node,
+      transformResult: async (args) =>
+        args.result.numAffectedRows === undefined
+          ? args.result
+          : { ...args.result, numAffectedRows: BigInt(0) },
+    };
+
+    it("returns true for an existing profile when the driver reports 0 changed rows", async () => {
+      const profile = await data.selfServiceProfiles!.create(TENANT, {
+        name: "Partners",
+      });
+      const mysqlLike = createSelfServiceProfilesAdapter(
+        db.withPlugin(mysqlChangedRows),
+      );
+      expect(
+        await mysqlLike.setCustomText(TENANT, profile.id, "en", "get-started", {
+          introduction: "x",
+        }),
+      ).toBe(true);
+      expect(
+        await mysqlLike.setCustomText(OTHER, profile.id, "en", "get-started", {
+          introduction: "x",
+        }),
+      ).toBe(false);
+      expect(
+        await mysqlLike.setCustomText(
+          TENANT,
+          "ssp_missing",
+          "en",
+          "get-started",
+          {
+            introduction: "x",
+          },
+        ),
+      ).toBe(false);
     });
   });
 });
