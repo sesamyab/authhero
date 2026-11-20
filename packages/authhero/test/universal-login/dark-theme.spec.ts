@@ -350,6 +350,8 @@ describe("review fixes", () => {
     ["hsl(0.5turn, 100%, 50%)", "#000000"],
     ["hsl(200grad, 100%, 50%)", "#000000"],
     ["hsl(3.14159rad, 100%, 50%)", "#000000"],
+    // negative saturation clamps to 0: grey #666666 -> white text
+    ["hsl(240, -100%, 40%)", "#ffffff"],
     // unitless hue is degrees: 0 = red, white text
     ["hsl(0, 100%, 40%)", "#ffffff"],
   ])("derives the label for %s as %s", async (color, label) => {

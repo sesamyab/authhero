@@ -185,7 +185,8 @@ export function parseColor(color: string | undefined): ParsedColor | null {
     return { hex: rgbToHex(r!, g!, b!), alpha };
   }
   const hue = hueDegrees(tokens[0]!);
-  const sat = parseFloat(tokens[1]!) / 100;
+  // CSS clamps a negative saturation to 0 before converting.
+  const sat = Math.max(0, parseFloat(tokens[1]!) / 100);
   const light = parseFloat(tokens[2]!) / 100;
   if ([hue, sat, light].some((n) => Number.isNaN(n))) return null;
   const h = (((hue % 360) + 360) % 360) / 360;
