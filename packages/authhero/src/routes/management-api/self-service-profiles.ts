@@ -67,6 +67,22 @@ function invalidBody(detail: string, property?: string) {
   );
 }
 
+/**
+ * Hono hands the validator `{}` when the body is not JSON, which the
+ * all-optional PATCH and the custom-text PUT would accept as "change nothing"
+ * or "clear everything". Require a JSON body; an explicit JSON `{}` is fine.
+ */
+function requireJsonBody(ctx: Ctx) {
+  const type = ctx.req.header("content-type") ?? "";
+  if (!type.toLowerCase().startsWith("application/json")) {
+    throw managementError(
+      400,
+      "Invalid request payload JSON format",
+      "invalid_json",
+    );
+  }
+}
+
 function requireAdapters(ctx: Ctx) {
   const profiles = ctx.env.data.selfServiceProfiles;
   const tickets = ctx.env.data.ssoAccessTickets;
@@ -613,6 +629,7 @@ const updateProfile = defineRoute({
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
     const { id } = ctx.req.valid("param");
+    requireJsonBody(ctx);
     const { user_attribute_profile_id: _, ...body } = ctx.req.valid("json");
     const { profiles } = requireAdapters(ctx);
     await requireProfile(ctx, tenantId, id);
@@ -647,8 +664,11 @@ const deleteProfile = defineRoute({
     const tenantId = requireTenantId(ctx);
     const { id } = ctx.req.valid("param");
     await requireProfile(ctx, tenantId, id);
-    // Also removes the profile's custom text and SSO access tickets.
-    await requireAdapters(ctx).profiles.remove(tenantId, id);
+    // Also removes the profile's custom text and SSO access tickets. A
+    // concurrent DELETE may have removed it since the check.
+    if (!(await requireAdapters(ctx).profiles.remove(tenantId, id))) {
+      throw notFound.selfServiceProfile();
+    }
     await auditLog(
       ctx,
       tenantId,
@@ -713,6 +733,7 @@ const setCustomText = defineRoute({
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
     const { id, language, page } = ctx.req.valid("param");
+    requireJsonBody(ctx);
     const body = ctx.req.valid("json");
     await requireProfile(ctx, tenantId, id);
     const { profiles } = requireAdapters(ctx);
@@ -727,7 +748,9 @@ const setCustomText = defineRoute({
       "self_service_profile",
       id,
     );
-    return ctx.json(await profiles.getCustomText(tenantId, id, language, page));
+    // What this request wrote (stored as given), not a later read that could
+    // see a concurrent write.
+    return ctx.json(body);
   },
 });
 

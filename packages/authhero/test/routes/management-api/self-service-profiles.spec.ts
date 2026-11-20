@@ -22,7 +22,12 @@ async function json(response: Response): Promise<Json> {
 async function jsonArray(response: Response): Promise<Json[]> {
   const body: unknown = await response.json();
   if (!Array.isArray(body)) throw new Error("expected a JSON array");
-  return body.filter(isJson);
+  const items: Json[] = [];
+  for (const item of body) {
+    if (!isJson(item)) throw new Error("expected only JSON objects");
+    items.push(item);
+  }
+  return items;
 }
 
 function str(value: unknown): string {
@@ -391,6 +396,53 @@ describe("management-api self-service-profiles", () => {
       }
     });
 
+    it("rejects a non-JSON PUT or PATCH instead of clearing or touching the profile", async () => {
+      const { env, managementApp, request, createProfile } = await setup();
+      const profile = await createProfile(fullProfile);
+      const id = str(profile.id);
+      const path = `/${id}/custom-text/en/get-started`;
+      await request(path, { method: "PUT", body: { introduction: "Keep" } });
+      const token = await getAdminToken();
+
+      for (const [method, target] of [
+        ["PUT", path],
+        ["PATCH", `/${id}`],
+      ]) {
+        for (const headers of [
+          { "content-type": "text/plain" },
+          {} as Record<string, string>,
+        ]) {
+          const response = await managementApp.request(
+            `/self-service-profiles${target}`,
+            {
+              method,
+              headers: {
+                "tenant-id": TENANT,
+                authorization: `Bearer ${token}`,
+                ...headers,
+              },
+              body: "introduction=x",
+            },
+            env,
+          );
+          expect(response.status, `${method} ${JSON.stringify(headers)}`).toBe(
+            400,
+          );
+          expect(await json(response)).toMatchObject({
+            errorCode: "invalid_json",
+          });
+        }
+      }
+      expect(await json(await request(path))).toEqual({ introduction: "Keep" });
+      expect(await json(await request(`/${id}`))).toEqual(profile);
+
+      // An explicit JSON {} is a deliberate clear.
+      const cleared = await request(path, { method: "PUT", body: {} });
+      expect(cleared.status).toBe(200);
+      expect(await json(cleared)).toEqual({});
+      expect(await json(await request(path))).toEqual({});
+    });
+
     it("rejects unknown languages, pages, long values and missing profiles", async () => {
       const { request, createProfile } = await setup();
       const id = str((await createProfile()).id);
@@ -433,7 +485,7 @@ describe("management-api self-service-profiles", () => {
 
   describe("sso tickets", () => {
     it("returns only a ticket URL on the tenant's domain and stores the ticket hashed", async () => {
-      const { env, request, createProfile, createTicket } = await setup();
+      const { env, request, createProfile } = await setup();
       const org = await env.data.organizations.create(TENANT, {
         name: "acme-org",
       });
@@ -593,6 +645,7 @@ describe("management-api self-service-profiles", () => {
           allowed_strategies: raw,
           user_attributes: null,
           branding: null,
+          custom_text: null,
           created_at: str(profile.created_at),
           updated_at: str(profile.updated_at),
         });
@@ -630,28 +683,28 @@ describe("management-api self-service-profiles", () => {
       const { request, createProfile, createTicket } = await setup();
       const id = str((await createProfile()).id);
 
-      const max = await createTicket(id, {
-        connection_config: { name: "max-ttl" },
-        ttl_sec: 2592000,
-      });
-      const maxTtl = Date.parse(max.stored?.expires_at ?? "") - Date.now();
-      expect(maxTtl).toBeGreaterThan(2592000 * 1000 - 60_000);
-
-      const zero = await createTicket(id, {
-        connection_config: { name: "zero-ttl" },
-        ttl_sec: 0,
-      });
-      const zeroTtl = Date.parse(zero.stored?.expires_at ?? "") - Date.now();
-      expect(zeroTtl).toBeGreaterThan(432000 * 1000 - 60_000);
-      expect(zeroTtl).toBeLessThanOrEqual(432000 * 1000);
-
-      const short = await createTicket(id, {
-        connection_config: { name: "short-ttl" },
-        ttl_sec: 60,
-      });
-      expect(
-        Date.parse(short.stored?.expires_at ?? "") - Date.now(),
-      ).toBeLessThanOrEqual(60 * 1000);
+      // expires_at must fall within [before, after] + ttl for each request.
+      const expectTtl = async (
+        name: string,
+        ttlSec: number | undefined,
+        expected: number,
+      ) => {
+        const before = Date.now();
+        const { stored } = await createTicket(id, {
+          connection_config: { name },
+          ...(ttlSec === undefined ? {} : { ttl_sec: ttlSec }),
+        });
+        const after = Date.now();
+        const expiresAt = Date.parse(stored?.expires_at ?? "");
+        expect(expiresAt, name).toBeGreaterThanOrEqual(
+          before + expected * 1000,
+        );
+        expect(expiresAt, name).toBeLessThanOrEqual(after + expected * 1000);
+      };
+      await expectTtl("max-ttl", 2592000, 2592000);
+      await expectTtl("zero-ttl", 0, 432000);
+      await expectTtl("unset-ttl", undefined, 432000);
+      await expectTtl("short-ttl", 60, 60);
 
       for (const ttl_sec of [2592001, -1, 1.5, "60"]) {
         const response = await request(`/${id}/sso-ticket`, {
@@ -899,6 +952,54 @@ describe("management-api self-service-profiles", () => {
       expect((await tickets.get(TENANT, stored?.id ?? ""))?.revoked_at).toBe(
         after?.revoked_at,
       );
+    });
+
+    it("answers 404 to a DELETE that loses a race with another DELETE", async () => {
+      const { env, request, createProfile } = await setup();
+      const id = str((await createProfile()).id);
+      // The profile passed the route's check, then another request removed it.
+      vi.spyOn(env.data.selfServiceProfiles!, "remove").mockResolvedValue(
+        false,
+      );
+      const response = await request(`/${id}`, { method: "DELETE" });
+      expect(response.status).toBe(404);
+      expect(await json(response)).toMatchObject({
+        errorCode: "inexistent_self_service_profile",
+      });
+    });
+
+    it("never writes the ticket id from a revoke path to the logs", async () => {
+      const { env, request, createProfile, createTicket } = await setup();
+      const profileId = str((await createProfile()).id);
+      const { ticketId } = await createTicket(profileId, {
+        connection_config: { name: "acme" },
+      });
+      const path = `/${profileId}/sso-ticket/${ticketId}/revoke`;
+
+      // A revoke refused for scope leaves the ticket valid: its path is logged
+      // as a failed API operation.
+      const denied = await request(path, {
+        method: "POST",
+        token: await getAdminToken({ permissions: ["read:clients"] }),
+      });
+      expect(denied.status).toBe(403);
+      // A successful revoke writes an audit log entry.
+      expect((await request(path, { method: "POST" })).status).toBe(202);
+
+      const { logs } = await env.data.logs.list(TENANT, {
+        page: 0,
+        per_page: 50,
+        include_totals: false,
+      });
+      expect(
+        logs.some((log) => log.description === "Revoke SSO access ticket"),
+      ).toBe(true);
+      expect(
+        logs.some((log) =>
+          (log.description ?? "").includes("/sso-ticket/[redacted]/revoke"),
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(logs)).not.toContain(ticketId);
     });
 
     it("removes a profile's tickets with the profile", async () => {

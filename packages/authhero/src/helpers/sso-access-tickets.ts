@@ -27,3 +27,16 @@ export async function hashSsoTicketId(ticketId: string): Promise<string> {
 
 /** The setup assistant's path on the tenant's own domain. */
 export const SSO_TICKET_PATH = "u2/self-service";
+
+// `POST /self-service-profiles/{profileId}/sso-ticket/{id}/revoke` carries the
+// ticket id (a bearer value) in its path.
+const SSO_TICKET_REVOKE_PATH =
+  /(\/self-service-profiles\/[^/]+\/sso-ticket\/)[^/]+(\/revoke\/?)$/;
+
+/**
+ * The request path with an SSO ticket id replaced, for logs: a log reader
+ * must never get a usable ticket (a failed revoke leaves it valid).
+ */
+export function redactSsoTicketPath(path: string): string {
+  return path.replace(SSO_TICKET_REVOKE_PATH, "$1[redacted]$2");
+}
