@@ -1,6 +1,8 @@
 import {
+  CreateTenantParams,
   DataAdapters,
   SigningKey,
+  Tenant,
   emailProviderSchema,
   brandingSchema,
   promptSettingSchema,
@@ -41,8 +43,64 @@ export type DefaultsPayloadEntities = DefaultsProjectionEntities & {
 };
 
 /**
- * A minimal `tenants` row the payload carries so the tenant DB has the foreign
- * key targets every other write depends on. D1 enforces the
+ * The tenant-row settings a seed carries into the target tenant's own database
+ * (see {@link ControlPlaneTenantSeed.settings}). An allowlist, not "everything
+ * but the identity fields": the control plane's copy of the row also holds
+ * deployment, provisioning, worker, storage and sync bookkeeping that must stay
+ * on the control plane, and a field added to the tenant schema later should not
+ * start crossing the boundary without someone deciding it should.
+ *
+ * Left out on purpose:
+ *  - identity / sync / deployment fields (`id`, `audience`, `parent_tenant_id`,
+ *    `config_sync*`, `deployment_type`, `provisioning_*`, `worker_*`,
+ *    `bundle_configuration`, `storage_kind`, `d1_database_id`,
+ *    `database_version`);
+ *  - references to entities that live elsewhere (`default_client_id`,
+ *    `default_audience`, `default_organization`, `default_directory`);
+ *  - informational Auth0 compatibility fields (`sandbox_version*`).
+ *
+ * `mfa.twilio.auth_token` is a plaintext secret on the tenant row and is
+ * stripped (see {@link toSeedSettings}).
+ */
+export const SEEDED_TENANT_SETTING_KEYS = [
+  "picture_url",
+  "support_email",
+  "support_url",
+  "sender_email",
+  "sender_name",
+  "session_lifetime",
+  "idle_session_lifetime",
+  "ephemeral_session_lifetime",
+  "idle_ephemeral_session_lifetime",
+  "session_cookie",
+  "allowed_logout_urls",
+  "default_redirection_uri",
+  "enabled_locales",
+  "error_page",
+  "flags",
+  "change_password",
+  "guardian_mfa_page",
+  "device_flow",
+  "default_token_quota",
+  "sessions",
+  "oidc_logout",
+  "allow_organization_name_in_authentication_api",
+  "customize_mfa_in_postlogin_action",
+  "acr_values_supported",
+  "mtls",
+  "pushed_authorization_requests_supported",
+  "authorization_response_iss_parameter_supported",
+  "attack_protection",
+  "mfa",
+] as const satisfies readonly (keyof Tenant)[];
+
+export type SeededTenantSettings = Partial<
+  Pick<Tenant, (typeof SEEDED_TENANT_SETTING_KEYS)[number]>
+>;
+
+/**
+ * A `tenants` row the payload carries so the tenant DB has the foreign key
+ * targets every other write depends on. D1 enforces the
  * `tenant_id -> tenants(id)` FK, so a freshly provisioned tenant DB (which only
  * has the empty `tenants` table the migrations create) rejects every
  * tenant-scoped insert until these rows exist:
@@ -52,15 +110,24 @@ export type DefaultsPayloadEntities = DefaultsProjectionEntities & {
  *  2. the **target tenant's own id** — the tenant's own users / connections /
  *     sessions reference it.
  *
- * Deliberately minimal (`id` + `friendly_name`): the FK only needs the row to
- * exist, `friendly_name` is the only required create field, and keeping it
- * minimal avoids shipping control-plane tenant settings/secrets into a tenant
- * DB. Rows are create-if-missing on apply, so a re-sync never clobbers a row a
- * tenant has since edited.
+ * The control-plane row is minimal (`id` + `friendly_name`): the FK only needs
+ * it to exist, and the control plane's own settings/secrets must not reach a
+ * tenant DB. The target tenant's own row also carries that tenant's own
+ * settings (`settings`), read off its row in the control plane's DB — that is
+ * where `tenantDefaults` were applied on create, so this is how they reach a
+ * tenant with its own database. Rows are create-if-missing on apply, so a
+ * re-sync never clobbers a row a tenant has since edited (the settings are
+ * copied once, like `tenantDefaults` themselves).
  */
 export interface ControlPlaneTenantSeed {
   id: string;
   friendly_name: string;
+  /**
+   * The target tenant's own settings ({@link SEEDED_TENANT_SETTING_KEYS}).
+   * Never set on the control-plane tenant's seed. Optional so an older tenant
+   * worker ignores it and a newer one accepts a seed without it.
+   */
+  settings?: SeededTenantSettings;
 }
 
 /**
@@ -183,25 +250,67 @@ export async function buildControlPlaneSigningKeys(
 }
 
 /**
+ * Picks the allowlisted settings off a tenant row: unknown keys and `null` /
+ * `undefined` values (adapters emit `null` for unset columns) are dropped, and
+ * `mfa.twilio.auth_token` is stripped. Used on build and again on apply, so a
+ * tampered payload can't smuggle other tenant fields into the DB.
+ */
+function toSeedSettings(
+  row: Record<string, unknown> | null | undefined,
+): SeededTenantSettings | undefined {
+  if (!row) return undefined;
+  const settings: Record<string, unknown> = {};
+  for (const key of SEEDED_TENANT_SETTING_KEYS) {
+    const value = row[key];
+    if (value === null || value === undefined) continue;
+    settings[key] = value;
+  }
+
+  const mfa = settings.mfa;
+  if (mfa && typeof mfa === "object" && !Array.isArray(mfa)) {
+    const twilio = (mfa as Record<string, unknown>).twilio;
+    if (twilio && typeof twilio === "object" && !Array.isArray(twilio)) {
+      const { auth_token: _authToken, ...publicTwilio } = twilio as Record<
+        string,
+        unknown
+      >;
+      settings.mfa = { ...mfa, twilio: publicTwilio };
+    }
+  }
+
+  return Object.keys(settings).length > 0
+    ? (settings as SeededTenantSettings)
+    : undefined;
+}
+
+/**
  * Build the FK-target tenant seeds: always the control-plane tenant row, plus
  * the target tenant's own row when a (distinct) `targetTenantId` is given.
  * `friendly_name` is read off the control-plane DB (which holds every tenant's
- * row) and falls back to the id if the row can't be read.
+ * row) and falls back to the id if the row can't be read. Only the target
+ * tenant's seed carries `settings`; the control-plane seed stays minimal.
  */
 async function buildTenantSeeds(
   controlPlaneAdapters: DataAdapters,
   controlPlaneTenantId: string,
   targetTenantId?: string,
 ): Promise<ControlPlaneTenantSeed[]> {
-  const ids =
-    targetTenantId && targetTenantId !== controlPlaneTenantId
-      ? [controlPlaneTenantId, targetTenantId]
-      : [controlPlaneTenantId];
+  const cpRow = await controlPlaneAdapters.tenants.get(controlPlaneTenantId);
+  const seeds: ControlPlaneTenantSeed[] = [
+    {
+      id: controlPlaneTenantId,
+      friendly_name: cpRow?.friendly_name || controlPlaneTenantId,
+    },
+  ];
 
-  const seeds: ControlPlaneTenantSeed[] = [];
-  for (const id of ids) {
-    const row = await controlPlaneAdapters.tenants.get(id);
-    seeds.push({ id, friendly_name: row?.friendly_name || id });
+  if (targetTenantId && targetTenantId !== controlPlaneTenantId) {
+    const row = await controlPlaneAdapters.tenants.get(targetTenantId);
+    const settings = toSeedSettings(row);
+    seeds.push({
+      id: targetTenantId,
+      friendly_name: row?.friendly_name || targetTenantId,
+      ...(settings ? { settings } : {}),
+    });
   }
   return seeds;
 }
@@ -247,12 +356,15 @@ export async function applyControlPlaneSigningKeys(
  * Upserts the FK-target tenant rows into the tenant DB. Create-if-missing by id
  * (mirroring the signing-key path): a re-sync leaves an already-present row
  * untouched, so a tenant's own later edits to its row are never clobbered. Only
- * `id` + `friendly_name` are written, so a tampered payload can't smuggle extra
- * tenant fields into the DB.
+ * `id`, `friendly_name` and the allowlisted `settings` are written (re-filtered
+ * here), so a tampered payload can't smuggle other tenant fields into the DB.
+ * The control-plane tenant's row never takes settings, even if a payload sends
+ * them.
  */
 async function applyControlPlaneTenantSeeds(
   seeds: ControlPlaneTenantSeed[],
   target: DataAdapters,
+  controlPlaneTenantId: string,
   continueOnError: boolean,
 ): Promise<EntityProjectionOutcome> {
   const outcome = emptyOutcome();
@@ -260,10 +372,15 @@ async function applyControlPlaneTenantSeeds(
     await attempt(outcome, `tenant ${seed.id}`, continueOnError, async () => {
       const existing = await target.tenants.get(seed.id);
       if (existing) return; // create-if-missing
+      const settings =
+        seed.id === controlPlaneTenantId
+          ? undefined
+          : toSeedSettings(seed.settings as Record<string, unknown>);
       await target.tenants.create({
+        ...settings,
         id: seed.id,
         friendly_name: seed.friendly_name,
-      });
+      } as CreateTenantParams);
       outcome.upserted += 1;
     });
   }
@@ -324,6 +441,7 @@ export async function applyControlPlaneDefaultsPayload(
     ? await applyControlPlaneTenantSeeds(
         payload.tenants ?? [],
         targetAdapters,
+        controlPlaneTenantId,
         continueOnError,
       )
     : emptyOutcome();

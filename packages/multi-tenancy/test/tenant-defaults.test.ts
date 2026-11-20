@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import createAdapters from "@authhero/kysely-adapter";
-import { setupMultiTenancy, MANAGEMENT_API_SCOPES } from "../src/index";
+import {
+  setupMultiTenancy,
+  MANAGEMENT_API_SCOPES,
+  buildControlPlaneDefaultsPayload,
+  applyControlPlaneDefaultsPayload,
+} from "../src/index";
 import { applyTenantDefaults } from "../src/hooks/provisioning";
 import { ADMIN_REQUIRES_SCOPES } from "../src/hooks/tenant-roles";
 import { USERNAME_PASSWORD_PROVIDER } from "../../authhero/src/constants";
@@ -58,6 +63,7 @@ describe("tenantDefaults on POST /tenants", () => {
 
   async function createApp(
     tenantDefaults: Parameters<typeof setupMultiTenancy>[0]["tenantDefaults"],
+    config: Partial<Parameters<typeof setupMultiTenancy>[0]> = {},
   ) {
     const db = await createMigratedDb();
     adapters = createAdapters(db);
@@ -104,6 +110,7 @@ describe("tenantDefaults on POST /tenants", () => {
         requireOrganizationMatch: false,
       },
       tenantDefaults,
+      ...config,
     });
     const app = new Hono();
     app.use("*", async (c, next) => {
@@ -167,5 +174,51 @@ describe("tenantDefaults on POST /tenants", () => {
     await create(app, "t3", { flags: { enable_sso: true } });
     expect((await adapters.tenants.get("t2"))?.flags?.enable_sso).toBe(true);
     expect((await adapters.tenants.get("t3"))?.flags?.enable_sso).toBe(true);
+  });
+
+  it("reaches a tenant with its own database through the provisioning seed", async () => {
+    // The tenant's own database starts empty, like a freshly migrated wfp D1.
+    // The provision step seeds it from the control plane's copy of the row,
+    // which is where `tenantDefaults` were applied.
+    const tenantDb = createAdapters(await createMigratedDb());
+    const app = await createApp(
+      {
+        idle_session_lifetime: 72,
+        session_lifetime: 168,
+        mfa: { policy: "confidence" },
+      },
+      {
+        databaseIsolation: {
+          getAdapters: async (tenantId) =>
+            tenantId === "control_plane" ? adapters : tenantDb,
+          onProvision: async (tenantId) => {
+            const payload = await buildControlPlaneDefaultsPayload(
+              adapters,
+              "control_plane",
+              {},
+              tenantId,
+            );
+            await applyControlPlaneDefaultsPayload(
+              payload,
+              tenantDb,
+              "control_plane",
+            );
+          },
+        },
+      },
+    );
+    expect((await create(app, "wfp1")).status).toBe(201);
+
+    const own = await tenantDb.tenants.get("wfp1");
+    expect(own?.idle_session_lifetime).toBe(72);
+    expect(own?.session_lifetime).toBe(168);
+    expect(own?.mfa?.policy).toBe("confidence");
+    // Identity / deployment fields stay on the control plane.
+    expect(own?.audience).toBeFalsy();
+
+    // The control plane's own row in the tenant DB stays minimal.
+    const cp = await tenantDb.tenants.get("control_plane");
+    expect(cp?.friendly_name).toBe("Control Plane");
+    expect(cp?.sender_email).toBeFalsy();
   });
 });
