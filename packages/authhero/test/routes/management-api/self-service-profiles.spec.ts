@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { getAdminToken } from "../../helpers/token";
 import { getTestServer } from "../../helpers/test-server";
+import { selfServiceProfileFromRow } from "@authhero/adapter-interfaces";
 import { hashSsoTicketId } from "../../../src/helpers/sso-access-tickets";
 
 const TENANT = "tenantId";
@@ -525,6 +526,65 @@ describe("management-api self-service-profiles", () => {
       });
       expect(stored?.connection_config).toBeUndefined();
     });
+
+    it.each([
+      // One corrupt entry drops only itself: samlp stays, oidc is not allowed.
+      ['["samlp","not-a-strategy"]', "oidc"],
+      // Unreadable: nothing is allowed, never "all supported strategies".
+      ["not json", "oidc"],
+      ['["not-a-strategy"]', "waad"],
+    ])(
+      "fails closed on a profile whose stored allowed_strategies is %s",
+      async (raw, strategy) => {
+        const { env, request, createProfile } = await setup();
+        const profile = await createProfile({ allowed_strategies: ["samlp"] });
+        const id = str(profile.id);
+        const connection = await env.data.connections.create(TENANT, {
+          name: `acme-${strategy}`,
+          strategy,
+          options: {},
+        });
+        // Serve the profile through the adapters' real row mapping.
+        const stored = selfServiceProfileFromRow({
+          id,
+          tenant_id: TENANT,
+          name: "Partners",
+          description: null,
+          allowed_strategies: raw,
+          user_attributes: null,
+          branding: null,
+          created_at: str(profile.created_at),
+          updated_at: str(profile.updated_at),
+        });
+        vi.spyOn(env.data.selfServiceProfiles!, "get").mockResolvedValue(
+          stored,
+        );
+        const create = vi.spyOn(env.data.ssoAccessTickets!, "create");
+
+        const edit = await request(`/${id}/sso-ticket`, {
+          method: "POST",
+          body: { connection_id: connection.id },
+        });
+        const nothingAllowed = (stored.allowed_strategies ?? []).length === 0;
+        expect(edit.status).toBe(400);
+        expect(str((await json(edit)).message)).toContain(
+          nothingAllowed ? "allows no supported strategy" : "connection_id",
+        );
+        expect(create).not.toHaveBeenCalled();
+
+        if (nothingAllowed) {
+          const createTicket = await request(`/${id}/sso-ticket`, {
+            method: "POST",
+            body: { connection_config: { name: "acme-new" } },
+          });
+          expect(createTicket.status).toBe(400);
+          expect(str((await json(createTicket)).message)).toContain(
+            "allows no supported strategy",
+          );
+          expect(create).not.toHaveBeenCalled();
+        }
+      },
+    );
 
     it("applies the ttl_sec limits", async () => {
       const { request, createProfile, createTicket } = await setup();
