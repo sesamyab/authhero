@@ -36,6 +36,10 @@ import { createPromptPartialsAdapter } from "./promptPartials";
 import { createProxyRoutesAdapter } from "./proxyRoutes";
 import { createTokenExchangeProfilesAdapter } from "./tokenExchangeProfiles";
 import {
+  createSelfServiceProfilesAdapter,
+  createSsoAccessTicketsAdapter,
+} from "./selfServiceSso";
+import {
   createScimConfigurationsAdapter,
   createScimTokensAdapter,
   createScimExternalIdsAdapter,
@@ -130,6 +134,8 @@ export default function createAdapters(
     sessionCleanup: createSessionCleanup(db),
     tenants: createTenantsAdapter(db),
     tokenExchangeProfiles: createTokenExchangeProfilesAdapter(db),
+    selfServiceProfiles: createSelfServiceProfilesAdapter(db),
+    ssoAccessTickets: createSsoAccessTicketsAdapter(db),
     ...(databaseOptions.controlPlane
       ? {
           tenantOperations: createTenantOperationsAdapter(db),

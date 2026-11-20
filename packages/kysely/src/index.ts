@@ -53,6 +53,10 @@ import { createMigrationSourcesAdapter } from "./migrationSources";
 import { createProxyRoutesAdapter } from "./proxyRoutes";
 import { createTokenExchangeProfilesAdapter } from "./tokenExchangeProfiles";
 import {
+  createSelfServiceProfilesAdapter,
+  createSsoAccessTicketsAdapter,
+} from "./selfServiceSso";
+import {
   createScimConfigurationsAdapter,
   createScimTokensAdapter,
   createScimExternalIdsAdapter,
@@ -128,6 +132,8 @@ export default function createAdapters(
     tenantOperationEvents: createTenantOperationEventsAdapter(db),
     tenantOperationRows: createTenantOperationRowsAdapter(db),
     tokenExchangeProfiles: createTokenExchangeProfilesAdapter(db),
+    selfServiceProfiles: createSelfServiceProfilesAdapter(db),
+    ssoAccessTickets: createSsoAccessTicketsAdapter(db),
     rollouts: createRolloutsAdapter(db),
     themes: createThemesAdapter(db),
     universalLoginTemplates: createUniversalLoginTemplatesAdapter(db),

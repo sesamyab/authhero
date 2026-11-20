@@ -66,7 +66,7 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-11-18T12:00:00_connection_self_service";
+    const last = "2026-11-20T12:00:00_self_service_sso";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
 
@@ -75,14 +75,32 @@ describe("planMigrations", () => {
     expect(plan.pending.map((it) => it.name)).toEqual([last]);
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
+    for (const table of ["self_service_profiles", "sso_access_tickets"]) {
+      expect(output).toMatch(
+        new RegExp(`create table if not exists "${table}"`, "i"),
+      );
+      expect(await tableNames(db)).not.toContain(table);
+    }
     expect(output).toMatch(
-      /alter table "connections" add column "self_service"/i,
+      /create unique index "sso_access_tickets_ticket_hash_idx"/i,
     );
-    expect(await columnNames(db, "connections")).not.toContain("self_service");
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    expect(await columnNames(db, "connections")).toContain("self_service");
+    for (const table of ["self_service_profiles", "sso_access_tickets"]) {
+      expect(await tableNames(db)).toContain(table);
+    }
+    await db.destroy();
+  });
+});
+
+describe("2026-11-20T12:00:00_self_service_sso", () => {
+  it("can be re-run when its tables and indexes already exist", async () => {
+    const db = createDb();
+    await migrateToLatest(db, false);
+    await expect(
+      migrations["2026-11-20T12:00:00_self_service_sso"].up(db),
+    ).resolves.toBeUndefined();
     await db.destroy();
   });
 });
