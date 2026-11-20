@@ -16,6 +16,7 @@ function getTenantAudience(tenantId: string): string {
 }
 import {
   MultiTenancyConfig,
+  TenantDefaults,
   TenantEntityHooks,
   TenantHookContext,
 } from "../types";
@@ -39,6 +40,54 @@ type PreflightResult = Awaited<ReturnType<typeof resolveCreatorRoles>> & {
   hasGlobalOrgAdmin?: boolean;
 };
 const preflight = new WeakMap<object, PreflightResult>();
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeUnder(
+  value: Record<string, unknown>,
+  defaults: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...defaults };
+  for (const [key, own] of Object.entries(value)) {
+    if (own === undefined) continue;
+    const base = defaults[key];
+    result[key] =
+      isPlainObject(own) && isPlainObject(base) ? mergeUnder(own, base) : own;
+  }
+  return result;
+}
+
+/**
+ * Puts the defaults under the request: a value the request sets (null
+ * included) wins, nested objects such as `flags` merge key by key, and arrays
+ * are replaced whole.
+ */
+// The type leaves these out at compile time; a defaults object built at runtime
+// (a variable, a function's return value) can still carry them, so drop them.
+const EXCLUDED_DEFAULT_KEYS = [
+  "id",
+  "friendly_name",
+  "audience",
+  "parent_tenant_id",
+  "config_sync",
+  "config_sync_hash",
+  "config_synced_at",
+  "database_version",
+] as const;
+
+export function applyTenantDefaults(
+  params: CreateTenantParams,
+  defaults: TenantDefaults,
+): CreateTenantParams {
+  const settings = { ...defaults } as Record<string, unknown>;
+  for (const key of EXCLUDED_DEFAULT_KEYS) delete settings[key];
+  return mergeUnder(
+    params as unknown as Record<string, unknown>,
+    settings,
+  ) as unknown as CreateTenantParams;
+}
 
 /**
  * Creates hooks for tenant provisioning and deprovisioning.
@@ -124,6 +173,16 @@ export function createProvisioningHooks(
               }
             : {}),
         });
+      }
+
+      // Copy the configured defaults onto the new tenant. They are the tenant's
+      // own from here on, and anything in the request wins over them.
+      if (config.tenantDefaults) {
+        const defaults =
+          typeof config.tenantDefaults === "function"
+            ? await config.tenantDefaults(params, ctx)
+            : config.tenantDefaults;
+        params = applyTenantDefaults(params, defaults);
       }
 
       // Set the audience to the tenant-specific URN if not already set
