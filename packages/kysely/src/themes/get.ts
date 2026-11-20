@@ -29,14 +29,23 @@ export function get(db: Kysely<Database>) {
       fonts_title_bold: Boolean(theme.fonts_title_bold),
     };
 
-    return removeNullProperties(
+    const result = removeNullProperties(
       unflattenObject(convertedTheme, [
         "widget",
+        // Before "colors": first matching prefix wins.
+        "colors_dark",
         "colors",
         "borders",
         "fonts",
         "page_background",
       ]),
-    );
+    ) as Theme;
+
+    // Rows stored before the dark fields existed have all colors_dark_*
+    // columns NULL; report "no dark overrides" rather than an empty object.
+    if (result.colors_dark && Object.keys(result.colors_dark).length === 0) {
+      delete result.colors_dark;
+    }
+    return result;
   };
 }

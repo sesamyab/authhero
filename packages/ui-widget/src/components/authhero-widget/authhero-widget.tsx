@@ -2186,6 +2186,12 @@ export class AuthheroWidget {
 
     // Get logo URL from theme.widget (takes precedence) or branding
     const logoUrl = this._theme?.widget?.logo_url || this._branding?.logo_url;
+    // Optional dark variant. Both images are rendered and the page's
+    // server-rendered CSS picks one per scheme (via --ah-logo-*-display), so
+    // there is no flash and no JS involved.
+    const logoUrlDark = logoUrl
+      ? this._theme?.widget?.logo_url_dark
+      : undefined;
 
     // Social buttons, their divider and the secondary-actions partials. Their
     // visual order is set by CSS from the theme's social_buttons_layout, so the
@@ -2244,7 +2250,24 @@ export class AuthheroWidget {
         <header class="widget-header" part="header">
           {logoUrl && (
             <div class="logo-wrapper" part="logo-wrapper">
-              <img class="logo" part="logo" src={logoUrl} alt="Logo" />
+              {logoUrlDark ? (
+                [
+                  <img
+                    class="logo logo-light"
+                    part="logo logo-light"
+                    src={logoUrl}
+                    alt="Logo"
+                  />,
+                  <img
+                    class="logo logo-dark"
+                    part="logo logo-dark"
+                    src={logoUrlDark}
+                    alt="Logo"
+                  />,
+                ]
+              ) : (
+                <img class="logo" part="logo" src={logoUrl} alt="Logo" />
+              )}
             </div>
           )}
 

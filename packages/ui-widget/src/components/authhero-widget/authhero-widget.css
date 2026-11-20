@@ -77,6 +77,15 @@
   object-fit: contain;
 }
 
+/* Light/dark logo pair, rendered only when the theme sets logo_url_dark.
+   The page's dark-scheme CSS flips these variables. */
+.logo.logo-light {
+  display: var(--ah-logo-light-display, block);
+}
+.logo.logo-dark {
+  display: var(--ah-logo-dark-display, none);
+}
+
 /* ==========================================================================
    Title & Description
    Part: title, description

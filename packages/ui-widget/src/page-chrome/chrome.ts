@@ -92,12 +92,18 @@ export function renderLanguagePicker(opts: {
 /** Top-left logo chip. Only rendered when the caller opts into the chip variant. */
 export function renderLogoChip(opts: {
   logoUrl?: string | null;
+  /** Dark-scheme logo. Both images are emitted; page CSS shows one per scheme. */
+  logoUrlDark?: string | null;
   clientName: string;
   variant?: ChipStyle;
 }): string {
   const safe = opts.logoUrl ? sanitizeUrl(opts.logoUrl) : "";
+  const safeDark = opts.logoUrlDark ? sanitizeUrl(opts.logoUrlDark) : "";
+  const alt = escapeHtml(opts.clientName);
   const inner = safe
-    ? `<img src="${safe}" alt="${escapeHtml(opts.clientName)}">`
+    ? safeDark
+      ? `<img class="ah-logo-img ah-logo-img--light" src="${safe}" alt="${alt}"><img class="ah-logo-img ah-logo-img--dark" src="${safeDark}" alt="${alt}">`
+      : `<img src="${safe}" alt="${alt}">`
     : `<span class="ah-logo-text">${escapeHtml(opts.clientName)}</span>`;
   return `<div class="ah-chip ah-chip-logo${chipVariantClass(opts.variant)}" data-ah-slot="top-left">${inner}</div>`;
 }

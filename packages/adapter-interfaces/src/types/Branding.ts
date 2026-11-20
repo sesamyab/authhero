@@ -23,6 +23,9 @@ export const brandingSchema = z.object({
     .optional(),
   logo_url: z.string().optional(),
   favicon_url: z.string().optional(),
+  // AuthHero-specific: favicon for dark browser UIs (emitted with a
+  // prefers-color-scheme media query). Falls back to favicon_url.
+  favicon_url_dark: z.string().optional(),
   powered_by_logo_url: z.string().optional(),
   font: z
     .object({

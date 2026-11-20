@@ -16,6 +16,7 @@ export const branding = sqliteTable("branding", {
   ...configInheritanceColumns(),
   logo_url: text("logo_url", { length: 512 }),
   favicon_url: text("favicon_url", { length: 512 }),
+  favicon_url_dark: text("favicon_url_dark", { length: 512 }),
   font_url: text("font_url", { length: 512 }),
   colors_primary: text("colors_primary", { length: 8 }),
   colors_page_background_type: text("colors_page_background_type", {
@@ -163,6 +164,62 @@ export const themes = sqliteTable(
     widget_social_buttons_layout: text("widget_social_buttons_layout", {
       length: 24,
     }).notNull(),
+    // AuthHero dark-scheme extension; all optional (see Theme.ts).
+    colors_dark_base_focus_color: text("colors_dark_base_focus_color", {
+      length: 24,
+    }),
+    colors_dark_base_hover_color: text("colors_dark_base_hover_color", {
+      length: 24,
+    }),
+    colors_dark_body_text: text("colors_dark_body_text", { length: 24 }),
+    colors_dark_error: text("colors_dark_error", { length: 24 }),
+    colors_dark_header: text("colors_dark_header", { length: 24 }),
+    colors_dark_icons: text("colors_dark_icons", { length: 24 }),
+    colors_dark_input_background: text("colors_dark_input_background", {
+      length: 24,
+    }),
+    colors_dark_input_border: text("colors_dark_input_border", { length: 24 }),
+    colors_dark_input_filled_text: text("colors_dark_input_filled_text", {
+      length: 24,
+    }),
+    colors_dark_input_labels_placeholders: text(
+      "colors_dark_input_labels_placeholders",
+      { length: 24 },
+    ),
+    colors_dark_links_focused_components: text(
+      "colors_dark_links_focused_components",
+      { length: 24 },
+    ),
+    colors_dark_primary_button: text("colors_dark_primary_button", {
+      length: 24,
+    }),
+    colors_dark_primary_button_label: text("colors_dark_primary_button_label", {
+      length: 24,
+    }),
+    colors_dark_secondary_button_border: text(
+      "colors_dark_secondary_button_border",
+      { length: 24 },
+    ),
+    colors_dark_secondary_button_label: text(
+      "colors_dark_secondary_button_label",
+      { length: 24 },
+    ),
+    colors_dark_success: text("colors_dark_success", { length: 24 }),
+    colors_dark_widget_background: text("colors_dark_widget_background", {
+      length: 24,
+    }),
+    colors_dark_widget_border: text("colors_dark_widget_border", {
+      length: 24,
+    }),
+    page_background_background_color_dark: text(
+      "page_background_background_color_dark",
+      { length: 24 },
+    ),
+    page_background_background_image_url_dark: text(
+      "page_background_background_image_url_dark",
+      { length: 255 },
+    ),
+    widget_logo_url_dark: text("widget_logo_url_dark", { length: 255 }),
     created_at: text("created_at", { length: 35 }).notNull(),
     updated_at: text("updated_at", { length: 35 }).notNull(),
   },
