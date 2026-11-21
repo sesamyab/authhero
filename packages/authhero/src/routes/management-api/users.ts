@@ -12,6 +12,7 @@ import {
 import { Bindings, Variables } from "../../types";
 import {
   getAllUsersByEmail,
+  getAllUsersByUsername,
   getUserByProvider,
   cascadeEmailToLinkedIdentities,
   findEmailConflict,
@@ -29,6 +30,7 @@ import {
   Identity,
   LogTypes,
   Strategy,
+  User,
   auth0UserResponseSchema,
   identitySchema,
   logSchema,
@@ -50,6 +52,10 @@ import {
   resolveUsernamePasswordProvider,
 } from "../../utils/username-password-provider";
 import { getIssuer } from "../../variables";
+import {
+  isUserInConnectionScope,
+  resolveDatabaseConnectionScope,
+} from "../../helpers/database-connection-scope";
 import { withDefaultPicture } from "../../helpers/avatar";
 
 import { defineRoute } from "../../utils/define-route";
@@ -559,8 +565,10 @@ const postRoot = defineRoute({
       ...profileFields
     } = body;
 
-    // Look up the connection to derive the provider
-    const connectionRecord = await ctx.env.data.connections.get(
+    // Look up the connection to derive the provider. Auth0 callers name the
+    // connection; older callers pass its id. Accept both.
+    const connectionRecord = await getConnectionByIdOrName(
+      ctx.env.data,
       tenantId,
       connection,
     );
@@ -583,6 +591,13 @@ const postRoot = defineRoute({
         ? getProviderFromConnection(connectionRecord)
         : providedProvider || connection;
 
+    // A database user is identified within its connection (#1705), so it
+    // stores the connection's name, as Auth0 does, even when the caller
+    // passed the id. Other connections keep the value as passed: passwordless
+    // and social rows are matched on those literals elsewhere.
+    const userConnection =
+      isDatabaseUser && connectionRecord ? connectionRecord.name : connection;
+
     // Only database connections carry an Auth0-style username; elsewhere the
     // field is IdP profile data and is forwarded verbatim.
     const username =
@@ -591,7 +606,7 @@ const postRoot = defineRoute({
             ctx.env.data,
             tenantId,
             body.username,
-            connection,
+            userConnection,
           )
         : body.username;
 
@@ -603,6 +618,32 @@ const postRoot = defineRoute({
       ? stripProviderPrefix(rawUserId, provider)
       : userIdGenerate();
     const user_id = `${provider}|${idPart}`;
+
+    // Database users are unique by email and by username within their
+    // connection, as in Auth0. Every database connection shares the
+    // username-password provider, so the lookup is scoped to the connection
+    // (#1702); the provider-scoped unique index still rejects a duplicate in
+    // another database connection until #1704 moves it to connections.
+    if (isDatabaseUser) {
+      const connectionScope = await resolveDatabaseConnectionScope(
+        ctx.env.data.connections,
+        tenantId,
+        userConnection,
+      );
+      for (const identifier of [email, username]) {
+        if (typeof identifier !== "string" || !identifier) continue;
+        const existingUser = await getUserByProvider({
+          userAdapter: ctx.env.data.users,
+          tenant_id: tenantId,
+          username: identifier,
+          provider,
+          connection: connectionScope,
+        });
+        if (existingUser) {
+          throw conflict.userExists();
+        }
+      }
+    }
 
     // A phone number only *identifies* a user on the passwordless `sms`
     // connection, so uniqueness is enforced here (Auth0-style, at lookup)
@@ -648,7 +689,7 @@ const postRoot = defineRoute({
         name: name || email || phone_number,
         phone_number,
         provider,
-        connection,
+        connection: userConnection,
         linked_to: linked_to ?? undefined,
         email_verified: email_verified || false,
         last_ip: "",
@@ -694,8 +735,12 @@ const postRoot = defineRoute({
           status: 201,
         },
       );
-    } catch (err: any) {
-      if (err.message === "User already exists") {
+    } catch (err: unknown) {
+      // A unique-index violation: the adapter throws a plain HTTPException
+      // ("User already exists"), the registration hook a JSON one when it
+      // loses the commit. Either way the caller gets Auth0's 409 body. No
+      // other 409 is expected from users.create; if one is added, map it here.
+      if (err instanceof HTTPException && err.status === 409) {
         throw conflict.userExists();
       }
       throw err;
@@ -773,58 +818,89 @@ const patchByUser_id = defineRoute({
     let targetUserId = user_id;
     let targetUser = userToPatch;
 
+    // A named database connection, or the generic
+    // Username-Password-Authentication name. Its identities are matched by
+    // the username-password provider within the connection's scope (#1705):
+    // a tenant's database connections all share that provider.
+    const namedConnection = connection
+      ? await getConnectionByIdOrName(data, tenantId, connection)
+      : null;
+    const isPasswordConnection =
+      connection === Strategy.USERNAME_PASSWORD ||
+      isDatabaseConnectionStrategy(namedConnection?.strategy);
+    const passwordConnectionScope = isPasswordConnection
+      ? await resolveDatabaseConnectionScope(
+          data.connections,
+          tenantId,
+          namedConnection?.name ?? connection,
+        )
+      : undefined;
+
     if (connection) {
       // Passwords are only stored against users created by the native
       // username-password provider (auth2). When an Auth0-imported user
       // shares the Username-Password-Authentication connection with a
       // linked auth2 user, we must target the auth2 one so the password
       // row is readable by the login flow (which looks up by provider).
-      const isPasswordConnection = connection === Strategy.USERNAME_PASSWORD;
-
       const matchesTarget = (u: { connection?: string; provider?: string }) =>
         isPasswordConnection
-          ? isUsernamePasswordProvider(u.provider)
+          ? isUsernamePasswordProvider(u.provider) &&
+            isUserInConnectionScope(u, passwordConnectionScope)
           : u.connection === connection;
 
-      // For password connections, prefer a linked "auth2" identity over an
-      // "auth0" primary so the bcrypt password row lands where login reads
-      // it from. See username-password-provider.ts for the same auth2-first
-      // rule applied at READ sites.
-      const preferAuth2Linked =
-        isPasswordConnection && userToPatch.provider === "auth0";
+      let linkedUsersPage: { users: User[] } | undefined;
+      const listLinkedUsers = async () => {
+        linkedUsersPage ??= await data.users.list(tenantId, {
+          page: 0,
+          per_page: 100,
+          include_totals: false,
+          q: `linked_to:${escapeLuceneValue(user_id)}`,
+        });
+        return linkedUsersPage.users;
+      };
 
-      const linkedUsers = preferAuth2Linked
-        ? await data.users.list(tenantId, {
-            page: 0,
-            per_page: 100,
-            include_totals: false,
-            q: `linked_to:${escapeLuceneValue(user_id)}`,
-          })
-        : null;
+      // With several database connections, an identity stored exactly in the
+      // named connection wins over an unattributed legacy row that is merely
+      // in scope, the same rule the login lookups apply (#1702). Otherwise the
+      // write could land on a legacy secondary that a login scoped to this
+      // connection never reads. auth2 first among exact matches, as there.
+      let exactMatch: User | undefined;
+      if (passwordConnectionScope) {
+        const cluster = [userToPatch, ...(await listLinkedUsers())];
+        const exact = cluster.filter(
+          (u) =>
+            isUsernamePasswordProvider(u.provider) &&
+            u.connection === passwordConnectionScope.name,
+        );
+        exactMatch = exact.find((u) => u.provider === "auth2") ?? exact[0];
+      }
 
-      const auth2Linked = linkedUsers?.users.find(
-        (u) => u.provider === "auth2" && matchesTarget(u),
-      );
+      // Without an exact match, prefer an in-scope "auth2" identity of the
+      // cluster, the primary first, whatever the primary's provider: login
+      // reads the auth2 row first (see getUsernamePasswordUser), so the bcrypt
+      // password must land there. An auth2 primary stays the target.
+      const auth2Identity =
+        !exactMatch && isPasswordConnection
+          ? [userToPatch, ...(await listLinkedUsers())].find(
+              (u) => u.provider === "auth2" && matchesTarget(u),
+            )
+          : undefined;
 
-      if (auth2Linked) {
-        targetUserId = auth2Linked.user_id;
-        targetUser = auth2Linked;
+      if (exactMatch) {
+        targetUserId = exactMatch.user_id;
+        targetUser = exactMatch;
+      } else if (auth2Identity) {
+        targetUserId = auth2Identity.user_id;
+        targetUser = auth2Identity;
       } else if (matchesTarget(userToPatch)) {
         // Target is the primary user
         targetUserId = user_id;
         targetUser = userToPatch;
       } else {
         // Look for a linked user with this connection
-        const linkedList =
-          linkedUsers ??
-          (await data.users.list(tenantId, {
-            page: 0,
-            per_page: 100,
-            include_totals: false,
-            q: `linked_to:${escapeLuceneValue(user_id)}`,
-          }));
-
-        const linkedUserWithConnection = linkedList.users.find(matchesTarget);
+        const linkedUserWithConnection = (await listLinkedUsers()).find(
+          matchesTarget,
+        );
 
         if (!linkedUserWithConnection) {
           throw notFound.identity();
@@ -851,6 +927,19 @@ const patchByUser_id = defineRoute({
       );
     }
 
+    // Uniqueness of email and username is checked within the target's own
+    // connection. With several database connections in the tenant, "own
+    // connection" follows the scope the login lookups use (#1702).
+    const targetConnectionScope = isUsernamePasswordProvider(
+      targetUser.provider,
+    )
+      ? await resolveDatabaseConnectionScope(
+          data.connections,
+          tenantId,
+          targetUser.connection,
+        )
+      : undefined;
+
     // Check if the email is being changed to an existing email of another user
     if (userFields.email && userFields.email !== targetUser.email) {
       // Every page: the predicate below filters candidates, so a truncated
@@ -869,11 +958,36 @@ const patchByUser_id = defineRoute({
           candidates: existingUsers,
           target: { ...targetUser, user_id: targetUserId },
           clusterRootId: user_id,
+          connectionScope: targetConnectionScope,
         })
       ) {
         throw conflict.other(
           "Another user with the same email address already exists.",
         );
+      }
+    }
+
+    // Same rule for a username change. Without it a taken username in the
+    // same provider reaches the unique index and fails as a 500.
+    if (
+      typeof userFields.username === "string" &&
+      userFields.username &&
+      userFields.username !== targetUser.username
+    ) {
+      const existingUsers = await getAllUsersByUsername(
+        ctx.env.data.users,
+        tenantId,
+        userFields.username,
+      );
+      if (
+        findEmailConflict({
+          candidates: existingUsers,
+          target: { ...targetUser, user_id: targetUserId },
+          clusterRootId: user_id,
+          connectionScope: targetConnectionScope,
+        })
+      ) {
+        throw conflict.userExists();
       }
     }
 
@@ -951,7 +1065,7 @@ const patchByUser_id = defineRoute({
 
       if (connection) {
         // If connection is specified and it's a password connection, use the target user
-        if (connection === Strategy.USERNAME_PASSWORD) {
+        if (isPasswordConnection) {
           passwordIdentity = {
             provider: targetUser.provider,
             user_id: userIdParse(targetUserId)!,
