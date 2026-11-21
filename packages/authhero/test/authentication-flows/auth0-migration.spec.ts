@@ -261,6 +261,35 @@ describe("auth0 migration: password fallback", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("checks the generic realm against the client's database connection, not a tenant one with that name (#1703)", async () => {
+    // "Username-Password-Authentication" has import_mode + upstream config,
+    // but this client's only database connection is another one.
+    const { oauthApp, env } = await makeMigrationServer();
+    await env.data.connections.create(TENANT_ID, {
+      id: "cte-users",
+      name: "cte-users",
+      strategy: Strategy.USERNAME_PASSWORD,
+      options: {},
+    });
+    await env.data.clientConnections.updateByClient(TENANT_ID, CLIENT_ID, [
+      "cte-users",
+    ]);
+    const oauthClient = testClient(oauthApp, env);
+
+    const response = await oauthClient.co.authenticate.$post({
+      json: {
+        client_id: CLIENT_ID,
+        credential_type: "http://auth0.com/oauth/grant-type/password-realm",
+        realm: REALM,
+        username: "nobody@example.com",
+        password: "anything",
+      },
+    });
+
+    expect(response.status).toBe(403);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("does NOT call upstream when DB connection has no options.configuration", async () => {
     const { oauthApp, env } = await makeMigrationServer({
       withConfiguration: false,

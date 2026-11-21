@@ -12,6 +12,7 @@ import { Bindings } from "../types";
 import { getUniversalLoginUrl } from "../variables";
 import { isCimdClientId, resolveCimdClient } from "./cimd";
 import { SsrfFetchOptions } from "../utils/ssrf-fetch";
+import { orderFallbackDatabaseConnections } from "./database-connection-scope";
 
 /**
  * EnrichedClient combines a Client with its associated Tenant and Connections.
@@ -67,7 +68,7 @@ function mergeClientUrls<T extends ClientLike>(client: T, cp: ClientLike): T {
  * then fetch tenant and connections in parallel.
  *
  * If no connections are explicitly enabled for the client, falls back to all
- * connections available in the tenant.
+ * connections available in the tenant, database connections oldest first.
  *
  * @param env - The environment bindings containing data adapters
  * @param clientId - The client ID to fetch
@@ -169,7 +170,12 @@ export async function getEnrichedClient(
     const synthesized = await resolveCimdClient(clientId, fetchOpts);
     const allConnections = await env.data.connections.list(cimdTenantId);
     await ensureCimdStubClient(env, cimdTenantId, synthesized);
-    return enrichClient(env, synthesized, tenant, allConnections.connections);
+    return enrichClient(
+      env,
+      synthesized,
+      tenant,
+      orderFallbackDatabaseConnections(allConnections.connections),
+    );
   }
 
   // If we don't have tenant_id, fetch the client first to get it
@@ -243,11 +249,13 @@ export async function getEnrichedClient(
     throw new JSONHTTPException(404, { message: "Tenant not found" });
   }
 
-  // If no connections explicitly enabled for this client, fall back to all tenant connections
+  // If no connections explicitly enabled for this client, fall back to all
+  // tenant connections, with the database connections oldest first: without
+  // an explicit order, the oldest is the one password login uses (#1703).
   const connections =
     clientConnections.length > 0
       ? clientConnections
-      : allConnections.connections || [];
+      : orderFallbackDatabaseConnections(allConnections.connections || []);
 
   return enrichClient(env, finalClient, tenant, connections);
 }

@@ -23,6 +23,7 @@ import { isTryConnectionClientId } from "../../constants";
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId, withTotals } from "./helpers";
 import { withoutSelfService } from "../../helpers/self-service-connections";
+import { orderFallbackDatabaseConnections } from "../../helpers/database-connection-scope";
 
 // Platform-managed clients with no business meaning to admins (e.g. the
 // per-tenant "AuthHero Try Connection" stub created by ensureTryConnectionClient).
@@ -575,10 +576,11 @@ const getByIdConnections = defineRoute({
         }),
       );
     } else {
-      // No connections defined - return all available connections
+      // No connections defined - return all available connections, database
+      // connections oldest first: the order login uses for this client (#1703).
       const { connections: allConnections } =
         await ctx.env.data.connections.list(tenant_id, {});
-      enabledConnections = allConnections
+      enabledConnections = orderFallbackDatabaseConnections(allConnections)
         .filter((connection) => connection.id)
         .map((connection) => ({
           connection_id: connection.id!,

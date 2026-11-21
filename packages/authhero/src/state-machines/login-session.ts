@@ -64,6 +64,14 @@ export interface LoginSessionData {
   // Set on the login session behind a session_transfer_token: what the
   // redeeming /authorize needs to rebuild the login
   session_transfer?: SessionTransferCarrierState;
+  /**
+   * The database connection /co/authenticate checked a password in. Written
+   * only by its password branch, on the session it creates, and read by
+   * ticketAuth. Kept apart from `authParams.connection`, which /authorize and
+   * other routes set from the request, so a login ticket can only be redeemed
+   * where a password was actually checked.
+   */
+  ticket_connection?: string;
 }
 
 /** The on-disk JSON shape stays flat for compatibility with existing sessions. */

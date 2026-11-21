@@ -77,7 +77,10 @@ const getRoot = defineRoute({
       env,
       tenant_id: client.tenant.id,
       username,
-      connection: resolveClientDatabaseConnectionName(client),
+      connection: resolveClientDatabaseConnectionName(
+        client,
+        loginSession.authParams.connection,
+      ),
     });
     if (!user) {
       logMessage(ctx, client.tenant.id, {

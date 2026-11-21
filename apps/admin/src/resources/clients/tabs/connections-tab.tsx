@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Strategy } from "@/utils/Strategy";
+import { Strategy, isDatabaseConnectionStrategy } from "@/utils/Strategy";
 
 interface Connection {
   id: string;
@@ -47,16 +47,16 @@ interface Connection {
 }
 
 // Mirrors the filter in packages/authhero/src/routes/universal-login/screens/identifier.ts:
-// email/sms/username-password render as forms, and HRD-only connections
+// email/sms/database connections render as forms, and HRD-only connections
 // (with domain_aliases) are routed by email domain unless show_as_button is set.
-const FORM_STRATEGIES = new Set<string>([
-  Strategy.EMAIL,
-  Strategy.SMS,
-  Strategy.USERNAME_PASSWORD,
-]);
+// Database connections are listed in their own section, see below.
+const FORM_STRATEGIES = new Set<string>([Strategy.EMAIL, Strategy.SMS]);
 
 function getHiddenButtonReason(c: Connection): string | null {
-  if (FORM_STRATEGIES.has(c.strategy)) {
+  if (
+    FORM_STRATEGIES.has(c.strategy) ||
+    isDatabaseConnectionStrategy(c.strategy)
+  ) {
     return "Rendered as a form, not a button";
   }
   if (c.options?.domain_aliases?.length && c.show_as_button !== true) {
@@ -172,8 +172,14 @@ export function ConnectionsTab() {
         body: JSON.stringify(ids),
       });
       return true;
-    } catch {
-      notify("Error updating connections", { type: "error" });
+    } catch (error) {
+      // The http clients put the API's message in error.message.
+      notify(
+        error instanceof Error && error.message
+          ? error.message
+          : "Error updating connections",
+        { type: "error" },
+      );
       return false;
     } finally {
       setSaving(false);
@@ -201,16 +207,21 @@ export function ConnectionsTab() {
     }
   };
 
-  // Hidden connections keep their absolute positions; we only swap two
-  // visible neighbors so the button order changes without disturbing the rest.
-  const handleMove = async (visibleIndex: number, dir: "up" | "down") => {
-    const visibleEntries = enabled
+  // Other connections keep their absolute positions; we only swap two
+  // neighbors of one group (login buttons, or database connections) so that
+  // group's order changes without disturbing the rest.
+  const handleMove = async (
+    group: (c: Connection) => boolean,
+    groupIndex: number,
+    dir: "up" | "down",
+  ) => {
+    const groupEntries = enabled
       .map((c, fullIndex) => ({ c, fullIndex }))
-      .filter(({ c }) => getHiddenButtonReason(c) === null);
-    const target = dir === "up" ? visibleIndex - 1 : visibleIndex + 1;
-    if (target < 0 || target >= visibleEntries.length) return;
-    const a = visibleEntries[visibleIndex];
-    const b = visibleEntries[target];
+      .filter(({ c }) => group(c));
+    const target = dir === "up" ? groupIndex - 1 : groupIndex + 1;
+    if (target < 0 || target >= groupEntries.length) return;
+    const a = groupEntries[groupIndex];
+    const b = groupEntries[target];
     if (!a || !b) return;
     const next = [...enabled];
     next[a.fullIndex] = b.c;
@@ -232,8 +243,12 @@ export function ConnectionsTab() {
     );
   }
 
-  const visible = enabled.filter((c) => getHiddenButtonReason(c) === null);
-  const hidden = enabled.filter((c) => getHiddenButtonReason(c) !== null);
+  const isVisible = (c: Connection) => getHiddenButtonReason(c) === null;
+  const isDatabase = (c: Connection) =>
+    isDatabaseConnectionStrategy(c.strategy);
+  const visible = enabled.filter(isVisible);
+  const databaseConnections = enabled.filter(isDatabase);
+  const hidden = enabled.filter((c) => !isVisible(c) && !isDatabase(c));
 
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
@@ -264,7 +279,7 @@ export function ConnectionsTab() {
                   size="icon"
                   aria-label="Move up"
                   disabled={i === 0 || saving}
-                  onClick={() => handleMove(i, "up")}
+                  onClick={() => handleMove(isVisible, i, "up")}
                 >
                   <ArrowUp className="h-4 w-4" />
                 </Button>
@@ -274,7 +289,7 @@ export function ConnectionsTab() {
                   size="icon"
                   aria-label="Move down"
                   disabled={i === visible.length - 1 || saving}
-                  onClick={() => handleMove(i, "down")}
+                  onClick={() => handleMove(isVisible, i, "down")}
                 >
                   <ArrowDown className="h-4 w-4" />
                 </Button>
@@ -293,6 +308,67 @@ export function ConnectionsTab() {
           </ul>
         )}
       </section>
+
+      {databaseConnections.length > 0 && (
+        <section>
+          <h3 className="text-base font-semibold">Database connections</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            Password login, signup and password reset use the first database
+            connection, unless the login request names another one with the{" "}
+            <code>connection</code> parameter.
+          </p>
+          <ul className="border rounded-md divide-y">
+            {databaseConnections.map((c, i) => (
+              <li key={c.id} className="flex items-center gap-2 p-2">
+                <GripVertical className="h-4 w-4 text-muted-foreground" />
+                <div className="flex-1">
+                  <div className="text-sm font-medium">
+                    {c.name}
+                    {i === 0 && (
+                      <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                        Default
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Strategy: {c.strategy}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Move ${c.name} up`}
+                  disabled={i === 0 || saving}
+                  onClick={() => handleMove(isDatabase, i, "up")}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Move ${c.name} down`}
+                  disabled={i === databaseConnections.length - 1 || saving}
+                  onClick={() => handleMove(isDatabase, i, "down")}
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Remove connection"
+                  disabled={saving}
+                  onClick={() => handleRemove(c.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {hidden.length > 0 && (
         <section>
