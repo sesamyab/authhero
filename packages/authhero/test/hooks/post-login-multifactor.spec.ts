@@ -232,7 +232,7 @@ describe("post-login api.multifactor.enable (issue #1670)", () => {
     const first = await t.login();
     expect(first.status).toBe(302);
     expect(first.headers.get("location")).toBe(
-      `/u/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
     );
     const afterHooks = await t.stateData();
     expect(afterHooks.state).toBe(LoginSessionState.AWAITING_CONTINUATION);
@@ -241,9 +241,9 @@ describe("post-login api.multifactor.enable (issue #1670)", () => {
       allow_remember_browser: true,
     });
 
-    // /u/continue resumes the login; the MFA check now requires MFA.
-    const resumed = await t.server.universalApp.request(
-      `/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+    // /u2/continue resumes the login; the MFA check now requires MFA.
+    const resumed = await t.server.app.request(
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
       { method: "GET", headers: { "tenant-id": "tenantId" } },
       t.env,
     );
@@ -338,15 +338,15 @@ describe("post-login api.multifactor.enable (issue #1670)", () => {
 
     const first = await t.login();
     expect(first.headers.get("location")).toBe(
-      `/u/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
     );
     expect((await t.stateData()).data.mfa_required_by_action).toEqual({
       provider: "google-authenticator",
       allow_remember_browser: false,
     });
 
-    const resumed = await t.server.universalApp.request(
-      `/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+    const resumed = await t.server.app.request(
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
       { method: "GET", headers: { "tenant-id": "tenantId" } },
       t.env,
     );
@@ -368,7 +368,7 @@ describe("action-required MFA cannot be bypassed (issue #1670 review)", () => {
     });
     const first = await t.login();
     expect(first.headers.get("location")).toBe(
-      `/u/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
     );
 
     const resumed = await t.server.oauthApp.request(
@@ -381,8 +381,8 @@ describe("action-required MFA cannot be bypassed (issue #1670 review)", () => {
     expect((await t.stateData()).state).not.toBe(LoginSessionState.COMPLETED);
 
     // The legitimate path still works afterwards.
-    const viaContinue = await t.server.universalApp.request(
-      `/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+    const viaContinue = await t.server.app.request(
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
       { method: "GET", headers: { "tenant-id": "tenantId" } },
       t.env,
     );
@@ -430,8 +430,8 @@ describe("action-required MFA cannot be bypassed (issue #1670 review)", () => {
     });
 
     await t.login();
-    const resumed = await t.server.universalApp.request(
-      `/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+    const resumed = await t.server.app.request(
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
       { method: "GET", headers: { "tenant-id": "tenantId" } },
       t.env,
     );
@@ -550,10 +550,10 @@ describe("action-required MFA on a session that completed MFA (#1668)", () => {
 
     const response = await t.login();
     expect(response.headers.get("location")).toBe(
-      `/u/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
     );
-    const resumed = await t.server.universalApp.request(
-      `/continue?state=${encodeURIComponent(t.loginSession.id)}`,
+    const resumed = await t.server.app.request(
+      `/u2/continue?state=${encodeURIComponent(t.loginSession.id)}`,
       { method: "GET", headers: { "tenant-id": "tenantId" } },
       t.env,
     );

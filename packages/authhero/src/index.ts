@@ -9,6 +9,7 @@ import { createProxyControlPlaneApp } from "./routes/proxy-control-plane";
 import { createMcpApp } from "./routes/mcp";
 import createOauthApi from "./routes/auth-api";
 import createUniversalLogin from "./routes/universal-login";
+import { createWidgetAssetRoutes } from "./routes/universal-login/widget-assets";
 import createU2App from "./routes/universal-login/u2-index";
 import createSamlpApi from "./routes/saml";
 import { createScimApi } from "./routes/scim";
@@ -24,6 +25,7 @@ export * from "./components";
 export * from "./styles";
 export * from "./adapters";
 export * from "./email-services";
+export { createWidgetAssetRoutes } from "./routes/universal-login/widget-assets";
 export { waitUntil } from "./helpers/wait-until";
 export {
   toMutableResponse,
@@ -359,6 +361,10 @@ export function init(config: AuthHeroConfig) {
 
   const universalApp = createUniversalLogin(config);
   app.route("/u", universalApp);
+
+  // Neutral widget asset path (/widget/*, /widget/client.js); /u/widget stays
+  // as an alias for one release.
+  app.route("/", createWidgetAssetRoutes(config));
 
   const u2App = createU2App(config);
   app.route("/u2", u2App);

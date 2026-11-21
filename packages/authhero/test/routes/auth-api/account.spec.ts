@@ -16,7 +16,7 @@ describe("account", () => {
 
     expect(response.status).toEqual(302);
     const location = response.headers.get("location");
-    expect(location).toContain("/u/login/identifier?state=");
+    expect(location).toContain("/u2/login/identifier?state=");
 
     // Extract state and verify login session was created
     const url = new URL(location!, "http://localhost:3000");
@@ -199,7 +199,7 @@ describe("account", () => {
 
     expect(response.status).toEqual(302);
     const location = response.headers.get("location");
-    expect(location).toContain("/u/login/identifier?state=");
+    expect(location).toContain("/u2/login/identifier?state=");
   });
 
   it("should redirect to /u2/account/profile with screen_hint when provided", async () => {

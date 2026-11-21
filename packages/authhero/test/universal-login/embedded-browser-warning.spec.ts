@@ -68,7 +68,7 @@ describe("u2 page — embedded browser warning", () => {
     const html = await render(SAFARI_UA);
     expect(html).toContain("ah-private-warning");
     expect(html).toContain("Private browsing detected");
-    expect(html).toContain("/u/js/client.js");
+    expect(html).toContain("/widget/client.js");
   });
 
   it("skips the private probe when the embedded banner already shows", async () => {

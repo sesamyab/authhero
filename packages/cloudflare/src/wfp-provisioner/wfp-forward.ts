@@ -17,7 +17,10 @@ const DEFAULT_SCRIPT_NAME_TEMPLATE = "tenant-{tenant_id}-auth";
  * inert. Serving them from the control plane — where the assets live — keeps
  * zero per-tenant weight.
  */
-export const DEFAULT_LOCAL_PATHS: readonly string[] = ["/u/widget/"];
+export const DEFAULT_LOCAL_PATHS: readonly string[] = [
+  "/u/widget/",
+  "/widget/",
+];
 
 export interface WfpForwardOptions {
   /** Tenants adapter, used to look up the resolved tenant's `deployment_type`. */
@@ -89,7 +92,7 @@ function fillTemplate(template: string, tenantId: string): string {
  * The tenant worker receives the original request verbatim and owns the full
  * response.
  *
- * Requests whose path matches `DEFAULT_LOCAL_PATHS` (`["/u/widget/"]`) or the
+ * Requests whose path matches `DEFAULT_LOCAL_PATHS` (`["/u/widget/", "/widget/"]`) or the
  * extra `localPaths` are also never dispatched — they are shared static assets
  * that only the control plane can serve, so a per-tenant worker would 404 them.
  */

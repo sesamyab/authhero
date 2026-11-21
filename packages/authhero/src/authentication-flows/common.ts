@@ -2225,7 +2225,7 @@ export async function createFrontChannelAuthResponse(
           client.tenant.id,
           currentLoginSession,
           ["passkey-enrollment"],
-          `/u/continue?state=${encodeURIComponent(params.loginSession.id)}`,
+          `/u2/continue?state=${encodeURIComponent(params.loginSession.id)}`,
         );
 
         return new Response(null, {

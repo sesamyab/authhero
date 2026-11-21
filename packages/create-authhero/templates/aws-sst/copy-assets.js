@@ -79,6 +79,8 @@ try {
   if (fs.existsSync(widgetSourceDir)) {
     console.log("📦 Copying widget assets...");
     copyDirectory(widgetSourceDir, widgetTargetDir);
+    // Neutral path (/widget/*) used by the universal login pages.
+    copyDirectory(widgetSourceDir, path.join(targetDir, "widget"));
   } else {
     console.warn(`⚠️  Widget directory not found: ${widgetSourceDir}`);
     console.warn(

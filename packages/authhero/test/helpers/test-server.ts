@@ -37,6 +37,7 @@ type getEnvParams = {
   emailValidation?: "enabled" | "enforced" | "disabled";
   mockEmail?: boolean;
   outbox?: boolean;
+  widgetHandler?: AuthHeroConfig["widgetHandler"];
   hooks?: {
     onExecuteCredentialsExchange?: OnExecuteCredentialsExchange;
     onExecutePreUserRegistration?: OnExecutePreUserRegistration;
@@ -292,6 +293,7 @@ export async function getTestServer(
     dataAdapter: adapterForInit,
     hooks: args.hooks,
     entityHooks: args.entityHooks,
+    ...(args.widgetHandler ? { widgetHandler: args.widgetHandler } : {}),
     ...(args.outbox ? { outbox: { enabled: true, maxRetries: 1 } } : {}),
     ...(args.usernamePasswordProvider
       ? { usernamePasswordProvider: args.usernamePasswordProvider }
