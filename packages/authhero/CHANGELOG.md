@@ -1,5 +1,31 @@
 # authhero
 
+## 9.36.0
+
+### Minor Changes
+
+- 6d3be5c: Add the Auth0-compatible Self-Service SSO Management API (#1763), mounted when the data adapter provides `selfServiceProfiles` and `ssoAccessTickets`:
+  - `GET/POST /api/v2/self-service-profiles`, `GET/PATCH/DELETE /api/v2/self-service-profiles/{id}`
+  - `GET/PUT /api/v2/self-service-profiles/{id}/custom-text/{language}/{page}`
+  - `POST /api/v2/self-service-profiles/{id}/sso-ticket`, which returns `{ "ticket": "<url>" }`
+  - `POST /api/v2/self-service-profiles/{profileId}/sso-ticket/{id}/revoke`, which returns `202`
+
+  Request bodies are parsed strictly. Auth0 fields AuthHero does not implement yet (`provisioning_config`, `use_for_organization_discovery`, `enabled_features`, `third_party_client_access_config`, `universal_logout_config`, `user_attribute_profile_id`, `connection_config.options.idpinitiated`, `domain_aliases_config.pending_domains`) and fields Auth0 does not define are rejected with `400` naming the field. Profiles and tickets accept the `oidc`, `samlp` and `waad` strategies. Tickets last 5 days by default and at most 30 days, and domain verification defaults to `required`. The ticket URL points at `/u2/self-service` on the tenant's domain. The setup screens come in a later release, so the URL does not open a page yet.
+
+### Patch Changes
+
+- 515e9cf: Scope database-user lookups by connection. Every database connection stores its users under the `auth0` provider, so password login, password reset, `/dbconnections`, invitations and the ticket flow could match a user that belongs to another database connection of the tenant. These lookups now take the connection they target and skip users of the tenant's other database connections, preferring a row in the connection itself over a legacy row that can't be attributed to one. Tenants with a single database connection get the same lookups as before, as do rows whose `connection` doesn't name one of the tenant's database connections.
+
+  New database users created by `/dbconnections/signup`, a password-reset request, an accepted invitation and the ticket flow now store the client's database connection name, like the universal-login signup already did, instead of the `Username-Password-Authentication` literal. Signup duplicate checks stay unscoped until the unique index moves to connections, so a signup for an address used in another database connection still answers like an existing user.
+
+- a580312: A login ticket from `/co/authenticate` is now bound to the connection that verified the credentials. `/co/authenticate` records the connection as `authParams.connection` on the ticket's login session, and redeeming a ticket at `/authorize` is rejected with `403 Invalid realm` when the `realm` is any other connection, including `realm=email`, or when the ticket's login session records no connection. Login tickets minted by `/co/authenticate` before this change are no longer redeemable; the user logs in again.
+- Updated dependencies [a580312]
+- Updated dependencies [96a2910]
+  - @authhero/adapter-interfaces@4.31.0
+  - @authhero/proxy@0.11.18
+  - @authhero/saml@0.6.11
+  - @authhero/widget@0.41.15
+
 ## 9.35.0
 
 ### Minor Changes
