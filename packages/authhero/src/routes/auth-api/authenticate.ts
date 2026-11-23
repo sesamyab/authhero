@@ -18,6 +18,8 @@ import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { logMessage } from "../../helpers/logging";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
+import { resolveClientDatabaseConnection } from "../../helpers/database-connection-scope";
+import { createLoginSessionWithData } from "../../state-machines/login-session-data";
 const postRoot = defineRoute({
   route: createRoute({
     tags: ["oauth"],
@@ -48,7 +50,10 @@ const postRoot = defineRoute({
                 client_id: z.string(),
                 username: z.string().transform((v) => normalizeEmail(v)),
                 password: z.string(),
-                realm: z.enum([Strategy.USERNAME_PASSWORD]),
+                // The database connection to log in to (#1703). It must be
+                // enabled on the client; the generic
+                // Username-Password-Authentication means the client's default.
+                realm: z.string(),
                 scope: z.string().optional(),
               }),
             ]),
@@ -92,11 +97,15 @@ const postRoot = defineRoute({
           otp: body.otp,
         });
       } else if ("password" in body) {
-        // The connection the password is checked in. It is recorded on the
-        // login session so the ticket can only be redeemed in the same
-        // connection.
-        const connection = body.realm;
-        const loginSession = await ctx.env.data.loginSessions.create(
+        // The database connection the password is checked in (#1703); a realm
+        // the client doesn't enable is refused. It is recorded in the login
+        // session's state_data as ticket_connection (see below).
+        const connection = resolveClientDatabaseConnection(
+          client,
+          body.realm,
+        )?.name;
+        const loginSession = await createLoginSessionWithData(
+          ctx.env.data.loginSessions,
           client.tenant.id,
           {
             expires_at: new Date(
@@ -119,6 +128,9 @@ const postRoot = defineRoute({
             useragent,
             auth0Client: stringifyAuth0Client(auth0_client),
           },
+          // Only this route writes ticket_connection: the ticket minted after
+          // the password check below can be redeemed in this connection only.
+          { ticket_connection: connection },
         );
 
         // This will throw if the login fails

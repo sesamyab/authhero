@@ -620,33 +620,41 @@ const patchByIdClients = defineRoute({
       throw notFound.connection();
     }
 
-    // Process each client update; respond 204 to match Auth0's contract.
+    // Apply the updates in request order to each client's current list, so a
+    // client listed twice ends up as its last entry says, then write the
+    // clients whose membership changed. Respond 204 to match Auth0's contract.
+    const finalStates = new Map<
+      string,
+      { before: string[]; after: string[] }
+    >();
     for (const clientUpdate of body) {
-      const client = await ctx.env.data.clients.get(
-        tenantId,
-        clientUpdate.client_id,
-      );
-
-      if (!client) {
-        continue; // Skip non-existent clients
+      let state = finalStates.get(clientUpdate.client_id);
+      if (!state) {
+        const client = await ctx.env.data.clients.get(
+          tenantId,
+          clientUpdate.client_id,
+        );
+        if (!client) {
+          continue; // Skip non-existent clients
+        }
+        const before = client.connections || [];
+        state = { before, after: before };
+        finalStates.set(clientUpdate.client_id, state);
       }
-
-      const currentConnections = client.connections || [];
-
       if (clientUpdate.status) {
-        // Enable: Add connection if not already present
-        if (!currentConnections.includes(id)) {
-          await ctx.env.data.clients.update(tenantId, clientUpdate.client_id, {
-            connections: [...currentConnections, id],
-          });
+        if (!state.after.includes(id)) {
+          state.after = [...state.after, id];
         }
       } else {
-        // Disable: Remove connection if present
-        if (currentConnections.includes(id)) {
-          await ctx.env.data.clients.update(tenantId, clientUpdate.client_id, {
-            connections: currentConnections.filter((c) => c !== id),
-          });
-        }
+        state.after = state.after.filter((c) => c !== id);
+      }
+    }
+
+    for (const [clientId, { before, after }] of finalStates) {
+      if (before.includes(id) !== after.includes(id)) {
+        await ctx.env.data.clients.update(tenantId, clientId, {
+          connections: after,
+        });
       }
     }
 

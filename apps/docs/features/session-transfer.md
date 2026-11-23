@@ -30,7 +30,7 @@ Two things have to be in place:
 1. **The sending application may create tokens.** It sets `session_transfer.can_create_session_transfer_token`, and it holds a refresh token for the user, so the user logged in with the `offline_access` scope.
 2. **The receiving application accepts tokens.** It lists at least one method in `session_transfer.allowed_authentication_methods`: `query`, `cookie` or both.
 
-Both applications belong to the same tenant, and the user's connection must be enabled on the receiving application. One application can do both jobs.
+Both applications belong to the same tenant, and the user's connection must be enabled on the receiving application. One application can do both jobs. For users of a database connection that only [Custom Token Exchange](./custom-token-exchange) writes to, enable that connection on the receiving application next to its login connection.
 
 In the admin UI these settings are on the **Session Transfer** tab of an application. Over the Management API they are the `session_transfer` object on the client:
 

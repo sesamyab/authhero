@@ -2,12 +2,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import bcryptjs from "bcryptjs";
 import i18next from "i18next";
-import {
-  LogTypes,
-  Strategy,
-  StrategyType,
-  isDatabaseConnectionStrategy,
-} from "@authhero/adapter-interfaces";
+import { LogTypes, Strategy, StrategyType } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
 import SignupPage from "../../components/SignUpPage";
@@ -20,7 +15,10 @@ import {
   getUsernamePasswordUser,
   resolveUsernamePasswordProvider,
 } from "../../utils/username-password-provider";
-import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
+import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../../helpers/database-connection-scope";
 import { userIdGenerate } from "../../utils/user-id";
 import MessagePage from "../../components/MessagePage";
 import { sendValidateEmailAddress } from "../../emails";
@@ -149,8 +147,9 @@ const postRoot = defineRoute({
       }
 
       // Find the password connection from the client's connections
-      const passwordConnection = client.connections.find((c) =>
-        isDatabaseConnectionStrategy(c.strategy),
+      const passwordConnection = resolveClientDatabaseConnection(
+        client,
+        loginSession.authParams.connection,
       );
       const connection = passwordConnection?.name || Strategy.USERNAME_PASSWORD;
       ctx.set("connection", connection);
@@ -265,7 +264,10 @@ const postRoot = defineRoute({
         email_verified,
         provider,
         // The connection this client's login lookups scope to (#1702).
-        connection: resolveClientDatabaseConnectionName(client),
+        connection: resolveClientDatabaseConnectionName(
+          client,
+          loginSession.authParams.connection,
+        ),
         is_social: false,
       });
 
