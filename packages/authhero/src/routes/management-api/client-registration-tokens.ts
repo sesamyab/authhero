@@ -1,9 +1,13 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { managementValidationHook } from "../../errors/management-api-error";
+import {
+  managementError,
+  managementValidationHook,
+} from "../../errors/management-api-error";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { logMessage } from "../../helpers/logging";
 import { mintIat } from "../../helpers/dcr/mint-iat";
+import { isRegistrationDeniedAudience } from "../../helpers/dcr/audience-policy";
 import { requireClientRegistrationTokens } from "../auth-api/register/shared";
 
 import { defineRoute } from "../../utils/define-route";
@@ -70,6 +74,20 @@ const postRoot = defineRoute({
   handler: async (ctx) => {
     const tenant_id = requireTenantId(ctx);
     const body = ctx.req.valid("json");
+
+    // Registration refuses to grant these audiences, so an IAT pinning one
+    // could never be used. Fail here instead of at /oidc/register.
+    const pinnedAudience = body.constraints?.audience;
+    if (
+      typeof pinnedAudience === "string" &&
+      (await isRegistrationDeniedAudience(ctx, tenant_id, pinnedAudience))
+    ) {
+      throw managementError(
+        400,
+        `Payload validation error: 'Audience cannot be granted through Dynamic Client Registration: ${pinnedAudience}' on property constraints.audience.`,
+        "invalid_body",
+      );
+    }
 
     const minted = await mintIat(
       requireClientRegistrationTokens(ctx.env.data),

@@ -5,6 +5,7 @@ import {
   DataAdapters,
 } from "@authhero/adapter-interfaces";
 import type { SamlSigner } from "@authhero/saml/core";
+import type { ManagementAudienceResolver } from "../middlewares/authentication";
 import { Hooks } from "./Hooks";
 import {
   ActionExecutionLogCapture,
@@ -115,6 +116,12 @@ export type Bindings = {
   // init({ unsafeAllowAzpCustomClaim: true }). See AuthHeroConfig for why
   // this is unsafe and when to turn it off again.
   unsafeAllowAzpCustomClaim?: boolean;
+
+  // Audiences the management API accepts in addition to
+  // `urn:authhero:management`. Set via init({ additionalManagementAudiences }).
+  // Dynamic Client Registration reads it so it never provisions a client
+  // grant for any of them.
+  additionalManagementAudiences?: ManagementAudienceResolver;
 
   // Optional transactional outbox configuration
   // Set via init({ outbox: { enabled: true } })

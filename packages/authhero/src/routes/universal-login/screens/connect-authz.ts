@@ -115,6 +115,26 @@ export async function userCanRegisterGlobally(
 }
 
 /**
+ * True when the user may register a client on the tenant the request itself
+ * resolved to (direct mode, no control-plane workspace pick). Holding a
+ * session on the tenant is not enough: end users of the tenant must not be
+ * able to register clients. The user needs `create:clients` on the Management
+ * API at tenant level (directly or through a global role), the permission
+ * the control-plane path checks per organization.
+ */
+export async function userCanRegisterOnRequestTenant(
+  context: ScreenContext,
+  userId: string,
+): Promise<boolean> {
+  return userHasGlobalManagementPermission(
+    context.ctx,
+    context.tenant.id,
+    userId,
+    DCR_REGISTER_PERMISSION,
+  );
+}
+
+/**
  * True when the user holds the DCR register permission on the given
  * control-plane organization (scoped to the Management API audience).
  */

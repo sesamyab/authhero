@@ -5,6 +5,7 @@ import { Bindings, Variables } from "../../types";
 import { JSONHTTPException } from "../../errors/json-http-exception";
 import { validateConnectOrigin } from "../../helpers/dcr/validate-connect-origin";
 import { isInteractiveClient } from "../../helpers/provision-tenant-clients";
+import { isRegistrationDeniedAudience } from "../../helpers/dcr/audience-policy";
 
 import { defineRoute } from "../../utils/define-route";
 const UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS = 60 * 30; // 30 min
@@ -81,6 +82,12 @@ const getRoot = defineRoute({
     // keeps a malicious caller from bouncing the user through a consent
     // screen that promises scopes the API will never honor.
     if (audience) {
+      if (await isRegistrationDeniedAudience(ctx, tenant_id, audience)) {
+        throw new JSONHTTPException(400, {
+          error: "invalid_request",
+          error_description: `Audience cannot be granted through Dynamic Client Registration: ${audience}`,
+        });
+      }
       const { resource_servers } =
         await ctx.env.data.resourceServers.list(tenant_id);
       const resourceServer = resource_servers.find(
