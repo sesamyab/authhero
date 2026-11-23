@@ -414,7 +414,55 @@ export interface TenantCreationLimit {
   source: "override" | "default" | "none";
 }
 
+/** App-type presets for developer invites (#1776). */
+export type AppPreset = "native" | "spa" | "regular_web";
+
+/**
+ * A registration token as the Management API lists it: an invite (`iat`), or
+ * a registration access token / edit link (`rat`). Never carries the token.
+ */
+export interface ClientRegistrationTokenRecord {
+  id: string;
+  type: "iat" | "rat";
+  source?: "invite" | "edit_link" | "registration" | "connect";
+  name?: string;
+  status: "active" | "used" | "expired" | "revoked";
+  client_id?: string;
+  created_by?: string;
+  constraints?: Record<string, unknown>;
+  single_use: boolean;
+  expires_at?: string;
+  used_at?: string;
+  revoked_at?: string;
+  created_at: string;
+}
+
+export interface CreateDeveloperInviteInput {
+  preset: AppPreset;
+  name: string;
+  expires_in_seconds: number;
+  /** Unset: the app may use all of the tenant's connections. */
+  connections?: string[];
+  is_first_party?: boolean;
+}
+
 export interface AuthHeroDataProvider extends DataProvider {
+  /** Mint a developer invite; `ticket` is the setup link, shown once. */
+  createDeveloperInvite: (
+    input: CreateDeveloperInviteInput,
+  ) => Promise<{ id: string; ticket: string; expires_at: string }>;
+  listClientRegistrationTokens: (params: {
+    source?: ClientRegistrationTokenRecord["source"];
+    client_id?: string;
+    type?: "iat" | "rat";
+  }) => Promise<ClientRegistrationTokenRecord[]>;
+  revokeClientRegistrationToken: (id: string) => Promise<void>;
+  /** Edit link for one client; replaces the client's previous edit links. */
+  createClientRegistrationTicket: (
+    clientId: string,
+    ttlSec: number,
+  ) => Promise<{ id: string; ticket: string; expires_at: string }>;
+
   /**
    * How many tenants the caller owns against their cap, or `null` when the
    * server predates the endpoint.
@@ -3533,6 +3581,54 @@ export default (
         { headers: createHeaders(tenantId) },
       );
       return res.json.requests;
+    },
+
+    createDeveloperInvite: async (input) => {
+      const res = await httpClient(
+        `${apiUrl}/api/v2/client-registration-tokens`,
+        {
+          method: "POST",
+          headers: createHeaders(tenantId),
+          body: JSON.stringify(input),
+        },
+      );
+      return res.json;
+    },
+
+    listClientRegistrationTokens: async (params) => {
+      const query = stringify({
+        source: params.source,
+        client_id: params.client_id,
+        type: params.type,
+        per_page: 100,
+      });
+      const res = await httpClient(
+        `${apiUrl}/api/v2/client-registration-tokens?${query}`,
+        { headers: createHeaders(tenantId) },
+      );
+      return res.json;
+    },
+
+    revokeClientRegistrationToken: async (id: string) => {
+      await httpClient(
+        `${apiUrl}/api/v2/client-registration-tokens/${encodeURIComponent(id)}/revoke`,
+        { method: "POST", headers: createHeaders(tenantId) },
+      );
+    },
+
+    createClientRegistrationTicket: async (
+      clientId: string,
+      ttlSec: number,
+    ) => {
+      const res = await httpClient(
+        `${apiUrl}/api/v2/clients/${encodeURIComponent(clientId)}/registration-ticket`,
+        {
+          method: "POST",
+          headers: createHeaders(tenantId),
+          body: JSON.stringify({ ttl_sec: ttlSec }),
+        },
+      );
+      return res.json;
     },
 
     revokeUserRefreshTokens: async (userId: string) => {

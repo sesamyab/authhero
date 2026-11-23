@@ -71,6 +71,14 @@ export const MANAGEMENT_API_SCOPES = [
     description: "Create Client Registration Tokens",
     value: "create:client_registration_tokens",
   },
+  {
+    description: "Read Client Registration Tokens",
+    value: "read:client_registration_tokens",
+  },
+  {
+    description: "Delete Client Registration Tokens",
+    value: "delete:client_registration_tokens",
+  },
   { description: "Read Connections", value: "read:connections" },
   { description: "Update Connections", value: "update:connections" },
   { description: "Delete Connections", value: "delete:connections" },

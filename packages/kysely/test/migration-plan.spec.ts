@@ -66,29 +66,36 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-11-20T12:00:00_self_service_sso";
+    const last = "2026-11-23T12:00:00_client_registration_token_invites";
     await migrations[last].down(db);
     await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
+
+    const columns = async () =>
+      (
+        await sql<{
+          name: string;
+        }>`PRAGMA table_info(client_registration_tokens)`.execute(db)
+      ).rows.map((row) => row.name);
 
     const plan = await planMigrations(db);
 
     expect(plan.pending.map((it) => it.name)).toEqual([last]);
     expect(plan.pending[0]!.error).toBeUndefined();
     const output = formatMigrationPlan(plan);
-    for (const table of ["self_service_profiles", "sso_access_tickets"]) {
+    for (const column of ["name", "created_by", "source"]) {
       expect(output).toMatch(
-        new RegExp(`create table if not exists "${table}"`, "i"),
+        new RegExp(
+          `alter table "client_registration_tokens" add column "${column}"`,
+          "i",
+        ),
       );
-      expect(await tableNames(db)).not.toContain(table);
+      expect(await columns()).not.toContain(column);
     }
-    expect(output).toMatch(
-      /create unique index "sso_access_tickets_ticket_hash_idx"/i,
-    );
 
     // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    for (const table of ["self_service_profiles", "sso_access_tickets"]) {
-      expect(await tableNames(db)).toContain(table);
+    for (const column of ["name", "created_by", "source"]) {
+      expect(await columns()).toContain(column);
     }
     await db.destroy();
   });

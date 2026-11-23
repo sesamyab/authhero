@@ -1,5 +1,7 @@
 import { verifyRequestOrigin } from "../../utils/request-origin";
 import { HTTPException } from "hono/http-exception";
+import { readOperatorConstraints } from "../../helpers/dcr/presets";
+import { readIatConstraints } from "../../helpers/dcr/client-registration";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   AuthParams,
@@ -549,17 +551,29 @@ const getRoot = defineRoute({
       );
     }
 
-    // CIMD clients are public (no client_secret). Require PKCE with S256 for
-    // any code flow so an intercepted authorization code cannot be replayed.
+    // CIMD clients are public (no client_secret), and apps registered from a
+    // developer invite pin PKCE. Require S256 for any code flow so an
+    // intercepted authorization code cannot be replayed.
     if (
-      isCimd &&
       response_type?.includes("code") &&
       (!code_challenge || code_challenge_method !== "S256")
     ) {
-      throw new HTTPException(400, {
-        message:
-          "PKCE with code_challenge_method=S256 is required for Client ID Metadata Document clients",
-      });
+      if (isCimd) {
+        throw new HTTPException(400, {
+          message:
+            "PKCE with code_challenge_method=S256 is required for Client ID Metadata Document clients",
+        });
+      }
+      if (
+        readOperatorConstraints(
+          readIatConstraints(client.registration_metadata),
+        ).require_pkce
+      ) {
+        throw new HTTPException(400, {
+          message:
+            "PKCE with code_challenge_method=S256 is required for this client",
+        });
+      }
     }
 
     // Sanitize redirect_uri: only remove fragment per RFC 6749 section 3.1.2

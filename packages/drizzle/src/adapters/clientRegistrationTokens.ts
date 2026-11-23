@@ -1,8 +1,9 @@
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, count, eq, isNull, desc, type SQL } from "drizzle-orm";
 import {
   ClientRegistrationToken,
   ClientRegistrationTokenInsert,
   ClientRegistrationTokensAdapter,
+  clientRegistrationTokenSourceSchema,
   clientRegistrationTokenTypeSchema,
   isPlainObject,
 } from "@authhero/adapter-interfaces";
@@ -29,6 +30,11 @@ function isoToTs(iso: string | undefined): number | null {
   return isNaN(d.getTime()) ? null : d.getTime();
 }
 
+function parseSource(raw: string | null) {
+  const parsed = clientRegistrationTokenSourceSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
 function rowToToken(row: Row): ClientRegistrationToken {
   const type = clientRegistrationTokenTypeSchema.parse(row.type);
   return {
@@ -43,6 +49,9 @@ function rowToToken(row: Row): ClientRegistrationToken {
     used_at: tsToIso(row.used_at_ts),
     revoked_at: tsToIso(row.revoked_at_ts),
     created_at: new Date(row.created_at_ts).toISOString(),
+    name: row.name ?? undefined,
+    created_by: row.created_by ?? undefined,
+    source: parseSource(row.source),
   };
 }
 
@@ -68,6 +77,9 @@ export function createClientRegistrationTokensAdapter(
         single_use: params.single_use ? 1 : 0,
         expires_at_ts: isoToTs(params.expires_at),
         created_at_ts: now,
+        name: params.name ?? null,
+        created_by: params.created_by ?? null,
+        source: params.source ?? null,
       });
 
       return {
@@ -80,6 +92,9 @@ export function createClientRegistrationTokensAdapter(
         single_use: params.single_use,
         expires_at: params.expires_at,
         created_at: new Date(now).toISOString(),
+        name: params.name,
+        created_by: params.created_by,
+        source: params.source,
       };
     },
 
@@ -111,6 +126,54 @@ export function createClientRegistrationTokensAdapter(
       return row ? rowToToken(row) : null;
     },
 
+    async list(tenant_id, params = {}) {
+      const page = params.page ?? 0;
+      const per_page = params.per_page ?? 50;
+      const filters: SQL[] = [
+        eq(clientRegistrationTokens.tenant_id, tenant_id),
+      ];
+      if (params.type) {
+        filters.push(eq(clientRegistrationTokens.type, params.type));
+      }
+      if (params.client_id) {
+        filters.push(eq(clientRegistrationTokens.client_id, params.client_id));
+      }
+      if (params.source) {
+        filters.push(eq(clientRegistrationTokens.source, params.source));
+      }
+      const where = and(...filters);
+
+      const rows = await db
+        .select()
+        .from(clientRegistrationTokens)
+        .where(where)
+        .orderBy(desc(clientRegistrationTokens.created_at_ts))
+        .limit(per_page)
+        .offset(page * per_page);
+      const tokens = rows.map(rowToToken);
+
+      if (!params.include_totals) {
+        return {
+          client_registration_tokens: tokens,
+          start: page * per_page,
+          limit: per_page,
+          length: tokens.length,
+        };
+      }
+
+      const [totals] = await db
+        .select({ total: count() })
+        .from(clientRegistrationTokens)
+        .where(where);
+      return {
+        client_registration_tokens: tokens,
+        start: page * per_page,
+        limit: per_page,
+        length: tokens.length,
+        total: totals?.total ?? tokens.length,
+      };
+    },
+
     async listByClient(tenant_id, client_id) {
       const rows = await db
         .select()
@@ -125,10 +188,13 @@ export function createClientRegistrationTokensAdapter(
       return rows.map(rowToToken);
     },
 
-    async markUsed(tenant_id, id, used_at) {
+    async markUsed(tenant_id, id, used_at, client_id) {
       const result = await db
         .update(clientRegistrationTokens)
-        .set({ used_at_ts: isoToTs(used_at) })
+        .set({
+          used_at_ts: isoToTs(used_at),
+          ...(client_id ? { client_id } : {}),
+        })
         .where(
           and(
             eq(clientRegistrationTokens.tenant_id, tenant_id),

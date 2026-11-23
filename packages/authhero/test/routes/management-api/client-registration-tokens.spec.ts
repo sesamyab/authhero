@@ -129,7 +129,7 @@ describe("management-api client registration tokens", () => {
 
     const tooLong = await client["client-registration-tokens"].$post(
       {
-        json: { expires_in_seconds: 60 * 60 * 24 + 1 },
+        json: { expires_in_seconds: 30 * 24 * 60 * 60 + 1 },
         header: { "tenant-id": TENANT },
       },
       { headers: { authorization: `Bearer ${token}` } },

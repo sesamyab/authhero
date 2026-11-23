@@ -162,6 +162,13 @@
       "when": 1795186448214,
       "tag": "0022_self_service_sso",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1795437963706,
+      "tag": "0023_client_registration_token_invites",
+      "breakpoints": true
     }
   ]
 }

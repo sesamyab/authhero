@@ -14,6 +14,12 @@ import { CimdBanner } from "./cimd";
 import { ClientLoginButton } from "./login-button";
 import { DeleteButton } from "@/components/admin/delete-button";
 import { useClientShape } from "./use-client-shape";
+import { useRecordContext } from "ra-core";
+import { Badge } from "@/components/ui/badge";
+import {
+  DeveloperAccessTab,
+  isInvitedClient,
+} from "./developer-access/developer-access-tab";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -58,7 +64,9 @@ function ClientTabs() {
     ...(shape.showClientGrants ? ["grants"] : []),
     ...(shape.isInteractive ? ["connections", "organizations"] : []),
     "advanced",
-    ...(shape.isInteractive ? ["refresh", "session-transfer"] : []),
+    ...(shape.isInteractive
+      ? ["refresh", "session-transfer", "developer-access"]
+      : []),
     "raw",
   ];
   return (
@@ -84,6 +92,7 @@ function ClientTabs() {
           <>
             <TabsTrigger value="refresh">Refresh Tokens</TabsTrigger>
             <TabsTrigger value="session-transfer">Session Transfer</TabsTrigger>
+            <TabsTrigger value="developer-access">Developer Access</TabsTrigger>
           </>
         )}
         <TabsTrigger value="raw">Raw JSON</TabsTrigger>
@@ -122,6 +131,9 @@ function ClientTabs() {
           <TabsContent value="session-transfer" className="mt-4">
             <SessionTransferTab />
           </TabsContent>
+          <TabsContent value="developer-access" className="mt-4">
+            <DeveloperAccessTab />
+          </TabsContent>
         </>
       )}
       <TabsContent value="raw" className="mt-4">
@@ -131,6 +143,13 @@ function ClientTabs() {
   );
 }
 
+function InvitedBadge() {
+  const record = useRecordContext();
+  return isInvitedClient(record) ? (
+    <Badge variant="secondary">Registered by invite</Badge>
+  ) : null;
+}
+
 export function ClientEdit() {
   return (
     <Edit
@@ -138,6 +157,7 @@ export function ClientEdit() {
       transform={transformClient as never}
       actions={
         <div className="flex justify-end items-center gap-2">
+          <InvitedBadge />
           <ClientLoginButton />
           <DeleteButton />
         </div>

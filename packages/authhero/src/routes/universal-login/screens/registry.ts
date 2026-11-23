@@ -35,6 +35,7 @@ import { passkeyEnrollmentScreenDefinition } from "./passkey-enrollment";
 import { passkeyChallengeScreenDefinition } from "./passkey-challenge";
 import { resetPasswordCodeScreenDefinition } from "./reset-password-code";
 import { connectConsentScreenDefinition } from "./connect-consent";
+import { selfServiceAppScreenDefinition } from "./self-service-app";
 import {
   deviceCodeScreenDefinition,
   deviceConfirmationScreenDefinition,
@@ -165,6 +166,7 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["passkey-challenge", passkeyChallengeScreenDefinition],
   ["reset-password-code", resetPasswordCodeScreenDefinition],
   ["connect-consent", connectConsentScreenDefinition],
+  ["self-service-app", selfServiceAppScreenDefinition],
   ["consent", consentScreenDefinition],
   ["device-code", deviceCodeScreenDefinition],
   ["device-confirmation", deviceConfirmationScreenDefinition],

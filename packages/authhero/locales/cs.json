@@ -816,5 +816,63 @@
       "successTitle": "Hotovo",
       "title": "Stav"
     }
+  },
+  "self-service": {
+    "self-service-app": {
+      "title": "Zaregistrujte svou aplikaci",
+      "description": "${tenantName} vás zve k registraci aplikace, přes kterou se přihlašují jeho uživatelé.",
+      "editTitle": "Aktualizovat ${appName}",
+      "editDescription": "Změňte nastavení přihlášení aplikace ${appName}.",
+      "expiresText": "Platnost odkazu vyprší ${date}.",
+      "appTypeLabel": "Typ aplikace",
+      "appTypeNative": "Nativní aplikace",
+      "appTypeSpa": "Jednostránková aplikace (SPA)",
+      "appTypeRegularWeb": "Běžná webová aplikace",
+      "nameLabel": "Název aplikace",
+      "callbacksLabel": "Adresy URL pro zpětné volání",
+      "callbacksHintNative": "Jedna na řádek. Použijte univerzální odkaz aplikace nebo vlastní schéma, například com.example.app:/callback",
+      "callbacksHintWeb": "Jedna na řádek, například https://app.example.com/callback",
+      "logoutUrlsLabel": "Adresy URL po odhlášení",
+      "webOriginsLabel": "Povolené webové původy",
+      "webOriginsHint": "Jeden na řádek, například https://app.example.com",
+      "logoUrlLabel": "Adresa URL loga",
+      "websiteLabel": "Webové stránky",
+      "privacyLabel": "Adresa URL zásad ochrany soukromí",
+      "termsLabel": "Adresa URL podmínek služby",
+      "contactLabel": "Kontaktní e-mail",
+      "registerButton": "Zaregistrovat aplikaci",
+      "saveButton": "Uložit změny",
+      "savedText": "Změny byly uloženy.",
+      "clientIdLabel": "ID klienta",
+      "requiredError": "Toto pole je povinné.",
+      "invalidValueError": "Tato hodnota není platná.",
+      "uriTooMany": "Použijte nejvýše 20 adres URL.",
+      "uriTooLong": "Adresa URL může mít nejvýše 1024 znaků.",
+      "uriInvalid": "\"${value}\" není platná adresa URL.",
+      "uriWildcard": "\"${value}\": zástupné znaky nejsou povoleny.",
+      "uriFragment": "\"${value}\": fragmenty (#) nejsou povoleny.",
+      "uriUserinfo": "\"${value}\": uživatelská jména a hesla v adresách URL nejsou povolena.",
+      "uriHttpNotLoopback": "\"${value}\": použijte https. http je povoleno jen pro localhost, 127.0.0.1 nebo [::1].",
+      "uriSchemeNotAllowed": "\"${value}\": tento druh adresy URL není pro tento typ aplikace povolen.",
+      "uriCustomSchemeNeedsDot": "\"${value}\": vlastní schémata musí obsahovat tečku, například com.example.app:/callback",
+      "uriOriginOnly": "\"${value}\": zadejte jen původ bez cesty, například https://app.example.com",
+      "uriNotForNative": "Nativní aplikace nepoužívají webové původy.",
+      "errorText": "Něco se pokazilo. Zkuste to znovu."
+    },
+    "self-service-app-done": {
+      "title": "Vaše aplikace je zaregistrovaná",
+      "description": "Pomocí těchto hodnot nastavte přihlašování v aplikaci ${appName}.",
+      "clientIdLabel": "ID klienta",
+      "domainLabel": "Doména",
+      "discoveryLabel": "Adresa URL pro discovery",
+      "clientSecretLabel": "Tajný klíč klienta",
+      "clientSecretWarning": "Zkopírujte si tajný klíč klienta hned. Znovu se nezobrazí.",
+      "pkceNote": "Používejte PKCE s S256. Většina přihlašovacích SDK to dělá automaticky.",
+      "editLaterText": "Potřebujete později něco změnit? Požádejte ${tenantName} o odkaz pro úpravy."
+    },
+    "self-service-ticket-invalid": {
+      "title": "Tento odkaz nelze použít",
+      "description": "Mohla vypršet jeho platnost, mohl už být použit nebo zrušen. Požádejte odesílatele o nový odkaz."
+    }
   }
 }

@@ -62,6 +62,19 @@ import { defineRoute } from "../../utils/define-route";
 import { withHandlerError } from "./screens/handler-error";
 import { getPromptScreenForScreen } from "./screen-prompt-map";
 import { readSessionNotice } from "../../helpers/session-notice";
+import { renderBrandedErrorPage } from "./branded-error-response";
+import { hashTicketId } from "../../helpers/self-service-tickets";
+import { resolveAnchorClient } from "../../helpers/anchor-client";
+import { readOperatorConstraints } from "../../helpers/dcr/presets";
+import {
+  SELF_SERVICE_APP_SCREEN,
+  isTicketActive,
+  ticketKind,
+} from "./screens/self-service-app";
+
+// The setup page keeps its session for two hours, so a developer filling in
+// the form at leisure doesn't lose it. The link itself stays valid longer.
+const SELF_SERVICE_SESSION_EXPIRES_IN_SECONDS = 2 * 60 * 60;
 
 /**
  * Fetch custom text for a screen and language, with fallbacks
@@ -654,6 +667,7 @@ const SCREEN_GET_PATHS = {
   "account/passkeys": "account-passkeys",
   "connect/start": "connect-consent",
   "connect/select-tenant": "connect-tenant-select",
+  "self-service/app": "self-service-app",
   consent: "consent",
   "device/code": "device-code",
   "device/confirmation": "device-confirmation",
@@ -694,6 +708,7 @@ const SCREEN_POST_PATHS = {
   "account/passkeys": "account-passkeys",
   "connect/start": "connect-consent",
   "connect/select-tenant": "connect-tenant-select",
+  "self-service/app": "self-service-app",
   consent: "consent",
   "device/code": "device-code",
   "device/confirmation": "device-confirmation",
@@ -1569,6 +1584,126 @@ const getPasswordChangeTicket = defineRoute({
   },
 });
 
+// Developer app setup page (#1776). Serves both the link a developer opens
+// (`?ticket=`: verify it, start a login session, redirect without the ticket)
+// and the page itself (`?state=`). It sits before the catch-all because that
+// route requires `state`.
+const getSelfServiceApp = defineRoute({
+  route: createRoute({
+    tags: ["u2"],
+    method: "get",
+    path: "/self-service/app",
+    request: {
+      query: z.object({
+        ticket: z.string().optional(),
+        state: z.string().optional(),
+        error: z.string().optional(),
+        error_description: z.string().optional(),
+        ui_locales: z.string().optional(),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Developer app setup page",
+        content: { "text/html": { schema: z.string() } },
+      },
+      302: { description: "Ticket accepted; redirect to the setup page" },
+      400: {
+        description: "The link can't be used",
+        content: { "text/html": { schema: z.string() } },
+      },
+    },
+  }),
+  handler: async (ctx) => {
+    const { ticket, state } = ctx.req.valid("query");
+    if (state && !ticket) {
+      return createScreenRouteHandler(SELF_SERVICE_APP_SCREEN)(ctx);
+    }
+
+    const tenantId = ctx.var.tenant_id;
+    const tenant = tenantId ? await ctx.env.data.tenants.get(tenantId) : null;
+    const language = resolveLanguage(
+      undefined,
+      ctx.req.header("Accept-Language"),
+      tenant?.enabled_locales,
+    );
+    const invalid = async () => {
+      const { m } = createTranslation(
+        "self-service",
+        "self-service-ticket-invalid",
+        language,
+      );
+      const response = await renderBrandedErrorPage(ctx, tenantId, 400, {
+        title: m.title(),
+        message: m.description(),
+        lang: language,
+      });
+      response.headers.set("Referrer-Policy", "no-referrer");
+      return response;
+    };
+
+    const tokens = ctx.env.data.clientRegistrationTokens;
+    if (!ticket || !tenant || !tokens) return invalid();
+
+    const token = await tokens.getByHash(tenant.id, await hashTicketId(ticket));
+    const kind = token ? ticketKind(token) : null;
+    if (!token || !kind || !isTicketActive(token)) {
+      logMessage(ctx, tenant.id, {
+        type: LogTypes.FAILED_API_OPERATION,
+        description: token
+          ? "Developer app link is expired, used or revoked"
+          : "Unknown developer app link",
+        ...(token
+          ? { targetType: "client_registration_token", targetId: token.id }
+          : {}),
+      });
+      return invalid();
+    }
+    if (kind === "app_edit") {
+      const client = token.client_id
+        ? await ctx.env.data.clients.get(tenant.id, token.client_id)
+        : null;
+      if (!client || client.client_metadata?.status === "deleted") {
+        return invalid();
+      }
+    } else if (!readOperatorConstraints(token.constraints).app_type) {
+      return invalid();
+    }
+
+    const anchorClient = await resolveAnchorClient(ctx, tenant);
+    if (!anchorClient) {
+      console.error(
+        `[u2/self-service/app] tenant ${tenant.id} has no interactive client to anchor the setup page`,
+      );
+      return invalid();
+    }
+
+    const loginSession = await createLoginSessionWithData(
+      ctx.env.data.loginSessions,
+      tenant.id,
+      {
+        expires_at: new Date(
+          Date.now() + SELF_SERVICE_SESSION_EXPIRES_IN_SECONDS * 1000,
+        ).toISOString(),
+        authParams: { client_id: anchorClient.client_id },
+        csrf_token: nanoid(),
+        ip: ctx.var.ip,
+        useragent: ctx.var.useragent,
+      },
+      { self_service: { kind, token_id: token.id } },
+    );
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: `/u2/self-service/app?state=${encodeURIComponent(loginSession.id)}`,
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+      },
+    });
+  },
+});
+
 export const u2Routes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
@@ -1579,6 +1714,7 @@ export const u2Routes = new OpenAPIHono<{
   postAcceptInvitation,
   getEmailVerificationTicket,
   getPasswordChangeTicket,
+  getSelfServiceApp,
   getScreenRoute,
   postScreenRoute,
 ] as const);
