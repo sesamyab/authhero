@@ -40,6 +40,9 @@ import {
 
 type Ctx = Context<{ Bindings: Bindings; Variables: Variables }>;
 
+/** RFC 7591 §2: `grant_types` defaults to `authorization_code` when omitted. */
+const DEFAULT_GRANT_TYPES = ["authorization_code"];
+
 /** Registration access tokens of invite-created apps expire after 7 days. */
 export const INVITE_REGISTRATION_ACCESS_TOKEN_TTL_SEC = 7 * 24 * 60 * 60;
 
@@ -324,10 +327,12 @@ export async function registerClient(
   }
   const request = parseMergedRequest(constraintResult.filled);
 
-  assertRedirectUrisForCodeFlow(request.grant_types, request.redirect_uris);
+  // An omitted grant_types is stored as the default, so validate that.
+  const effectiveGrantTypes = request.grant_types ?? DEFAULT_GRANT_TYPES;
+  assertRedirectUrisForCodeFlow(effectiveGrantTypes, request.redirect_uris);
   validateRedirectUris(request.redirect_uris);
   validateGrantTypesAllowed(
-    request.grant_types,
+    effectiveGrantTypes,
     tenant.flags?.dcr_allowed_grant_types,
   );
 
@@ -373,7 +378,7 @@ export async function registerClient(
     callbacks: clientFields.callbacks ?? [],
     allowed_logout_urls: clientFields.allowed_logout_urls ?? [],
     web_origins: clientFields.web_origins ?? [],
-    grant_types: clientFields.grant_types ?? ["authorization_code"],
+    grant_types: clientFields.grant_types ?? DEFAULT_GRANT_TYPES,
     token_endpoint_auth_method: tokenEndpointAuthMethod,
     logo_uri: clientFields.logo_uri,
     client_metadata: clientFields.client_metadata,
@@ -548,7 +553,7 @@ export async function updateRegisteredClient(
   }
 
   validateGrantTypesAllowed(
-    request.grant_types,
+    request.grant_types ?? DEFAULT_GRANT_TYPES,
     tenant.flags?.dcr_allowed_grant_types,
   );
 
@@ -578,7 +583,7 @@ export async function updateRegisteredClient(
   const update: Partial<Client> = {
     name: clientFields.name ?? `Client ${existing.client_id.slice(0, 8)}`,
     callbacks: clientFields.callbacks ?? [],
-    grant_types: clientFields.grant_types ?? ["authorization_code"],
+    grant_types: clientFields.grant_types ?? DEFAULT_GRANT_TYPES,
     token_endpoint_auth_method:
       clientFields.token_endpoint_auth_method ?? "client_secret_basic",
     logo_uri: clientFields.logo_uri,

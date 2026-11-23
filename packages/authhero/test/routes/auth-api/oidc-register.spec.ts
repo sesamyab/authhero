@@ -949,3 +949,69 @@ describe("Discovery registration_endpoint gating", () => {
     );
   });
 });
+
+describe("omitted grant_types is validated as its authorization_code default", () => {
+  async function post(oauthApp: any, env: Bindings, body: object) {
+    return oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  it("requires redirect_uris when grant_types is omitted", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    const response = await post(oauthApp, env, { client_name: "No URIs" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("invalid_redirect_uri");
+  });
+
+  it("applies the tenant grant-type allowlist to the default", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env, { dcr_allowed_grant_types: ["client_credentials"] });
+    const response = await post(oauthApp, env, {
+      client_name: "Code flow by default",
+      redirect_uris: ["https://app.example.com/cb"],
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(
+      /authorization_code/,
+    );
+  });
+
+  it("applies the allowlist to the default on PUT", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env, { dcr_allowed_grant_types: ["client_credentials"] });
+    const created = await (
+      await post(oauthApp, env, {
+        client_name: "M2M",
+        grant_types: ["client_credentials"],
+      })
+    ).json();
+
+    const response = await oauthApp.request(
+      `/oidc/register/${created.client_id}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${created.registration_access_token}`,
+        },
+        body: JSON.stringify({ client_name: "M2M" }),
+      },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.grant_types).toEqual(["client_credentials"]);
+  });
+});
