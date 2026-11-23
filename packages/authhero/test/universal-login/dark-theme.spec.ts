@@ -390,7 +390,7 @@ describe("review fixes", () => {
     expect(block).toContain("--ah-color-text-on-primary: #abcdef !important");
   });
 
-  it("drops the derived label for an explicit primary it cannot resolve", async () => {
+  it("ignores an explicit primary it cannot resolve, keeping colour and label together", async () => {
     const block = darkVarBlock(
       pageCss(
         await render({
@@ -399,8 +399,25 @@ describe("review fixes", () => {
         }),
       ),
     );
+    expect(block).not.toContain("papayawhip");
+    // The derived primary (the theme's #7D68F4) keeps its derived label.
+    expect(block).toContain("--ah-color-text-on-primary: #ffffff !important");
+  });
+
+  it("applies an unresolvable primary as written when the tenant also set a label", async () => {
+    const block = darkVarBlock(
+      pageCss(
+        await render({
+          ...light,
+          colors_dark: {
+            primary_button: "papayawhip",
+            primary_button_label: "#111111",
+          },
+        }),
+      ),
+    );
     expect(block).toContain("--ah-color-primary: papayawhip !important");
-    expect(block).not.toContain("--ah-color-text-on-primary");
+    expect(block).toContain("--ah-color-text-on-primary: #111111 !important");
   });
 });
 

@@ -359,15 +359,16 @@ export function buildDarkVars(
     vars["--ah-color-text-on-primary"] =
       blackContrast > whiteContrast * BIAS ? "#000000" : "#ffffff";
   }
-  // The derived label belongs to the derived primary. If the tenant set an
-  // explicit primary we could not resolve (and no label), drop it so the
-  // button text cannot match a button colour it was not computed for.
+  // An explicit primary we cannot resolve (an exotic colour name) and with no
+  // explicit label has no label we can pick for it. Ignore it and keep the
+  // derived primary, so colour and label always belong together. An explicit
+  // label is the tenant's own choice and is applied as written.
   if (
     opts.colorsDark?.primary_button &&
     !opts.colorsDark.primary_button_label &&
-    !explicit["--ah-color-text-on-primary"]
+    !toHex(opts.colorsDark.primary_button)
   ) {
-    delete vars["--ah-color-text-on-primary"];
+    delete explicit["--ah-color-primary"];
   }
   return { ...vars, ...explicit };
 }
