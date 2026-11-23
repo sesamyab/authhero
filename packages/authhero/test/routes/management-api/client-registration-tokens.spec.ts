@@ -47,6 +47,35 @@ describe("management-api client registration tokens", () => {
     expect(JSON.stringify(stored)).not.toContain(body.token);
   });
 
+  it("refuses to pin the Management API audience", async () => {
+    const { managementApp, env } = await getTestServer();
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const response = await client["client-registration-tokens"].$post(
+      {
+        json: {
+          constraints: {
+            audience: "urn:authhero:management",
+            grant_types: ["client_credentials"],
+          },
+        },
+        header: { "tenant-id": TENANT },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      errorCode?: string;
+      message?: string;
+    };
+    expect(body.errorCode).toBe("invalid_body");
+    expect(body.message).toMatch(
+      /cannot be granted through Dynamic Client Registration/,
+    );
+  });
+
   it("binds the token to a subject and pre-bound constraints", async () => {
     const { managementApp, env } = await getTestServer();
     const client = testClient(managementApp, env);

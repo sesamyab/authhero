@@ -7,6 +7,7 @@ import { JSONHTTPException } from "../../../errors/json-http-exception";
 import { logMessage } from "../../../helpers/logging";
 import { mintRegistrationToken } from "../../../helpers/dcr/mint-token";
 import { enforceConstraints } from "../../../helpers/dcr/constraint-enforcement";
+import { isRegistrationDeniedAudience } from "../../../helpers/dcr/audience-policy";
 import {
   dcrRequestSchema,
   dcrResponseSchema,
@@ -69,20 +70,42 @@ function validateGrantTypesAllowed(
   }
 }
 
+/**
+ * Request fields that provision API access (a client_grants row). Only the
+ * operator may set them, by pinning them on the Initial Access Token; the
+ * registrant may repeat a pinned value but never choose one.
+ */
+const GRANT_FIELDS = ["audience", "scope"] as const;
+
+function assertGrantFieldsPinned(
+  request: Readonly<Record<string, unknown>>,
+  constraints: Record<string, unknown> | undefined,
+) {
+  for (const field of GRANT_FIELDS) {
+    if (request[field] !== undefined && constraints?.[field] === undefined) {
+      throw new JSONHTTPException(400, {
+        error: "invalid_client_metadata",
+        error_description: `Field "${field}" can only be set by an Initial Access Token constraint`,
+      });
+    }
+  }
+}
+
 interface DcrAudienceGrant {
   audience: string;
   scopes: string[];
 }
 
 /**
- * Resolve `audience` + `scope` from a DCR request into a validated grant
- * spec. Returns `null` if no audience was requested (no grant to provision).
+ * Resolve the IAT-pinned `audience` + `scope` into a validated grant spec.
+ * Returns `null` if no audience was pinned (no grant to provision). Callers
+ * must run `assertGrantFieldsPinned` first, so these values always come from
+ * the operator, never from the registrant.
  *
- * Rejects with 400 when the audience does not match a resource server on
- * the tenant or when a requested scope is not defined on that resource
- * server. Mirrors the validation in `/connect/start` so a client created
- * without going through the consent flow (e.g. via Mgmt-API minted IAT)
- * still gets a sane grant.
+ * Rejects with 400 when the audience is one registration may never grant
+ * (the Management API), does not match a resource server on the tenant, or
+ * when a scope is not defined on that resource server. Mirrors the
+ * validation in `/connect/start`.
  */
 async function resolveAudienceGrant(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
@@ -97,6 +120,13 @@ async function resolveAudienceGrant(
       });
     }
     return null;
+  }
+
+  if (await isRegistrationDeniedAudience(ctx, ctx.var.tenant_id, audience)) {
+    throw new JSONHTTPException(400, {
+      error: "invalid_client_metadata",
+      error_description: `Audience cannot be granted through Dynamic Client Registration: ${audience}`,
+    });
   }
 
   const { resource_servers } = await ctx.env.data.resourceServers.list(
@@ -165,6 +195,9 @@ export const registerRoutes = new OpenAPIHono<{
 
       const iat = await authenticateRegistrationRequest(ctx, tenant);
       const body = ctx.req.valid("json");
+
+      // API access is only provisioned when the operator pinned it on the IAT.
+      assertGrantFieldsPinned(body, iat?.constraints);
 
       // Enforce IAT pre-bound constraints against the raw request body
       // (before RFC -> Client mapping) so constraint keys stay in wire form.

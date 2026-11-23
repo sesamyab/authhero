@@ -67,6 +67,8 @@ The picker lists every organization the signed-in user belongs to on the control
 
 When the request already resolves to a child tenant directly (custom domain or subdomain), the picker is skipped and the IAT is minted on that child — the URL-shape and IAT contents are identical to the single-tenant flow.
 
+In this direct mode the signed-in user must hold `create:clients` on the Management API (`urn:authhero:management`) at tenant level, through a directly assigned permission or a global role. Users without it, such as the tenant's end users, see an error instead of the confirm button, and submitting the consent form mints nothing. Organization-scoped roles do not count here.
+
 ## Query parameters
 
 | Parameter | Required | Description |
@@ -75,7 +77,8 @@ When the request already resolves to a child tenant directly (custom domain or s
 | `domain` | yes | Logical "thing being connected." May be a bare host[:port] (implicit `https://`) or a fully-qualified origin (`http://127.0.0.1:8888` for local dev). `return_to`'s origin must match. |
 | `return_to` | yes | Where the browser is redirected after consent (success or cancel). Origin must match `domain`. URL-encode the value if it contains its own query string. |
 | `state` | yes | Caller-supplied CSRF token. Round-tripped on the redirect unchanged. |
-| `scope` | no | Space-separated scope list, pre-bound to the IAT. |
+| `audience` | no | API identifier pre-bound to the IAT. The registered client gets a client grant for this API. Must be a resource server on the tenant; the Management API is refused. |
+| `scope` | no | Space-separated scope list, pre-bound to the IAT. Requires `audience`; every scope must be defined on that API. |
 | `tenant_id` | no | Explicit tenant override. Used only when host-based resolution doesn't already pick a tenant — see [Tenant resolution](#tenant-resolution). |
 
 ## Callback parameters
@@ -129,6 +132,7 @@ When the user confirms, the issued IAT carries these constraints (enforced serve
   "domain": "publisher.com",
   "integration_type": "wordpress", // only if integration_type was supplied
   "grant_types": ["client_credentials"],
+  "audience": "...",                // only if audience was supplied
   "scope": "..."                    // only if scope was supplied
 }
 ```

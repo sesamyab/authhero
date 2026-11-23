@@ -15,7 +15,10 @@ import { mintIat } from "../../../helpers/dcr/mint-iat";
 import { requireClientRegistrationTokens } from "../../auth-api/register/shared";
 import { logMessage } from "../../../helpers/logging";
 import { LogTypes } from "@authhero/adapter-interfaces";
-import { userCanRegisterOnTenant } from "./connect-authz";
+import {
+  userCanRegisterOnRequestTenant,
+  userCanRegisterOnTenant,
+} from "./connect-authz";
 import { createTranslation } from "../../../i18n";
 
 interface ConnectConsentData {
@@ -45,6 +48,23 @@ function isControlPlaneTenant(
 ): boolean {
   const cpId = data.multiTenancyConfig?.controlPlaneTenantId;
   return Boolean(cpId) && cpId === tenantId;
+}
+
+/**
+ * True when the IAT is minted on a child tenant picked on the control plane,
+ * which `userCanRegisterOnTenant` authorizes. Otherwise the IAT is minted on
+ * the request tenant itself and `userCanRegisterOnRequestTenant` applies.
+ */
+function mintsOnPickedTenant(
+  data: { multiTenancyConfig?: { controlPlaneTenantId?: string } },
+  tenantId: string,
+  connect: ConnectConsentData,
+): boolean {
+  return Boolean(
+    connect.target_tenant_id &&
+    (isControlPlaneTenant(data, tenantId) ||
+      connect.target_tenant_id !== tenantId),
+  );
 }
 
 function readConnectData(stateDataJson?: string): ConnectConsentData | null {
@@ -139,6 +159,12 @@ export async function connectConsentScreen(
     );
   }
 
+  // Direct mode: only users allowed to create clients on this tenant may
+  // consent. Others see an error and no confirm button.
+  const canRegister =
+    mintsOnPickedTenant(ctx.env.data, tenant.id, connect) ||
+    (await userCanRegisterOnRequestTenant(context, user.user_id));
+
   const stateParam = encodeURIComponent(state);
   const cancelUrl = buildReturn(connect.return_to, connect.caller_state, {
     authhero_error: "cancelled",
@@ -223,6 +249,9 @@ export async function connectConsentScreen(
       order: 1,
     },
   ];
+  const visibleComponents = canRegister
+    ? components
+    : components.filter((component) => component.id !== "submit");
 
   const screen: UiScreen = {
     name: "connect-consent",
@@ -230,7 +259,7 @@ export async function connectConsentScreen(
     method: "POST",
     title: m.title(),
     description: m.description({ domain: connect.domain }),
-    components,
+    components: visibleComponents,
     links: [
       {
         id: "cancel",
@@ -238,7 +267,9 @@ export async function connectConsentScreen(
         href: cancelUrl,
       },
     ],
-    messages,
+    messages: canRegister
+      ? messages
+      : [...(messages ?? []), { text: m.noWorkspaceAccess(), type: "error" }],
   };
 
   return { screen, branding };
@@ -316,15 +347,11 @@ async function handleConnectConsentSubmit(
   // On the control plane the target must always be re-validated — including
   // the case where a stale/tampered state set target_tenant_id to the control
   // plane's own id, which userCanRegisterOnTenant rejects.
-  if (
-    connect.target_tenant_id &&
-    (isControlPlaneTenant(ctx.env.data, tenant.id) ||
-      connect.target_tenant_id !== tenant.id)
-  ) {
+  if (mintsOnPickedTenant(ctx.env.data, tenant.id, connect)) {
     const allowed = await userCanRegisterOnTenant(
       context,
       user.user_id,
-      connect.target_tenant_id,
+      targetTenantId,
     );
     if (!allowed) {
       return {
@@ -339,6 +366,11 @@ async function handleConnectConsentSubmit(
         screen: await connectConsentScreen(context),
       };
     }
+  } else if (!(await userCanRegisterOnRequestTenant(context, user.user_id))) {
+    // Direct mode mints on the request tenant: a session there is not
+    // enough, the user must be allowed to create clients on it. The GET
+    // screen already shows the error, so don't repeat it.
+    return { screen: await connectConsentScreen(context) };
   }
 
   // POST always means confirm — the Cancel link already redirects to
