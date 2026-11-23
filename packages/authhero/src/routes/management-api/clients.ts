@@ -333,6 +333,14 @@ const deleteById = defineRoute({
       return ctx.body(null, 204);
     }
 
+    // Registration access tokens and developer edit links of the client
+    // must not outlive it.
+    await ctx.env.data.clientRegistrationTokens?.revokeByClient(
+      tenant_id,
+      id,
+      new Date().toISOString(),
+    );
+
     await logMessage(ctx, tenant_id, {
       type: LogTypes.SUCCESS_API_OPERATION,
       description: "Delete a Client",

@@ -42,6 +42,14 @@ export const dcrRequestSchema = z.object({
   // alongside the client. Not part of RFC 7591 but accepted at the wire so
   // IAT constraints can pre-bind it from the /connect/start consent flow.
   audience: z.string().optional(),
+  // OpenID Connect Dynamic Client Registration 1.0 §2.
+  application_type: z.enum(["web", "native"]).optional(),
+  // OpenID Connect RP-Initiated Logout 1.0 §3.1. Stored as the Auth0 field
+  // `allowed_logout_urls`.
+  post_logout_redirect_uris: z.array(z.string()).optional(),
+  // AuthHero extension carrying Auth0's `web_origins` (origins allowed for
+  // web_message responses, cross-origin authentication and silent auth).
+  web_origins: z.array(z.string()).optional(),
 });
 
 export type DcrRequest = z.infer<typeof dcrRequestSchema>;
@@ -67,6 +75,9 @@ export const dcrResponseSchema = z.object({
   jwks_uri: z.string().optional(),
   software_id: z.string().optional(),
   software_version: z.string().optional(),
+  application_type: z.enum(["web", "native"]).optional(),
+  post_logout_redirect_uris: z.array(z.string()).optional(),
+  web_origins: z.array(z.string()).optional(),
 });
 
 export type DcrResponse = z.infer<typeof dcrResponseSchema>;
@@ -104,6 +115,9 @@ const KNOWN_RFC_7591_FIELDS = new Set([
   // AuthHero extension: drives client_grants provisioning. Not stored on
   // the client itself, so it must not leak into registration_metadata.
   "audience",
+  "application_type",
+  "post_logout_redirect_uris",
+  "web_origins",
 ]);
 
 export interface RegistrationMapping {
@@ -140,6 +154,22 @@ function pickClientMetadataExtras(
 }
 
 /**
+ * OIDC `application_type` to Auth0 `app_type`. A browser app (`web`) without
+ * a client secret is a single-page app.
+ */
+export function appTypeFromApplicationType(
+  applicationType: "web" | "native",
+  tokenEndpointAuthMethod: string | undefined,
+): "native" | "spa" | "regular_web" {
+  if (applicationType === "native") return "native";
+  return tokenEndpointAuthMethod === "none" ? "spa" : "regular_web";
+}
+
+function nonEmpty(values: string[] | undefined): string[] | undefined {
+  return values && values.length > 0 ? values : undefined;
+}
+
+/**
  * Map an RFC 7591 DCR request to internal Client fields.
  */
 export function dcrRequestToClient(req: DcrRequest): RegistrationMapping {
@@ -153,6 +183,18 @@ export function dcrRequestToClient(req: DcrRequest): RegistrationMapping {
     clientFields.token_endpoint_auth_method = req.token_endpoint_auth_method;
   }
   if (req.logo_uri !== undefined) clientFields.logo_uri = req.logo_uri;
+  if (req.post_logout_redirect_uris !== undefined) {
+    clientFields.allowed_logout_urls = req.post_logout_redirect_uris;
+  }
+  if (req.web_origins !== undefined) {
+    clientFields.web_origins = req.web_origins;
+  }
+  if (req.application_type !== undefined) {
+    clientFields.app_type = appTypeFromApplicationType(
+      req.application_type,
+      req.token_endpoint_auth_method,
+    );
+  }
 
   const clientMetadataExtras = pickClientMetadataExtras(req);
   if (clientMetadataExtras) {
@@ -242,6 +284,14 @@ export function clientToDcrResponse(
     software_version: readMetadataString(metadata, "software_version"),
     scope: readMetadataString(metadata, "scope"),
     contacts,
+    application_type:
+      client.app_type === "native"
+        ? "native"
+        : client.app_type === "spa" || client.app_type === "regular_web"
+          ? "web"
+          : undefined,
+    post_logout_redirect_uris: nonEmpty(client.allowed_logout_urls),
+    web_origins: nonEmpty(client.web_origins),
   };
 
   return response;

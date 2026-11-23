@@ -949,3 +949,172 @@ describe("Discovery registration_endpoint gating", () => {
     );
   });
 });
+
+describe("omitted grant_types is validated as its authorization_code default", () => {
+  async function post(oauthApp: any, env: Bindings, body: object) {
+    return oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  it("requires redirect_uris when grant_types is omitted", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    const response = await post(oauthApp, env, { client_name: "No URIs" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("invalid_redirect_uri");
+  });
+
+  it("applies the tenant grant-type allowlist to the default", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env, { dcr_allowed_grant_types: ["client_credentials"] });
+    const response = await post(oauthApp, env, {
+      client_name: "Code flow by default",
+      redirect_uris: ["https://app.example.com/cb"],
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(
+      /authorization_code/,
+    );
+  });
+
+  it("applies the allowlist to the default on PUT", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env, { dcr_allowed_grant_types: ["client_credentials"] });
+    const created = await (
+      await post(oauthApp, env, {
+        client_name: "M2M",
+        grant_types: ["client_credentials"],
+      })
+    ).json();
+
+    const response = await oauthApp.request(
+      `/oidc/register/${created.client_id}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${created.registration_access_token}`,
+        },
+        body: JSON.stringify({ client_name: "M2M" }),
+      },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.grant_types).toEqual(["client_credentials"]);
+  });
+});
+
+describe("full PUT on a public client", () => {
+  async function registerPublic(oauthApp: any, env: Bindings) {
+    await enableDcr(env);
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "Public",
+          redirect_uris: ["https://app.example.com/cb"],
+          token_endpoint_auth_method: "none",
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.client_secret).toBeUndefined();
+    return body;
+  }
+
+  async function put(
+    oauthApp: any,
+    env: Bindings,
+    created: { client_id: string; registration_access_token: string },
+    body: object,
+  ) {
+    return oauthApp.request(
+      `/oidc/register/${created.client_id}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${created.registration_access_token}`,
+        },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  it("keeps token_endpoint_auth_method none when the PUT omits it", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+    });
+    expect(response.status).toBe(200);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("none");
+  });
+
+  it("allows switching to key-based private_key_jwt without a secret", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+      token_endpoint_auth_method: "private_key_jwt",
+      jwks_uri: "https://app.example.com/.well-known/jwks.json",
+    });
+    expect(response.status).toBe(200);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("private_key_jwt");
+  });
+
+  it.each(["client_secret_post", "client_secret_jwt"])(
+    "refuses %s for a client without a secret",
+    async (method) => {
+      const { oauthApp, env } = await getTestServer();
+      const created = await registerPublic(oauthApp, env);
+      const response = await put(oauthApp, env, created, {
+        client_name: "Public",
+        redirect_uris: ["https://app.example.com/cb"],
+        token_endpoint_auth_method: method,
+      });
+      expect(response.status).toBe(400);
+    },
+  );
+
+  it("refuses a secret-based method for a client without a secret", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(
+      /needs a client secret/,
+    );
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("none");
+  });
+});

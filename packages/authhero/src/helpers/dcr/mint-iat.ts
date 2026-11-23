@@ -1,5 +1,6 @@
 import type {
   ClientRegistrationToken,
+  ClientRegistrationTokenSource,
   ClientRegistrationTokensAdapter,
 } from "@authhero/adapter-interfaces";
 import { mintRegistrationToken } from "./mint-token";
@@ -11,6 +12,9 @@ export interface MintIatOptions {
   constraints?: Record<string, unknown>;
   expires_in_seconds?: number;
   single_use?: boolean;
+  name?: string;
+  created_by?: string;
+  source?: ClientRegistrationTokenSource;
 }
 
 export interface MintedIat {
@@ -37,6 +41,9 @@ export async function mintIat(
     constraints: opts.constraints,
     single_use: opts.single_use ?? true,
     expires_at,
+    name: opts.name,
+    created_by: opts.created_by,
+    source: opts.source,
   });
 
   return {

@@ -115,6 +115,9 @@ export const clientRegistrationTokens = sqliteTable(
     expires_at_ts: integer("expires_at_ts"),
     created_at_ts: integer("created_at_ts").notNull(),
     revoked_at_ts: integer("revoked_at_ts"),
+    name: text("name", { length: 255 }),
+    created_by: text("created_by", { length: 255 }),
+    source: text("source", { length: 16 }),
   },
   (table) => [
     uniqueIndex("idx_client_registration_tokens_hash").on(
@@ -124,6 +127,10 @@ export const clientRegistrationTokens = sqliteTable(
     index("idx_client_registration_tokens_client").on(
       table.tenant_id,
       table.client_id,
+    ),
+    index("idx_client_registration_tokens_created").on(
+      table.tenant_id,
+      table.created_at_ts,
     ),
   ],
 );

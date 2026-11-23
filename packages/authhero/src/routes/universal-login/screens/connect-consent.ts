@@ -398,6 +398,7 @@ async function handleConnectConsentSubmit(
       constraints,
       single_use: true,
       expires_in_seconds: 300,
+      source: "connect",
     },
   );
 

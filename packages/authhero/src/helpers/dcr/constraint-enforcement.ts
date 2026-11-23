@@ -6,7 +6,7 @@ export interface ConstraintViolation {
   got: unknown;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
   if (typeof a !== typeof b) return false;

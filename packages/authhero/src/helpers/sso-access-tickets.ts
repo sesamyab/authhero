@@ -1,4 +1,4 @@
-import { encodeBase64Url } from "@authhero/adapter-interfaces";
+import { generateTicketId, hashTicketId } from "./self-service-tickets";
 
 /**
  * Self-Service SSO access tickets (#1763). The ticket id is the bearer value
@@ -11,18 +11,12 @@ export const SSO_TICKET_MAX_TTL_SEC = 30 * 24 * 60 * 60;
 
 /** A new ticket id: 32 random bytes, base64url (43 characters). */
 export function generateSsoTicketId(): string {
-  return encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+  return generateTicketId();
 }
 
 /** The stored form of a ticket id: hex SHA-256. */
 export async function hashSsoTicketId(ticketId: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(ticketId),
-  );
-  return Array.from(new Uint8Array(digest), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
+  return hashTicketId(ticketId);
 }
 
 /** The setup assistant's path on the tenant's own domain. */

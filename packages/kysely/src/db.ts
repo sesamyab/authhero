@@ -526,6 +526,9 @@ export const sqlClientRegistrationTokenSchema = z.object({
   expires_at_ts: z.number().optional().nullable(),
   created_at_ts: z.number(),
   revoked_at_ts: z.number().optional().nullable(),
+  name: z.string().optional().nullable(),
+  created_by: z.string().optional().nullable(),
+  source: z.string().optional().nullable(),
 });
 
 export const sqlAuthenticationMethodSchema = z.object({

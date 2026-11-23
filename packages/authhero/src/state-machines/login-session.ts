@@ -57,6 +57,16 @@ export interface LoginSessionData {
   inviter_name?: string;
   roles?: string[];
   connect?: Record<string, unknown>;
+  /**
+   * Developer app setup page (#1776): which link opened the page (the
+   * registration token row id) and, once a create link registered its app,
+   * the new client. See routes/universal-login/screens/self-service-app.ts.
+   */
+  self_service?: {
+    kind: "app_create" | "app_edit";
+    token_id: string;
+    completed_client_id?: string;
+  };
   deviceFlow?: { deviceCodeHash?: string; userCode?: string; ready?: boolean };
   try_connection_result?: unknown;
   // What the browser sent on /authorize; copied onto the login log

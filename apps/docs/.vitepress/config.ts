@@ -312,6 +312,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               link: "/features/invitations-and-tickets",
             },
             {
+              text: "Developer App Invites",
+              link: "/features/developer-app-invites",
+            },
+            {
               text: "Email Templates",
               link: "/features/email-templates",
             },

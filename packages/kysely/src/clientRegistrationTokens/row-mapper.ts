@@ -1,6 +1,7 @@
 import {
   ClientRegistrationToken,
   ClientRegistrationTokenType,
+  clientRegistrationTokenSourceSchema,
   clientRegistrationTokenTypeSchema,
   isPlainObject,
 } from "@authhero/adapter-interfaces";
@@ -19,6 +20,9 @@ type Row = {
   expires_at_ts: number | null | undefined;
   created_at_ts: number;
   revoked_at_ts: number | null | undefined;
+  name?: string | null;
+  created_by?: string | null;
+  source?: string | null;
 };
 
 function parseType(value: string): ClientRegistrationTokenType {
@@ -42,6 +46,11 @@ function parseConstraints(
   return isPlainObject(parsed) ? parsed : undefined;
 }
 
+function parseSource(raw: string | null | undefined) {
+  const parsed = clientRegistrationTokenSourceSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export function rowToToken(row: Row): ClientRegistrationToken {
   return {
     id: row.id,
@@ -55,5 +64,8 @@ export function rowToToken(row: Row): ClientRegistrationToken {
     used_at: dbDateToIso(row.used_at_ts),
     revoked_at: dbDateToIso(row.revoked_at_ts),
     created_at: dbDateToIsoRequired(row.created_at_ts),
+    name: row.name ?? undefined,
+    created_by: row.created_by ?? undefined,
+    source: parseSource(row.source),
   };
 }

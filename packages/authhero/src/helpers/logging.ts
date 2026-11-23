@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { redactSsoTicketPath } from "./sso-access-tickets";
+import { redactTicketQuery } from "./self-service-tickets";
 import {
   DataAdapters,
   LogInsert,
@@ -536,12 +537,14 @@ function buildAuditEvent(
       method: ctx.req.method,
       path: redactSsoTicketPath(ctx.req.path),
       query: ctx.req.queries()
-        ? redactSessionTransferQuery(
-            Object.fromEntries(
-              Object.entries(ctx.req.queries()).map(([k, v]) => [
-                k,
-                Array.isArray(v) ? v.join(",") : v,
-              ]),
+        ? redactTicketQuery(
+            redactSessionTransferQuery(
+              Object.fromEntries(
+                Object.entries(ctx.req.queries()).map(([k, v]) => [
+                  k,
+                  Array.isArray(v) ? v.join(",") : v,
+                ]),
+              ),
             ),
           )
         : undefined,
@@ -668,7 +671,9 @@ export async function logMessage(
           request: {
             method: ctx.req.method,
             path: redactSsoTicketPath(ctx.req.path),
-            qs: redactSessionTransferQuery(ctx.req.queries()),
+            qs: redactTicketQuery(
+              redactSessionTransferQuery(ctx.req.queries()),
+            ),
             body: redactBody(params.body || ctx.var.body || ""),
             ...(params.redirect_uri
               ? { redirect_uri: params.redirect_uri }

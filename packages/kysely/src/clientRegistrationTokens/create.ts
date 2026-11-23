@@ -30,6 +30,9 @@ export function create(db: Kysely<Database>) {
         created_at_ts: now,
         used_at_ts: null,
         revoked_at_ts: null,
+        name: params.name ?? null,
+        created_by: params.created_by ?? null,
+        source: params.source ?? null,
       })
       .execute();
 
@@ -43,6 +46,9 @@ export function create(db: Kysely<Database>) {
       single_use: params.single_use,
       expires_at: params.expires_at,
       created_at: new Date(now).toISOString(),
+      name: params.name,
+      created_by: params.created_by,
+      source: params.source,
     };
   };
 }

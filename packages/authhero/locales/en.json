@@ -816,5 +816,63 @@
       "successTitle": "Success",
       "title": "Status"
     }
+  },
+  "self-service": {
+    "self-service-app": {
+      "title": "Register your app",
+      "description": "${tenantName} has invited you to register an app that signs in its users.",
+      "editTitle": "Update ${appName}",
+      "editDescription": "Change the sign-in settings of ${appName}.",
+      "expiresText": "This link expires on ${date}.",
+      "appTypeLabel": "App type",
+      "appTypeNative": "Native app",
+      "appTypeSpa": "Single-page app",
+      "appTypeRegularWeb": "Regular web app",
+      "nameLabel": "App name",
+      "callbacksLabel": "Callback URLs",
+      "callbacksHintNative": "One per line. Use your app's universal link or a custom scheme, for example com.example.app:/callback",
+      "callbacksHintWeb": "One per line, for example https://app.example.com/callback",
+      "logoutUrlsLabel": "Logout URLs",
+      "webOriginsLabel": "Allowed web origins",
+      "webOriginsHint": "One per line, for example https://app.example.com",
+      "logoUrlLabel": "Logo URL",
+      "websiteLabel": "Website",
+      "privacyLabel": "Privacy policy URL",
+      "termsLabel": "Terms of service URL",
+      "contactLabel": "Contact email",
+      "registerButton": "Register app",
+      "saveButton": "Save changes",
+      "savedText": "Changes saved.",
+      "clientIdLabel": "Client ID",
+      "requiredError": "This field is required.",
+      "invalidValueError": "This value is not valid.",
+      "uriTooMany": "Use at most 20 URLs.",
+      "uriTooLong": "URLs can be at most 1024 characters.",
+      "uriInvalid": "\"${value}\" is not a valid URL.",
+      "uriWildcard": "\"${value}\": wildcards are not allowed.",
+      "uriFragment": "\"${value}\": fragments (#) are not allowed.",
+      "uriUserinfo": "\"${value}\": user names and passwords in URLs are not allowed.",
+      "uriHttpNotLoopback": "\"${value}\": use https. http is only allowed for localhost, 127.0.0.1 or [::1].",
+      "uriSchemeNotAllowed": "\"${value}\": this kind of URL is not allowed for this app type.",
+      "uriCustomSchemeNeedsDot": "\"${value}\": custom schemes must contain a dot, for example com.example.app:/callback",
+      "uriOriginOnly": "\"${value}\": enter only the origin, without a path, for example https://app.example.com",
+      "uriNotForNative": "Native apps don't use web origins.",
+      "errorText": "Something went wrong. Try again."
+    },
+    "self-service-app-done": {
+      "title": "Your app is registered",
+      "description": "Use these values to set up sign-in in ${appName}.",
+      "clientIdLabel": "Client ID",
+      "domainLabel": "Domain",
+      "discoveryLabel": "Discovery URL",
+      "clientSecretLabel": "Client secret",
+      "clientSecretWarning": "Copy the client secret now. It won't be shown again.",
+      "pkceNote": "Use PKCE with S256. Most sign-in SDKs do this by default.",
+      "editLaterText": "Need to change something later? Ask ${tenantName} for an edit link."
+    },
+    "self-service-ticket-invalid": {
+      "title": "This link can't be used",
+      "description": "It may have expired, been used already or been revoked. Ask the person who sent it for a new link."
+    }
   }
 }

@@ -816,5 +816,63 @@
       "successTitle": "Operazione riuscita",
       "title": "Stato"
     }
+  },
+  "self-service": {
+    "self-service-app": {
+      "title": "Registra la tua app",
+      "description": "${tenantName} ti ha invitato a registrare un'app con cui i suoi utenti accedono.",
+      "editTitle": "Aggiorna ${appName}",
+      "editDescription": "Modifica le impostazioni di accesso di ${appName}.",
+      "expiresText": "Questo link scade il ${date}.",
+      "appTypeLabel": "Tipo di app",
+      "appTypeNative": "App nativa",
+      "appTypeSpa": "App a pagina singola (SPA)",
+      "appTypeRegularWeb": "App web tradizionale",
+      "nameLabel": "Nome dell'app",
+      "callbacksLabel": "URL di callback",
+      "callbacksHintNative": "Uno per riga. Usa il link universale dell'app o uno schema personalizzato, ad esempio com.example.app:/callback",
+      "callbacksHintWeb": "Uno per riga, ad esempio https://app.example.com/callback",
+      "logoutUrlsLabel": "URL di logout",
+      "webOriginsLabel": "Origini web consentite",
+      "webOriginsHint": "Una per riga, ad esempio https://app.example.com",
+      "logoUrlLabel": "URL del logo",
+      "websiteLabel": "Sito web",
+      "privacyLabel": "URL dell'informativa sulla privacy",
+      "termsLabel": "URL dei termini di servizio",
+      "contactLabel": "Email di contatto",
+      "registerButton": "Registra l'app",
+      "saveButton": "Salva le modifiche",
+      "savedText": "Modifiche salvate.",
+      "clientIdLabel": "ID client",
+      "requiredError": "Questo campo è obbligatorio.",
+      "invalidValueError": "Questo valore non è valido.",
+      "uriTooMany": "Usa al massimo 20 URL.",
+      "uriTooLong": "Un URL può avere al massimo 1024 caratteri.",
+      "uriInvalid": "\"${value}\" non è un URL valido.",
+      "uriWildcard": "\"${value}\": i caratteri jolly non sono consentiti.",
+      "uriFragment": "\"${value}\": i frammenti (#) non sono consentiti.",
+      "uriUserinfo": "\"${value}\": nomi utente e password negli URL non sono consentiti.",
+      "uriHttpNotLoopback": "\"${value}\": usa https. http è consentito solo per localhost, 127.0.0.1 o [::1].",
+      "uriSchemeNotAllowed": "\"${value}\": questo tipo di URL non è consentito per questo tipo di app.",
+      "uriCustomSchemeNeedsDot": "\"${value}\": gli schemi personalizzati devono contenere un punto, ad esempio com.example.app:/callback",
+      "uriOriginOnly": "\"${value}\": inserisci solo l'origine, senza percorso, ad esempio https://app.example.com",
+      "uriNotForNative": "Le app native non usano origini web.",
+      "errorText": "Si è verificato un errore. Riprova."
+    },
+    "self-service-app-done": {
+      "title": "La tua app è registrata",
+      "description": "Usa questi valori per configurare l'accesso in ${appName}.",
+      "clientIdLabel": "ID client",
+      "domainLabel": "Dominio",
+      "discoveryLabel": "URL di discovery",
+      "clientSecretLabel": "Segreto client",
+      "clientSecretWarning": "Copia ora il segreto client. Non verrà mostrato di nuovo.",
+      "pkceNote": "Usa PKCE con S256. La maggior parte degli SDK di accesso lo fa per impostazione predefinita.",
+      "editLaterText": "Devi modificare qualcosa in seguito? Chiedi a ${tenantName} un link di modifica."
+    },
+    "self-service-ticket-invalid": {
+      "title": "Questo link non può essere usato",
+      "description": "Potrebbe essere scaduto, già usato o revocato. Chiedi a chi te l'ha inviato un nuovo link."
+    }
   }
 }
