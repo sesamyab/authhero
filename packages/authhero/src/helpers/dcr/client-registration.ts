@@ -559,6 +559,22 @@ export async function updateRegisteredClient(
 
   const { clientFields, extraMetadata } = dcrRequestToClient(request);
 
+  // An omitted method keeps a public client public (the RFC 7591 default
+  // would need a secret it doesn't have), and a client without a secret
+  // can't switch to a secret-based method: PUT never provisions a secret.
+  const tokenEndpointAuthMethod =
+    clientFields.token_endpoint_auth_method ??
+    (existing.token_endpoint_auth_method === "none"
+      ? "none"
+      : "client_secret_basic");
+  if (tokenEndpointAuthMethod !== "none" && !existing.client_secret) {
+    throw new DcrMetadataError(
+      "invalid_client_metadata",
+      `token_endpoint_auth_method "${tokenEndpointAuthMethod}" needs a client secret, and this client has none`,
+      "token_endpoint_auth_method",
+    );
+  }
+
   // Preserve iat_constraints and provenance across PUT (replace semantics on
   // everything else).
   const mergedMetadata: Record<string, unknown> = { ...extraMetadata };
@@ -578,14 +594,14 @@ export async function updateRegisteredClient(
   // contacts, scope, software_id, software_version) and
   // registration_metadata (response_types, jwks) are replaced wholesale by
   // the freshly-built objects below. client_secret is intentionally omitted
-  // — RFC 7592 PUT must not rotate it. Logout URLs, web origins and the app
+  // — RFC 7592 PUT must not rotate it. An omitted token endpoint auth method
+  // falls back as described above. Logout URLs, web origins and the app
   // type are only touched when sent, since older callers could not set them.
   const update: Partial<Client> = {
     name: clientFields.name ?? `Client ${existing.client_id.slice(0, 8)}`,
     callbacks: clientFields.callbacks ?? [],
     grant_types: clientFields.grant_types ?? DEFAULT_GRANT_TYPES,
-    token_endpoint_auth_method:
-      clientFields.token_endpoint_auth_method ?? "client_secret_basic",
+    token_endpoint_auth_method: tokenEndpointAuthMethod,
     logo_uri: clientFields.logo_uri,
     client_metadata: clientFields.client_metadata ?? {},
     registration_metadata: mergedMetadata,

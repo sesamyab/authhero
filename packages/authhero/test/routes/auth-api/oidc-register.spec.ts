@@ -1015,3 +1015,78 @@ describe("omitted grant_types is validated as its authorization_code default", (
     expect(client?.grant_types).toEqual(["client_credentials"]);
   });
 });
+
+describe("full PUT on a public client", () => {
+  async function registerPublic(oauthApp: any, env: Bindings) {
+    await enableDcr(env);
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "Public",
+          redirect_uris: ["https://app.example.com/cb"],
+          token_endpoint_auth_method: "none",
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.client_secret).toBeUndefined();
+    return body;
+  }
+
+  async function put(
+    oauthApp: any,
+    env: Bindings,
+    created: { client_id: string; registration_access_token: string },
+    body: object,
+  ) {
+    return oauthApp.request(
+      `/oidc/register/${created.client_id}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${created.registration_access_token}`,
+        },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  it("keeps token_endpoint_auth_method none when the PUT omits it", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+    });
+    expect(response.status).toBe(200);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("none");
+  });
+
+  it("refuses a secret-based method for a client without a secret", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(
+      /needs a client secret/,
+    );
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("none");
+  });
+});
