@@ -8,6 +8,7 @@ import { JSONHTTPException } from "../errors/json-http-exception";
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
 import { getOrCreateUserByProvider } from "../helpers/users";
+import { resolveClientDatabaseConnectionName } from "../helpers/database-connection-scope";
 import { createFrontChannelAuthResponse } from "./common";
 import { getEnrichedClient } from "../helpers/client";
 import {
@@ -92,6 +93,22 @@ export async function ticketAuth(
 
   await env.data.codes.used(tenant_id, ticketId);
 
+  // A login ticket only proves a password in the connection that verified it,
+  // which the password branch of /co/authenticate records on the login
+  // session. The realm sent here must be that same database connection; any
+  // other realm, including `email`, is refused. Other `ticket` codes (for
+  // example guardian enrollment tickets) point at login sessions without a
+  // recorded connection and never proved a password, so a missing connection
+  // is refused too.
+  const verifiedConnection = loginSession.authParams.connection;
+  if (
+    !verifiedConnection ||
+    realm !== Strategy.USERNAME_PASSWORD ||
+    realm !== verifiedConnection
+  ) {
+    throw new JSONHTTPException(403, { message: "Invalid realm" });
+  }
+
   const provider = await getProviderFromRealm(ctx, tenant_id, realm);
 
   // Look up the connection to get its strategy
@@ -110,7 +127,9 @@ export async function ticketAuth(
       ? await getOrCreateUsernamePasswordUser(ctx, {
           client,
           username: loginSession.authParams.username,
-          connection: realm,
+          // Same connection /co/authenticate verified the password in, so the
+          // ticket resolves the user that logged in.
+          connection: resolveClientDatabaseConnectionName(client, realm),
           ip: ctx.var.ip,
         })
       : await getOrCreateUserByProvider(ctx, {
@@ -146,6 +165,8 @@ export async function ticketAuth(
     ...omitUndefined(authParams),
     client_id: loginSession.authParams.client_id,
     username: loginSession.authParams.username,
+    // Likewise the connection the password was verified in.
+    connection: loginSession.authParams.connection,
   };
 
   await env.data.loginSessions.update(tenant_id, loginSession.id, {

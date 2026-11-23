@@ -89,6 +89,8 @@ export * from "./Theme";
 export * from "./PromptSetting";
 export * from "./ProxyRoute";
 export * from "./TokenExchangeProfile";
+export * from "./SelfServiceProfile";
+export * from "./SsoAccessTicket";
 export * from "./ScimConfiguration";
 export * from "./ScimToken";
 export * from "./ScimExternalId";

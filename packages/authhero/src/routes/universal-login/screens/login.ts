@@ -24,6 +24,7 @@ import {
   userExistsByEmail,
 } from "../../../helpers/users";
 import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../../helpers/database-connection-scope";
 import { validateSignupEmail } from "../../../hooks";
 import { getConnectionFromIdentifier } from "../../../utils/username";
 import { createTranslation } from "../../../i18n";
@@ -640,6 +641,7 @@ export const loginScreenDefinition: ScreenDefinition = {
                 env: ctx.env,
                 tenant_id: client.tenant.id,
                 username: normalized,
+                connection: resolveClientDatabaseConnectionName(client),
               }))
             : !!(await getPrimaryUserByProvider({
                 userAdapter: ctx.env.data.users,

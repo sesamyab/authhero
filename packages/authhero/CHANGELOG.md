@@ -1,5 +1,54 @@
 # authhero
 
+## 9.36.0
+
+### Minor Changes
+
+- 6d3be5c: Add the Auth0-compatible Self-Service SSO Management API (#1763), mounted when the data adapter provides `selfServiceProfiles` and `ssoAccessTickets`:
+  - `GET/POST /api/v2/self-service-profiles`, `GET/PATCH/DELETE /api/v2/self-service-profiles/{id}`
+  - `GET/PUT /api/v2/self-service-profiles/{id}/custom-text/{language}/{page}`
+  - `POST /api/v2/self-service-profiles/{id}/sso-ticket`, which returns `{ "ticket": "<url>" }`
+  - `POST /api/v2/self-service-profiles/{profileId}/sso-ticket/{id}/revoke`, which returns `202`
+
+  Request bodies are parsed strictly. Auth0 fields AuthHero does not implement yet (`provisioning_config`, `use_for_organization_discovery`, `enabled_features`, `third_party_client_access_config`, `universal_logout_config`, `user_attribute_profile_id`, `connection_config.options.idpinitiated`, `domain_aliases_config.pending_domains`) and fields Auth0 does not define are rejected with `400` naming the field. Profiles and tickets accept the `oidc`, `samlp` and `waad` strategies. Tickets last 5 days by default and at most 30 days, and domain verification defaults to `required`. The ticket URL points at `/u2/self-service` on the tenant's domain. The setup screens come in a later release, so the URL does not open a page yet.
+
+### Patch Changes
+
+- 515e9cf: Scope database-user lookups by connection. Every database connection stores its users under the `auth0` provider, so password login, password reset, `/dbconnections`, invitations and the ticket flow could match a user that belongs to another database connection of the tenant. These lookups now take the connection they target and skip users of the tenant's other database connections, preferring a row in the connection itself over a legacy row that can't be attributed to one. Tenants with a single database connection get the same lookups as before, as do rows whose `connection` doesn't name one of the tenant's database connections.
+
+  New database users created by `/dbconnections/signup`, a password-reset request, an accepted invitation and the ticket flow now store the client's database connection name, like the universal-login signup already did, instead of the `Username-Password-Authentication` literal. Signup duplicate checks stay unscoped until the unique index moves to connections, so a signup for an address used in another database connection still answers like an existing user.
+
+- a580312: A login ticket from `/co/authenticate` is now bound to the connection that verified the credentials. `/co/authenticate` records the connection as `authParams.connection` on the ticket's login session, and redeeming a ticket at `/authorize` is rejected with `403 Invalid realm` when the `realm` is any other connection, including `realm=email`, or when the ticket's login session records no connection. Login tickets minted by `/co/authenticate` before this change are no longer redeemable; the user logs in again.
+- Updated dependencies [a580312]
+- Updated dependencies [96a2910]
+  - @authhero/adapter-interfaces@4.31.0
+  - @authhero/proxy@0.11.18
+  - @authhero/saml@0.6.11
+  - @authhero/widget@0.41.15
+
+## 9.35.0
+
+### Minor Changes
+
+- b0cb2c3: Branding file uploads (#1738). New optional `StorageAdapter` (`data.storage`) with an R2 implementation in `@authhero/cloudflare-adapter` (`storage: { bucket, publicBaseUrl? }`). `POST /api/v2/branding/uploads/{kind}` validates type, size and content (SVG is checked and served with a restrictive CSP), stores objects under `tenants/{tenant_id}/branding/{kind}/`, and returns a URL. Files are served publicly with cache headers and CORS at `/assets/...`; `publicBaseUrl` only changes the URL returned by the upload API (the `/assets` route stays mounted, and SVGs always use it for its CSP). The admin branding page gets upload buttons for logo, favicon, powered-by logo, font and background image.
+- a6e447d: Self-Service SSO (#1763), account-linking guard. Connections get an internal `self_service` field (a new nullable `self_service` column; run the drizzle and kysely migrations) recording that a connection is set up through Self-Service SSO and which email domains are verified for it. It is not part of the Auth0 connection object: the Management API neither accepts nor returns it, and tenant export, import and config sync do not copy it.
+
+  For a self-service connection, an email is only trusted inside its verified domains. Outside verified domains, new users are stored with `email_verified: false`. The guard also clears a previously stored `true` outside verified domains in every root-attribute sync mode. Built-in linking, the `account-linking` template hook and code hooks' `link_candidates` exclude users whose email domain is unverified for their self-service connection. This keeps an identity provider configured by an outside admin from taking over existing accounts or capturing accounts created later with the same email. Ordinary connections are unchanged.
+
+  The Management API rejects name changes for self-service connections so existing identities retain their domain trust checks. Display names remain editable.
+
+- 9c185ad: Outgoing email is sent from the template's own `from` if it has one, then the email provider's `default_from_address`. When neither is set it now uses the tenant's `sender_email` and `sender_name`, then the new optional `DEFAULT_SENDER_EMAIL` binding, and last `login@` followed by the hostname of `ISSUER` instead of the whole URL, which gave an invalid address such as `login@https://localhost:3000/`. A sender name with punctuation is sent as a quoted display name. Settings > General in the admin edits `sender_email` and `sender_name` and shows the tenant's `audience` read-only. `sender_email` can now be cleared with `null` in a tenant update; the Kysely and Drizzle adapters store it as unset.
+
+### Patch Changes
+
+- Updated dependencies [b0cb2c3]
+- Updated dependencies [a6e447d]
+- Updated dependencies [9c185ad]
+  - @authhero/adapter-interfaces@4.30.0
+  - @authhero/proxy@0.11.17
+  - @authhero/saml@0.6.10
+  - @authhero/widget@0.41.14
+
 ## 9.34.0
 
 ### Minor Changes

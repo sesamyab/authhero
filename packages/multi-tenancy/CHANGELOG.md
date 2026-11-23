@@ -1,5 +1,26 @@
 # @authhero/multi-tenancy
 
+## 15.13.1
+
+### Patch Changes
+
+- d1486b7: `tenantDefaults` now also reach tenants with their own database (`deployment_type: "wfp"`). The provisioning seed that creates the tenant's own row in its database carries the tenant's settings (sessions, MFA, attack protection, flags, sender and so on) from its row on the control plane, through an allowlist. The control plane's own seeded row stays minimal, identity and deployment fields are not copied, the Twilio `auth_token` is stripped, and an existing row is never overwritten.
+
+## 15.13.0
+
+### Minor Changes
+
+- 7e13f47: Copy-once defaults for new tenants (#1753). A new `tenantDefaults` option on `setupMultiTenancy` and `initMultiTenant` sets the tenant row's own settings (MFA, attack protection, flags, sessions and so on) when a tenant is created. They are the tenant's own afterwards: a change to the defaults does not reach existing tenants, the tenant can change every value, and a value in the create request wins. It can be a function, so a plan can decide the values later. Unset changes nothing.
+
+### Patch Changes
+
+- 1784005: A new tenant with its own database gets its default client in that database. `createWfpTenantApp` now runs `provisionDefaultClients` at the end of `/internal/sync-defaults` (needs `TENANT_ID` in the Worker's environment), through the adapter that encrypts the client secret, and skips the Management API client. `initMultiTenant` no longer runs the tenant `afterCreate` sync of the control plane's resource servers and roles for a `wfp` tenant when `databaseIsolation.onProvision` is set. With the default `getAdapters` that sync wrote them to the control plane's own database under the tenant's id, where nothing reads them; a `shared` tenant keeps it.
+- Updated dependencies [b0cb2c3]
+- Updated dependencies [a6e447d]
+- Updated dependencies [9c185ad]
+  - @authhero/adapter-interfaces@4.30.0
+  - authhero@9.35.0
+
 ## 15.12.0
 
 ### Minor Changes

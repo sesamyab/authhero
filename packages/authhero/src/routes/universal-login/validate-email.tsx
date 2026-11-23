@@ -9,6 +9,7 @@ import {
   getUsernamePasswordUser,
   isUsernamePasswordProvider,
 } from "../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import EmailValidatedPage from "../../components/EmailValidatedPage";
 import { defineRoute } from "../../utils/define-route";
 const getRoot = defineRoute({
@@ -76,6 +77,7 @@ const getRoot = defineRoute({
       env,
       tenant_id: client.tenant.id,
       username,
+      connection: resolveClientDatabaseConnectionName(client),
     });
     if (!user) {
       logMessage(ctx, client.tenant.id, {

@@ -195,6 +195,11 @@ export const notFound = {
     "The token exchange profile does not exist.",
     "inexistent_token_exchange_profile",
   ),
+  // auth0 message, errorCode added
+  selfServiceProfile: notFoundError(
+    "Self-service profile not found.",
+    "inexistent_self_service_profile",
+  ),
 };
 
 /**
@@ -216,6 +221,19 @@ export const conflict = {
       409,
       "An organization with this name already exists.",
       "organization_conflict",
+    ),
+  // auth0 message, errorCode added
+  selfServiceProfileLimit: () =>
+    managementError(
+      409,
+      "No more profiles can be created for this tenant.",
+      "self_service_profile_limit",
+    ),
+  connectionName: () =>
+    managementError(
+      409,
+      "A connection with this name already exists.",
+      "connection_conflict",
     ),
   /** Any other AuthHero conflict: own message, shared code. */
   other: (message: string) => managementError(409, message, "conflict"),

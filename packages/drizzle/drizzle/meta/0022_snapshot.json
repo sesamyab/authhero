@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "eb5c4dd9-305a-4a8a-9ff2-f7e03c34fa66",
+  "id": "9340e517-ee06-47e2-8971-ca6617b3bdeb",
   "prevId": "421bd681-6696-4caf-ba5a-1ec0217f10a8",
   "tables": {
     "tenants": {
@@ -4623,13 +4623,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "favicon_url_dark": {
-          "name": "favicon_url_dark",
-          "type": "text(512)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "font_url": {
           "name": "font_url",
           "type": "text(512)",
@@ -6054,153 +6047,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "colors_dark_base_focus_color": {
-          "name": "colors_dark_base_focus_color",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_base_hover_color": {
-          "name": "colors_dark_base_hover_color",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_body_text": {
-          "name": "colors_dark_body_text",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_error": {
-          "name": "colors_dark_error",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_header": {
-          "name": "colors_dark_header",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_icons": {
-          "name": "colors_dark_icons",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_input_background": {
-          "name": "colors_dark_input_background",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_input_border": {
-          "name": "colors_dark_input_border",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_input_filled_text": {
-          "name": "colors_dark_input_filled_text",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_input_labels_placeholders": {
-          "name": "colors_dark_input_labels_placeholders",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_links_focused_components": {
-          "name": "colors_dark_links_focused_components",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_primary_button": {
-          "name": "colors_dark_primary_button",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_primary_button_label": {
-          "name": "colors_dark_primary_button_label",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_secondary_button_border": {
-          "name": "colors_dark_secondary_button_border",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_secondary_button_label": {
-          "name": "colors_dark_secondary_button_label",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_success": {
-          "name": "colors_dark_success",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_widget_background": {
-          "name": "colors_dark_widget_background",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_widget_border": {
-          "name": "colors_dark_widget_border",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "page_background_background_color_dark": {
-          "name": "page_background_background_color_dark",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "page_background_background_image_url_dark": {
-          "name": "page_background_background_image_url_dark",
-          "type": "text(255)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "widget_logo_url_dark": {
-          "name": "widget_logo_url_dark",
-          "type": "text(255)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "text(35)",
@@ -7249,6 +7095,259 @@
         }
       },
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "self_service_profiles": {
+      "name": "self_service_profiles",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text(64)",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text(191)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "allowed_strategies": {
+          "name": "allowed_strategies",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_attributes": {
+          "name": "user_attributes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "branding": {
+          "name": "branding",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "custom_text": {
+          "name": "custom_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text(35)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text(35)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "self_service_profiles_tenant_id_idx": {
+          "name": "self_service_profiles_tenant_id_idx",
+          "columns": [
+            "tenant_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "self_service_profiles_tenant_id_tenants_id_fk": {
+          "name": "self_service_profiles_tenant_id_tenants_id_fk",
+          "tableFrom": "self_service_profiles",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sso_access_tickets": {
+      "name": "sso_access_tickets",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text(64)",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text(191)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "text(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ticket_hash": {
+          "name": "ticket_hash",
+          "type": "text(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "text(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "connection_config": {
+          "name": "connection_config",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "enabled_clients": {
+          "name": "enabled_clients",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "enabled_organizations": {
+          "name": "enabled_organizations",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "domain_verification": {
+          "name": "domain_verification",
+          "type": "text(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text(35)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "text(35)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text(35)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text(35)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text(35)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sso_access_tickets_ticket_hash_idx": {
+          "name": "sso_access_tickets_ticket_hash_idx",
+          "columns": [
+            "ticket_hash"
+          ],
+          "isUnique": true
+        },
+        "sso_access_tickets_tenant_profile_idx": {
+          "name": "sso_access_tickets_tenant_profile_idx",
+          "columns": [
+            "tenant_id",
+            "profile_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "sso_access_tickets_tenant_id_tenants_id_fk": {
+          "name": "sso_access_tickets_tenant_id_tenants_id_fk",
+          "tableFrom": "sso_access_tickets",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "sso_access_tickets_profile_id_self_service_profiles_id_fk": {
+          "name": "sso_access_tickets_profile_id_self_service_profiles_id_fk",
+          "tableFrom": "sso_access_tickets",
+          "tableTo": "self_service_profiles",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

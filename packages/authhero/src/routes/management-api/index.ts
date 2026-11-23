@@ -73,6 +73,8 @@ import { authenticationMethodsRoutes } from "./authentication-methods";
 import { ticketsRoutes } from "./tickets";
 import { proxyRoutesRoutes } from "./proxy-routes";
 import { tokenExchangeProfilesRoutes } from "./token-exchange-profiles";
+import { selfServiceProfilesRoutes } from "./self-service-profiles";
+import { redactSsoTicketPath } from "../../helpers/sso-access-tickets";
 import { operationRoutes, tenantOperationsRoutes } from "./tenant-operations";
 import { rolloutRoutes } from "./rollouts";
 import { tenantExportImportRoutes } from "./tenant-export-import";
@@ -575,9 +577,10 @@ export default function create(config: AuthHeroConfig) {
             : typeof tokenAud === "string"
               ? tokenAud
               : undefined;
+          const path = redactSsoTicketPath(ctx.req.path);
           const description = audStr
-            ? `${ctx.req.method} ${ctx.req.path} (aud: ${audStr})`
-            : `${ctx.req.method} ${ctx.req.path}`;
+            ? `${ctx.req.method} ${path} (aud: ${audStr})`
+            : `${ctx.req.method} ${path}`;
           await logMessage(ctx, tenantId, {
             type: LogTypes.FAILED_API_OPERATION,
             description,
@@ -730,6 +733,15 @@ export default function create(config: AuthHeroConfig) {
       "/token-exchange-profiles",
       tokenExchangeProfilesRoutes,
     );
+  }
+
+  // Self-Service SSO profiles and tickets (#1763), when the adapters exist.
+  if (
+    !extensionPaths.has("/self-service-profiles") &&
+    managementAdapter.selfServiceProfiles &&
+    managementAdapter.ssoAccessTickets
+  ) {
+    managementApp.route("/self-service-profiles", selfServiceProfilesRoutes);
   }
 
   // SCIM inbound provisioning config + tokens (#1191). Mounted per connection

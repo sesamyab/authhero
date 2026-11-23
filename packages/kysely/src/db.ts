@@ -25,6 +25,8 @@ import {
   roleSchema,
   configScopeSchema,
   configOverrideSchema,
+  SelfServiceProfileRow,
+  SsoAccessTicketRow,
 } from "@authhero/adapter-interfaces";
 import { flattenSchema } from "./utils/flatten";
 
@@ -696,6 +698,9 @@ export interface Database {
     created_at: string;
     updated_at: string;
   };
+  // Self-Service SSO (#1763).
+  self_service_profiles: SelfServiceProfileRow;
+  sso_access_tickets: SsoAccessTicketRow;
   // SCIM inbound provisioning (#1191).
   scim_configurations: {
     connection_id: string;

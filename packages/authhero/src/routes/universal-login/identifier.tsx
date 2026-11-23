@@ -7,6 +7,7 @@ import {
   getPrimaryUserByEmail,
 } from "../../helpers/users";
 import { getPrimaryUsernamePasswordUser } from "../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import { validateSignupEmail } from "../../hooks";
 import { logMessage } from "../../helpers/logging";
 import {
@@ -229,6 +230,7 @@ const postRoot = defineRoute({
               env,
               tenant_id: client.tenant.id,
               username,
+              connection: resolveClientDatabaseConnectionName(client),
             })
           : await getPrimaryUserByProvider({
               userAdapter: env.data.users,

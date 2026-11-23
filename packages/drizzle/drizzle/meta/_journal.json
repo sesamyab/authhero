@@ -159,8 +159,15 @@
     {
       "idx": 22,
       "version": "6",
-      "when": 1795159024077,
-      "tag": "0022_theme_dark",
+      "when": 1795186448214,
+      "tag": "0022_self_service_sso",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1795424552201,
+      "tag": "0023_theme_dark",
       "breakpoints": true
     }
   ]
