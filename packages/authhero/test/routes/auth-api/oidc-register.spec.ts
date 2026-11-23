@@ -1074,6 +1074,34 @@ describe("full PUT on a public client", () => {
     expect(client?.token_endpoint_auth_method).toBe("none");
   });
 
+  it("allows switching to key-based private_key_jwt without a secret", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+      token_endpoint_auth_method: "private_key_jwt",
+      jwks_uri: "https://app.example.com/.well-known/jwks.json",
+    });
+    expect(response.status).toBe(200);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("private_key_jwt");
+  });
+
+  it.each(["client_secret_post", "client_secret_jwt"])(
+    "refuses %s for a client without a secret",
+    async (method) => {
+      const { oauthApp, env } = await getTestServer();
+      const created = await registerPublic(oauthApp, env);
+      const response = await put(oauthApp, env, created, {
+        client_name: "Public",
+        redirect_uris: ["https://app.example.com/cb"],
+        token_endpoint_auth_method: method,
+      });
+      expect(response.status).toBe(400);
+    },
+  );
+
   it("refuses a secret-based method for a client without a secret", async () => {
     const { oauthApp, env } = await getTestServer();
     const created = await registerPublic(oauthApp, env);

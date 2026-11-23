@@ -43,6 +43,16 @@ type Ctx = Context<{ Bindings: Bindings; Variables: Variables }>;
 /** RFC 7591 §2: `grant_types` defaults to `authorization_code` when omitted. */
 const DEFAULT_GRANT_TYPES = ["authorization_code"];
 
+/**
+ * Token endpoint auth methods that use the client secret. `private_key_jwt`
+ * authenticates with the client's own key pair instead.
+ */
+const SHARED_SECRET_AUTH_METHODS = new Set([
+  "client_secret_basic",
+  "client_secret_post",
+  "client_secret_jwt",
+]);
+
 /** Registration access tokens of invite-created apps expire after 7 days. */
 export const INVITE_REGISTRATION_ACCESS_TOKEN_TTL_SEC = 7 * 24 * 60 * 60;
 
@@ -561,13 +571,17 @@ export async function updateRegisteredClient(
 
   // An omitted method keeps a public client public (the RFC 7591 default
   // would need a secret it doesn't have), and a client without a secret
-  // can't switch to a secret-based method: PUT never provisions a secret.
+  // can't switch to a shared-secret method: PUT never provisions a secret.
+  // Key-based private_key_jwt needs no secret.
   const tokenEndpointAuthMethod =
     clientFields.token_endpoint_auth_method ??
     (existing.token_endpoint_auth_method === "none"
       ? "none"
       : "client_secret_basic");
-  if (tokenEndpointAuthMethod !== "none" && !existing.client_secret) {
+  if (
+    SHARED_SECRET_AUTH_METHODS.has(tokenEndpointAuthMethod) &&
+    !existing.client_secret
+  ) {
     throw new DcrMetadataError(
       "invalid_client_metadata",
       `token_endpoint_auth_method "${tokenEndpointAuthMethod}" needs a client secret, and this client has none`,
