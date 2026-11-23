@@ -33,7 +33,7 @@ export interface DatabaseConnectionScope {
 
 /** True when `user` belongs to the scoped connection. No scope matches all. */
 export function isUserInConnectionScope(
-  user: Pick<User, "connection">,
+  user: { connection?: string },
   scope: DatabaseConnectionScope | undefined,
 ): boolean {
   if (!scope || !user.connection) return true;
