@@ -142,9 +142,9 @@ export function DeveloperAccessTab() {
         <CardHeader>
           <CardTitle>Developer access</CardTitle>
           <CardDescription>
-            Give the app's developer a link to change its name, logo, callback,
-            logout and web origin URLs. They can't change anything else, and
-            they don't get an account.
+            Give the app&apos;s developer a link to change its name, logo,
+            callback, logout and web origin URLs. They can&apos;t change
+            anything else, and they don&apos;t get an account.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -240,8 +240,8 @@ export function DeveloperAccessTab() {
             <DialogTitle>Generate edit link</DialogTitle>
             <DialogDescription>
               The link opens a page with your branding, pre-filled with the
-              app's current settings. A new link replaces the app's previous
-              edit links.
+              app&apos;s current settings. A new link replaces the app&apos;s
+              previous edit links.
             </DialogDescription>
           </DialogHeader>
           {link ? (

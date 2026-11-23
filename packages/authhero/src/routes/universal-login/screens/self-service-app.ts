@@ -23,6 +23,8 @@ import {
 } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenDefinition, ScreenResult } from "./types";
 import { createTranslation } from "../../../i18n";
+import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
 import { escapeHtml } from "../sanitization-utils";
 import { logMessage } from "../../../helpers/logging";
 import { getAuthUrl } from "../../../variables";
@@ -633,24 +635,22 @@ async function handleSelfServiceAppSubmit(
         { issueRegistrationAccessToken: false },
       );
 
-      const loginSession = await ctx.env.data.loginSessions.get(
+      // Remember the result so a reload shows it again (without the secret)
+      // and a second submit can't register another app.
+      await updateLoginSessionData(
+        ctx.env.data.loginSessions,
         tenant.id,
         context.state,
-      );
-      if (loginSession) {
-        const stateData: Record<string, unknown> = loginSession.state_data
-          ? JSON.parse(loginSession.state_data)
-          : {};
-        await ctx.env.data.loginSessions.update(tenant.id, loginSession.id, {
-          state_data: JSON.stringify({
-            ...stateData,
+        {
+          type: LoginSessionEventType.UPDATE_CONTEXT,
+          data: {
             self_service: {
               ...selfService,
               completed_client_id: registered.client.client_id,
             },
-          }),
-        });
-      }
+          },
+        },
+      );
 
       await logMessage(ctx, tenant.id, {
         type: LogTypes.SUCCESS_API_OPERATION,

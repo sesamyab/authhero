@@ -150,9 +150,9 @@ export function InviteDeveloperButton({
           <DialogHeader>
             <DialogTitle>Invite a developer to register an app</DialogTitle>
             <DialogDescription>
-              The developer opens the link, enters the app's name and URLs on a
-              page with your branding, and gets the client ID. They don't get an
-              account.
+              The developer opens the link, enters the app&apos;s name and URLs
+              on a page with your branding, and gets the client ID. They
+              don&apos;t get an account.
             </DialogDescription>
           </DialogHeader>
 
@@ -240,8 +240,8 @@ export function InviteDeveloperButton({
                       Choose specific login methods
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Off: the app can use all of the tenant's login methods,
-                      including ones added later.
+                      Off: the app can use all of the tenant&apos;s login
+                      methods, including ones added later.
                     </p>
                   </div>
                   <Switch
