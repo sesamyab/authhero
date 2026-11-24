@@ -139,4 +139,22 @@ describe("review follow-ups", () => {
     const d = deriveDependentColors({ primary_button: "rgb(0, 0, 0)" });
     expect(d.base_hover_color).toBe("#454545");
   });
+
+  it("clamps out-of-range rgb channels", () => {
+    expect(toHex("rgb(1000 1000 1000)")).toBe("#FFFFFF");
+    expect(toHex("rgb(-5 0 300)")).toBe("#0000FF");
+    expect(contrastRatio("rgb(1000 1000 1000)", "#FFFFFF")).toBeCloseTo(1, 5);
+    expect(
+      completeLightColors({ primary_button: "rgb(1000 1000 1000)" })
+        .primary_button_label,
+    ).toBe("#000000");
+  });
+
+  it("accepts numeric hsl saturation/lightness in space syntax only", () => {
+    expect(isValidColor("hsl(0 0 100)")).toBe(true);
+    expect(toHex("hsl(0 0 100)")).toBe("#FFFFFF");
+    expect(toHex("hsl(0 100 50)")).toBe("#FF0000");
+    expect(isValidColor("hsl(10, 20, 30)")).toBe(false);
+    expect(isValidColor("hsl(10, 20%, 30%)")).toBe(true);
+  });
 });

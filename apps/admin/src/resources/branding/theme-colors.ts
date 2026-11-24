@@ -121,12 +121,24 @@ function parseFunctional(value: string): Rgba | null {
   if (fn.startsWith("rgb")) {
     const c = parts.slice(0, 3).map((p) => component(p, 255));
     if (c.some((n) => n === null)) return null;
-    const [r, g, b] = c as number[];
+    // CSS clamps out-of-range channels, so rgb(1000 1000 1000) is white.
+    const [r, g, b] = (c as number[]).map((n) => Math.max(0, Math.min(255, n)));
     return { rgb: [r!, g!, b!], alpha };
   }
   const hue = /^([-+]?(?:\d+\.?\d*|\.\d+))(?:deg)?$/i.exec(parts[0]!);
-  const s = parts[1]!.endsWith("%") ? component(parts[1]!, 1) : null;
-  const l = parts[2]!.endsWith("%") ? component(parts[2]!, 1) : null;
+  // Legacy comma syntax needs percentages; the modern space syntax also
+  // accepts plain numbers on the 0-100 scale (hsl(0 0 100) is white).
+  const legacy = m[2]!.includes(",");
+  const pct = (t: string) =>
+    t.endsWith("%")
+      ? component(t, 1)
+      : legacy
+        ? null
+        : NUM.test(t)
+          ? parseFloat(t) / 100
+          : null;
+  const s = pct(parts[1]!);
+  const l = pct(parts[2]!);
   if (!hue || s === null || l === null) return null;
   return { rgb: hslToRgb(parseFloat(hue[1]!), s, l), alpha };
 }
