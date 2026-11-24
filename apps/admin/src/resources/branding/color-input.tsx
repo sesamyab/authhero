@@ -54,8 +54,11 @@ export function ColorInput(props: ColorInputProps) {
     : fallbackSwatch && !stringValue && isHexColor(fallbackSwatch)
       ? fallbackSwatch.slice(0, 7)
       : "#000000";
-  const invalid = validateColor(stringValue) !== undefined;
   const isEmpty = stringValue === "";
+  const showNone =
+    !isHexColor(stringValue) &&
+    !(isEmpty && fallbackSwatch && isHexColor(fallbackSwatch));
+  const invalid = validateColor(stringValue) !== undefined;
 
   return (
     <FormField id={id} name={field.name}>
@@ -66,16 +69,29 @@ export function ColorInput(props: ColorInputProps) {
       )}
       <FormControl>
         <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={swatchValue}
-            onChange={(e) => field.onChange(e.target.value)}
-            onBlur={field.onBlur}
-            className={`h-9 w-10 cursor-pointer rounded-md border border-input bg-transparent p-1 ${
-              isEmpty && emptyPlaceholder ? "opacity-50" : ""
+          <div
+            className={`relative h-9 w-10 shrink-0 overflow-hidden rounded-md border focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 ${
+              showNone
+                ? "border-dashed border-muted-foreground bg-[conic-gradient(#e5e5e5_25%,#fff_0_50%,#e5e5e5_0_75%,#fff_0)] bg-[length:8px_8px]"
+                : "border-input"
             }`}
-            aria-label={typeof label === "string" ? label : source}
-          />
+            data-empty={showNone || undefined}
+          >
+            <input
+              type="color"
+              value={swatchValue}
+              onChange={(e) => field.onChange(e.target.value)}
+              onBlur={field.onBlur}
+              className={`absolute -inset-1 size-[calc(100%+0.5rem)] cursor-pointer border-0 bg-transparent p-0 ${
+                showNone
+                  ? "opacity-0"
+                  : isEmpty && emptyPlaceholder
+                    ? "opacity-50"
+                    : ""
+              }`}
+              aria-label={typeof label === "string" ? label : source}
+            />
+          </div>
           <Input
             type="text"
             value={stringValue}
