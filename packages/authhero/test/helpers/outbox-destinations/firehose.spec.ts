@@ -290,6 +290,83 @@ describe("FirehoseDestination", () => {
     expect(calls.map((c) => parseBody(c.body).Records.length)).toEqual([4, 1]);
   });
 
+  it("uses the amazonaws.com.cn domain for China-partition regions", async () => {
+    const { calls, fetchImpl } = makeFetch();
+    const dest = makeDestination(fetchImpl, { region: "cn-north-1" });
+
+    await dest.deliver([dest.transform(makeEvent())]);
+
+    expect(calls[0].request.url).toBe(
+      "https://firehose.cn-north-1.amazonaws.com.cn/",
+    );
+    expect(calls[0].request.headers.get("authorization")).toMatch(
+      /\/cn-north-1\/firehose\/aws4_request, /,
+    );
+  });
+
+  it("truncates a record over the 1,000 KiB limit without failing its batch", async () => {
+    const { calls, fetchImpl } = makeFetch();
+    const dest = makeDestination(fetchImpl);
+    const huge = { blob: "x".repeat(1100 * 1024) };
+    const oversized = dest.transform(
+      makeEvent({
+        id: "evt-big",
+        target: { type: "user", id: "user-1", before: huge, after: huge },
+        request: {
+          method: "PATCH",
+          path: "/api/v2/users/user-1",
+          ip: "127.0.0.1",
+          body: huge,
+        },
+        details: { note: "kept only in the full row" },
+      }),
+    );
+    const normal = dest.transform(makeEvent({ id: "evt-small" }));
+
+    await dest.deliver([oversized, normal]);
+
+    expect(calls).toHaveLength(1);
+    const records = parseBody(calls[0].body).Records;
+    expect(records).toHaveLength(2);
+    expect(
+      records.every((r) => decodeBase64(r.Data).length <= 1000 * 1024),
+    ).toBe(true);
+
+    const truncated = JSON.parse(decodeRecord(records[0].Data));
+    expect(truncated.id).toBe("evt-big");
+    expect(truncated.target_id).toBe("user-1");
+    expect(truncated.event.target).toEqual({ type: "user", id: "user-1" });
+    expect(truncated.event.request).toEqual({
+      method: "PATCH",
+      path: "/api/v2/users/user-1",
+      ip: "127.0.0.1",
+    });
+    expect(truncated.event.details.archive_truncated).toBe(true);
+    expect(truncated.event.details.archive_original_bytes).toBeGreaterThan(
+      1000 * 1024,
+    );
+
+    expect(JSON.parse(decodeRecord(records[1].Data))).toEqual(normal);
+  });
+
+  it("skips a record still over the limit after truncation, delivering the rest", async () => {
+    const { calls, fetchImpl } = makeFetch();
+    const dest = makeDestination(fetchImpl);
+    // `description` is a top-level field that truncation keeps.
+    const unshrinkable = dest.transform(
+      makeEvent({ id: "evt-huge", description: "x".repeat(1100 * 1024) }),
+    );
+    const normal = dest.transform(makeEvent({ id: "evt-small" }));
+
+    await dest.deliver([unshrinkable, normal]);
+
+    expect(calls).toHaveLength(1);
+    const records = parseBody(calls[0].body).Records;
+    expect(records.map((r) => JSON.parse(decodeRecord(r.Data)).id)).toEqual([
+      "evt-small",
+    ]);
+  });
+
   it("throws on a non-2xx response so the relay retries the event", async () => {
     const { fetchImpl } = makeFetch(
       () =>

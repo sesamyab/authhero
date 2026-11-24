@@ -146,6 +146,12 @@ no IAM identity to assume a role with. Give the key's principal nothing but:
 terminated with `\n` so that the objects Firehose writes to S3 are newline-delimited JSON. Set
 `newlineDelimited: false` to send the bare JSON document instead.
 
+**Oversized events.** Firehose caps a record at 1,000 KiB. An event over that (e.g. a user with very
+large metadata, whose `before`/`after` snapshots both land in `event`) is archived truncated:
+`event.target` keeps only `type`/`id`, request and response bodies are dropped, and
+`event.details` is replaced with `{ archive_truncated: true, archive_original_bytes }`. A row still
+too large after that is logged and skipped, so it never blocks the rest of its batch.
+
 **OpenSearch mapping.** The `event` column holds the full `AuditEvent`, including
 `target.before` / `target.after` entity snapshots with arbitrary keys. With dynamic mapping these
 grow the index's field count without bound and eventually hit `index.mapping.total_fields.limit`.

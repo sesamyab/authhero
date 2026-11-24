@@ -9,10 +9,12 @@ import {
 
 const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
 
-// PutRecordBatch limits: 500 records and 4 MiB of record data per call.
+// PutRecordBatch limits: 500 records and 4 MiB of record data per call, and
+// 1,000 KiB per record (before base64 encoding).
 // https://docs.aws.amazon.com/firehose/latest/APIReference/API_PutRecordBatch.html
 const MAX_RECORDS_PER_BATCH = 500;
 const MAX_BYTES_PER_BATCH = 4 * 1024 * 1024;
+const MAX_BYTES_PER_RECORD = 1000 * 1024;
 
 const REGION_PATTERN = /^[a-z0-9-]+$/;
 
@@ -46,6 +48,35 @@ interface PutRecordBatchEntry {
 interface PutRecordBatchResult {
   FailedPutCount: number;
   RequestResponses: PutRecordBatchEntry[];
+}
+
+/**
+ * The archive row for an event that is too big for one Firehose record. Keeps
+ * the promoted columns and the event's who/what/when, and drops the fields
+ * that can grow without bound: entity snapshots, request/response bodies and
+ * caller-supplied `details`. `details` records that the row was cut down and
+ * how big it was, so consumers can tell a truncated row from a sparse one.
+ */
+function truncateArchiveRecord(
+  record: PipelineRecord,
+  originalBytes: number,
+): PipelineRecord {
+  const { event } = record;
+  return {
+    ...record,
+    event: {
+      ...event,
+      target: { type: event.target.type, id: event.target.id },
+      request: { ...event.request, body: undefined },
+      response: event.response
+        ? { ...event.response, body: undefined }
+        : undefined,
+      details: {
+        archive_truncated: true,
+        archive_original_bytes: originalBytes,
+      },
+    },
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,7 +150,11 @@ export class FirehoseDestination implements EventDestination {
       service: "firehose",
       region: options.region,
     });
-    this.endpoint = `https://firehose.${options.region}.amazonaws.com/`;
+    // China regions are a separate AWS partition with their own domain.
+    const domain = options.region.startsWith("cn-")
+      ? "amazonaws.com.cn"
+      : "amazonaws.com";
+    this.endpoint = `https://firehose.${options.region}.${domain}/`;
     this.deliveryStreamName = options.deliveryStreamName;
     this.newlineDelimited = options.newlineDelimited ?? true;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
@@ -139,14 +174,43 @@ export class FirehoseDestination implements EventDestination {
     return toArchiveRecord(event);
   }
 
+  private encode(record: PipelineRecord): Uint8Array {
+    const json = JSON.stringify(record);
+    return new TextEncoder().encode(this.newlineDelimited ? `${json}\n` : json);
+  }
+
+  /**
+   * Encodes a record within Firehose's per-record limit, so one oversized row
+   * cannot fail (and on retry, keep failing) the whole batch. An oversized
+   * row is archived truncated; one still too big after that — only possible
+   * with pathological top-level fields — is logged and skipped rather than
+   * retried forever.
+   */
+  private encodeWithinLimit(record: PipelineRecord): Uint8Array | undefined {
+    const bytes = this.encode(record);
+    if (bytes.length <= MAX_BYTES_PER_RECORD) return bytes;
+
+    const truncated = this.encode(truncateArchiveRecord(record, bytes.length));
+    if (truncated.length <= MAX_BYTES_PER_RECORD) {
+      console.warn(
+        `Firehose: archived event ${record.id} truncated from ${bytes.length} bytes to fit the per-record limit`,
+      );
+      return truncated;
+    }
+
+    console.error(
+      `Firehose: skipped event ${record.id}: ${truncated.length} bytes after truncation exceeds the per-record limit`,
+    );
+    return undefined;
+  }
+
   async deliver(records: PipelineRecord[]): Promise<void> {
-    const encoder = new TextEncoder();
     let batch: string[] = [];
     let batchBytes = 0;
 
     for (const record of records) {
-      const json = JSON.stringify(record);
-      const bytes = encoder.encode(this.newlineDelimited ? `${json}\n` : json);
+      const bytes = this.encodeWithinLimit(record);
+      if (!bytes) continue;
       if (
         batch.length > 0 &&
         (batch.length >= MAX_RECORDS_PER_BATCH ||
