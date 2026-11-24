@@ -17,8 +17,20 @@ function HttpSinkFields({ mode }: { mode: "create" | "edit" }) {
       <TextInput
         source="sink.http_authorization"
         label="Authorization header"
-        helperText='Sent verbatim as the Authorization header (e.g. "Basic …" or "Bearer …")'
+        type="password"
+        autoComplete="new-password"
+        helperText={
+          mode === "edit"
+            ? "Write-only. Leave blank to keep the current header."
+            : 'Sent verbatim as the Authorization header (e.g. "Basic …" or "Bearer …"). Write-only: it is stored but never shown again.'
+        }
       />
+      {mode === "edit" && (
+        <BooleanInput
+          source="clear_http_authorization"
+          label="Remove the stored Authorization header"
+        />
+      )}
       <TextInput
         source="sink.http_content_type"
         label="Content-Type"

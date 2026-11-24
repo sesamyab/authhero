@@ -7,16 +7,23 @@ import { SinkFields } from "./sink-fields";
 beforeAll(installDomPolyfills);
 afterEach(cleanup);
 
-function renderEdit(sink: Record<string, unknown>) {
+function renderFields(
+  mode: "create" | "edit",
+  record: { type: string; sink: Record<string, unknown> },
+) {
   render(
     <TestMemoryRouter>
       <CoreAdminContext>
-        <Form record={{ id: "lst_1", type: "firehose", sink }}>
-          <SinkFields mode="edit" />
+        <Form record={{ id: "lst_1", ...record }}>
+          <SinkFields mode={mode} />
         </Form>
       </CoreAdminContext>
     </TestMemoryRouter>,
   );
+}
+
+function renderEdit(sink: Record<string, unknown>) {
+  renderFields("edit", { type: "firehose", sink });
   return screen.getByRole("switch", { name: /newline-delimited/i });
 }
 
@@ -39,5 +46,28 @@ describe("SinkFields (edit, firehose)", () => {
         "aria-checked",
       ),
     ).toBe("false");
+  });
+});
+
+describe("SinkFields (http)", () => {
+  const sink = { http_endpoint: "https://logs.example.com" };
+
+  it("offers to remove the stored Authorization header when editing", () => {
+    renderFields("edit", { type: "http", sink });
+    expect(
+      screen.getByRole("switch", { name: /remove the stored authorization/i }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/leave blank to keep the current header/i),
+    ).toBeTruthy();
+  });
+
+  it("has no remove option when creating", () => {
+    renderFields("create", { type: "http", sink });
+    expect(
+      screen.queryByRole("switch", {
+        name: /remove the stored authorization/i,
+      }),
+    ).toBeNull();
   });
 });

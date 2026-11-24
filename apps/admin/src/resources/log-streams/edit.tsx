@@ -27,9 +27,27 @@ function DetailsTab() {
   );
 }
 
+type LogStreamEditValues = {
+  clear_http_authorization?: boolean;
+  sink?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+/**
+ * The Authorization header is write-only, so a blank field keeps the stored
+ * one; the API removes it only when the sink sends `null`.
+ */
+export function toLogStreamUpdate({
+  clear_http_authorization,
+  ...data
+}: LogStreamEditValues) {
+  if (!clear_http_authorization) return data;
+  return { ...data, sink: { ...data.sink, http_authorization: null } };
+}
+
 export function LogStreamEdit() {
   return (
-    <Edit mutationMode="pessimistic">
+    <Edit mutationMode="pessimistic" transform={toLogStreamUpdate}>
       <SimpleForm className="max-w-none">
         <UrlTabs defaultValue="details" className="w-full">
           <TabsList>
