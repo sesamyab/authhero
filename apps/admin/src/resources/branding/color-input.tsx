@@ -70,7 +70,7 @@ export function ColorInput(props: ColorInputProps) {
       <FormControl>
         <div className="flex items-center gap-2">
           <div
-            className={`relative h-9 w-10 shrink-0 overflow-hidden rounded-md border ${
+            className={`relative h-9 w-10 shrink-0 overflow-hidden rounded-md border focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 ${
               showNone
                 ? "border-dashed border-muted-foreground bg-[conic-gradient(#e5e5e5_25%,#fff_0_50%,#e5e5e5_0_75%,#fff_0)] bg-[length:8px_8px]"
                 : "border-input"

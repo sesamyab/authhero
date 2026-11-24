@@ -112,7 +112,7 @@ export const Layout = (props: CoreLayoutProps) => {
           {/* Breadcrumb portal — sits next to the tenant switcher as part
               of the navigation context. flex-1 pushes utilities right. */}
           <div
-            className="flex-1 flex items-center min-w-0 gap-2 overflow-hidden [&_ol]:flex-nowrap [&_ol]:whitespace-nowrap"
+            className="flex-1 flex items-center min-w-0 gap-2 overflow-hidden [&_ol]:flex-nowrap [&_ol]:whitespace-nowrap [&_ol]:min-w-0 [&_li]:min-w-0 [&_li]:truncate [&_li:last-child]:shrink-0 [&_li[role=presentation]]:shrink-0"
             id="breadcrumb"
           />
 
