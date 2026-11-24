@@ -13,6 +13,7 @@ import type {
   UserDataAdapter,
 } from "@authhero/adapter-interfaces";
 import { runOutboxRelay } from "../../src/helpers/run-outbox-relay";
+import { FirehoseDestination } from "../../src/helpers/outbox-destinations/firehose";
 import { createServiceTokenCore } from "../../src/helpers/service-token";
 import { getCertificate } from "./token";
 
@@ -316,6 +317,79 @@ describe("runOutboxRelay", () => {
       expect(payload.iss).toBe(ISSUER);
       expect(payload.tenant_id).toBe(TENANT_ID);
       expect(payload.scope).toBe("webhook");
+    });
+
+    const FIREHOSE = {
+      region: "eu-north-1",
+      deliveryStreamName: "authhero-audit",
+      accessKeyId: "AKIDEXAMPLE",
+      secretAccessKey: "secret",
+    };
+
+    function firehoseResponse(failedPutCount: number): Response {
+      return new Response(
+        JSON.stringify({
+          FailedPutCount: failedPutCount,
+          RequestResponses: [
+            failedPutCount > 0
+              ? { ErrorCode: "ServiceUnavailableException", ErrorMessage: "x" }
+              : { RecordId: "record-0" },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+
+    it("archives retried events to Firehose when firehose is passed", async () => {
+      fetchMock.mockResolvedValue(firehoseResponse(0));
+      const event = makeHookEvent({
+        id: "evt-archive",
+        event_type: "user.created",
+      });
+      const outbox = makeOutbox([event]);
+      const dataAdapter = buildAdapters({
+        outbox,
+        hooks: makeHooksAdapter([]),
+      });
+
+      await runOutboxRelay({
+        dataAdapter,
+        issuer: ISSUER,
+        firehose: FIREHOSE,
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [request] = fetchMock.mock.calls[0];
+      expect(request).toBeInstanceOf(Request);
+      expect(request.url).toBe("https://firehose.eu-north-1.amazonaws.com/");
+      // The global fetch must not be called as a method of the destination:
+      // workerd rejects that with "Illegal invocation".
+      expect(fetchMock.mock.contexts[0]).not.toBeInstanceOf(
+        FirehoseDestination,
+      );
+      expect(outbox.markProcessed).toHaveBeenCalledWith(["evt-archive"]);
+    });
+
+    it("keeps an event for retry when Firehose rejects it", async () => {
+      fetchMock.mockResolvedValue(firehoseResponse(1));
+      const event = makeHookEvent({
+        id: "evt-archive",
+        event_type: "user.created",
+      });
+      const outbox = makeOutbox([event]);
+      const dataAdapter = buildAdapters({
+        outbox,
+        hooks: makeHooksAdapter([]),
+      });
+
+      await runOutboxRelay({
+        dataAdapter,
+        issuer: ISSUER,
+        firehose: FIREHOSE,
+      });
+
+      expect(outbox.markRetry).toHaveBeenCalled();
+      expect(outbox.markProcessed).not.toHaveBeenCalledWith(["evt-archive"]);
     });
   });
 });

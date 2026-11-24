@@ -239,6 +239,37 @@ export interface OutboxConfig {
    * See `apps/docs/architecture/audit-archive.md`.
    */
   pipeline?: OutboxPipelineConfig;
+  /**
+   * When set, audit events are additionally archived to an Amazon Data
+   * Firehose delivery stream (Direct PUT), which forwards them to S3,
+   * OpenSearch, or any other Firehose destination. Same record shape as
+   * `pipeline`. Left unset, no Firehose destination is registered.
+   *
+   * See `apps/docs/architecture/audit-archive.md`.
+   */
+  firehose?: OutboxFirehoseConfig;
+}
+
+export interface OutboxFirehoseConfig {
+  /** AWS region of the delivery stream, e.g. `eu-north-1`. */
+  region: string;
+  /** Name (not ARN) of the Direct PUT delivery stream. */
+  deliveryStreamName: string;
+  /**
+   * Access key of an IAM principal allowed only `firehose:PutRecordBatch` on
+   * the delivery stream ARN.
+   */
+  accessKeyId: string;
+  secretAccessKey: string;
+  /** Only needed for temporary (STS) credentials. */
+  sessionToken?: string;
+  /**
+   * Terminate each record with `\n` so records concatenated into one S3
+   * object are newline-delimited JSON (default: true).
+   */
+  newlineDelimited?: boolean;
+  /** Per-request timeout in ms (default: 10_000). */
+  timeoutMs?: number;
 }
 
 export interface OutboxPipelineConfig {

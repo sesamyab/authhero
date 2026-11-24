@@ -10,8 +10,10 @@ import { CodeHookDestination } from "./outbox-destinations/code-hooks";
 import { RegistrationFinalizerDestination } from "./outbox-destinations/registration-finalizer";
 import { ControlPlaneSyncDestination } from "./outbox-destinations/control-plane-sync";
 import { PipelineDestination } from "./outbox-destinations/pipeline";
+import { FirehoseDestination } from "./outbox-destinations/firehose";
 import type {
   ActionExecutionLogCapture,
+  OutboxFirehoseConfig,
   OutboxPipelineConfig,
   WebhookInvoker,
 } from "../types/AuthHeroConfig";
@@ -86,6 +88,40 @@ export interface CreateDefaultDestinationsConfig {
    * per-request destination list. Omit to leave the archive out entirely.
    */
   pipeline?: OutboxPipelineConfig;
+
+  /**
+   * Same shape as `init({ outbox: { firehose } })`. When set, cron-drained
+   * events are also archived to the Firehose delivery stream, matching the
+   * per-request destination list.
+   */
+  firehose?: OutboxFirehoseConfig;
+}
+
+/**
+ * The archive destinations configured on `init({ outbox })`, in delivery
+ * order. Shared by the per-request route middleware and
+ * `createDefaultDestinations` so both paths archive to the same places.
+ *
+ * Append these after every other destination: the relay stops an event's
+ * destination loop on the first failure, so an archive outage must not be
+ * able to block real delivery. Nothing depends on the archives, so they are
+ * the destinations that can afford to be blocked — the cost is that an event
+ * which permanently fails an earlier destination never reaches them. The same
+ * applies between the two: a Pipelines outage also holds back Firehose.
+ */
+export function createArchiveDestinations(
+  outbox:
+    | { pipeline?: OutboxPipelineConfig; firehose?: OutboxFirehoseConfig }
+    | undefined,
+): EventDestination[] {
+  const destinations: EventDestination[] = [];
+  if (outbox?.pipeline) {
+    destinations.push(new PipelineDestination(outbox.pipeline));
+  }
+  if (outbox?.firehose) {
+    destinations.push(new FirehoseDestination(outbox.firehose));
+  }
+  return destinations;
 }
 
 /**
@@ -125,6 +161,7 @@ export function createDefaultDestinations(
     codeExecutor,
     actionExecutionLogs,
     pipeline,
+    firehose,
   } = config;
 
   if (controlPlaneSync && !getServiceToken) {
@@ -196,14 +233,8 @@ export function createDefaultDestinations(
     destinations.push(new RegistrationFinalizerDestination(dataAdapter.users));
   }
 
-  // Archive last. The relay stops an event's destination loop on the first
-  // failure, so anything ahead of a Pipelines outage would stop being
-  // delivered. Nothing depends on the archive, so it is the destination that
-  // can afford to be blocked — the cost is that an event which permanently
-  // fails an earlier destination never reaches the archive.
-  if (pipeline) {
-    destinations.push(new PipelineDestination(pipeline));
-  }
+  // Archive last — see `createArchiveDestinations` for why.
+  destinations.push(...createArchiveDestinations({ pipeline, firehose }));
 
   return destinations;
 }

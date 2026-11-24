@@ -18,7 +18,7 @@ import { clientInfoMiddleware } from "../../middlewares/client-info";
 import { outboxMiddleware } from "../../middlewares/outbox";
 import { LogsDestination } from "../../helpers/outbox-destinations/logs";
 import { LogStreamDestination } from "../../helpers/outbox-destinations/log-streams";
-import { PipelineDestination } from "../../helpers/outbox-destinations/pipeline";
+import { createArchiveDestinations } from "../../helpers/default-destinations";
 import { CodeHookDestination } from "../../helpers/outbox-destinations/code-hooks";
 import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
 import { createServiceToken } from "../../helpers/service-token";
@@ -554,9 +554,7 @@ export function createScimApi(config: AuthHeroConfig) {
           ...(base.logStreams
             ? [new LogStreamDestination(base.logStreams)]
             : []),
-          ...(config.outbox?.pipeline
-            ? [new PipelineDestination(config.outbox.pipeline)]
-            : []),
+          ...createArchiveDestinations(config.outbox),
         ];
       },
     }),

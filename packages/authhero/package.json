@@ -89,6 +89,7 @@
     "@peculiar/x509": "^1.14.3",
     "@simplewebauthn/server": "^13.0.0",
     "acorn": "^8.16.0",
+    "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "classnames": "^2.5.1",
     "cookie": "^1.1.1",

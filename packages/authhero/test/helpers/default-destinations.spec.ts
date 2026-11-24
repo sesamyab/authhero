@@ -6,11 +6,15 @@ import type {
   OutboxEvent,
   UserDataAdapter,
 } from "@authhero/adapter-interfaces";
-import { createDefaultDestinations } from "../../src/helpers/default-destinations";
+import {
+  createArchiveDestinations,
+  createDefaultDestinations,
+} from "../../src/helpers/default-destinations";
 import { LogsDestination } from "../../src/helpers/outbox-destinations/logs";
 import { WebhookDestination } from "../../src/helpers/outbox-destinations/webhooks";
 import { RegistrationFinalizerDestination } from "../../src/helpers/outbox-destinations/registration-finalizer";
 import { PipelineDestination } from "../../src/helpers/outbox-destinations/pipeline";
+import { FirehoseDestination } from "../../src/helpers/outbox-destinations/firehose";
 import { drainOutbox } from "../../src/helpers/outbox-relay";
 
 function makeEvent(overrides: Partial<OutboxEvent> = {}): OutboxEvent {
@@ -140,6 +144,32 @@ describe("createDefaultDestinations", () => {
     expect(destinations[3]).toBeInstanceOf(PipelineDestination);
   });
 
+  it("appends the Firehose archive after the Pipelines archive, both last", () => {
+    const destinations = createDefaultDestinations({
+      dataAdapter: {
+        logs: {} as LogsDataAdapter,
+        hooks: {} as HooksAdapter,
+        users: {} as UserDataAdapter,
+      },
+      getServiceToken: async () => "token",
+      pipeline: {
+        endpoint: "https://stream-1.ingest.cloudflare.com",
+        token: "ingest-token",
+      },
+      firehose: {
+        region: "eu-north-1",
+        deliveryStreamName: "authhero-audit",
+        accessKeyId: "AKIDEXAMPLE",
+        secretAccessKey: "secret",
+      },
+    });
+
+    expect(destinations).toHaveLength(5);
+    expect(destinations[2]).toBeInstanceOf(RegistrationFinalizerDestination);
+    expect(destinations[3]).toBeInstanceOf(PipelineDestination);
+    expect(destinations[4]).toBeInstanceOf(FirehoseDestination);
+  });
+
   it("routes hook.* events through a consumer-supplied webhookInvoker instead of raw fetch", async () => {
     const hooks = {
       list: vi.fn().mockResolvedValue({
@@ -203,6 +233,27 @@ describe("createDefaultDestinations", () => {
     expect(getServiceToken).toHaveBeenCalledWith("tenant-1", "webhook");
     expect(getServiceToken).toHaveBeenCalledWith("tenant-1", "custom-scope");
     expect(receivedScopes).toContain("custom-scope");
+  });
+});
+
+describe("createArchiveDestinations", () => {
+  it("returns nothing when no archive is configured", () => {
+    expect(createArchiveDestinations(undefined)).toEqual([]);
+    expect(createArchiveDestinations({})).toEqual([]);
+  });
+
+  it("returns only the Firehose archive when only firehose is configured", () => {
+    const destinations = createArchiveDestinations({
+      firehose: {
+        region: "eu-north-1",
+        deliveryStreamName: "authhero-audit",
+        accessKeyId: "AKIDEXAMPLE",
+        secretAccessKey: "secret",
+      },
+    });
+
+    expect(destinations).toHaveLength(1);
+    expect(destinations[0]).toBeInstanceOf(FirehoseDestination);
   });
 });
 

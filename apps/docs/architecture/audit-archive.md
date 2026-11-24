@@ -25,10 +25,12 @@ management API mutation
        └─ outbox relay
             ├─ logs destination        → logs table (short window, /logs API)
             ├─ log-streams destination → tenant HTTP sinks (Auth0 wire format)
-            └─ pipeline destination    → Cloudflare Pipelines stream   ← NEW
-                                           └─ SQL transform
-                                                └─ r2-data-catalog sink
-                                                     └─ Iceberg table in R2 (Parquet + zstd)
+            ├─ pipeline destination    → Cloudflare Pipelines stream   ← NEW
+            │                              └─ SQL transform
+            │                                   └─ r2-data-catalog sink
+            │                                        └─ Iceberg table in R2 (Parquet + zstd)
+            └─ firehose destination    → Amazon Data Firehose stream
+                                           └─ S3 / OpenSearch / any Firehose destination
 ```
 
 The new piece is a single `EventDestination` implementation alongside the existing ones in
@@ -96,6 +98,64 @@ append-only with no dedup, so the table will contain duplicates under normal ope
 - Optionally, per-destination delivery tracking (a schema change to `outbox_events`) would
   reduce — not eliminate — duplicates. Worth weighing before adding a second production
   destination, but not a blocker.
+
+## Amazon Data Firehose
+
+For deployments whose archive lives in AWS, the same records can go to an
+[Amazon Data Firehose](https://docs.aws.amazon.com/firehose/) Direct PUT delivery stream, which
+forwards them to S3, OpenSearch, or any other Firehose destination. It is configured once per
+deployment, like `pipeline` — every tenant's events go to the same stream, keyed by `tenant_id`.
+
+```ts
+init({
+  outbox: {
+    enabled: true,
+    firehose: {
+      region: "eu-north-1",
+      deliveryStreamName: "authhero-audit",
+      accessKeyId: env.FIREHOSE_ACCESS_KEY_ID,
+      secretAccessKey: env.FIREHOSE_SECRET_ACCESS_KEY,
+    },
+  },
+});
+```
+
+Pass the same `firehose` (and `pipeline`) value to
+[`runOutboxRelay`](/deployment/outbox-cron) so events retried by the cron drain are archived too.
+Both archives can be set at once; Firehose is delivered after Pipelines.
+
+Requests are SigV4-signed `PutRecordBatch` calls made with static IAM credentials — Workers have
+no IAM identity to assume a role with. Give the key's principal nothing but:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "firehose:PutRecordBatch",
+      "Resource": "arn:aws:firehose:eu-north-1:<account-id>:deliverystream/authhero-audit"
+    }
+  ]
+}
+```
+
+`sessionToken` is accepted for temporary credentials, e.g. on Node deployments that have them.
+
+**Record format.** Each Firehose record is one row of the [table schema](#table-schema) as JSON,
+terminated with `\n` so that the objects Firehose writes to S3 are newline-delimited JSON. Set
+`newlineDelimited: false` to send the bare JSON document instead.
+
+**OpenSearch mapping.** The `event` column holds the full `AuditEvent`, including
+`target.before` / `target.after` entity snapshots with arbitrary keys. With dynamic mapping these
+grow the index's field count without bound and eventually hit `index.mapping.total_fields.limit`.
+Map `event` as `flat_object` (or `{ "type": "object", "enabled": false }` to store it unindexed)
+in the index template, and rely on the promoted columns for queries.
+
+**Delivery semantics.** As with Pipelines, expect duplicates: the relay retries per event, and a
+`PutRecordBatch` call where any record fails (`FailedPutCount > 0`) is retried whole. Firehose
+assigns its own document ids in OpenSearch, so dedup on `id` at query time (e.g. `collapse` on
+`id`) or in a Firehose transform.
 
 ## GDPR and retention
 
