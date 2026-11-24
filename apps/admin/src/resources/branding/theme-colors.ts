@@ -73,31 +73,115 @@ export const DEFAULT_DARK_PAGE_BACKGROUND = "#111827";
 // ---------------------------------------------------------------------------
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
-const FUNCTIONAL = /^(?:rgb|rgba|hsl|hsla)\(\s*[-+0-9.%a-z\s,/]+\)$/i;
 
 export function isHexColor(value: unknown): value is string {
   return typeof value === "string" && HEX.test(value);
 }
 
+type Rgba = { rgb: [number, number, number]; alpha: number };
+
+const NUM = /^[-+]?(?:\d+\.?\d*|\.\d+)$/;
+
+/** A number or percentage, scaled so 100% === `scale`. null when malformed. */
+function component(token: string, scale: number): number | null {
+  if (token.endsWith("%")) {
+    const n = token.slice(0, -1);
+    return NUM.test(n) ? (parseFloat(n) / 100) * scale : null;
+  }
+  return NUM.test(token) ? parseFloat(token) : null;
+}
+
+function alphaOf(token: string | undefined): number | null {
+  if (token === undefined) return 1;
+  const a = component(token, 1);
+  return a === null ? null : Math.max(0, Math.min(1, a));
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const hue = ((h % 360) + 360) % 360;
+  const sat = Math.max(0, Math.min(1, s));
+  const light = Math.max(0, Math.min(1, l));
+  const f = (n: number) => {
+    const k = (n + hue / 30) % 12;
+    const a = sat * Math.min(light, 1 - light);
+    return (light - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255;
+  };
+  return [f(0), f(8), f(4)];
+}
+
+/** Strict rgb()/hsl() parser (comma or space syntax, optional alpha). */
+function parseFunctional(value: string): Rgba | null {
+  const m = /^(rgba?|hsla?)\(\s*([^()]*?)\s*\)$/i.exec(value.trim());
+  if (!m) return null;
+  const fn = m[1]!.toLowerCase();
+  const parts = m[2]!.split(/\s*[,/]\s*|\s+/).filter(Boolean);
+  if (parts.length < 3 || parts.length > 4) return null;
+  const alpha = alphaOf(parts[3]);
+  if (alpha === null) return null;
+  if (fn.startsWith("rgb")) {
+    const c = parts.slice(0, 3).map((p) => component(p, 255));
+    if (c.some((n) => n === null)) return null;
+    const [r, g, b] = c as number[];
+    return { rgb: [r!, g!, b!], alpha };
+  }
+  const hue = /^([-+]?(?:\d+\.?\d*|\.\d+))(?:deg)?$/i.exec(parts[0]!);
+  const s = parts[1]!.endsWith("%") ? component(parts[1]!, 1) : null;
+  const l = parts[2]!.endsWith("%") ? component(parts[2]!, 1) : null;
+  if (!hue || s === null || l === null) return null;
+  return { rgb: hslToRgb(parseFloat(hue[1]!), s, l), alpha };
+}
+
+function cssSupports(value: string): boolean | undefined {
+  const css = (
+    globalThis as { CSS?: { supports?: (...a: string[]) => boolean } }
+  ).CSS;
+  return typeof css?.supports === "function"
+    ? css.supports("color", value)
+    : undefined;
+}
+
+/** Resolve a named colour through the browser; null where that isn't possible. */
+function parseNamed(value: string): Rgba | null {
+  if (typeof document === "undefined" || cssSupports(value) !== true) {
+    return null;
+  }
+  const el = document.createElement("span");
+  el.style.color = value;
+  document.body.appendChild(el);
+  const resolved = getComputedStyle(el).color;
+  el.remove();
+  return /^rgba?\(/.test(resolved) ? parseFunctional(resolved) : null;
+}
+
+function parseHex(hex: string): Rgba | null {
+  if (!isHexColor(hex)) return null;
+  let v = hex.slice(1);
+  if (v.length <= 4) v = [...v].map((d) => d + d).join("");
+  const n = parseInt(v.slice(0, 6), 16);
+  const alpha = v.length === 8 ? parseInt(v.slice(6), 16) / 255 : 1;
+  return { rgb: [(n >> 16) & 255, (n >> 8) & 255, n & 255], alpha };
+}
+
+/** Any colour this editor accepts (hex, rgb(), hsl(), named) as RGB + alpha. */
+function parseColor(value: string): Rgba | null {
+  const v = value.trim();
+  if (v.startsWith("#")) return parseHex(v);
+  if (/^[a-z]+$/i.test(v)) return parseNamed(v);
+  return parseFunctional(v);
+}
+
 /**
- * Whether a value is something the login page will accept as a colour. Hex
- * and rgb()/hsl() are checked syntactically; named colours go through
- * `CSS.supports` where the browser has it.
+ * Whether a value is something the login page will accept as a colour. Hex is
+ * checked syntactically, rgb()/hsl() against a strict grammar (and the browser
+ * where it can tell us), named colours through `CSS.supports`.
  */
 export function isValidColor(value: unknown): boolean {
   if (typeof value !== "string") return false;
   const v = value.trim();
   if (!v) return false;
-  if (isHexColor(v) || FUNCTIONAL.test(v)) return true;
-  if (/^[a-z]+$/i.test(v)) {
-    const css = (
-      globalThis as { CSS?: { supports?: (...a: string[]) => boolean } }
-    ).CSS;
-    return typeof css?.supports === "function"
-      ? css.supports("color", v)
-      : false;
-  }
-  return false;
+  if (isHexColor(v)) return true;
+  if (/^[a-z]+$/i.test(v)) return cssSupports(v) === true;
+  return parseFunctional(v) !== null;
 }
 
 export function validateColor(value: unknown): string | undefined {
@@ -105,14 +189,6 @@ export function validateColor(value: unknown): string | undefined {
   return isValidColor(value)
     ? undefined
     : "Not a valid colour. Use a hex value such as #7D68F4.";
-}
-
-function parseHex(hex: string): [number, number, number] | null {
-  if (!isHexColor(hex)) return null;
-  let v = hex.slice(1);
-  if (v.length <= 4) v = [...v].map((d) => d + d).join("");
-  const n = parseInt(v.slice(0, 6), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
 function toHexString([r, g, b]: [number, number, number]): string {
@@ -131,21 +207,31 @@ function luminance(rgb: [number, number, number]): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** WCAG contrast ratio, or null when either value isn't a parseable hex. */
+/** WCAG contrast ratio, or null when either value isn't an opaque, parseable colour. */
 export function contrastRatio(a: string, b: string): number | null {
-  const pa = parseHex(a);
-  const pb = parseHex(b);
-  if (!pa || !pb) return null;
-  const la = luminance(pa);
-  const lb = luminance(pb);
+  const pa = parseColor(a);
+  const pb = parseColor(b);
+  // Translucent colours have no fixed contrast without knowing what's behind
+  // them, so they are skipped rather than miscounted as opaque.
+  if (!pa || !pb || pa.alpha < 1 || pb.alpha < 1) return null;
+  const la = luminance(pa.rgb);
+  const lb = luminance(pb.rgb);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** Normalise any accepted colour to `#RRGGBB`; null if opaque parsing fails. */
+export function toHex(value: string): string | null {
+  const p = parseColor(value);
+  return p && p.alpha === 1 ? toHexString(p.rgb) : null;
 }
 
 /** Mix `hex` towards `target` by `amount` (0..1). */
 export function mixHex(hex: string, target: string, amount: number): string {
-  const a = parseHex(hex);
-  const b = parseHex(target);
-  if (!a || !b) return hex;
+  const pa = parseColor(hex);
+  const pb = parseColor(target);
+  if (!pa || !pb) return hex;
+  const a = pa.rgb;
+  const b = pb.rgb;
   return toHexString([
     a[0] + (b[0] - a[0]) * amount,
     a[1] + (b[1] - a[1]) * amount,

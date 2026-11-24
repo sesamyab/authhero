@@ -26,7 +26,7 @@ import {
   deriveDependentColors,
   generateDarkFromLight,
   completeLightColors,
-  isHexColor,
+  isValidColor,
   type ThemeColors,
 } from "./theme-colors";
 
@@ -103,9 +103,9 @@ function useFollowCore() {
   useEffect(() => {
     const current: ThemeColors = {};
     coreKeys.forEach((k, i) => (current[k] = values?.[i] || undefined));
-    // Wait until every set value is a complete colour; a half-typed hex
-    // would otherwise derive garbage.
-    if (Object.values(current).some((v) => v && !isHexColor(v))) return;
+    // Wait until every set value is a complete, valid colour (hex, rgb(),
+    // hsl() or a named colour); a half-typed value would derive garbage.
+    if (Object.values(current).some((v) => v && !isValidColor(v))) return;
     const before = prev.current;
     prev.current = current;
     if (!before) return;

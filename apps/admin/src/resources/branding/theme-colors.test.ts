@@ -6,6 +6,7 @@ import {
   deriveDependentColors,
   generateDarkFromLight,
   isValidColor,
+  toHex,
   validateColor,
   DEFAULT_LIGHT_COLORS,
 } from "./theme-colors";
@@ -34,7 +35,8 @@ describe("contrast", () => {
   it("computes WCAG ratios", () => {
     expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 0);
     expect(contrastRatio("#fff", "#fff")).toBeCloseTo(1, 5);
-    expect(contrastRatio("rgb(0,0,0)", "#fff")).toBeNull();
+    expect(contrastRatio("rgb(0,0,0)", "#fff")).toBeCloseTo(21, 0);
+    expect(contrastRatio("rgb(foo)", "#fff")).toBeNull();
   });
   it("warns on low contrast pairs and skips non-hex", () => {
     const w = contrastWarnings({
@@ -85,5 +87,56 @@ describe("derivation", () => {
       contrastRatio(dark.links_focused_components!, dark.widget_background!)!,
     ).toBeGreaterThanOrEqual(4.5);
     expect(contrastWarnings(dark)).toEqual([]);
+  });
+});
+
+describe("review follow-ups", () => {
+  it("rejects malformed functional colours", () => {
+    for (const v of [
+      "rgb(foo)",
+      "hsl(1)",
+      "rgb(1,2)",
+      "rgb(1 2 3 4 5)",
+      "hsl(10, 20, 30)",
+    ])
+      expect(isValidColor(v)).toBe(false);
+    for (const v of [
+      "rgb(255 0 0 / 50%)",
+      "rgba(1,2,3,.5)",
+      "hsl(120deg 50% 50%)",
+    ])
+      expect(isValidColor(v)).toBe(true);
+  });
+
+  it("normalises rgb()/hsl() to hex", () => {
+    expect(toHex("rgb(255, 255, 255)")).toBe("#FFFFFF");
+    expect(toHex("rgb(10% 20% 30%)")).toBe("#1A334D");
+    expect(toHex("hsl(0 100% 50%)")).toBe("#FF0000");
+    expect(toHex("#0000")).toBeNull();
+    expect(toHex("rgb(foo)")).toBeNull();
+  });
+
+  it("does not treat translucent colours as opaque in contrast", () => {
+    expect(contrastRatio("#0000", "#FFFFFF")).toBeNull();
+    expect(contrastRatio("rgba(0,0,0,0.5)", "#FFFFFF")).toBeNull();
+    expect(
+      contrastWarnings({ body_text: "#0000", widget_background: "#FFFFFF" }),
+    ).toEqual([]);
+  });
+
+  it("picks the same label for rgb() and hex buttons", () => {
+    const hex = completeLightColors({ primary_button: "#FFFFFF" });
+    const rgb = completeLightColors({ primary_button: "rgb(255, 255, 255)" });
+    expect(rgb.primary_button_label).toBe(hex.primary_button_label);
+    expect(rgb.primary_button_label).toBe("#000000");
+    expect(
+      generateDarkFromLight({ primary_button: "rgb(255, 255, 255)" })
+        .primary_button_label,
+    ).toBe("#000000");
+  });
+
+  it("derives dependents from rgb() core colours", () => {
+    const d = deriveDependentColors({ primary_button: "rgb(0, 0, 0)" });
+    expect(d.base_hover_color).toBe("#454545");
   });
 });
