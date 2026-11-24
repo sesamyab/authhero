@@ -18,7 +18,7 @@ import { clientInfoMiddleware } from "../../middlewares/client-info";
 import { outboxMiddleware } from "../../middlewares/outbox";
 import { LogsDestination } from "../../helpers/outbox-destinations/logs";
 import { LogStreamDestination } from "../../helpers/outbox-destinations/log-streams";
-import { PipelineDestination } from "../../helpers/outbox-destinations/pipeline";
+import { createArchiveDestinations } from "../../helpers/default-destinations";
 import { CodeHookDestination } from "../../helpers/outbox-destinations/code-hooks";
 import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
 import { createServiceToken } from "../../helpers/service-token";
@@ -499,6 +499,11 @@ function logScim(
 
 /** Mount connection-scoped SCIM provisioning with user lifecycle hooks and outbox delivery. */
 export function createScimApi(config: AuthHeroConfig) {
+  // Built once here rather than per request: the archive destinations validate
+  // their config in the constructor, and `getDestinations` runs in the outbox
+  // middleware's `finally` after the handler has committed. A bad config must
+  // fail `init()`, not a request whose writes already succeeded.
+  const archiveDestinations = createArchiveDestinations(config.outbox);
   const app = new OpenAPIHono<{ Bindings: Bindings; Variables: Variables }>();
 
   app.onError((err, ctx) => {
@@ -554,9 +559,7 @@ export function createScimApi(config: AuthHeroConfig) {
           ...(base.logStreams
             ? [new LogStreamDestination(base.logStreams)]
             : []),
-          ...(config.outbox?.pipeline
-            ? [new PipelineDestination(config.outbox.pipeline)]
-            : []),
+          ...archiveDestinations,
         ];
       },
     }),

@@ -4,6 +4,12 @@ import {
   LogStreamsAdapter,
 } from "@authhero/adapter-interfaces";
 import { EventDestination } from "../outbox-relay";
+import {
+  FIREHOSE_MAX_RECORD_BYTES,
+  firehoseTargetError,
+  putFirehoseRecords,
+  type FirehoseTarget,
+} from "../firehose-client";
 import { logSubjectUserId, logSubjectUserName } from "../audit-target-types";
 
 const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
@@ -109,6 +115,91 @@ function toPayload(event: AuditEvent): LogStreamPayload {
   };
 }
 
+export interface FirehoseSinkConfig {
+  target: FirehoseTarget;
+  /**
+   * Terminate each record with `\n` so records Firehose concatenates into one
+   * S3 object are newline-delimited JSON (default: true).
+   */
+  newlineDelimited: boolean;
+}
+
+/**
+ * Reads a `firehose` log stream's sink. Shared by delivery and the management
+ * API, so a sink the API accepts is one delivery can use.
+ */
+export function parseFirehoseSink(
+  sink: Record<string, unknown>,
+): { config: FirehoseSinkConfig } | { error: string } {
+  const text = (key: string): string => {
+    const value = sink[key];
+    return typeof value === "string" ? value : "";
+  };
+  const newlineDelimited = sink.newline_delimited;
+  if (newlineDelimited !== undefined && typeof newlineDelimited !== "boolean") {
+    return { error: "newline_delimited must be a boolean" };
+  }
+  const target: FirehoseTarget = {
+    region: text("aws_region"),
+    deliveryStreamName: text("delivery_stream_name"),
+    accessKeyId: text("aws_access_key_id"),
+    secretAccessKey: text("aws_secret_access_key"),
+  };
+  const error = firehoseTargetError(target);
+  if (error) return { error };
+  return { config: { target, newlineDelimited: newlineDelimited !== false } };
+}
+
+function encodePayload(
+  payload: LogStreamPayload,
+  newline: boolean,
+): Uint8Array {
+  const json = JSON.stringify(payload);
+  return new TextEncoder().encode(newline ? `${json}\n` : json);
+}
+
+/**
+ * Encodes a log event as one Firehose record within the per-record limit. The
+ * unbounded part of a log stream payload is `data.details` (request and
+ * response bodies, caller-supplied details), so an oversized event keeps its
+ * top-level fields and the request method/path, with `details` marking it
+ * truncated. One still too big after that is logged and skipped rather than
+ * retried forever.
+ */
+function encodeFirehoseRecord(
+  payload: LogStreamPayload,
+  newline: boolean,
+): Uint8Array | undefined {
+  const bytes = encodePayload(payload, newline);
+  if (bytes.length <= FIREHOSE_MAX_RECORD_BYTES) return bytes;
+
+  const { request } = payload.data.details;
+  const truncated = encodePayload(
+    {
+      ...payload,
+      data: {
+        ...payload.data,
+        details: {
+          request: { method: request.method, path: request.path },
+          truncated: true,
+          original_bytes: bytes.length,
+        },
+      },
+    },
+    newline,
+  );
+  if (truncated.length <= FIREHOSE_MAX_RECORD_BYTES) {
+    console.warn(
+      `Log stream: event ${payload.log_id} truncated from ${bytes.length} bytes to fit the Firehose record limit`,
+    );
+    return truncated;
+  }
+  console.error(
+    `Log stream: skipped event ${payload.log_id} for Firehose: ${truncated.length} bytes after truncation exceeds the record limit`,
+  );
+  return undefined;
+}
+
 function passesFilters(stream: LogStream, logType: string): boolean {
   if (!stream.filters || stream.filters.length === 0) return true;
   return stream.filters.some((f) => f.name === logType);
@@ -130,7 +221,8 @@ function encodeBody(
 }
 
 /**
- * Delivers audit events to tenant-configured HTTP log streams. Mirrors
+ * Delivers audit events to tenant-configured `http` and `firehose` log
+ * streams. Mirrors
  * Auth0's log_stream wire shape so Loki / Logstash / Datadog sinks
  * configured for an Auth0 tenant can be pointed at authhero unchanged.
  *
@@ -167,16 +259,38 @@ export class LogStreamDestination implements EventDestination {
   async deliver(events: StreamDelivery[]): Promise<void> {
     for (const { tenantId, logType, payload } of events) {
       const streams = await this.logStreams.list(tenantId);
-      const activeHttpStreams = streams.filter(
-        (s) => s.type === "http" && s.status === "active",
+      const activeStreams = streams.filter(
+        (s) =>
+          (s.type === "http" || s.type === "firehose") && s.status === "active",
       );
-      if (activeHttpStreams.length === 0) continue;
 
-      for (const stream of activeHttpStreams) {
+      for (const stream of activeStreams) {
         if (!passesFilters(stream, logType)) continue;
-        await this.deliverToStream(stream, payload);
+        if (stream.type === "firehose") {
+          await this.deliverToFirehose(stream, payload);
+        } else {
+          await this.deliverToStream(stream, payload);
+        }
       }
     }
+  }
+
+  private async deliverToFirehose(
+    stream: LogStream,
+    payload: LogStreamPayload,
+  ): Promise<void> {
+    const parsed = parseFirehoseSink(stream.sink);
+    if ("error" in parsed) {
+      throw new Error(`Log stream ${stream.id}: ${parsed.error}`);
+    }
+    const record = encodeFirehoseRecord(
+      payload,
+      parsed.config.newlineDelimited,
+    );
+    if (!record) return;
+    await putFirehoseRecords(parsed.config.target, [record], {
+      timeoutMs: this.timeoutMs,
+    });
   }
 
   private async deliverToStream(

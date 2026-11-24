@@ -317,5 +317,47 @@ describe("runOutboxRelay", () => {
       expect(payload.tenant_id).toBe(TENANT_ID);
       expect(payload.scope).toBe("webhook");
     });
+
+    const PIPELINE = {
+      endpoint: "https://stream-1.ingest.cloudflare.com",
+      token: "ingest-token",
+    };
+
+    it("archives retried events to Pipelines when pipeline is passed", async () => {
+      fetchMock.mockResolvedValue(new Response("ok", { status: 200 }));
+      const event = makeHookEvent({
+        id: "evt-archive",
+        event_type: "user.created",
+      });
+      const outbox = makeOutbox([event]);
+      const dataAdapter = buildAdapters({
+        outbox,
+        hooks: makeHooksAdapter([]),
+      });
+
+      await runOutboxRelay({ dataAdapter, issuer: ISSUER, pipeline: PIPELINE });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe(PIPELINE.endpoint);
+      expect(outbox.markProcessed).toHaveBeenCalledWith(["evt-archive"]);
+    });
+
+    it("keeps an event for retry when the Pipelines archive rejects it", async () => {
+      fetchMock.mockResolvedValue(new Response("down", { status: 503 }));
+      const event = makeHookEvent({
+        id: "evt-archive",
+        event_type: "user.created",
+      });
+      const outbox = makeOutbox([event]);
+      const dataAdapter = buildAdapters({
+        outbox,
+        hooks: makeHooksAdapter([]),
+      });
+
+      await runOutboxRelay({ dataAdapter, issuer: ISSUER, pipeline: PIPELINE });
+
+      expect(outbox.markRetry).toHaveBeenCalled();
+      expect(outbox.markProcessed).not.toHaveBeenCalledWith(["evt-archive"]);
+    });
   });
 });

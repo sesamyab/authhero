@@ -44,6 +44,8 @@ const SENSITIVE_FIELDS = new Set([
   "datadogApiKey",
   "splunk_token",
   "splunkToken",
+  "aws_secret_access_key",
+  "awsSecretAccessKey",
   "session_transfer_token",
 ]);
 
