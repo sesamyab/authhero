@@ -73,7 +73,7 @@ function FirehoseSinkFields({ mode }: { mode: "create" | "edit" }) {
         source="sink.newline_delimited"
         label="Newline-delimited records"
         helperText="End each record with a newline, so S3 objects are JSON Lines"
-        defaultValue={mode === "create" ? true : undefined}
+        defaultValue={true}
       />
     </>
   );
