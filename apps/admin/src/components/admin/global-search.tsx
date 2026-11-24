@@ -209,11 +209,12 @@ export function GlobalSearch() {
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        className="h-8 gap-2 px-2 text-muted-foreground font-normal min-w-[200px] justify-start"
+        aria-label="Search"
+        className="h-8 gap-2 px-2 text-muted-foreground font-normal justify-start sm:min-w-[200px]"
       >
         <Search className="size-3.5" />
-        <span className="flex-1 text-left">Search…</span>
-        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+        <span className="hidden flex-1 text-left sm:inline">Search…</span>
+        <kbd className="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
           <span className="text-xs">⌘</span>K
         </kbd>
       </Button>

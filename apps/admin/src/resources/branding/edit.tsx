@@ -96,13 +96,45 @@ function StyleTab() {
       <SelectInput
         source="dark_mode"
         label="Dark mode"
-        helperText="Default color scheme for the universal login page. The per-user ah-dark-mode cookie still overrides this at runtime."
+        emptyText="Auto (follow system)"
+        helperText="Default color scheme for the universal login page. When unset the server uses Auto. The per-user ah-dark-mode cookie still overrides this at runtime."
         choices={[
           { id: "auto", name: "Auto (follow system)" },
           { id: "light", name: "Light" },
           { id: "dark", name: "Dark" },
         ]}
       />
+    </div>
+  );
+}
+
+/** The preview plus a hint when the dark preview reuses the light logo. */
+function PreviewColumn({
+  scheme,
+  onSchemeChange,
+}: {
+  scheme: "light" | "dark";
+  onSchemeChange: (s: "light" | "dark") => void;
+}) {
+  const [themeLogo, logoDark, brandingLogo] = useWatch({
+    name: ["themes.widget.logo_url", "themes.widget.logo_url_dark", "logo_url"],
+  }) as (string | undefined)[];
+  const reusesLightLogo =
+    scheme === "dark" && !logoDark && !!(themeLogo || brandingLogo);
+  return (
+    <div className="flex h-full flex-col gap-2">
+      <div className="min-h-0 flex-1">
+        <BrandingPreview
+          colorScheme={scheme}
+          onColorSchemeChange={onSchemeChange}
+        />
+      </div>
+      {reusesLightLogo && (
+        <p role="note" className="text-xs text-muted-foreground">
+          The dark preview uses the light logo. A dark logo is hard to see on a
+          dark card; set one under Themes &gt; Dark &gt; Logo URL (dark).
+        </p>
+      )}
     </div>
   );
 }
@@ -114,10 +146,31 @@ function BrandingFormContent() {
   // stacked under the tabs behind a toggle instead.
   const [showStackedPreview, setShowStackedPreview] = useState(false);
   return (
-    <div className="flex w-full gap-6">
+    <div className="flex w-full gap-6 dark:[&_.text-muted-foreground]:text-foreground/80 dark:[&_div.border]:border-foreground/25 dark:[&_input]:border-foreground/30 dark:[&_button[data-slot=select-trigger]]:border-foreground/30 [&_h3]:text-foreground [&_h4]:text-foreground [&_label]:text-foreground">
       <div className="min-w-0 flex-1">
+        <div className="mb-4 flex flex-col gap-3 lg:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            className="self-start"
+            aria-expanded={showStackedPreview}
+            onClick={() => setShowStackedPreview((v) => !v)}
+          >
+            {showStackedPreview ? (
+              <EyeOff className="size-4" />
+            ) : (
+              <Eye className="size-4" />
+            )}
+            {showStackedPreview ? "Hide preview" : "Show preview"}
+          </Button>
+          {showStackedPreview && (
+            <div className="h-[560px] w-full max-w-[420px]">
+              <PreviewColumn scheme={scheme} onSchemeChange={setScheme} />
+            </div>
+          )}
+        </div>
         <UrlTabs defaultValue="style">
-          <TabsList>
+          <TabsList className="h-auto max-w-full flex-wrap justify-start">
             <TabsTrigger value="style">Style</TabsTrigger>
             <TabsTrigger value="themes">Themes</TabsTrigger>
             <TabsTrigger value="universal-login">Universal Login</TabsTrigger>
@@ -136,37 +189,10 @@ function BrandingFormContent() {
             <RawJsonTab />
           </TabsContent>
         </UrlTabs>
-        <div className="mt-6 flex flex-col gap-3 lg:hidden">
-          <Button
-            type="button"
-            variant="outline"
-            className="self-start"
-            aria-expanded={showStackedPreview}
-            onClick={() => setShowStackedPreview((v) => !v)}
-          >
-            {showStackedPreview ? (
-              <EyeOff className="size-4" />
-            ) : (
-              <Eye className="size-4" />
-            )}
-            {showStackedPreview ? "Hide preview" : "Show preview"}
-          </Button>
-          {showStackedPreview && (
-            <div className="h-[560px] w-full max-w-[420px]">
-              <BrandingPreview
-                colorScheme={scheme}
-                onColorSchemeChange={setScheme}
-              />
-            </div>
-          )}
-        </div>
       </div>
       <aside className="hidden w-[380px] shrink-0 lg:block">
         <div className="sticky top-4 h-[calc(100vh-6rem)]">
-          <BrandingPreview
-            colorScheme={scheme}
-            onColorSchemeChange={setScheme}
-          />
+          <PreviewColumn scheme={scheme} onSchemeChange={setScheme} />
         </div>
       </aside>
     </div>

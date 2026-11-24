@@ -96,4 +96,14 @@ describe("ColorInput", () => {
     fireEvent.click(screen.getByLabelText("Reset Colour"));
     expect(form.getValues("c")).toBe("");
   });
+
+  it("renders an unset value as a 'none' swatch, not black", () => {
+    const { container } = render(<Harness value="" />);
+    expect(container.querySelector("[data-empty]")).not.toBeNull();
+  });
+
+  it("renders a set value as a real swatch", () => {
+    const { container } = render(<Harness value="#7D68F4" />);
+    expect(container.querySelector("[data-empty]")).toBeNull();
+  });
 });

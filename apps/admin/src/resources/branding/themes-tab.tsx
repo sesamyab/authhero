@@ -250,7 +250,7 @@ function ThemesFormFields({
         <h4 className="text-base font-semibold">
           Colors{scheme === "dark" ? " (dark)" : ""}
         </h4>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {coreKeys.map((k) => (
             <ColorField key={`${scheme}-${k}`} scheme={scheme} k={k} />
           ))}
@@ -335,7 +335,7 @@ function ThemesFormFields({
             <h4 className="text-sm font-semibold">
               More colors{scheme === "dark" ? " (dark)" : ""}
             </h4>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               {advancedKeys.map((k) => (
                 <ColorField key={`${scheme}-${k}`} scheme={scheme} k={k} />
               ))}
@@ -357,7 +357,7 @@ function ThemesFormFields({
             <>
               <section className="flex flex-col gap-4">
                 <h4 className="text-base font-semibold">Borders</h4>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   <NumberInput
                     source="themes.borders.button_border_radius"
                     label="Button Border Radius"
@@ -383,7 +383,7 @@ function ThemesFormFields({
                     label="Widget Corner Radius"
                   />
                 </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   <SelectInput
                     source="themes.borders.buttons_style"
                     label="Buttons Style"
@@ -424,7 +424,7 @@ function ThemesFormFields({
                 {fontSections.map(({ key, label }) => (
                   <div key={key} className="flex flex-col gap-2">
                     <div className="text-sm font-medium">{label}</div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                       <BooleanInput
                         source={`themes.fonts.${key}.bold`}
                         label="Bold"
@@ -471,7 +471,7 @@ function ThemesFormFields({
 
               <section className="flex flex-col gap-4">
                 <h4 className="text-base font-semibold">Widget</h4>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   <SelectInput
                     source="themes.widget.header_text_alignment"
                     label="Header Text Alignment"
