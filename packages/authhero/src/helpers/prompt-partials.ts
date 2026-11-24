@@ -14,6 +14,11 @@ export const promptPartialPrompts = [
   // kept as an alias.
   "login-passwordless-sms-otp",
   "login-passwordless-email-code",
+  "email-otp-challenge",
+  "reset-password",
+  "mfa-otp",
+  "mfa-phone",
+  "mfa-login-options",
 ] as const;
 
 // Keep individual fragments bounded without imposing a small aggregate limit on

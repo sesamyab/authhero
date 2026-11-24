@@ -7,6 +7,8 @@ import type { AccountActionOperation } from "../../../types/Hooks";
 import type { User } from "@authhero/adapter-interfaces";
 import { gatedPost, gatedScreen } from "./account-helpers";
 import { getPrimaryUserByEmail } from "../../../helpers/users";
+import { withPromptPartials } from "./login-partials";
+import { listPartialsScreenIds } from "../screen-prompt-map";
 import { identifierScreenDefinition } from "./identifier";
 import { loginScreenDefinition } from "./login";
 import { emailOtpChallengeScreenDefinition } from "./email-otp-challenge";
@@ -177,6 +179,14 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["email-verification-code", emailVerificationCodeScreenDefinition],
   ["email-verification-link-sent", emailVerificationLinkSentScreenDefinition],
 ]);
+
+// Attach tenant prompt partials to the sign-in form screens that don't read
+// them themselves (see `screen-prompt-map.ts`).
+for (const screenId of listPartialsScreenIds()) {
+  const definition = screenRegistry.get(screenId);
+  if (definition)
+    screenRegistry.set(screenId, withPromptPartials(screenId, definition));
+}
 
 /**
  * Get a screen definition by ID
