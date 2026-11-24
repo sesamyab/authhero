@@ -146,7 +146,7 @@ function BrandingFormContent() {
   // stacked under the tabs behind a toggle instead.
   const [showStackedPreview, setShowStackedPreview] = useState(false);
   return (
-    <div className="flex w-full gap-6 dark:[&_.text-muted-foreground]:text-foreground/80 dark:[&_div.border]:border-foreground/25 dark:[&_input]:border-foreground/30 dark:[&_button[data-slot=select-trigger]]:border-foreground/30 [&_h3]:text-foreground [&_h4]:text-foreground [&_label]:text-foreground">
+    <div className="flex w-full gap-6 [&_input:not([type=color])]:bg-white dark:[&_input:not([type=color])]:bg-input/30 [&_button[data-slot=select-trigger]]:bg-white dark:[&_button[data-slot=select-trigger]]:bg-input/30 [&_div.rounded-md.border.p-3]:bg-white dark:[&_div.rounded-md.border.p-3]:bg-transparent dark:[&_.text-muted-foreground]:text-foreground/80 dark:[&_div.border]:border-foreground/25 dark:[&_input]:border-foreground/30 dark:[&_button[data-slot=select-trigger]]:border-foreground/30 [&_h3]:text-foreground [&_h4]:text-foreground [&_label]:text-foreground">
       <div className="min-w-0 flex-1">
         <div className="mb-4 flex flex-col gap-3 lg:hidden">
           <Button
