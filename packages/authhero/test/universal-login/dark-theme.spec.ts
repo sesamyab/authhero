@@ -11,6 +11,7 @@ import {
   themeInsertSchema,
   colorsDarkSchema,
 } from "@authhero/adapter-interfaces";
+import { parseColor, NAMED_COLORS } from "@authhero/widget/page-chrome";
 import { renderWidgetPageResponse } from "../../src/routes/universal-login/u2-widget-page";
 import {
   resolveDarkPageInputs,
@@ -375,6 +376,54 @@ describe("review fixes", () => {
     },
   );
 
+  it("keeps CSS named colours outside the common set, e.g. rebeccapurple", async () => {
+    const block = darkVarBlock(
+      pageCss(
+        await render({
+          ...light,
+          colors_dark: { primary_button: "rebeccapurple" },
+        }),
+      ),
+    );
+    expect(block).toContain("--ah-color-primary: rebeccapurple !important");
+    expect(block).toContain("--ah-color-text-on-primary: #ffffff !important");
+  });
+
+  it("resolves every CSS named colour", () => {
+    expect(parseColor("cornflowerblue")?.hex).toBe("#6495ed");
+    expect(parseColor("rebeccapurple")?.hex).toBe("#663399");
+    expect(parseColor("transparent")?.alpha).toBe(0);
+    expect(parseColor("notacolor")).toBeNull();
+    expect(Object.keys(NAMED_COLORS)).toHaveLength(148);
+  });
+
+  it("picks the label that meets 4.5:1 when only one does", async () => {
+    // #7a7a7a: white 4.29:1, black 4.89:1. The white bias must not win.
+    const block = darkVarBlock(
+      pageCss(
+        await render({ ...light, colors_dark: { primary_button: "#7a7a7a" } }),
+      ),
+    );
+    expect(block).toContain("--ah-color-text-on-primary: #000000 !important");
+  });
+
+  it("moves a mid-tone link toward the better endpoint, not by a luminance cut-off", async () => {
+    // #999999 on #999999: white reaches ~2.85:1, black ~7.37:1.
+    const block = darkVarBlock(
+      pageCss(
+        await render({
+          ...light,
+          colors: { ...light.colors, links_focused_components: "#999999" },
+          colors_dark: { widget_background: "#999999" },
+        }),
+      ),
+    );
+    const m = block.match(/--ah-color-link: (#[0-9a-f]{6}) !important/i);
+    expect(m).not.toBeNull();
+    expect(m![1]!.toLowerCase()).not.toBe("#ffffff");
+    expect(m![1]!.toLowerCase()).not.toBe("#999999");
+  });
+
   it("an explicit label wins over the derived one", async () => {
     const block = darkVarBlock(
       pageCss(
@@ -395,11 +444,11 @@ describe("review fixes", () => {
       pageCss(
         await render({
           ...light,
-          colors_dark: { primary_button: "papayawhip" },
+          colors_dark: { primary_button: "currentcolor" },
         }),
       ),
     );
-    expect(block).not.toContain("papayawhip");
+    expect(block).not.toContain("currentcolor");
     // The derived primary (the theme's #7D68F4) keeps its derived label.
     expect(block).toContain("--ah-color-text-on-primary: #ffffff !important");
   });
@@ -410,13 +459,13 @@ describe("review fixes", () => {
         await render({
           ...light,
           colors_dark: {
-            primary_button: "papayawhip",
+            primary_button: "currentcolor",
             primary_button_label: "#111111",
           },
         }),
       ),
     );
-    expect(block).toContain("--ah-color-primary: papayawhip !important");
+    expect(block).toContain("--ah-color-primary: currentcolor !important");
     expect(block).toContain("--ah-color-text-on-primary: #111111 !important");
   });
 });

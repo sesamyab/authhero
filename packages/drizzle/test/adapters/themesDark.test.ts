@@ -63,7 +63,8 @@ const baseTheme = {
 const dark = {
   colors_dark: {
     widget_background: "#101827",
-    links_focused_components: "#ff8800",
+    // 26 characters: longer than the 24 of the light colour columns
+    links_focused_components: "rgba(255, 255, 255, 0.125)",
   },
   page_background: {
     ...baseTheme.page_background,

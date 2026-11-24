@@ -3,31 +3,33 @@ import { Database } from "../../src/db";
 
 /**
  * Dark-scheme extension of themes (#1740): `colors_dark_*` overrides, a dark
- * logo and a dark page background colour/image. All nullable; existing rows
+ * logo and a dark page background colour/image. Colour columns are 64 wide
+ * (not the 24 of the light ones) so valid values such as
+ * `rgba(255, 255, 255, 0.125)` are stored as written. All nullable; existing rows
  * read back without them and render exactly as before. Auth0 has no dark
  * variants, so these are AuthHero-only. Also adds `favicon_url_dark` to
  * branding.
  */
 const THEME_COLUMNS: [string, number][] = [
-  ["colors_dark_base_focus_color", 24],
-  ["colors_dark_base_hover_color", 24],
-  ["colors_dark_body_text", 24],
-  ["colors_dark_error", 24],
-  ["colors_dark_header", 24],
-  ["colors_dark_icons", 24],
-  ["colors_dark_input_background", 24],
-  ["colors_dark_input_border", 24],
-  ["colors_dark_input_filled_text", 24],
-  ["colors_dark_input_labels_placeholders", 24],
-  ["colors_dark_links_focused_components", 24],
-  ["colors_dark_primary_button", 24],
-  ["colors_dark_primary_button_label", 24],
-  ["colors_dark_secondary_button_border", 24],
-  ["colors_dark_secondary_button_label", 24],
-  ["colors_dark_success", 24],
-  ["colors_dark_widget_background", 24],
-  ["colors_dark_widget_border", 24],
-  ["page_background_background_color_dark", 24],
+  ["colors_dark_base_focus_color", 64],
+  ["colors_dark_base_hover_color", 64],
+  ["colors_dark_body_text", 64],
+  ["colors_dark_error", 64],
+  ["colors_dark_header", 64],
+  ["colors_dark_icons", 64],
+  ["colors_dark_input_background", 64],
+  ["colors_dark_input_border", 64],
+  ["colors_dark_input_filled_text", 64],
+  ["colors_dark_input_labels_placeholders", 64],
+  ["colors_dark_links_focused_components", 64],
+  ["colors_dark_primary_button", 64],
+  ["colors_dark_primary_button_label", 64],
+  ["colors_dark_secondary_button_border", 64],
+  ["colors_dark_secondary_button_label", 64],
+  ["colors_dark_success", 64],
+  ["colors_dark_widget_background", 64],
+  ["colors_dark_widget_border", 64],
+  ["page_background_background_color_dark", 64],
   ["page_background_background_image_url_dark", 255],
   ["widget_logo_url_dark", 255],
 ];

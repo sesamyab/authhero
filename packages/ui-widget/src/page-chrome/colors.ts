@@ -5,6 +5,8 @@
  * renders the same dark mode the real login page does.
  */
 
+import { NAMED_COLORS } from "./named-colors";
+
 export const DARK_MODE_CSS_VARS: Record<string, string> = {
   "--ah-color-text": "#f9fafb",
   "--ah-color-text-muted": "#9ca3af",
@@ -98,35 +100,6 @@ export type ColorsDark = Partial<{
 
 const HEX = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
-const NAMED: Record<string, string> = {
-  black: "#000000",
-  white: "#ffffff",
-  red: "#ff0000",
-  green: "#008000",
-  blue: "#0000ff",
-  yellow: "#ffff00",
-  orange: "#ffa500",
-  purple: "#800080",
-  gray: "#808080",
-  grey: "#808080",
-  silver: "#c0c0c0",
-  maroon: "#800000",
-  navy: "#000080",
-  teal: "#008080",
-  lime: "#00ff00",
-  aqua: "#00ffff",
-  cyan: "#00ffff",
-  fuchsia: "#ff00ff",
-  magenta: "#ff00ff",
-  pink: "#ffc0cb",
-  brown: "#a52a2a",
-  gold: "#ffd700",
-  indigo: "#4b0082",
-  violet: "#ee82ee",
-  crimson: "#dc143c",
-  transparent: "#000000",
-};
-
 export type ParsedColor = { hex: string; alpha: number };
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
@@ -165,13 +138,11 @@ export function parseColor(color: string | undefined): ParsedColor | null {
     const alpha = long.length === 8 ? parseInt(long.slice(6), 16) / 255 : 1;
     return { hex: rgbToHex(r, g, b), alpha };
   }
+  if (v === "transparent") return { hex: "#000000", alpha: 0 };
   // Own-property lookup: "constructor" and friends must not resolve.
-  if (Object.prototype.hasOwnProperty.call(NAMED, v)) {
-    const named = NAMED[v];
-    if (typeof named !== "string") return null;
-    return v === "transparent"
-      ? { hex: "#000000", alpha: 0 }
-      : { hex: named, alpha: 1 };
+  if (Object.prototype.hasOwnProperty.call(NAMED_COLORS, v)) {
+    const named = NAMED_COLORS[v];
+    return typeof named === "string" ? { hex: named, alpha: 1 } : null;
   }
   const fn = v.match(/^(rgba?|hsla?)\(([^)]+)\)$/);
   if (!fn) return null;
@@ -253,7 +224,11 @@ export function ensureDarkContrast(
   const surface = toHex(bg);
   if (!fg || !surface) return color;
   if (darkContrastRatio(fg, surface) >= min) return color;
-  const towardLight = darkLuminance(surface) <= 0.5;
+  // Head for whichever endpoint can reach more contrast on this surface; a
+  // luminance cut-off picks the wrong way for mid-tones.
+  const towardLight =
+    darkContrastRatio("#ffffff", surface) >=
+    darkContrastRatio("#000000", surface);
   for (let i = 1; i <= 10; i++) {
     const adjusted = towardLight
       ? lightenHexDark(fg, i * 0.1)
@@ -261,6 +236,19 @@ export function ensureDarkContrast(
     if (darkContrastRatio(adjusted, surface) >= min) return adjusted;
   }
   return towardLight ? "#ffffff" : "#000000";
+}
+
+/**
+ * Text colour for a button of colour `bg`. White is preferred on mid-tones
+ * (BIAS), unless only black reaches the WCAG minimum of 4.5:1.
+ */
+function pickLabelColor(bg: string): string {
+  const BIAS = 1.35;
+  const white = darkContrastRatio(bg, "#ffffff");
+  const black = darkContrastRatio(bg, "#000000");
+  if (white < 4.5 && black >= 4.5) return "#000000";
+  if (black < 4.5 && white >= 4.5) return "#ffffff";
+  return black > white * BIAS ? "#000000" : "#ffffff";
 }
 
 /**
@@ -309,9 +297,7 @@ export function colorsDarkToCssVars(
       explicitPrimary.alpha < 1
         ? compositeOver(explicitPrimary.hex, card, explicitPrimary.alpha)
         : explicitPrimary.hex;
-    const w = darkContrastRatio(seen, "#ffffff");
-    const b = darkContrastRatio(seen, "#000000");
-    v["--ah-color-text-on-primary"] = b > w * 1.35 ? "#000000" : "#ffffff";
+    v["--ah-color-text-on-primary"] = pickLabelColor(seen);
   }
   return v;
 }
@@ -352,8 +338,12 @@ export function buildDarkVars(
       vars["--ah-color-primary"] = adjusted;
       vars["--ah-color-primary-hover"] = adjusted;
     }
-    const BIAS = 1.35;
     const btnBg = vars["--ah-color-primary"] || primaryColor;
+    // The derived label keeps the plain bias rule on purpose: it is what
+    // existing tenants (the default theme's #7D68F4 included) already render,
+    // and the light scheme picks its label the same way. The stricter
+    // pickLabelColor only applies to a primary the tenant set explicitly.
+    const BIAS = 1.35;
     const whiteContrast = darkContrastRatio(btnBg, "#ffffff");
     const blackContrast = darkContrastRatio(btnBg, "#000000");
     vars["--ah-color-text-on-primary"] =
