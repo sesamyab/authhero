@@ -605,6 +605,7 @@ describe("previewClient", () => {
 
 import {
   pruneEmpty,
+  pruneNullish,
   pruneBrandingOverride,
   withApiBase,
   fetchPreviewHtml,
@@ -623,6 +624,18 @@ describe("preview helpers", () => {
       }),
     ).toEqual({ b: { d: "x" }, g: [1], h: 0, i: false });
     expect(pruneEmpty({ a: "" })).toBeUndefined();
+  });
+
+  it("pruneNullish keeps empty strings, which the theme schema requires", () => {
+    expect(
+      pruneNullish({
+        widget: { logo_url: "", x: null },
+        page_background: { background_image_url: "", y: undefined },
+      }),
+    ).toEqual({
+      widget: { logo_url: "" },
+      page_background: { background_image_url: "" },
+    });
   });
 
   it("pruneBrandingOverride keeps a cleared logo/favicon but prunes other empties", () => {

@@ -98,6 +98,26 @@ export function pruneEmpty<T>(value: T): T | undefined {
 }
 
 /**
+ * Drop only null and undefined (recursively), keeping empty strings. Used for
+ * the theme: its schema requires some keys (`widget.logo_url`,
+ * `page_background.background_image_url`) to be present as strings, and the
+ * form stores them as `""` when unset.
+ */
+export function pruneNullish<T>(value: T): T | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const pruned = pruneNullish(v);
+      if (pruned !== undefined) out[k] = pruned;
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/**
  * Prune a branding override, but keep a cleared asset URL as an explicit empty
  * string. Saving a cleared logo stores `""` and removes the logo, so the
  * preview must send `""` too, or the server falls back to the stored logo and

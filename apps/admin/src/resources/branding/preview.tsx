@@ -10,7 +10,7 @@ import {
   getApiUrl,
   openFullPreview,
   pruneBrandingOverride,
-  pruneEmpty,
+  pruneNullish,
   withApiBase,
   type PreviewColorScheme,
   type PreviewScreenId,
@@ -417,13 +417,13 @@ function ServerPreviewFrame({
   className?: string;
 }) {
   const [html, setHtml] = useState<string | null>(null);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Serialise so the effect only re-runs when the content actually changes
   // (the form hands us fresh objects on every render).
   const payload = JSON.stringify({
     branding: pruneBrandingOverride(branding),
-    theme: pruneEmpty(theme),
+    theme: pruneNullish(theme),
   });
 
   useEffect(() => {
@@ -445,9 +445,13 @@ function ServerPreviewFrame({
         });
         if (controller.signal.aborted) return;
         setHtml(withApiBase(rendered, getApiUrl()));
-        setError(false);
-      } catch {
-        if (!controller.signal.aborted) setError(true);
+        setError(null);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error("Branding preview failed", err);
+        const status = (err as { httpStatus?: number })?.httpStatus;
+        const message = err instanceof Error ? err.message : String(err);
+        setError(status ? `${status}: ${message}` : message);
       }
     }, PREVIEW_DEBOUNCE_MS);
     return () => {
@@ -473,7 +477,8 @@ function ServerPreviewFrame({
       )}
       {error && (
         <div className="absolute inset-x-0 top-0 bg-destructive/10 p-2 text-center text-xs text-destructive">
-          Could not render the preview. Showing the last version.
+          Could not render the preview ({error}).
+          {html !== null && " Showing the last version."}
         </div>
       )}
       {html === null && !error && (
