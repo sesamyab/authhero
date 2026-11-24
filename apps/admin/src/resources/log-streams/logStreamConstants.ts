@@ -1,4 +1,7 @@
-export const typeChoices = [{ id: "http", name: "HTTP" }];
+export const typeChoices = [
+  { id: "http", name: "HTTP" },
+  { id: "firehose", name: "Amazon Data Firehose" },
+];
 
 export const statusChoices = [
   { id: "active", name: "Active" },

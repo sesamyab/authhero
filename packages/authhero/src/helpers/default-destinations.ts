@@ -10,10 +10,8 @@ import { CodeHookDestination } from "./outbox-destinations/code-hooks";
 import { RegistrationFinalizerDestination } from "./outbox-destinations/registration-finalizer";
 import { ControlPlaneSyncDestination } from "./outbox-destinations/control-plane-sync";
 import { PipelineDestination } from "./outbox-destinations/pipeline";
-import { FirehoseDestination } from "./outbox-destinations/firehose";
 import type {
   ActionExecutionLogCapture,
-  OutboxFirehoseConfig,
   OutboxPipelineConfig,
   WebhookInvoker,
 } from "../types/AuthHeroConfig";
@@ -88,13 +86,6 @@ export interface CreateDefaultDestinationsConfig {
    * per-request destination list. Omit to leave the archive out entirely.
    */
   pipeline?: OutboxPipelineConfig;
-
-  /**
-   * Same shape as `init({ outbox: { firehose } })`. When set, cron-drained
-   * events are also archived to the Firehose delivery stream, matching the
-   * per-request destination list.
-   */
-  firehose?: OutboxFirehoseConfig;
 }
 
 /**
@@ -106,20 +97,14 @@ export interface CreateDefaultDestinationsConfig {
  * destination loop on the first failure, so an archive outage must not be
  * able to block real delivery. Nothing depends on the archives, so they are
  * the destinations that can afford to be blocked — the cost is that an event
- * which permanently fails an earlier destination never reaches them. The same
- * applies between the two: a Pipelines outage also holds back Firehose.
+ * which permanently fails an earlier destination never reaches them.
  */
 export function createArchiveDestinations(
-  outbox:
-    | { pipeline?: OutboxPipelineConfig; firehose?: OutboxFirehoseConfig }
-    | undefined,
+  outbox: { pipeline?: OutboxPipelineConfig } | undefined,
 ): EventDestination[] {
   const destinations: EventDestination[] = [];
   if (outbox?.pipeline) {
     destinations.push(new PipelineDestination(outbox.pipeline));
-  }
-  if (outbox?.firehose) {
-    destinations.push(new FirehoseDestination(outbox.firehose));
   }
   return destinations;
 }
@@ -161,7 +146,6 @@ export function createDefaultDestinations(
     codeExecutor,
     actionExecutionLogs,
     pipeline,
-    firehose,
   } = config;
 
   if (controlPlaneSync && !getServiceToken) {
@@ -234,7 +218,7 @@ export function createDefaultDestinations(
   }
 
   // Archive last — see `createArchiveDestinations` for why.
-  destinations.push(...createArchiveDestinations({ pipeline, firehose }));
+  destinations.push(...createArchiveDestinations({ pipeline }));
 
   return destinations;
 }

@@ -26,38 +26,6 @@ export interface PipelineRecord {
   event: AuditEvent;
 }
 
-/**
- * Archives the audit trail, not the delivery plumbing: `hook.*` and
- * `controlplane.sync.*` are instructions to other destinations rather than
- * records of something a tenant did. Same filter as the log-streams
- * destination. Shared by every archive destination (Pipelines, Firehose).
- */
-export function isArchivableEvent(event: AuditEvent): boolean {
-  return (
-    !event.event_type.startsWith("hook.") &&
-    !event.event_type.startsWith("controlplane.sync.")
-  );
-}
-
-/**
- * Builds the archive record shared by every archive destination, so a
- * Pipelines table and a Firehose-fed S3 / OpenSearch copy have the same shape.
- */
-export function toArchiveRecord(event: AuditEvent): PipelineRecord {
-  return {
-    id: event.id,
-    timestamp: event.timestamp,
-    tenant_id: event.tenant_id,
-    event_type: event.event_type,
-    log_type: event.log_type,
-    category: event.category,
-    actor_id: event.actor.id ?? null,
-    target_type: event.target.type,
-    target_id: event.target.id,
-    event,
-  };
-}
-
 export interface PipelineDestinationOptions {
   /** Stream HTTP ingest endpoint, e.g. `https://<stream-id>.ingest.cloudflare.com`. */
   endpoint: string;
@@ -112,12 +80,32 @@ export class PipelineDestination implements EventDestination {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
+  /**
+   * Archives the audit trail, not the delivery plumbing: `hook.*` and
+   * `controlplane.sync.*` are instructions to other destinations rather than
+   * records of something a tenant did. Same filter as the log-streams
+   * destination.
+   */
   accepts(event: AuditEvent): boolean {
-    return isArchivableEvent(event);
+    return (
+      !event.event_type.startsWith("hook.") &&
+      !event.event_type.startsWith("controlplane.sync.")
+    );
   }
 
   transform(event: AuditEvent): PipelineRecord {
-    return toArchiveRecord(event);
+    return {
+      id: event.id,
+      timestamp: event.timestamp,
+      tenant_id: event.tenant_id,
+      event_type: event.event_type,
+      log_type: event.log_type,
+      category: event.category,
+      actor_id: event.actor.id ?? null,
+      target_type: event.target.type,
+      target_id: event.target.id,
+      event,
+    };
   }
 
   async deliver(records: PipelineRecord[]): Promise<void> {

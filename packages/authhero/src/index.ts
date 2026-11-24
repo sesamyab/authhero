@@ -104,10 +104,6 @@ export {
   type PipelineRecord,
 } from "./helpers/outbox-destinations/pipeline";
 export {
-  FirehoseDestination,
-  type FirehoseDestinationOptions,
-} from "./helpers/outbox-destinations/firehose";
-export {
   type SyncEvent,
   type SyncEntity,
   type SyncOp,

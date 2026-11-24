@@ -8,28 +8,26 @@ import createSamlpApi from "../../../src/routes/saml";
 // `init()` at startup instead of throwing from the outbox middleware's
 // `finally` after a request's writes have already committed.
 describe("archive destination config", () => {
-  const badFirehose = {
-    region: "eu-north-1",
-    deliveryStreamName: "authhero-audit",
-    accessKeyId: "",
-    secretAccessKey: "",
+  const badPipeline = {
+    endpoint: "http://stream-1.ingest.cloudflare.com",
+    token: "ingest-token",
   };
 
-  it("rejects an invalid firehose config when a route app is created", () => {
+  it("rejects an invalid pipeline config when a route app is created", () => {
     expect(() =>
       createSamlpApi({
         dataAdapter: {} as DataAdapters,
-        outbox: { enabled: true, firehose: badFirehose },
+        outbox: { enabled: true, pipeline: badPipeline },
       }),
-    ).toThrow(/accessKeyId and secretAccessKey are required/);
+    ).toThrow(/must use https/);
   });
 
-  it("rejects an invalid firehose config in init()", () => {
+  it("rejects an invalid pipeline config in init()", () => {
     expect(() =>
       init({
         dataAdapter: {} as DataAdapters,
-        outbox: { enabled: true, firehose: badFirehose },
+        outbox: { enabled: true, pipeline: badPipeline },
       }),
-    ).toThrow(/accessKeyId and secretAccessKey are required/);
+    ).toThrow(/must use https/);
   });
 });

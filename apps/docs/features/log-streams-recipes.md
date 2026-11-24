@@ -1,16 +1,16 @@
 ---
-title: Log Stream Recipes (Datadog & Splunk)
-description: Forward AuthHero audit events to Datadog and Splunk using the built-in HTTP log stream, with an optional relay Worker.
+title: Log Stream Recipes (Datadog, Splunk & Firehose)
+description: Forward AuthHero audit events to Datadog and Splunk using the built-in HTTP log stream, with an optional relay Worker, or to AWS through an Amazon Data Firehose log stream.
 ---
 
-# Log Stream Recipes: Datadog & Splunk
+# Log Stream Recipes: Datadog, Splunk & Firehose
 
-AuthHero ships one log stream sink: `type: "http"`. It POSTs every audit event to a URL you choose, in the same wire shape Auth0 uses. Datadog and Splunk both ingest over HTTP, so you can forward to them without a native sink.
+AuthHero ships two log stream sinks. `type: "http"` POSTs every audit event to a URL you choose, in the same wire shape Auth0 uses. Datadog and Splunk both ingest over HTTP, so you can forward to them without a native sink. `type: "firehose"` sends the same events to an [Amazon Data Firehose](#amazon-data-firehose) stream, for S3, OpenSearch and other AWS destinations.
 
 This page shows how. Datadog works with the stream alone. Splunk needs a small relay Worker, because its HTTP Event Collector (HEC) requires the event wrapped in an envelope that the stream can't produce.
 
-::: warning Only `http` streams deliver
-The log stream schema also accepts the types `splunk`, `datadog`, `eventbridge`, `eventgrid` and `sumo`, but the delivery code only sends to streams with `type: "http"` and `status: "active"`. Streams of any other type are stored and never delivered. Use `http` for everything on this page.
+::: warning Only `http` and `firehose` streams deliver
+The log stream schema also accepts the types `splunk`, `datadog`, `eventbridge`, `eventgrid` and `sumo`, but the delivery code only sends to streams with `type: "http"` or `type: "firehose"` and `status: "active"`. Streams of any other type are stored and never delivered.
 :::
 
 ::: tip Requires the outbox
@@ -245,6 +245,50 @@ const log = {
 ```
 
 Then `POST` the array to `https://http-intake.logs.<site>/api/v2/logs` with a `DD-API-KEY` header, and return a non-2xx when Datadog doesn't answer `202`.
+
+## Amazon Data Firehose
+
+A `firehose` stream sends each event to an [Amazon Data Firehose](https://docs.aws.amazon.com/firehose/) Direct PUT delivery stream, which forwards it to S3, OpenSearch, or any other Firehose destination. It is configured per tenant like any log stream: in the admin UI under **Log Streams → Create → Amazon Data Firehose**, or through the management API. `firehose` is an AuthHero extension, not an Auth0 log stream type, so Auth0 tooling (the Terraform provider, the Deploy CLI) doesn't know it.
+
+```json
+{
+  "name": "aws-audit",
+  "type": "firehose",
+  "status": "active",
+  "sink": {
+    "aws_region": "eu-north-1",
+    "delivery_stream_name": "authhero-logs",
+    "aws_access_key_id": "AKIA...",
+    "aws_secret_access_key": "...",
+    "newline_delimited": true
+  }
+}
+```
+
+**Credentials.** Requests are SigV4-signed `PutRecordBatch` calls with the access key in the sink. Create an IAM user for it with nothing but:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "firehose:PutRecordBatch",
+      "Resource": "arn:aws:firehose:eu-north-1:<account-id>:deliverystream/authhero-logs"
+    }
+  ]
+}
+```
+
+`aws_secret_access_key` is write-only: the management API stores it but never returns it, and it is redacted from the audit log. To keep the current secret when updating the sink, leave it out (the admin UI does this when the field is left blank); send a new value to rotate it. The API rejects a sink without a usable region, stream name or key pair with a `400`. Regions in the China partition (`cn-*`) use the `amazonaws.com.cn` endpoint.
+
+**What is sent.** Each event is one Firehose record holding the same JSON payload an `http` stream sends (`log_id`, `description`, `data`), terminated with a newline so the objects Firehose writes to S3 are JSON Lines. Set `newline_delimited: false` to send the bare JSON document instead.
+
+**Oversized events.** Firehose caps a record at 1,000 KiB. For an event over that, `data.details` is replaced with the request method and path plus `truncated: true` and `original_bytes`; the rest of the payload is kept. An event still too large after that is logged and not sent.
+
+**OpenSearch.** `data.details` carries request and response bodies with arbitrary keys. With dynamic mapping these grow the index's field count without bound, so map `data.details` as `flat_object` (or `{ "type": "object", "enabled": false }`) in the index template. Firehose assigns its own document ids, so deduplicate on `log_id` at query time.
+
+**Failures.** A Firehose error, including a `200` response that reports failed records, counts as a failed delivery and is retried as described in [Retries and failure behaviour](#retries-and-failure-behaviour).
 
 ## Notes
 

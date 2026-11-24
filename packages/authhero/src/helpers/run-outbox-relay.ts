@@ -1,7 +1,6 @@
 import { CodeExecutor, DataAdapters } from "@authhero/adapter-interfaces";
 import type {
   ActionExecutionLogCapture,
-  OutboxFirehoseConfig,
   OutboxPipelineConfig,
   WebhookInvoker,
 } from "../types/AuthHeroConfig";
@@ -71,9 +70,6 @@ export interface RunOutboxRelayConfig {
    * archive delivery failed is marked processed here without being archived.
    */
   pipeline?: OutboxPipelineConfig;
-
-  /** Same value as `init({ outbox: { firehose } })`. See `pipeline`. */
-  firehose?: OutboxFirehoseConfig;
 }
 
 /**
@@ -83,7 +79,7 @@ export interface RunOutboxRelayConfig {
  * 1. Skips gracefully when `dataAdapter.outbox` is undefined.
  * 2. Builds the same destination array as the inline dispatcher
  *    (`LogsDestination`, `WebhookDestination`, `RegistrationFinalizerDestination`,
- *    plus the archive destinations when `pipeline` / `firehose` are passed).
+ *    plus the Pipelines archive when `pipeline` is passed).
  * 3. Mints per-tenant service tokens via the same in-process path
  *    (`createServiceTokenCore`) that the request-time webhookInvoker uses,
  *    driven by the supplied dataAdapter.
@@ -122,7 +118,6 @@ export async function runOutboxRelay(
     actionExecutionLogs,
     metrics,
     pipeline,
-    firehose,
   } = config;
 
   if (!dataAdapter.outbox) {
@@ -143,7 +138,6 @@ export async function runOutboxRelay(
     codeExecutor,
     actionExecutionLogs,
     pipeline,
-    firehose,
   });
 
   let drainError: unknown;

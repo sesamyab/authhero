@@ -1,13 +1,10 @@
 import { Edit, SimpleForm, TextInput, SelectInput } from "@/components/admin";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
-import { regex, required } from "ra-core";
+import { required } from "ra-core";
 import { RawJsonTab } from "@/common/RawJsonTab";
-import {
-  contentFormatChoices,
-  statusChoices,
-  typeChoices,
-} from "./logStreamConstants";
+import { statusChoices, typeChoices } from "./logStreamConstants";
+import { SinkFields } from "./sink-fields";
 
 function DetailsTab() {
   return (
@@ -25,25 +22,7 @@ function DetailsTab() {
         choices={statusChoices}
         validate={[required()]}
       />
-      <TextInput
-        source="sink.http_endpoint"
-        label="HTTP endpoint"
-        validate={[
-          required(),
-          regex(/^https?:\/\/[^\s]+$/i, "Must be a valid http(s) URL"),
-        ]}
-      />
-      <TextInput
-        source="sink.http_authorization"
-        label="Authorization header"
-        helperText='Sent verbatim as the Authorization header (e.g. "Basic …" or "Bearer …")'
-      />
-      <TextInput source="sink.http_content_type" label="Content-Type" />
-      <SelectInput
-        source="sink.http_content_format"
-        label="Content format"
-        choices={contentFormatChoices}
-      />
+      <SinkFields mode="edit" />
     </>
   );
 }
