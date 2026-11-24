@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { transformBranding } from "./transform";
 
+type Themes = {
+  colors: Record<string, string>;
+  widget?: Record<string, string>;
+  colors_dark?: unknown;
+};
+const themesOf = (o: Record<string, unknown>) => o.themes as Themes;
+
 const fullLight = {
   base_focus_color: "#111111",
   base_hover_color: "#222222",
@@ -60,9 +67,9 @@ describe("transformBranding clearing", () => {
         },
       },
     );
-    const themes = out.themes as any;
+    const themes = themesOf(out);
     expect(themes.colors_dark).toEqual({ links_focused_components: "" });
-    expect(themes.widget.logo_url_dark).toBe("");
+    expect(themes.widget?.logo_url_dark).toBe("");
   });
 
   it("clears a whole sub-object that vanished from the form", () => {
@@ -124,7 +131,7 @@ describe("transformBranding light palette", () => {
         },
       },
     });
-    const colors = (out.themes as any).colors;
+    const colors = themesOf(out).colors;
     expect(colors.base_focus_color).toBe("#112233");
     expect(colors.header).toBe("#101010");
     expect(colors.primary_button_label).toBe("#FFFFFF");
@@ -136,6 +143,6 @@ describe("transformBranding light palette", () => {
       { themes: { colors: { ...fullLight, icons: null } } },
       { previousData: { themes: { colors: fullLight } } },
     );
-    expect((out.themes as any).colors.icons).toBe("#666666");
+    expect(themesOf(out).colors.icons).toBe("#666666");
   });
 });

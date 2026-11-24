@@ -3,15 +3,24 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FormProvider, useForm } from "react-hook-form";
 import { ColorInput } from "./color-input";
 
+type MockProps = {
+  source: string;
+  parse?: (v: string) => unknown;
+  validate?:
+    | ((v: string) => string | undefined)
+    | ((v: string) => string | undefined)[];
+};
+type ChangeLike = string | { target: { value: string } };
+
 vi.mock("ra-core", async () => {
   const { useController } = await import("react-hook-form");
   return {
     FieldTitle: ({ label }: { label: string }) => <>{label}</>,
-    useInput: (props: any) => {
+    useInput: (props: MockProps) => {
       const c = useController({
         name: props.source,
         rules: {
-          validate: (v: any) => {
+          validate: (v: string) => {
             const vs = Array.isArray(props.validate)
               ? props.validate
               : [props.validate];
@@ -23,8 +32,8 @@ vi.mock("ra-core", async () => {
           },
         },
       });
-      const onChange = (e: any) => {
-        const raw = e && e.target ? e.target.value : e;
+      const onChange = (e: ChangeLike) => {
+        const raw = typeof e === "string" ? e : e.target.value;
         c.field.onChange(props.parse ? props.parse(raw) : raw);
       };
       return {
@@ -36,9 +45,13 @@ vi.mock("ra-core", async () => {
   };
 });
 vi.mock("@/components/admin/form", () => ({
-  FormField: ({ children }: any) => <div>{children}</div>,
-  FormLabel: ({ children }: any) => <label>{children}</label>,
-  FormControl: ({ children }: any) => <>{children}</>,
+  FormField: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  FormLabel: ({ children }: { children: React.ReactNode }) => (
+    <label>{children}</label>
+  ),
+  FormControl: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   FormError: () => null,
 }));
 vi.mock("@/components/admin/input-helper-text", () => ({

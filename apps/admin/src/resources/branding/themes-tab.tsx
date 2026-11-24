@@ -156,8 +156,8 @@ function ContrastWarnings({ scheme }: { scheme: Scheme }) {
         </ul>
         {scheme === "dark" && (
           <p className="mt-1 text-xs text-muted-foreground">
-            Fields left on "same as light / derived" are checked against the
-            palette the generator would produce.
+            Fields left on &quot;same as light / derived&quot; are checked
+            against the palette the generator would produce.
           </p>
         )}
       </AlertDescription>
@@ -538,7 +538,7 @@ export function ThemesTab() {
           The theme is the source of truth for the login page. Its logo, page
           background, primary color and fonts win over the matching values on
           the Style tab, which are only used for fields the theme leaves empty.
-          Favicon and "powered by" logo are only set on the Style tab.
+          Favicon and &quot;powered by&quot; logo are only set on the Style tab.
         </AlertDescription>
       </Alert>
 
