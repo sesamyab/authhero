@@ -344,7 +344,11 @@ const postTemplatesUniversalLoginPreview = defineRoute({
     const clientName = tenant?.friendly_name || "Preview";
 
     const previewScreen = buildPreviewScreen(screen ?? "login");
-    const darkMode = resolveDarkMode(ctx, resolvedBranding);
+    // An explicit `branding.dark_mode` from the caller wins over the viewer's
+    // own `ah-dark-mode` cookie, so the admin preview shows the scheme it asks
+    // for rather than whatever this browser last chose on the login page.
+    const darkMode =
+      brandingOverride?.dark_mode ?? resolveDarkMode(ctx, resolvedBranding);
 
     return renderWidgetPageResponse(ctx, {
       screenId: previewScreen.name,

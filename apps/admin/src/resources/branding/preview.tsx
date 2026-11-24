@@ -1,22 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { useWatch } from "react-hook-form";
 import { useNotify } from "ra-core";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTenantId } from "@/TenantContext";
-import { openFullPreview } from "./previewClient";
+import {
+  PREVIEW_SCREENS,
+  fetchPreviewHtml,
+  getApiUrl,
+  openFullPreview,
+  pruneEmpty,
+  withApiBase,
+  type PreviewColorScheme,
+  type PreviewScreenId,
+} from "./previewClient";
 
-const WIDGET_VERSION = "0.41.6";
-const WIDGET_SRC = `https://unpkg.com/@authhero/widget@${WIDGET_VERSION}/dist/authhero-widget/authhero-widget.esm.js`;
+const WIDGET_SCRIPT_ATTR = "data-authhero-widget";
 
-if (
-  typeof window !== "undefined" &&
-  !document.querySelector(`script[data-authhero-widget]`)
-) {
+/**
+ * Load the widget from the auth server the admin is pointed at (the same
+ * `/u/widget` build the login pages use), so the preview cannot drift from the
+ * server. Added once per page.
+ */
+function ensureWidgetScript(): void {
+  if (typeof document === "undefined") return;
+  if (document.querySelector(`script[${WIDGET_SCRIPT_ATTR}]`)) return;
   const s = document.createElement("script");
   s.type = "module";
-  s.src = WIDGET_SRC;
-  s.dataset.authheroWidget = "true";
+  s.src = `${getApiUrl()}/u/widget/authhero-widget.esm.js`;
+  s.setAttribute(WIDGET_SCRIPT_ATTR, "true");
   document.head.appendChild(s);
 }
 
@@ -102,81 +114,81 @@ const sampleScreen: UiScreen = {
   ],
 };
 
-type PreviewScreen = "login" | "signup" | "password";
-
-export const screenConfigs: Record<PreviewScreen, UiScreen> = {
-  login: sampleScreen,
-  signup: {
-    ...sampleScreen,
-    title: "Create account",
-    description: "Sign up to get started",
-    components: [
-      ...sampleScreen.components.slice(0, 3),
-      {
-        id: "password",
-        type: "PASSWORD",
-        category: "FIELD",
-        visible: true,
-        label: "Password",
-        config: { placeholder: "Enter your password" },
-        required: true,
-        sensitive: true,
-        order: 3,
-      },
-      {
-        id: "submit",
-        type: "NEXT_BUTTON",
-        category: "BLOCK",
-        visible: true,
-        config: { text: "Sign up" },
-        order: 4,
-      },
-    ],
-    links: [
-      {
-        id: "login",
-        text: "Already have an account?",
-        linkText: "Sign in",
-        href: "#",
-      },
-    ],
-  },
-  password: {
-    action: "#",
-    method: "POST",
-    title: "Enter your password",
-    description: "Signing in as <strong>user@example.com</strong>",
-    components: [
-      {
-        id: "password",
-        type: "PASSWORD",
-        category: "FIELD",
-        visible: true,
-        label: "Password",
-        config: { placeholder: "Enter your password" },
-        required: true,
-        sensitive: true,
-        order: 0,
-      },
-      {
-        id: "submit",
-        type: "NEXT_BUTTON",
-        category: "BLOCK",
-        visible: true,
-        config: { text: "Continue" },
-        order: 1,
-      },
-    ],
-    links: [
-      {
-        id: "forgot",
-        text: "Forgot your password?",
-        linkText: "Reset it",
-        href: "#",
-      },
-    ],
-  },
-};
+/** Client-side samples, used by the prompt partials editor. */
+export const screenConfigs: Record<"login" | "signup" | "password", UiScreen> =
+  {
+    login: sampleScreen,
+    signup: {
+      ...sampleScreen,
+      title: "Create account",
+      description: "Sign up to get started",
+      components: [
+        ...sampleScreen.components.slice(0, 3),
+        {
+          id: "password",
+          type: "PASSWORD",
+          category: "FIELD",
+          visible: true,
+          label: "Password",
+          config: { placeholder: "Enter your password" },
+          required: true,
+          sensitive: true,
+          order: 3,
+        },
+        {
+          id: "submit",
+          type: "NEXT_BUTTON",
+          category: "BLOCK",
+          visible: true,
+          config: { text: "Sign up" },
+          order: 4,
+        },
+      ],
+      links: [
+        {
+          id: "login",
+          text: "Already have an account?",
+          linkText: "Sign in",
+          href: "#",
+        },
+      ],
+    },
+    password: {
+      action: "#",
+      method: "POST",
+      title: "Enter your password",
+      description: "Signing in as <strong>user@example.com</strong>",
+      components: [
+        {
+          id: "password",
+          type: "PASSWORD",
+          category: "FIELD",
+          visible: true,
+          label: "Password",
+          config: { placeholder: "Enter your password" },
+          required: true,
+          sensitive: true,
+          order: 0,
+        },
+        {
+          id: "submit",
+          type: "NEXT_BUTTON",
+          category: "BLOCK",
+          visible: true,
+          config: { text: "Continue" },
+          order: 1,
+        },
+      ],
+      links: [
+        {
+          id: "forgot",
+          text: "Forgot your password?",
+          linkText: "Reset it",
+          href: "#",
+        },
+      ],
+    },
+  };
 
 interface PageBackgroundObject {
   type?: string;
@@ -218,8 +230,40 @@ function isPageBackgroundObject(v: unknown): v is PageBackgroundObject {
   return typeof v === "object" && v !== null;
 }
 
-export function BrandingPreview() {
-  const [previewScreen, setPreviewScreen] = useState<PreviewScreen>("login");
+const SCREEN_LABELS: Record<PreviewScreenId, string> = {
+  login: "Login",
+  password: "Password",
+  signup: "Signup",
+  otp: "OTP",
+  mfa: "MFA",
+  consent: "Consent",
+  error: "Error",
+};
+
+const PREVIEW_DEBOUNCE_MS = 400;
+
+interface BrandingPreviewProps {
+  /**
+   * Controlled colour scheme. Pass this together with `onColorSchemeChange`
+   * to drive the preview from elsewhere, e.g. the light/dark editing switch of
+   * the theme form. Omit both to let the preview manage its own toggle.
+   */
+  colorScheme?: PreviewColorScheme;
+  onColorSchemeChange?: (scheme: PreviewColorScheme) => void;
+}
+
+export function BrandingPreview({
+  colorScheme: controlledScheme,
+  onColorSchemeChange,
+}: BrandingPreviewProps = {}) {
+  const [previewScreen, setPreviewScreen] = useState<PreviewScreenId>("login");
+  const [internalScheme, setInternalScheme] =
+    useState<PreviewColorScheme>("light");
+  const colorScheme = controlledScheme ?? internalScheme;
+  const setColorScheme = (scheme: PreviewColorScheme) => {
+    if (controlledScheme === undefined) setInternalScheme(scheme);
+    onColorSchemeChange?.(scheme);
+  };
   const tenantId = useTenantId() ?? "";
   const notify = useNotify();
 
@@ -231,28 +275,8 @@ export function BrandingPreview() {
   const font = useWatch({ name: "font" }) as { url?: string } | undefined;
   const themes = useWatch({ name: "themes" }) as WidgetTheme | undefined;
 
-  const branding: WidgetBranding = {
-    colors: {
-      primary: colors?.primary,
-      page_background:
-        typeof colors?.page_background === "string"
-          ? { type: "solid", start: colors.page_background }
-          : colors?.page_background,
-    },
-    logo_url: logoUrl,
-    favicon_url: faviconUrl,
-    font: font,
-  };
-
-  const theme: WidgetTheme | undefined = themes
-    ? {
-        borders: themes.borders,
-        colors: themes.colors,
-        fonts: themes.fonts,
-        page_background: themes.page_background,
-        widget: themes.widget,
-      }
-    : undefined;
+  const branding = buildPreviewBranding({ colors, logoUrl, faviconUrl, font });
+  const theme = buildPreviewTheme(themes);
 
   const handleOpenFull = async () => {
     if (!tenantId) return;
@@ -262,6 +286,7 @@ export function BrandingPreview() {
         screen: previewScreen,
         branding,
         theme,
+        colorScheme,
       });
     } catch {
       notify("Failed to open preview", { type: "error" });
@@ -270,7 +295,7 @@ export function BrandingPreview() {
 
   return (
     <div className="flex h-full flex-col gap-2 rounded-lg bg-muted/40 p-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <Button
           type="button"
           size="sm"
@@ -282,28 +307,179 @@ export function BrandingPreview() {
           Preview
           <ExternalLink className="size-3" />
         </Button>
-        <div className="flex gap-1">
-          {(["login", "password", "signup"] as PreviewScreen[]).map((s) => (
+        <div
+          className="flex gap-1"
+          role="group"
+          aria-label="Preview colour scheme"
+        >
+          {(["light", "dark"] as PreviewColorScheme[]).map((scheme) => (
             <Button
-              key={s}
+              key={scheme}
               type="button"
               size="sm"
-              variant={previewScreen === s ? "default" : "outline"}
-              onClick={() => setPreviewScreen(s)}
-              className="h-7 px-2 text-xs capitalize"
+              variant={colorScheme === scheme ? "default" : "outline"}
+              aria-pressed={colorScheme === scheme}
+              onClick={() => setColorScheme(scheme)}
+              className="h-7 gap-1 px-2 text-xs capitalize"
             >
-              {s}
+              {scheme === "light" ? (
+                <Sun className="size-3" />
+              ) : (
+                <Moon className="size-3" />
+              )}
+              {scheme}
             </Button>
           ))}
         </div>
       </div>
+      <div className="flex flex-wrap gap-1">
+        {PREVIEW_SCREENS.map((s) => (
+          <Button
+            key={s}
+            type="button"
+            size="sm"
+            variant={previewScreen === s ? "default" : "outline"}
+            onClick={() => setPreviewScreen(s)}
+            className="h-7 px-2 text-xs"
+          >
+            {SCREEN_LABELS[s]}
+          </Button>
+        ))}
+      </div>
 
-      <WidgetPreview
-        screen={screenConfigs[previewScreen]}
+      <ServerPreviewFrame
+        tenantId={tenantId}
+        screen={previewScreen}
+        colorScheme={colorScheme}
         branding={branding}
         theme={theme}
         className="flex-1"
       />
+    </div>
+  );
+}
+
+/** Assemble the branding overrides sent to the preview endpoint. */
+export function buildPreviewBranding(input: {
+  colors?: {
+    primary?: string;
+    page_background?: PageBackgroundObject | string;
+  };
+  logoUrl?: string;
+  faviconUrl?: string;
+  font?: { url?: string };
+}): WidgetBranding {
+  const { colors, logoUrl, faviconUrl, font } = input;
+  return {
+    colors: {
+      primary: colors?.primary,
+      page_background:
+        typeof colors?.page_background === "string"
+          ? { type: "solid", start: colors.page_background }
+          : colors?.page_background,
+    },
+    logo_url: logoUrl,
+    favicon_url: faviconUrl,
+    font,
+  };
+}
+
+/** Assemble the theme overrides sent to the preview endpoint. */
+export function buildPreviewTheme(
+  themes: WidgetTheme | undefined,
+): WidgetTheme | undefined {
+  if (!themes) return undefined;
+  // Pass the whole theme through, so the dark fields (`colors_dark`,
+  // `*_dark`) and anything added later reach the server renderer unchanged.
+  return themes;
+}
+
+/**
+ * Renders the real Universal Login page through the server's preview endpoint
+ * in a sandboxed iframe. Template, dark scheme, background image and widget
+ * build all come from the server, exactly as on the live login page. Requests
+ * are debounced, and a stale response never replaces a newer one.
+ */
+function ServerPreviewFrame({
+  tenantId,
+  screen,
+  colorScheme,
+  branding,
+  theme,
+  className = "",
+}: {
+  tenantId: string;
+  screen: PreviewScreenId;
+  colorScheme: PreviewColorScheme;
+  branding: WidgetBranding;
+  theme?: WidgetTheme;
+  className?: string;
+}) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  // Serialise so the effect only re-runs when the content actually changes
+  // (the form hands us fresh objects on every render).
+  const payload = JSON.stringify({
+    branding: pruneEmpty(branding),
+    theme: pruneEmpty(theme),
+  });
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const parsed = JSON.parse(payload) as {
+          branding?: unknown;
+          theme?: unknown;
+        };
+        const rendered = await fetchPreviewHtml({
+          tenantId,
+          screen,
+          colorScheme,
+          branding: parsed.branding,
+          theme: parsed.theme,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setHtml(withApiBase(rendered, getApiUrl()));
+        setError(false);
+      } catch {
+        if (!controller.signal.aborted) setError(true);
+      }
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [tenantId, screen, colorScheme, payload]);
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-md bg-background ${className}`}
+    >
+      {html !== null && (
+        <iframe
+          title="Universal Login preview"
+          // No allow-same-origin: tenant template code runs in an opaque
+          // origin and cannot reach the admin's storage or APIs. Forms and
+          // popups stay blocked, the preview is for looking only.
+          sandbox="allow-scripts"
+          srcDoc={html}
+          className="size-full border-0"
+        />
+      )}
+      {error && (
+        <div className="absolute inset-x-0 top-0 bg-destructive/10 p-2 text-center text-xs text-destructive">
+          Could not render the preview. Showing the last version.
+        </div>
+      )}
+      {html === null && !error && (
+        <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
+          Loading preview…
+        </div>
+      )}
     </div>
   );
 }
@@ -347,39 +523,28 @@ export function WidgetPreview({
     return { background: "#f5f5f5" };
   };
 
+  // Create the element and hand it its data as properties. Nothing is ever
+  // serialised into HTML, so no value can break out of an attribute.
   useEffect(() => {
-    if (!containerRef.current) return;
-    const widget = containerRef.current.querySelector(
-      "authhero-widget",
-    ) as WidgetElement | null;
-    if (widget) {
-      widget.screen = screen;
-      widget.branding = branding;
-      if (theme) widget.theme = theme;
-    }
+    const container = containerRef.current;
+    if (!container) return;
+    ensureWidgetScript();
+    const widget = document.createElement("authhero-widget") as WidgetElement;
+    widget.screen = screen;
+    widget.branding = branding;
+    if (theme) widget.theme = theme;
+    container.replaceChildren(widget);
+    return () => {
+      widget.remove();
+    };
   }, [branding, theme, screen]);
-
-  const screenJson = JSON.stringify(screen).replace(/'/g, "&apos;");
-  const brandingJson = JSON.stringify(branding).replace(/'/g, "&apos;");
-  const themeJson = theme
-    ? JSON.stringify(theme).replace(/'/g, "&apos;")
-    : null;
 
   return (
     <div
       className={`flex items-center justify-center overflow-hidden rounded-md ${className}`}
       style={getBackgroundStyle()}
     >
-      <div
-        ref={containerRef}
-        dangerouslySetInnerHTML={{
-          __html: `<authhero-widget
-              screen='${screenJson}'
-              branding='${brandingJson}'
-              ${themeJson ? `theme='${themeJson}'` : ""}
-            ></authhero-widget>`,
-        }}
-      />
+      <div ref={containerRef} />
     </div>
   );
 }

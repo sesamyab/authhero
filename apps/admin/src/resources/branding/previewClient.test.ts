@@ -602,3 +602,50 @@ describe("previewClient", () => {
     });
   });
 });
+
+import { pruneEmpty, withApiBase, fetchPreviewHtml } from "./previewClient";
+
+describe("preview helpers", () => {
+  it("pruneEmpty drops null, undefined and empty strings recursively", () => {
+    expect(
+      pruneEmpty({
+        a: "",
+        b: { c: null, d: "x", e: {} },
+        f: undefined,
+        g: [1],
+        h: 0,
+        i: false,
+      }),
+    ).toEqual({ b: { d: "x" }, g: [1], h: 0, i: false });
+    expect(pruneEmpty({ a: "" })).toBeUndefined();
+  });
+
+  it("withApiBase inserts a base tag after <head>, or prepends without one", () => {
+    expect(
+      withApiBase("<html><head><title>x</title></head></html>", "https://a.b"),
+    ).toBe(
+      '<html><head><base href="https://a.b/"><title>x</title></head></html>',
+    );
+    expect(withApiBase("<div></div>", "https://a.b")).toBe(
+      '<base href="https://a.b/"><div></div>',
+    );
+  });
+
+  it("fetchPreviewHtml sends the colour scheme as branding.dark_mode", async () => {
+    const client = vi.fn().mockResolvedValue({ body: "<html></html>" });
+    (isSingleTenantForDomain as Mock).mockReturnValue(true);
+    mockAuthorizedHttpClient.mockImplementation(client);
+    (getConfigValue as Mock).mockReturnValue("https://api.example.com");
+
+    await fetchPreviewHtml({
+      tenantId: "t1",
+      screen: "otp",
+      branding: { logo_url: "x" },
+      colorScheme: "dark",
+    });
+
+    const sent = JSON.parse(client.mock.calls[0][1].body);
+    expect(sent.screen).toBe("otp");
+    expect(sent.branding).toEqual({ logo_url: "x", dark_mode: "dark" });
+  });
+});
