@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useWatch } from "react-hook-form";
+import { Eye, EyeOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Edit, SelectInput, SimpleForm, TextInput } from "@/components/admin";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
@@ -50,7 +52,7 @@ function PageBackgroundFields() {
 
 function StyleTab() {
   return (
-    <div className="flex max-w-2xl flex-col gap-4">
+    <div className="flex max-w-3xl flex-col gap-4">
       <ColorInput source="colors.primary" label="Primary color" />
       <PageBackgroundFields />
       <div className="flex flex-col gap-4 rounded-md border p-3">
@@ -108,6 +110,9 @@ function StyleTab() {
 function BrandingFormContent() {
   // One scheme for both: the theme form edits it, the preview shows it.
   const [scheme, setScheme] = useState<"light" | "dark">("light");
+  // Below `lg` there is no room for the side column, so the preview is
+  // stacked under the tabs behind a toggle instead.
+  const [showStackedPreview, setShowStackedPreview] = useState(false);
   return (
     <div className="flex w-full gap-6">
       <div className="min-w-0 flex-1">
@@ -131,6 +136,30 @@ function BrandingFormContent() {
             <RawJsonTab />
           </TabsContent>
         </UrlTabs>
+        <div className="mt-6 flex flex-col gap-3 lg:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            className="self-start"
+            aria-expanded={showStackedPreview}
+            onClick={() => setShowStackedPreview((v) => !v)}
+          >
+            {showStackedPreview ? (
+              <EyeOff className="size-4" />
+            ) : (
+              <Eye className="size-4" />
+            )}
+            {showStackedPreview ? "Hide preview" : "Show preview"}
+          </Button>
+          {showStackedPreview && (
+            <div className="h-[560px] w-full max-w-[420px]">
+              <BrandingPreview
+                colorScheme={scheme}
+                onColorSchemeChange={setScheme}
+              />
+            </div>
+          )}
+        </div>
       </div>
       <aside className="hidden w-[380px] shrink-0 lg:block">
         <div className="sticky top-4 h-[calc(100vh-6rem)]">
