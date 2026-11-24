@@ -112,3 +112,50 @@ describe("LogsDestination.transform - login details", () => {
     expect(log.details?.request).not.toHaveProperty("redirect_uri");
   });
 });
+
+describe("LogsDestination.deliver - idempotent replays", () => {
+  function destinationRejecting(error: unknown) {
+    const create = vi.fn().mockRejectedValue(error);
+    const logs = { create } as unknown as LogsDataAdapter;
+    return new LogsDestination(logs);
+  }
+
+  async function deliverOnce(dest: LogsDestination) {
+    await dest.deliver([dest.transform(makeEvent())]);
+  }
+
+  it("treats a Postgres unique violation (SQLSTATE 23505) as already delivered", async () => {
+    const error = Object.assign(
+      new Error('duplicate key value violates unique constraint "logs_pkey"'),
+      { code: "23505" },
+    );
+    await expect(
+      deliverOnce(destinationRejecting(error)),
+    ).resolves.toBeUndefined();
+  });
+
+  it("treats a drizzle-wrapped SQLite unique violation as already delivered", async () => {
+    const error = new Error("Failed query: insert into logs ...", {
+      cause: new Error("UNIQUE constraint failed: logs.log_id"),
+    });
+    await expect(
+      deliverOnce(destinationRejecting(error)),
+    ).resolves.toBeUndefined();
+  });
+
+  it("treats a MySQL duplicate entry as already delivered", async () => {
+    await expect(
+      deliverOnce(
+        destinationRejecting(
+          new Error("Duplicate entry 'evt-1' for key 'PRIMARY'"),
+        ),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rethrows unrelated errors so the relay retries", async () => {
+    await expect(
+      deliverOnce(destinationRejecting(new Error("connection reset"))),
+    ).rejects.toThrow("connection reset");
+  });
+});

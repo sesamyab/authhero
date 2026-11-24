@@ -89,6 +89,27 @@ export interface CreateDefaultDestinationsConfig {
 }
 
 /**
+ * The archive destinations configured on `init({ outbox })`, in delivery
+ * order. Shared by the per-request route middleware and
+ * `createDefaultDestinations` so both paths archive to the same places.
+ *
+ * Append these after every other destination: the relay stops an event's
+ * destination loop on the first failure, so an archive outage must not be
+ * able to block real delivery. Nothing depends on the archives, so they are
+ * the destinations that can afford to be blocked — the cost is that an event
+ * which permanently fails an earlier destination never reaches them.
+ */
+export function createArchiveDestinations(
+  outbox: { pipeline?: OutboxPipelineConfig } | undefined,
+): EventDestination[] {
+  const destinations: EventDestination[] = [];
+  if (outbox?.pipeline) {
+    destinations.push(new PipelineDestination(outbox.pipeline));
+  }
+  return destinations;
+}
+
+/**
  * Build the same array of outbox destinations that authhero's per-request
  * `outboxMiddleware` constructs internally. Intended for consumers that want
  * to run `drainOutbox` from a cron / scheduled handler as a safety net for
@@ -196,14 +217,8 @@ export function createDefaultDestinations(
     destinations.push(new RegistrationFinalizerDestination(dataAdapter.users));
   }
 
-  // Archive last. The relay stops an event's destination loop on the first
-  // failure, so anything ahead of a Pipelines outage would stop being
-  // delivered. Nothing depends on the archive, so it is the destination that
-  // can afford to be blocked — the cost is that an event which permanently
-  // fails an earlier destination never reaches the archive.
-  if (pipeline) {
-    destinations.push(new PipelineDestination(pipeline));
-  }
+  // Archive last — see `createArchiveDestinations` for why.
+  destinations.push(...createArchiveDestinations({ pipeline }));
 
   return destinations;
 }

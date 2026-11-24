@@ -393,6 +393,42 @@ describe("management-api audit entity state", () => {
     });
   });
 
+  it("redacts the firehose secret from the entity state and request body", async () => {
+    const { managementApp, env } = await getTestServer({ outbox: true });
+    const managementClient = testClient(managementApp, env);
+    const token = await getAdminToken();
+
+    const events = captureAuditEvents(env.data.outbox!);
+
+    const response = await managementClient["log-streams"].$post(
+      {
+        header: { "tenant-id": "tenantId" },
+        json: {
+          name: "firehose",
+          type: "firehose",
+          status: "active",
+          sink: {
+            aws_region: "eu-north-1",
+            delivery_stream_name: "authhero-logs",
+            aws_access_key_id: "AKIDEXAMPLE",
+            aws_secret_access_key: "super-secret-aws-key",
+          },
+        },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(response.status).toBe(201);
+
+    const event = events.find((e) => e.target.type === "log_stream");
+    expect(event?.target.after).toMatchObject({
+      sink: {
+        aws_secret_access_key: "[REDACTED]",
+        delivery_stream_name: "authhero-logs",
+      },
+    });
+    expect(JSON.stringify(event)).not.toContain("super-secret-aws-key");
+  });
+
   it("records only an after state when an email template is created", async () => {
     const { managementApp, env } = await getTestServer({ outbox: true });
     const managementClient = testClient(managementApp, env);

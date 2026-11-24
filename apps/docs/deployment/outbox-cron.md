@@ -54,6 +54,7 @@ export default {
 | `maxRetries`       | no       | Max delivery attempts before an event is dead-lettered. Forwarded to `drainOutbox`.                                                                                                                                                                  |
 | `webhookTimeoutMs` | no       | HTTP timeout when the default invoker is used. Default `10000`.                                                                                                                                                                                      |
 | `metrics`          | no       | Sink for relay metrics. Same shape as `init({ outbox: { metrics } })` — see [Metrics](#metrics).                                                                                                                                                     |
+| `pipeline` | no | Same value as `init({ outbox: { pipeline } })`. Pass it so events retried here still reach the Pipelines archive — otherwise an event whose inline archive delivery failed is marked processed without being archived. |
 
 ### Metrics
 

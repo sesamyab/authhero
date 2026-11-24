@@ -3,6 +3,7 @@ import {
   LogInsert,
   LogType,
   LogsDataAdapter,
+  isUniqueViolation,
 } from "@authhero/adapter-interfaces";
 import { EventDestination } from "../outbox-relay";
 import { logSubjectUserId, logSubjectUserName } from "../audit-target-types";
@@ -94,12 +95,12 @@ export class LogsDestination implements EventDestination {
         await this.logs.create(tenantId, log);
       } catch (error) {
         // Idempotent: if this event was already delivered (e.g., cron retry after
-        // per-request delivery succeeded but markProcessed failed), skip it.
-        const message = error instanceof Error ? error.message : String(error);
-        if (
-          message.includes("UNIQUE constraint failed") ||
-          message.includes("Duplicate entry")
-        ) {
+        // per-request delivery succeeded but markProcessed failed, or a later
+        // destination such as an archive failed), skip it. The shared helper
+        // covers every SQL driver, including Postgres (SQLSTATE 23505) and
+        // drizzle-wrapped errors — a missed match would wedge the event here
+        // and keep every later destination from running on retry.
+        if (isUniqueViolation(error)) {
           continue;
         }
         throw error;

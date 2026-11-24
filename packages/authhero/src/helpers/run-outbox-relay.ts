@@ -1,6 +1,7 @@
 import { CodeExecutor, DataAdapters } from "@authhero/adapter-interfaces";
 import type {
   ActionExecutionLogCapture,
+  OutboxPipelineConfig,
   WebhookInvoker,
 } from "../types/AuthHeroConfig";
 import type { OutboxMetricsSink } from "../types/OutboxMetrics";
@@ -62,6 +63,13 @@ export interface RunOutboxRelayConfig {
    * the events this cron drain handles, tagged `source: "cron"`.
    */
   metrics?: OutboxMetricsSink;
+
+  /**
+   * Same value as `init({ outbox: { pipeline } })`. Pass it so events retried
+   * by this drain still reach the archive — otherwise an event whose inline
+   * archive delivery failed is marked processed here without being archived.
+   */
+  pipeline?: OutboxPipelineConfig;
 }
 
 /**
@@ -70,7 +78,8 @@ export interface RunOutboxRelayConfig {
  * Internally:
  * 1. Skips gracefully when `dataAdapter.outbox` is undefined.
  * 2. Builds the same destination array as the inline dispatcher
- *    (`LogsDestination`, `WebhookDestination`, `RegistrationFinalizerDestination`).
+ *    (`LogsDestination`, `WebhookDestination`, `RegistrationFinalizerDestination`,
+ *    plus the Pipelines archive when `pipeline` is passed).
  * 3. Mints per-tenant service tokens via the same in-process path
  *    (`createServiceTokenCore`) that the request-time webhookInvoker uses,
  *    driven by the supplied dataAdapter.
@@ -108,6 +117,7 @@ export async function runOutboxRelay(
     codeExecutor,
     actionExecutionLogs,
     metrics,
+    pipeline,
   } = config;
 
   if (!dataAdapter.outbox) {
@@ -127,6 +137,7 @@ export async function runOutboxRelay(
     webhookInvoker,
     codeExecutor,
     actionExecutionLogs,
+    pipeline,
   });
 
   let drainError: unknown;

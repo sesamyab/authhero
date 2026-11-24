@@ -1,10 +1,12 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
+  managementError,
   managementValidationHook,
   notFound,
 } from "../../errors/management-api-error";
 import { HTTPException } from "hono/http-exception";
 import {
+  LogStream,
   logStreamInsertSchema,
   logStreamSchema,
   LogTypes,
@@ -14,6 +16,66 @@ import { logMessage } from "../../helpers/logging";
 
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
+import { parseFirehoseSink } from "../../helpers/outbox-destinations/log-streams";
+
+/**
+ * Sink credentials that are accepted on create/update but never returned.
+ * `httpAuthorization` is the camelCase spelling Auth0 clients (e.g. the
+ * Terraform provider) send.
+ */
+const WRITE_ONLY_SINK_FIELDS = [
+  "aws_secret_access_key",
+  "http_authorization",
+  "httpAuthorization",
+];
+
+function toResponse(stream: LogStream): LogStream {
+  if (!WRITE_ONLY_SINK_FIELDS.some((field) => field in stream.sink)) {
+    return stream;
+  }
+  const sink = { ...stream.sink };
+  for (const field of WRITE_ONLY_SINK_FIELDS) {
+    delete sink[field];
+  }
+  return { ...stream, sink };
+}
+
+/**
+ * The write-only fields are never returned, so a client editing a sink sends
+ * it without them. Keep each stored value unless the update supplies a new
+ * one; an explicit `null` removes it (e.g. to drop an Authorization header).
+ */
+function mergeWriteOnlyFields(
+  next: Record<string, unknown>,
+  stored: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...next };
+  for (const field of WRITE_ONLY_SINK_FIELDS) {
+    const value = next[field];
+    if (value === null) {
+      delete merged[field];
+    } else if (
+      (value === undefined || value === "") &&
+      typeof stored[field] === "string"
+    ) {
+      merged[field] = stored[field];
+    }
+  }
+  return merged;
+}
+
+function assertValidSink(type: string, sink: Record<string, unknown>) {
+  if (type !== "firehose") return;
+  const parsed = parseFirehoseSink(sink);
+  if ("error" in parsed) {
+    throw managementError(
+      400,
+      `Invalid firehose sink: ${parsed.error}`,
+      "invalid_body",
+    );
+  }
+}
+
 function getAdapter(ctx: { env: Bindings }) {
   const adapter = ctx.env.data.logStreams;
   if (!adapter) {
@@ -45,7 +107,7 @@ const getRoot = defineRoute({
     const tenantId = requireTenantId(ctx);
     const adapter = getAdapter(ctx);
     const result = await adapter.list(tenantId);
-    return ctx.json(result);
+    return ctx.json(result.map(toResponse));
   },
 });
 
@@ -74,7 +136,7 @@ const getById = defineRoute({
     if (!stream) {
       throw notFound.logStream();
     }
-    return ctx.json(stream);
+    return ctx.json(toResponse(stream));
   },
 });
 
@@ -105,6 +167,7 @@ const postRoot = defineRoute({
     const tenantId = requireTenantId(ctx);
     const adapter = getAdapter(ctx);
     const body = ctx.req.valid("json");
+    assertValidSink(body.type, body.sink);
     const stream = await adapter.create(tenantId, body);
 
     await logMessage(ctx, tenantId, {
@@ -115,7 +178,7 @@ const postRoot = defineRoute({
       afterState: stream as Record<string, unknown>,
     });
 
-    return ctx.json(stream, { status: 201 });
+    return ctx.json(toResponse(stream), { status: 201 });
   },
 });
 
@@ -149,6 +212,15 @@ const patchById = defineRoute({
     const { id } = ctx.req.valid("param");
     const body = ctx.req.valid("json");
     const existing = await adapter.get(tenantId, id);
+    if (!existing) {
+      throw notFound.logStream();
+    }
+    // Carry stored credentials over only within the same type, so switching
+    // type can't leak an old type's credential into the new sink.
+    if (body.sink && (body.type ?? existing.type) === existing.type) {
+      body.sink = mergeWriteOnlyFields(body.sink, existing.sink);
+    }
+    assertValidSink(body.type ?? existing.type, body.sink ?? existing.sink);
     const ok = await adapter.update(tenantId, id, body);
     if (!ok) {
       throw notFound.logStream();
@@ -163,11 +235,11 @@ const patchById = defineRoute({
       description: "Update a Log Stream",
       targetType: "log_stream",
       targetId: id,
-      ...(existing ? { beforeState: { ...existing } } : {}),
+      beforeState: { ...existing },
       afterState: stream as Record<string, unknown>,
     });
 
-    return ctx.json(stream);
+    return ctx.json(toResponse(stream));
   },
 });
 

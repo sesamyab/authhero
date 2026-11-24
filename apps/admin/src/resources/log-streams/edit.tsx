@@ -1,13 +1,10 @@
 import { Edit, SimpleForm, TextInput, SelectInput } from "@/components/admin";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
-import { regex, required } from "ra-core";
+import { required } from "ra-core";
 import { RawJsonTab } from "@/common/RawJsonTab";
-import {
-  contentFormatChoices,
-  statusChoices,
-  typeChoices,
-} from "./logStreamConstants";
+import { statusChoices, typeChoices } from "./logStreamConstants";
+import { SinkFields } from "./sink-fields";
 
 function DetailsTab() {
   return (
@@ -25,32 +22,32 @@ function DetailsTab() {
         choices={statusChoices}
         validate={[required()]}
       />
-      <TextInput
-        source="sink.http_endpoint"
-        label="HTTP endpoint"
-        validate={[
-          required(),
-          regex(/^https?:\/\/[^\s]+$/i, "Must be a valid http(s) URL"),
-        ]}
-      />
-      <TextInput
-        source="sink.http_authorization"
-        label="Authorization header"
-        helperText='Sent verbatim as the Authorization header (e.g. "Basic …" or "Bearer …")'
-      />
-      <TextInput source="sink.http_content_type" label="Content-Type" />
-      <SelectInput
-        source="sink.http_content_format"
-        label="Content format"
-        choices={contentFormatChoices}
-      />
+      <SinkFields mode="edit" />
     </>
   );
 }
 
+type LogStreamEditValues = {
+  clear_http_authorization?: boolean;
+  sink?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+/**
+ * The Authorization header is write-only, so a blank field keeps the stored
+ * one; the API removes it only when the sink sends `null`.
+ */
+export function toLogStreamUpdate({
+  clear_http_authorization,
+  ...data
+}: LogStreamEditValues) {
+  if (!clear_http_authorization) return data;
+  return { ...data, sink: { ...data.sink, http_authorization: null } };
+}
+
 export function LogStreamEdit() {
   return (
-    <Edit mutationMode="pessimistic">
+    <Edit mutationMode="pessimistic" transform={toLogStreamUpdate}>
       <SimpleForm className="max-w-none">
         <UrlTabs defaultValue="details" className="w-full">
           <TabsList>
