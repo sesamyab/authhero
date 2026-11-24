@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { credentialString } from "../utils/credentials";
 import {
   AuthorizationResponseMode,
   AuthorizationResponseType,
@@ -11,8 +12,8 @@ export const connectionOptionsSchema = z.object({
   realms: z.string().optional(),
   authentication_method: z.string().optional(),
   client_id: z.string().optional(),
-  client_secret: z.string().optional(),
-  app_secret: z.string().optional(),
+  client_secret: credentialString().optional(),
+  app_secret: credentialString().optional(),
   scope: z.string().optional(),
   // Response-only masked previews of the secret fields above. The management
   // API strips the secrets themselves and returns a hint (e.g. "3a9f••••••••")
@@ -35,8 +36,8 @@ export const connectionOptionsSchema = z.object({
     .optional(),
   provider: z.string().optional(),
   from: z.string().optional(),
-  twilio_sid: z.string().optional(),
-  twilio_token: z.string().optional(),
+  twilio_sid: credentialString().optional(),
+  twilio_token: credentialString().optional(),
   icon_url: z.string().optional(),
   // Email domains that route to this connection via Home Realm Discovery
   domain_aliases: z.array(z.string()).optional(),
@@ -88,7 +89,7 @@ export const connectionOptionsSchema = z.object({
       token_endpoint: z.string().optional(),
       userinfo_endpoint: z.string().optional(),
       client_id: z.string().optional(),
-      client_secret: z.string().optional(),
+      client_secret: credentialString().optional(),
       // Response-only masked preview of `client_secret`, see above.
       client_secret_hint: z.string().optional(),
       // Optional override for the `realm` sent in the password-realm grant.

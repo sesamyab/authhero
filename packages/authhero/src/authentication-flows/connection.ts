@@ -1,9 +1,11 @@
 import { Context } from "hono";
 import {
   AuthParams,
+  Connection,
   LoginSession,
   LogTypes,
   StrategyType,
+  trimCredentialFields,
 } from "@authhero/adapter-interfaces";
 import { EnrichedClient } from "../helpers/client";
 import { JSONHTTPException } from "../errors/json-http-exception";
@@ -33,6 +35,23 @@ import { writeTryConnectionResult } from "./try-connection";
 import { nanoid } from "nanoid";
 import type { SessionCookieDiagnostics } from "../utils/cookies";
 import { createLoginSessionWithData } from "../state-machines/login-session-data";
+
+/**
+ * The management API trims connection secrets on write, but a secret saved
+ * before it did may still carry a pasted newline or space, which the
+ * upstream token endpoint rejects as invalid_client. Trim before the
+ * strategy exchanges the code.
+ */
+function withTrimmedSecrets(connection: Connection): Connection {
+  if (!connection.options) return connection;
+  return {
+    ...connection,
+    options: trimCredentialFields(connection.options, [
+      "client_secret",
+      "app_secret",
+    ]),
+  };
+}
 
 export async function connectionAuth(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
@@ -195,7 +214,10 @@ export async function connectionCallback(
   const isTryMode = isTryConnectionClientId(client.client_id);
   const connectionId: string = auth0state.connection_id;
 
-  const connection = client.connections.find((p) => p.id === connectionId);
+  const storedConnection = client.connections.find(
+    (p) => p.id === connectionId,
+  );
+  const connection = storedConnection && withTrimmedSecrets(storedConnection);
 
   if (!connection) {
     await logMessage(ctx, client.tenant.id, {

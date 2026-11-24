@@ -10,6 +10,7 @@ import {
   logStreamInsertSchema,
   logStreamSchema,
   LogTypes,
+  trimCredentialFields,
 } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { logMessage } from "../../helpers/logging";
@@ -28,6 +29,16 @@ const WRITE_ONLY_SINK_FIELDS = [
   "http_authorization",
   "httpAuthorization",
 ];
+
+/**
+ * Sink credentials that get leading/trailing whitespace trimmed on write: a
+ * pasted key often carries a trailing newline, which breaks request signing
+ * or the Authorization header.
+ */
+const TRIMMED_SINK_FIELDS = [
+  ...WRITE_ONLY_SINK_FIELDS,
+  "aws_access_key_id",
+] as const;
 
 function toResponse(stream: LogStream): LogStream {
   if (!WRITE_ONLY_SINK_FIELDS.some((field) => field in stream.sink)) {
@@ -166,7 +177,11 @@ const postRoot = defineRoute({
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
     const adapter = getAdapter(ctx);
-    const body = ctx.req.valid("json");
+    const input = ctx.req.valid("json");
+    const body = {
+      ...input,
+      sink: trimCredentialFields(input.sink, TRIMMED_SINK_FIELDS),
+    };
     assertValidSink(body.type, body.sink);
     const stream = await adapter.create(tenantId, body);
 
@@ -214,6 +229,9 @@ const patchById = defineRoute({
     const existing = await adapter.get(tenantId, id);
     if (!existing) {
       throw notFound.logStream();
+    }
+    if (body.sink) {
+      body.sink = trimCredentialFields(body.sink, TRIMMED_SINK_FIELDS);
     }
     // Carry stored credentials over only within the same type, so switching
     // type can't leak an old type's credential into the new sink.

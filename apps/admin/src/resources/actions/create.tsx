@@ -10,6 +10,7 @@ import {
   TextInput,
 } from "@/components/admin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SecretInput } from "@/common/SecretInput";
 import { getDefaultCodeTemplate } from "../hooks/hookConstants";
 import { ACTION_TRIGGER_CHOICES } from "./formMapping";
 import { ActionAssistant } from "./action-assistant";
@@ -103,7 +104,7 @@ export function ActionCreate() {
               <ArrayInput source="secrets" label={false}>
                 <SimpleFormIterator inline>
                   <TextInput source="name" label="Name" />
-                  <TextInput source="value" label="Value" type="password" />
+                  <SecretInput source="value" label="Value" />
                 </SimpleFormIterator>
               </ArrayInput>
             </CardContent>

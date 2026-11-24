@@ -1,6 +1,7 @@
 import { useWatch } from "react-hook-form";
 import { regex, required } from "ra-core";
 import { BooleanInput, SelectInput, TextInput } from "@/components/admin";
+import { SecretInput } from "@/common/SecretInput";
 import { contentFormatChoices } from "./logStreamConstants";
 
 function HttpSinkFields({ mode }: { mode: "create" | "edit" }) {
@@ -14,10 +15,9 @@ function HttpSinkFields({ mode }: { mode: "create" | "edit" }) {
           regex(/^https?:\/\/[^\s]+$/i, "Must be a valid http(s) URL"),
         ]}
       />
-      <TextInput
+      <SecretInput
         source="sink.http_authorization"
         label="Authorization header"
-        type="password"
         autoComplete="new-password"
         helperText={
           mode === "edit"
@@ -69,10 +69,9 @@ function FirehoseSinkFields({ mode }: { mode: "create" | "edit" }) {
         helperText="Of an IAM user allowed only firehose:PutRecordBatch on this stream"
         validate={[required()]}
       />
-      <TextInput
+      <SecretInput
         source="sink.aws_secret_access_key"
         label="AWS secret access key"
-        type="password"
         autoComplete="new-password"
         helperText={
           mode === "edit"
