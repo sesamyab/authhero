@@ -293,6 +293,7 @@ A `firehose` stream sends each event to an [Amazon Data Firehose](https://docs.a
 ## Notes
 
 - **Secrets.** `http_authorization` and `http_custom_headers` are stored in the stream's `sink` in your database. Use a scoped or rotatable key, or keep the real credential in the relay and give AuthHero only a relay token.
+- **`http_authorization` is write-only.** Like the Firehose secret, the management API stores it but never returns it, and redacts it from the audit log. When updating a sink, leave it out (or send an empty string) to keep the stored header, send a new value to replace it, or send `null` to remove it. In the admin UI, a blank field keeps the header and **Remove the stored Authorization header** clears it. `http_custom_headers` is still returned as stored, so don't put credentials there if API readers shouldn't see them.
 - **Volume.** One request per event per stream means busy tenants make many small requests. Datadog and HEC both handle that, but a relay on Workers is billed per request.
 - **Native sinks.** Native Datadog and Splunk sinks are not implemented. This recipe is the supported path today.
 

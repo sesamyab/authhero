@@ -18,13 +18,50 @@ import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
 import { parseFirehoseSink } from "../../helpers/outbox-destinations/log-streams";
 
-// Write-only: accepted on create/update, never returned.
-const FIREHOSE_SECRET_FIELD = "aws_secret_access_key";
+/**
+ * Sink credentials that are accepted on create/update but never returned.
+ * `httpAuthorization` is the camelCase spelling Auth0 clients (e.g. the
+ * Terraform provider) send.
+ */
+const WRITE_ONLY_SINK_FIELDS = [
+  "aws_secret_access_key",
+  "http_authorization",
+  "httpAuthorization",
+];
 
 function toResponse(stream: LogStream): LogStream {
-  if (!(FIREHOSE_SECRET_FIELD in stream.sink)) return stream;
-  const { [FIREHOSE_SECRET_FIELD]: _secret, ...sink } = stream.sink;
+  if (!WRITE_ONLY_SINK_FIELDS.some((field) => field in stream.sink)) {
+    return stream;
+  }
+  const sink = { ...stream.sink };
+  for (const field of WRITE_ONLY_SINK_FIELDS) {
+    delete sink[field];
+  }
   return { ...stream, sink };
+}
+
+/**
+ * The write-only fields are never returned, so a client editing a sink sends
+ * it without them. Keep each stored value unless the update supplies a new
+ * one; an explicit `null` removes it (e.g. to drop an Authorization header).
+ */
+function mergeWriteOnlyFields(
+  next: Record<string, unknown>,
+  stored: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...next };
+  for (const field of WRITE_ONLY_SINK_FIELDS) {
+    const value = next[field];
+    if (value === null) {
+      delete merged[field];
+    } else if (
+      (value === undefined || value === "") &&
+      typeof stored[field] === "string"
+    ) {
+      merged[field] = stored[field];
+    }
+  }
+  return merged;
 }
 
 function assertValidSink(type: string, sink: Record<string, unknown>) {
@@ -178,15 +215,10 @@ const patchById = defineRoute({
     if (!existing) {
       throw notFound.logStream();
     }
-    // The secret is never returned, so a client editing the sink sends it
-    // without one: keep the stored secret unless a new one is supplied.
-    const existingSecret = existing.sink[FIREHOSE_SECRET_FIELD];
-    if (
-      body.sink &&
-      !body.sink[FIREHOSE_SECRET_FIELD] &&
-      typeof existingSecret === "string"
-    ) {
-      body.sink = { ...body.sink, [FIREHOSE_SECRET_FIELD]: existingSecret };
+    // Carry stored credentials over only within the same type, so switching
+    // type can't leak an old type's credential into the new sink.
+    if (body.sink && (body.type ?? existing.type) === existing.type) {
+      body.sink = mergeWriteOnlyFields(body.sink, existing.sink);
     }
     assertValidSink(body.type ?? existing.type, body.sink ?? existing.sink);
     const ok = await adapter.update(tenantId, id, body);
