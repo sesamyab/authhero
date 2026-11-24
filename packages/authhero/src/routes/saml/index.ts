@@ -16,6 +16,11 @@ import { serverTimingMiddleware } from "../../helpers/server-timing";
 import { samlpRoutes } from "./samlp";
 
 export default function create(config: AuthHeroConfig) {
+  // Built once here rather than per request: the archive destinations validate
+  // their config in the constructor, and `getDestinations` runs in the outbox
+  // middleware's `finally` after the handler has committed. A bad config must
+  // fail `init()`, not a request whose writes already succeeded.
+  const archiveDestinations = createArchiveDestinations(config.outbox);
   const app = new OpenAPIHono<{
     Bindings: Bindings;
     Variables: Variables;
@@ -34,7 +39,7 @@ export default function create(config: AuthHeroConfig) {
           ...(base.logStreams
             ? [new LogStreamDestination(base.logStreams)]
             : []),
-          ...createArchiveDestinations(config.outbox),
+          ...archiveDestinations,
         ];
       },
     }),

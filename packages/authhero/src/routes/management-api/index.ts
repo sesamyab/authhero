@@ -139,6 +139,11 @@ function setCorsHeaders(headers: Headers, allowedOrigin: string) {
 }
 
 export default function create(config: AuthHeroConfig) {
+  // Built once here rather than per request: the archive destinations validate
+  // their config in the constructor, and `getDestinations` runs in the outbox
+  // middleware's `finally` after the handler has committed. A bad config must
+  // fail `init()`, not a request whose writes already succeeded.
+  const archiveDestinations = createArchiveDestinations(config.outbox);
   const app = new OpenAPIHono<{
     Bindings: Bindings;
     Variables: Variables;
@@ -495,7 +500,7 @@ export default function create(config: AuthHeroConfig) {
           new RegistrationFinalizerDestination(base.users),
           // Archive last: the relay stops the destination loop on first failure,
           // so an archive outage must not be able to block real delivery.
-          ...createArchiveDestinations(config.outbox),
+          ...archiveDestinations,
         ];
       },
     }),
