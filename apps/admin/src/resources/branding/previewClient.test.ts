@@ -603,7 +603,12 @@ describe("previewClient", () => {
   });
 });
 
-import { pruneEmpty, withApiBase, fetchPreviewHtml } from "./previewClient";
+import {
+  pruneEmpty,
+  pruneBrandingOverride,
+  withApiBase,
+  fetchPreviewHtml,
+} from "./previewClient";
 
 describe("preview helpers", () => {
   it("pruneEmpty drops null, undefined and empty strings recursively", () => {
@@ -618,6 +623,21 @@ describe("preview helpers", () => {
       }),
     ).toEqual({ b: { d: "x" }, g: [1], h: 0, i: false });
     expect(pruneEmpty({ a: "" })).toBeUndefined();
+  });
+
+  it("pruneBrandingOverride keeps a cleared logo/favicon but prunes other empties", () => {
+    expect(
+      pruneBrandingOverride({
+        logo_url: "",
+        favicon_url: "",
+        font: { url: "" },
+        colors: { primary: "" },
+      }),
+    ).toEqual({ logo_url: "", favicon_url: "" });
+    expect(pruneBrandingOverride({ logo_url: "x", font: {} })).toEqual({
+      logo_url: "x",
+    });
+    expect(pruneBrandingOverride({ colors: {} })).toBeUndefined();
   });
 
   it("withApiBase inserts a base tag after <head>, or prepends without one", () => {

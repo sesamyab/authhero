@@ -543,9 +543,11 @@ function httpStatusError(
 type HttpResponse = Awaited<ReturnType<typeof fetchUtils.fetchJson>>;
 const pendingRequests = new Map<string, Promise<HttpResponse>>();
 
-// FormData serializes to `{}`, so uploads must never share a dedupe key.
+// FormData and AbortSignal both serialize to `{}`, so uploads and abortable
+// requests must never share a dedupe key. A caller that aborts would otherwise
+// hand its rejected promise to the next caller with the same URL and body.
 const optionsKey = (options: HttpOptions) =>
-  options.body instanceof FormData
+  options.body instanceof FormData || options.signal
     ? crypto.randomUUID()
     : JSON.stringify(options);
 export interface HttpOptions extends RequestInit {

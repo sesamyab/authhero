@@ -9,6 +9,7 @@ import {
   fetchPreviewHtml,
   getApiUrl,
   openFullPreview,
+  pruneBrandingOverride,
   pruneEmpty,
   withApiBase,
   type PreviewColorScheme,
@@ -421,7 +422,7 @@ function ServerPreviewFrame({
   // Serialise so the effect only re-runs when the content actually changes
   // (the form hands us fresh objects on every render).
   const payload = JSON.stringify({
-    branding: pruneEmpty(branding),
+    branding: pruneBrandingOverride(branding),
     theme: pruneEmpty(theme),
   });
 

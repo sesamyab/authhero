@@ -150,3 +150,31 @@ describe("authorizedHttpClient errors", () => {
     expect(res.json).toEqual({ ok: true });
   });
 });
+
+describe("authorizedHttpClient request dedupe", () => {
+  it("does not hand an aborted request's promise to a replacement with the same body", async () => {
+    useDomain({ connectionMethod: "token", token: "t" });
+    answerWith(200, '{"ok":true}');
+    const url = `https://${DOMAIN}/api/v2/branding/preview`;
+    const body = JSON.stringify({ screen: "login" });
+
+    const first = new AbortController();
+    const firstCall = authorizedHttpClient(url, {
+      method: "POST",
+      body,
+      signal: first.signal,
+    }).catch((error: unknown) => error);
+    first.abort();
+
+    const second = await authorizedHttpClient(url, {
+      method: "POST",
+      body,
+      signal: new AbortController().signal,
+    });
+    await firstCall;
+
+    expect(second.status).toBe(200);
+    // Two separate requests went out; the second did not reuse the first.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+  });
+});

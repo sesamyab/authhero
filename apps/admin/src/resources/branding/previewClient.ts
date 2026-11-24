@@ -98,6 +98,25 @@ export function pruneEmpty<T>(value: T): T | undefined {
 }
 
 /**
+ * Prune a branding override, but keep a cleared asset URL as an explicit empty
+ * string. Saving a cleared logo stores `""` and removes the logo, so the
+ * preview must send `""` too, or the server falls back to the stored logo and
+ * the preview disagrees with the saved result.
+ */
+const CLEARABLE_BRANDING_KEYS = ["logo_url", "favicon_url"] as const;
+
+export function pruneBrandingOverride<T extends object>(
+  branding: T | undefined,
+): T | undefined {
+  if (!branding) return undefined;
+  const out = (pruneEmpty(branding) ?? {}) as Record<string, unknown>;
+  for (const key of CLEARABLE_BRANDING_KEYS) {
+    if ((branding as Record<string, unknown>)[key] === "") out[key] = "";
+  }
+  return Object.keys(out).length ? (out as T) : undefined;
+}
+
+/**
  * Render the full Universal Login page through the server's preview endpoint
  * and return its HTML. This is the same renderer the real login uses, so the
  * template, dark scheme, background image and widget build all match.
