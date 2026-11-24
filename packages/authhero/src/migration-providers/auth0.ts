@@ -40,7 +40,8 @@ export function createAuth0Provider(
       const tokens = await upstreamRefreshTokenGrant({
         tokenEndpoint,
         clientId: source.credentials.client_id,
-        clientSecret: source.credentials.client_secret,
+        // Trimmed for secrets saved before the API trimmed on write.
+        clientSecret: source.credentials.client_secret.trim(),
         refreshToken,
         audience: source.credentials.audience,
         scope: source.credentials.scope,
