@@ -3,6 +3,13 @@ import { useWatch } from "react-hook-form";
 import { useNotify } from "ra-core";
 import { ExternalLink, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useTenantId } from "@/TenantContext";
 import {
   PREVIEW_SCREENS,
@@ -333,20 +340,25 @@ export function BrandingPreview({
           ))}
         </div>
       </div>
-      <div className="flex flex-wrap gap-1">
-        {PREVIEW_SCREENS.map((s) => (
-          <Button
-            key={s}
-            type="button"
-            size="sm"
-            variant={previewScreen === s ? "default" : "outline"}
-            onClick={() => setPreviewScreen(s)}
-            className="h-7 px-2 text-xs"
-          >
-            {SCREEN_LABELS[s]}
-          </Button>
-        ))}
-      </div>
+      <Select
+        value={previewScreen}
+        onValueChange={(v) => setPreviewScreen(v as PreviewScreenId)}
+      >
+        <SelectTrigger
+          size="sm"
+          className="w-full bg-background dark:bg-background"
+          aria-label="Preview screen"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {PREVIEW_SCREENS.map((s) => (
+            <SelectItem key={s} value={s}>
+              {SCREEN_LABELS[s]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <ServerPreviewFrame
         tenantId={tenantId}

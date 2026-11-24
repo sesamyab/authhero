@@ -14,6 +14,39 @@ vi.mock("./previewClient", async () => {
     openFullPreview: vi.fn(),
   };
 });
+// Radix Select needs pointer APIs jsdom lacks; a native select exercises the
+// same value/onValueChange contract.
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value: string;
+    onValueChange: (v: string) => void;
+    children: React.ReactNode;
+  }) => (
+    <select
+      aria-label="Preview screen"
+      value={value}
+      onChange={(e) => onValueChange(e.target.value)}
+    >
+      {children}
+    </select>
+  ),
+  SelectTrigger: () => null,
+  SelectValue: () => null,
+  SelectContent: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  SelectItem: ({
+    value,
+    children,
+  }: {
+    value: string;
+    children: React.ReactNode;
+  }) => <option value={value}>{children}</option>,
+}));
 vi.mock("ra-core", () => ({ useNotify: () => vi.fn() }));
 vi.mock("@/TenantContext", () => ({ useTenantId: () => "t1" }));
 
@@ -75,15 +108,17 @@ describe("BrandingPreview", () => {
         <BrandingPreview />
       </Form>,
     );
-    for (const [label, screen] of [
-      ["OTP", "otp"],
-      ["MFA", "mfa"],
-      ["Consent", "consent"],
-      ["Error", "error"],
-      ["Signup", "signup"],
-      ["Password", "password"],
+    for (const screen of [
+      "otp",
+      "mfa",
+      "consent",
+      "error",
+      "signup",
+      "password",
     ] as const) {
-      fireEvent.click(getByRole("button", { name: label }));
+      fireEvent.change(getByRole("combobox", { name: "Preview screen" }), {
+        target: { value: screen },
+      });
       await flush();
       expect(fetchPreviewHtml).toHaveBeenLastCalledWith(
         expect.objectContaining({ screen }),
