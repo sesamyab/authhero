@@ -59,6 +59,45 @@ function Harness() {
 }
 afterEach(cleanup);
 
+describe("ThemesTab scheme control", () => {
+  function Controlled({
+    scheme,
+    onSchemeChange,
+  }: {
+    scheme: "light" | "dark";
+    onSchemeChange: (s: "light" | "dark") => void;
+  }) {
+    const f = useForm<Record<string, unknown>>({
+      defaultValues: { themes: { colors: { ...light } } },
+    });
+    return (
+      <FormProvider {...f}>
+        <ThemesTab scheme={scheme} onSchemeChange={onSchemeChange} />
+      </FormProvider>
+    );
+  }
+
+  it("edits the scheme it is given and reports changes (so the preview can follow)", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <Controlled scheme="dark" onSchemeChange={onChange} />,
+    );
+    expect(
+      screen.getByTestId("themes.colors_dark.primary_button"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Light"));
+    expect(onChange).toHaveBeenCalledWith("light");
+    // Controlled: stays on dark until the parent changes it.
+    expect(
+      screen.getByTestId("themes.colors_dark.primary_button"),
+    ).toBeTruthy();
+
+    rerender(<Controlled scheme="light" onSchemeChange={onChange} />);
+    expect(screen.getByTestId("themes.colors.primary_button")).toBeTruthy();
+  });
+});
+
 describe("ThemesTab", () => {
   it("shows the core colours and keeps the rest under Advanced", () => {
     render(<Harness />);

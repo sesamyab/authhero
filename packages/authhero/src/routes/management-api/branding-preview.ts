@@ -12,6 +12,10 @@ export const PREVIEW_SCREEN_IDS = [
   "identifier",
   "password",
   "signup",
+  "otp",
+  "mfa",
+  "consent",
+  "error",
 ] as const;
 
 export type PreviewScreenId = (typeof PREVIEW_SCREEN_IDS)[number];
@@ -26,6 +30,7 @@ interface PreviewComponent {
   required?: boolean;
   sensitive?: boolean;
   order: number;
+  messages?: Array<{ text: string; type: "error" | "success" }>;
 }
 
 interface PreviewScreen {
@@ -41,6 +46,7 @@ interface PreviewScreen {
     linkText?: string;
     href: string;
   }>;
+  messages?: Array<{ text: string; type: "error" | "success" }>;
 }
 
 const socialButtons: PreviewComponent = {
@@ -133,6 +139,112 @@ export function buildPreviewScreen(screenId: string): PreviewScreen {
         title: "Enter your password",
         description: "Signing in as <strong>user@example.com</strong>",
         components: [passwordField(0), submit("Continue", 1)],
+        links: [
+          {
+            id: "forgot",
+            text: "Forgot your password?",
+            linkText: "Reset it",
+            href: "#",
+          },
+        ],
+      };
+    case "otp":
+      return {
+        name: "email-otp-challenge",
+        action: "#",
+        method: "POST",
+        title: "Check your email",
+        description: "We sent a code to <strong>user@example.com</strong>",
+        components: [
+          {
+            id: "code",
+            type: "TEXT",
+            category: "FIELD",
+            visible: true,
+            label: "Code",
+            config: { placeholder: "Enter the code", max_length: 6 },
+            required: true,
+            order: 0,
+          },
+          submit("Continue", 1),
+          {
+            id: "resend",
+            type: "RESEND_BUTTON",
+            category: "BLOCK",
+            visible: true,
+            config: { text: "Resend code" },
+            order: 2,
+          },
+        ],
+      };
+    case "mfa":
+      return {
+        name: "mfa-totp-challenge",
+        action: "#",
+        method: "POST",
+        title: "Verify your identity",
+        description: "Enter the code from your authenticator app",
+        components: [
+          {
+            id: "code",
+            type: "TEXT",
+            category: "FIELD",
+            visible: true,
+            label: "Authenticator code",
+            config: { placeholder: "Authenticator code", max_length: 6 },
+            required: true,
+            order: 0,
+          },
+          submit("Continue", 1),
+        ],
+      };
+    case "consent":
+      return {
+        name: "consent",
+        action: "#",
+        method: "POST",
+        title: "Authorize Example App",
+        description: "Example App wants to access your account",
+        components: [
+          {
+            id: "consent-summary",
+            type: "RICH_TEXT",
+            category: "BLOCK",
+            visible: true,
+            config: {
+              content:
+                '<div style="display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb">' +
+                '<div style="font-size:18px;font-weight:600;color:#111827">Example App</div>' +
+                '<div style="font-size:14px;color:#374151">Access your account as <span style="font-weight:500">user@example.com</span></div>' +
+                '<div style="font-size:13px;color:#6b7280;margin-top:8px">Example App will be able to:</div>' +
+                '<ul style="margin:0;padding-left:20px"><li>View your profile</li><li>View your email address</li></ul></div>',
+            },
+            order: 0,
+          },
+          submit("Allow", 1),
+        ],
+        links: [{ id: "deny", text: "Cancel", href: "#" }],
+      };
+    case "error":
+      return {
+        name: "login-password",
+        action: "#",
+        method: "POST",
+        title: "Enter your password",
+        description: "Signing in as <strong>user@example.com</strong>",
+        components: [
+          {
+            ...passwordField(0),
+            messages: [{ text: "Wrong email or password", type: "error" }],
+          },
+          submit("Continue", 1),
+        ],
+        messages: [
+          {
+            text: "We couldn't sign you in. Check your details and try again.",
+            type: "error",
+          },
+        ],
         links: [
           {
             id: "forgot",

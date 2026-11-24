@@ -298,6 +298,57 @@ describe("branding", () => {
       expect(html).toContain("data-authhero-widget-container");
     });
 
+    it.each(["otp", "mfa", "consent", "error"] as const)(
+      "renders the %s sample screen",
+      async (screen) => {
+        const { managementApp, env } = await getTestServer();
+        const managementClient = testClient(managementApp, env);
+        const token = await getAdminToken();
+
+        const response = await managementClient.branding.templates[
+          "universal-login"
+        ].preview.$post(
+          {
+            header: { "tenant-id": "tenantId" },
+            json: { screen },
+          },
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.text()).toContain("authhero-widget");
+      },
+    );
+
+    it("lets branding.dark_mode override the viewer's dark-mode cookie", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+      const token = await getAdminToken();
+
+      const render = async (dark_mode: "dark" | "light") => {
+        const response = await managementClient.branding.templates[
+          "universal-login"
+        ].preview.$post(
+          {
+            header: { "tenant-id": "tenantId" },
+            json: { screen: "login", branding: { dark_mode } },
+          },
+          {
+            headers: {
+              authorization: `Bearer ${token}`,
+              // The cookie must not win over the explicit request.
+              cookie: "ah-dark-mode=light",
+            },
+          },
+        );
+        expect(response.status).toBe(200);
+        return response.text();
+      };
+
+      expect(await render("dark")).toContain("ah-dark-mode");
+      expect(await render("light")).toContain("ah-light-mode");
+    });
+
     it("renders a full-document (Auth0-style) template as the whole page", async () => {
       const { managementApp, env } = await getTestServer();
       const managementClient = testClient(managementApp, env);

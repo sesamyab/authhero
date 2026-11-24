@@ -41,9 +41,25 @@ export function getHttpClient(tenantId: string) {
   return createOrganizationHttpClient(tenantId);
 }
 
-interface OpenFullPreviewOptions {
+/** Sample screens the server can render for the branding preview. */
+export const PREVIEW_SCREENS = [
+  "login",
+  "password",
+  "signup",
+  "otp",
+  "mfa",
+  "consent",
+  "error",
+] as const;
+
+export type PreviewScreenId = (typeof PREVIEW_SCREENS)[number];
+
+/** The scheme the preview is rendered in. */
+export type PreviewColorScheme = "light" | "dark";
+
+interface PreviewRequest {
   tenantId: string;
-  /** Sample screen to render (login | identifier | password | signup). */
+  /** Sample screen to render. */
   screen?: string;
   /** Unsaved template body to preview. Omit to use the stored/default template. */
   body?: string;
@@ -51,6 +67,132 @@ interface OpenFullPreviewOptions {
   branding?: unknown;
   /** Live theme overrides so the preview reflects unsaved form edits. */
   theme?: unknown;
+  /**
+   * Render in this scheme. The server applies its own dark fallback chain
+   * (explicit dark fields, then derived values, then light), so the preview
+   * cannot disagree with the real login page.
+   */
+  colorScheme?: PreviewColorScheme;
+  signal?: AbortSignal;
+}
+
+type OpenFullPreviewOptions = Omit<PreviewRequest, "signal">;
+
+/**
+ * Drop null, undefined and empty-string values (recursively). The preview
+ * endpoint validates its overrides, and an emptied form field must not make
+ * the whole request fail.
+ */
+export function pruneEmpty<T>(value: T): T | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const pruned = pruneEmpty(v);
+      if (pruned !== undefined) out[k] = pruned;
+    }
+    return Object.keys(out).length ? (out as T) : undefined;
+  }
+  return value;
+}
+
+/**
+ * Drop only null and undefined (recursively), keeping empty strings. Used for
+ * the theme: its schema requires some keys (`widget.logo_url`,
+ * `page_background.background_image_url`) to be present as strings, and the
+ * form stores them as `""` when unset.
+ */
+export function pruneNullish<T>(value: T): T | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const pruned = pruneNullish(v);
+      if (pruned !== undefined) out[k] = pruned;
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/**
+ * Prune a branding override, but keep a cleared asset URL as an explicit empty
+ * string. Saving a cleared logo stores `""` and removes the logo, so the
+ * preview must send `""` too, or the server falls back to the stored logo and
+ * the preview disagrees with the saved result.
+ */
+const CLEARABLE_BRANDING_KEYS = ["logo_url", "favicon_url"] as const;
+
+export function pruneBrandingOverride<T extends object>(
+  branding: T | undefined,
+): T | undefined {
+  if (!branding) return undefined;
+  const out = (pruneEmpty(branding) ?? {}) as Record<string, unknown>;
+  for (const key of CLEARABLE_BRANDING_KEYS) {
+    if ((branding as Record<string, unknown>)[key] === "") out[key] = "";
+  }
+  return Object.keys(out).length ? (out as T) : undefined;
+}
+
+/**
+ * Render the full Universal Login page through the server's preview endpoint
+ * and return its HTML. This is the same renderer the real login uses, so the
+ * template, dark scheme, background image and widget build all match.
+ */
+export async function fetchPreviewHtml({
+  tenantId,
+  screen,
+  body,
+  branding,
+  theme,
+  colorScheme,
+  signal,
+}: PreviewRequest): Promise<string> {
+  const apiUrl = getApiUrl();
+  const httpClient = getHttpClient(tenantId);
+  const brandingWithScheme = colorScheme
+    ? { ...((branding as object | undefined) ?? {}), dark_mode: colorScheme }
+    : branding;
+  const response = await httpClient(
+    `${apiUrl}/api/v2/branding/templates/universal-login/preview`,
+    {
+      method: "POST",
+      headers: new Headers({
+        "tenant-id": tenantId,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify({
+        screen,
+        body,
+        branding: brandingWithScheme,
+        theme,
+      }),
+      signal,
+    },
+  );
+
+  const html =
+    response && typeof response === "object" && "body" in response
+      ? (response as { body?: string }).body
+      : undefined;
+  if (typeof html !== "string" || html.length === 0) {
+    throw new Error("Empty preview response");
+  }
+  return html;
+}
+
+/**
+ * Make server-relative URLs in the rendered page (`/u/widget/...`) resolve
+ * against the API origin instead of the admin's, by adding a `<base>`.
+ */
+export function withApiBase(html: string, apiUrl: string): string {
+  const base = `<base href="${apiUrl.replace(/"/g, "&quot;")}/">`;
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (m) => `${m}${base}`);
+  }
+  return base + html;
 }
 
 /**
@@ -65,13 +207,9 @@ interface OpenFullPreviewOptions {
  * without `allow-same-origin`, so it executes in an opaque origin and cannot
  * reach the admin origin's storage, cookies, or APIs.
  */
-export async function openFullPreview({
-  tenantId,
-  screen,
-  body,
-  branding,
-  theme,
-}: OpenFullPreviewOptions): Promise<void> {
+export async function openFullPreview(
+  options: OpenFullPreviewOptions,
+): Promise<void> {
   const win = window.open("", "_blank");
   if (!win) {
     throw new Error(
@@ -83,27 +221,7 @@ export async function openFullPreview({
   );
 
   try {
-    const apiUrl = getApiUrl();
-    const httpClient = getHttpClient(tenantId);
-    const response = await httpClient(
-      `${apiUrl}/api/v2/branding/templates/universal-login/preview`,
-      {
-        method: "POST",
-        headers: new Headers({
-          "tenant-id": tenantId,
-          "Content-Type": "application/json",
-        }),
-        body: JSON.stringify({ screen, body, branding, theme }),
-      },
-    );
-
-    const html =
-      response && typeof response === "object" && "body" in response
-        ? (response as { body?: string }).body
-        : undefined;
-    if (typeof html !== "string" || html.length === 0) {
-      throw new Error("Empty preview response");
-    }
+    const html = await fetchPreviewHtml(options);
 
     // Replace the loading shell with a sandboxed iframe holding the template.
     // `srcdoc` is set via the property (no escaping needed) and the sandbox
