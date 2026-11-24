@@ -38,7 +38,7 @@ import {
   LogTypes,
 } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
-import { sanitizeUrl } from "./sanitization-utils";
+import { clientLegalUrls } from "./legal-links";
 import type { CustomText, Branding, Theme } from "@authhero/adapter-interfaces";
 import {
   derivePageLogoPlacement,
@@ -383,9 +383,7 @@ function createScreenRouteHandler(screenId: string) {
       language,
       locale,
       availableLanguages: getAvailableLocales(enabledLocales),
-      termsAndConditionsUrl: sanitizeUrl(
-        client.client_metadata?.termsAndConditionsUrl,
-      ),
+      ...clientLegalUrls(client.client_metadata),
       darkMode,
       logoPosition: pageLogoPosition,
       extraScript: result.extraScript,
@@ -605,9 +603,7 @@ function createScreenPostHandler(screenId: string) {
       language,
       locale,
       availableLanguages: getAvailableLocales(enabledLocales),
-      termsAndConditionsUrl: sanitizeUrl(
-        client.client_metadata?.termsAndConditionsUrl,
-      ),
+      ...clientLegalUrls(client.client_metadata),
       darkMode,
       logoPosition: pageLogoPosition,
       extraScript: screenResult.extraScript,

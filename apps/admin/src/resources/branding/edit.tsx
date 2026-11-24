@@ -93,6 +93,24 @@ function StyleTab() {
           parse={keepEmptyString}
         />
       </div>
+      <div className="flex flex-col gap-4 rounded-md border p-3">
+        <div className="text-sm font-medium">Legal links</div>
+        <p className="text-xs text-muted-foreground">
+          Default terms and privacy links shown on the login page. An
+          application can override them with its own terms of service and
+          privacy policy URLs.
+        </p>
+        <TextInput
+          source="terms_url"
+          label="Terms of service URL"
+          parse={keepEmptyString}
+        />
+        <TextInput
+          source="privacy_url"
+          label="Privacy policy URL"
+          parse={keepEmptyString}
+        />
+      </div>
       <SelectInput
         source="dark_mode"
         label="Dark mode"

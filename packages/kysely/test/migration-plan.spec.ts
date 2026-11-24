@@ -66,11 +66,12 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    // The last two migrations are rolled back together: a pending migration
+    // The last three migrations are rolled back together: a pending migration
     // may not sort before an executed one.
     const pending = [
       "2026-11-23T12:00:00_client_registration_token_invites",
       "2026-11-24T12:00:00_theme_dark",
+      "2026-11-24T13:00:00_branding_legal_links",
     ] as const;
     for (const name of [...pending].reverse()) {
       await migrations[name].down(db);
@@ -150,6 +151,26 @@ describe("2026-11-24T12:00:00_theme_dark", () => {
     expect(await columnNames(db, "themes")).toContain(
       "colors_dark_primary_button",
     );
+    await db.destroy();
+  });
+});
+
+describe("2026-11-24T13:00:00_branding_legal_links", () => {
+  it("adds the branding legal link columns, and can be rolled back and re-run", async () => {
+    const db = createDb();
+    await migrateToLatest(db, false);
+    const name = "2026-11-24T13:00:00_branding_legal_links";
+    expect(await columnNames(db, "branding")).toEqual(
+      expect.arrayContaining(["terms_url", "privacy_url"]),
+    );
+
+    await migrations[name].down(db);
+    expect(await columnNames(db, "branding")).not.toContain("terms_url");
+    expect(await columnNames(db, "branding")).not.toContain("privacy_url");
+
+    await migrations[name].up(db);
+    await expect(migrations[name].up(db)).resolves.toBeUndefined();
+    expect(await columnNames(db, "branding")).toContain("privacy_url");
     await db.destroy();
   });
 });

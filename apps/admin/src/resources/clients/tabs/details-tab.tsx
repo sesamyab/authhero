@@ -58,7 +58,12 @@ function ClientMetadataInput() {
   const value: Record<string, unknown> =
     field.value && typeof field.value === "object" ? field.value : {};
 
-  const reserved = new Set(["email_validation", "disable_sign_ups"]);
+  const reserved = new Set([
+    "email_validation",
+    "disable_sign_ups",
+    "tos_uri",
+    "policy_uri",
+  ]);
 
   const [rows, setRows] = useState<Array<{ key: string; value: string }>>([]);
 
@@ -227,6 +232,16 @@ export function DetailsTab() {
             label="Email validation"
             choices={EMAIL_VALIDATION_CHOICES}
             defaultValue="disabled"
+          />
+          <TextInput
+            source="client_metadata.tos_uri"
+            label="Terms of service URL"
+            helperText="Shown as a link on the login page. Overrides the tenant default (Branding → Legal links). Falls back to the older termsAndConditionsUrl metadata key."
+          />
+          <TextInput
+            source="client_metadata.policy_uri"
+            label="Privacy policy URL"
+            helperText="Shown as a link on the login page. Overrides the tenant default (Branding → Legal links)."
           />
         </>
       )}
