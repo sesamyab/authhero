@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useWatch } from "react-hook-form";
 import { Edit, SelectInput, SimpleForm, TextInput } from "@/components/admin";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -105,6 +106,8 @@ function StyleTab() {
 }
 
 function BrandingFormContent() {
+  // One scheme for both: the theme form edits it, the preview shows it.
+  const [scheme, setScheme] = useState<"light" | "dark">("light");
   return (
     <div className="flex w-full gap-6">
       <div className="min-w-0 flex-1">
@@ -119,7 +122,7 @@ function BrandingFormContent() {
             <StyleTab />
           </TabsContent>
           <TabsContent value="themes" className="mt-4">
-            <ThemesTab />
+            <ThemesTab scheme={scheme} onSchemeChange={setScheme} />
           </TabsContent>
           <TabsContent value="universal-login" className="mt-4">
             <UniversalLoginTab />
@@ -131,7 +134,10 @@ function BrandingFormContent() {
       </div>
       <aside className="hidden w-[380px] shrink-0 lg:block">
         <div className="sticky top-4 h-[calc(100vh-6rem)]">
-          <BrandingPreview />
+          <BrandingPreview
+            colorScheme={scheme}
+            onColorSchemeChange={setScheme}
+          />
         </div>
       </aside>
     </div>

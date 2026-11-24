@@ -193,8 +193,22 @@ function GenerateDarkButton() {
   );
 }
 
-function ThemesFormFields() {
-  const [scheme, setScheme] = useState<Scheme>("light");
+interface SchemeControl {
+  /** Controlled scheme being edited. Omit to let the tab keep its own. */
+  scheme?: Scheme;
+  onSchemeChange?: (scheme: Scheme) => void;
+}
+
+function ThemesFormFields({
+  scheme: controlledScheme,
+  onSchemeChange,
+}: SchemeControl) {
+  const [internalScheme, setInternalScheme] = useState<Scheme>("light");
+  const scheme = controlledScheme ?? internalScheme;
+  const setScheme = (next: Scheme) => {
+    if (controlledScheme === undefined) setInternalScheme(next);
+    onSchemeChange?.(next);
+  };
   const [advancedOpen, setAdvancedOpen] = useState(false);
   useFollowCore();
 
@@ -505,7 +519,7 @@ function ThemesFormFields() {
   );
 }
 
-export function ThemesTab() {
+export function ThemesTab(props: SchemeControl = {}) {
   const [view, setView] = useState<"form" | "raw">("form");
 
   return (
@@ -544,7 +558,7 @@ export function ThemesTab() {
 
       {/* Keep the form fields mounted so values persist when toggling views. */}
       <div className={view === "form" ? undefined : "hidden"}>
-        <ThemesFormFields />
+        <ThemesFormFields {...props} />
       </div>
       {view === "raw" && <ThemesRawEditor />}
     </div>
