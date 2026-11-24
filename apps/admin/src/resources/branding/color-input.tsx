@@ -1,29 +1,61 @@
 import { useInput, FieldTitle, type InputProps } from "ra-core";
+import { X } from "lucide-react";
 import {
   FormControl,
   FormError,
   FormField,
   FormLabel,
 } from "@/components/admin/form";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputHelperText } from "@/components/admin/input-helper-text";
+import { isHexColor, validateColor } from "./theme-colors";
 
 type ColorInputProps = InputProps & {
   helperText?: React.ReactNode;
+  /**
+   * Shown while the field is empty. Used for optional overrides (dark scheme),
+   * where empty means "same as light / derived".
+   */
+  emptyPlaceholder?: string;
+  /** Show a button that clears the value back to empty. */
+  clearable?: boolean;
+  /** Swatch to show while empty (e.g. the light value the field falls back to). */
+  fallbackSwatch?: string;
 };
 
-function isHexColor(value: unknown): value is string {
-  return (
-    typeof value === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)
-  );
-}
+// An empty input is "" rather than ra-core's default null, so clearing a
+// value is sent as a clear instead of being dropped from the PATCH.
+const keepEmptyString = (v: string | null | undefined) => v ?? "";
 
 export function ColorInput(props: ColorInputProps) {
-  const { label, source, helperText } = props;
-  const { id, field, isRequired } = useInput(props);
+  const {
+    label,
+    source,
+    helperText,
+    emptyPlaceholder,
+    clearable,
+    fallbackSwatch,
+  } = props;
+  const validate = props.validate
+    ? Array.isArray(props.validate)
+      ? [...props.validate, validateColor]
+      : [props.validate, validateColor]
+    : validateColor;
+  const { id, field, isRequired } = useInput({
+    ...props,
+    validate,
+    parse: keepEmptyString,
+  });
 
   const stringValue = typeof field.value === "string" ? field.value : "";
-  const swatchValue = isHexColor(stringValue) ? stringValue : "#000000";
+  const swatchValue = isHexColor(stringValue)
+    ? stringValue.slice(0, 7)
+    : fallbackSwatch && !stringValue && isHexColor(fallbackSwatch)
+      ? fallbackSwatch.slice(0, 7)
+      : "#000000";
+  const invalid = validateColor(stringValue) !== undefined;
+  const isEmpty = stringValue === "";
 
   return (
     <FormField id={id} name={field.name}>
@@ -39,7 +71,9 @@ export function ColorInput(props: ColorInputProps) {
             value={swatchValue}
             onChange={(e) => field.onChange(e.target.value)}
             onBlur={field.onBlur}
-            className="h-9 w-10 cursor-pointer rounded-md border border-input bg-transparent p-1"
+            className={`h-9 w-10 cursor-pointer rounded-md border border-input bg-transparent p-1 ${
+              isEmpty && emptyPlaceholder ? "opacity-50" : ""
+            }`}
             aria-label={typeof label === "string" ? label : source}
           />
           <Input
@@ -47,13 +81,32 @@ export function ColorInput(props: ColorInputProps) {
             value={stringValue}
             onChange={(e) => field.onChange(e.target.value)}
             onBlur={field.onBlur}
-            placeholder="#000000"
+            placeholder={emptyPlaceholder ?? "#000000"}
+            aria-invalid={invalid || undefined}
             className="flex-1 font-mono"
           />
+          {clearable && !isEmpty && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => field.onChange("")}
+              aria-label={`Reset ${typeof label === "string" ? label : source}`}
+              title="Reset"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </FormControl>
       <InputHelperText helperText={helperText} />
-      <FormError />
+      {invalid ? (
+        <p role="alert" className="text-sm text-destructive">
+          {validateColor(stringValue)}
+        </p>
+      ) : (
+        <FormError />
+      )}
     </FormField>
   );
 }
