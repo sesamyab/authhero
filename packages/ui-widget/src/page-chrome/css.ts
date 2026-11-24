@@ -7,7 +7,8 @@
  * and the widget demo server render from this, so a change to the phone
  * layout can't show up in one and not the other.
  */
-import { darkModeCssVarRules } from "./colors";
+import { darkModeCssVarRules, isLightColor } from "./colors";
+import type { ColorsDark } from "./colors";
 import { buildThemePageBackground } from "./html";
 import type { BrandingPageBackground, ThemePageBackground } from "./html";
 
@@ -76,6 +77,18 @@ export function buildPageCss(opts: {
    * caller styles `<body>` itself.
    */
   bodyLayout?: BodyLayout;
+  /** Explicit dark overrides (`theme.colors_dark`). */
+  colorsDark?: ColorsDark;
+  /** Light brand link colour, kept (contrast-adjusted) in the derived dark palette. */
+  linkColor?: string;
+  /**
+   * CSS `background` value for the page in the dark scheme, set only when the
+   * tenant configured a dark background colour or image. Absent: the page
+   * background is the same in both schemes (the pre-existing behaviour).
+   */
+  darkBackground?: string;
+  /** A dark logo variant exists: swap the widget and chip logo in dark. */
+  hasDarkLogo?: boolean;
 }): string {
   const {
     primaryColor,
@@ -83,7 +96,47 @@ export function buildPageCss(opts: {
     widgetBackground,
     bodyLayout,
     hasBgImage,
+    colorsDark,
+    linkColor,
+    darkBackground,
+    hasDarkLogo,
   } = opts;
+  const darkVarOpts = { colorsDark, linkColor };
+  // The dark scheme applies under an explicit toggle (`html.ah-dark-mode`) or,
+  // unless the user chose light, under the OS preference. Everything dark that
+  // is not a CSS variable (page background, logo swap, social icons) is
+  // emitted once per selector set from this helper so both stay in step.
+  const darkScheme = (rules: (scope: string) => string): string =>
+    `${rules("html.ah-dark-mode")}
+    @media (prefers-color-scheme: dark) { ${rules("html:not(.ah-light-mode)")} }`;
+  const darkPageRules = `
+    /* ============= COLOR SCHEME =============
+       Form controls, scrollbars and autofill follow the page scheme. */
+    html { color-scheme: light dark; }
+    html.ah-dark-mode { color-scheme: dark; }
+    html.ah-light-mode { color-scheme: light; }
+    ${darkBackground ? darkScheme((h) => `${h} body { background: ${darkBackground}; }`) : ""}
+    ${
+      hasDarkLogo
+        ? `.ah-chip-logo .ah-logo-img--dark { display: none; }
+    ${darkScheme(
+      (h) => `${h} .ah-chip-logo .ah-logo-img--light { display: none; }
+    ${h} .ah-chip-logo .ah-logo-img--dark { display: block; }
+    ${h} authhero-widget { --ah-logo-light-display: none; --ah-logo-dark-display: block; }`,
+    )}`
+        : ""
+    }
+    /* Provider icons are images, so they cannot use currentColor. The ones
+       drawn in black (Apple, GitHub) vanish on the dark card; invert them,
+       unless the tenant set a light card for dark, where black reads fine. */
+    ${
+      isLightColor(colorsDark?.widget_background)
+        ? ""
+        : darkScheme(
+            (h) => `${h} authhero-widget::part(social-icon-apple),
+    ${h} authhero-widget::part(social-icon-github) { filter: invert(1); }`,
+          )
+    }`;
   const bodyRule = bodyLayout
     ? `
     body {
@@ -497,10 +550,11 @@ export function buildPageCss(opts: {
        The page-level dark/light is controlled by data-mode (above).
        The widget itself has its own --ah-color-* vars set via JS.
        html.ah-dark-mode is the legacy class kept for the widget toggle. */
-    ${darkModeCssVarRules("html.ah-dark-mode authhero-widget", primaryColor || themePrimary)}
+    ${darkModeCssVarRules("html.ah-dark-mode authhero-widget", themePrimary || primaryColor, darkVarOpts)}
     @media (prefers-color-scheme: dark) {
-      ${darkModeCssVarRules("html:not(.ah-light-mode) authhero-widget", primaryColor || themePrimary)}
+      ${darkModeCssVarRules("html:not(.ah-light-mode) authhero-widget", themePrimary || primaryColor, darkVarOpts)}
     }
+    ${darkPageRules}
 
     /* ============= MOBILE =============
        Chrome chips minimize, and the card either floats on the page

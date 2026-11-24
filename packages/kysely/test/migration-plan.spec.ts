@@ -66,9 +66,16 @@ describe("planMigrations", () => {
   it("plans only the migrations that have not run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const last = "2026-11-23T12:00:00_client_registration_token_invites";
-    await migrations[last].down(db);
-    await sql`DELETE FROM kysely_migration WHERE name = ${last}`.execute(db);
+    // The last two migrations are rolled back together: a pending migration
+    // may not sort before an executed one.
+    const pending = [
+      "2026-11-23T12:00:00_client_registration_token_invites",
+      "2026-11-24T12:00:00_theme_dark",
+    ] as const;
+    for (const name of [...pending].reverse()) {
+      await migrations[name].down(db);
+      await sql`DELETE FROM kysely_migration WHERE name = ${name}`.execute(db);
+    }
 
     const columns = async () =>
       (
@@ -79,9 +86,15 @@ describe("planMigrations", () => {
 
     const plan = await planMigrations(db);
 
-    expect(plan.pending.map((it) => it.name)).toEqual([last]);
-    expect(plan.pending[0]!.error).toBeUndefined();
+    expect(plan.pending.map((it) => it.name)).toEqual([...pending]);
+    expect(plan.pending.every((it) => it.error === undefined)).toBe(true);
     const output = formatMigrationPlan(plan);
+    expect(output).toMatch(
+      /alter table "themes" add column "colors_dark_primary_button"/i,
+    );
+    expect(await columnNames(db, "themes")).not.toContain(
+      "colors_dark_primary_button",
+    );
     for (const column of ["name", "created_by", "source"]) {
       expect(output).toMatch(
         new RegExp(
@@ -97,6 +110,9 @@ describe("planMigrations", () => {
     for (const column of ["name", "created_by", "source"]) {
       expect(await columns()).toContain(column);
     }
+    expect(await columnNames(db, "themes")).toContain(
+      "colors_dark_primary_button",
+    );
     await db.destroy();
   });
 });
@@ -108,6 +124,32 @@ describe("2026-11-20T12:00:00_self_service_sso", () => {
     await expect(
       migrations["2026-11-20T12:00:00_self_service_sso"].up(db),
     ).resolves.toBeUndefined();
+    await db.destroy();
+  });
+});
+
+describe("2026-11-24T12:00:00_theme_dark", () => {
+  it("adds the dark theme columns, and can be rolled back and re-run", async () => {
+    const db = createDb();
+    await migrateToLatest(db, false);
+    const name = "2026-11-24T12:00:00_theme_dark";
+    expect(await columnNames(db, "themes")).toContain(
+      "colors_dark_primary_button",
+    );
+    expect(await columnNames(db, "branding")).toContain("favicon_url_dark");
+
+    await migrations[name].down(db);
+    expect(await columnNames(db, "themes")).not.toContain(
+      "colors_dark_primary_button",
+    );
+    expect(await columnNames(db, "branding")).not.toContain("favicon_url_dark");
+
+    await migrations[name].up(db);
+    // Re-running on an up-to-date schema is a no-op.
+    await expect(migrations[name].up(db)).resolves.toBeUndefined();
+    expect(await columnNames(db, "themes")).toContain(
+      "colors_dark_primary_button",
+    );
     await db.destroy();
   });
 });

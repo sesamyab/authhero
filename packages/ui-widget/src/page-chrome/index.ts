@@ -9,5 +9,6 @@
 export * from "./types";
 export * from "./html";
 export * from "./colors";
+export * from "./named-colors";
 export * from "./chrome";
 export * from "./css";

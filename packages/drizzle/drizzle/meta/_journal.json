@@ -169,6 +169,13 @@
       "when": 1795437963706,
       "tag": "0023_client_registration_token_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1795501490298,
+      "tag": "0024_theme_dark",
+      "breakpoints": true
     }
   ]
 }

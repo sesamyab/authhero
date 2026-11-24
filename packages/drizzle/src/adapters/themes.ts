@@ -9,7 +9,10 @@ import {
 } from "../helpers/transform";
 import type { DrizzleDb } from "./types";
 
+// "colors_dark" must come before "colors": unflattenObject takes the first
+// matching prefix, and `colors_dark_*` also starts with `colors_`.
 const UNFLATTEN_PREFIXES = [
+  "colors_dark",
   "colors",
   "borders",
   "fonts",
@@ -35,7 +38,13 @@ function sqlToTheme(row: any): Theme {
     unflattened.fonts.title_bold = !!unflattened.fonts.title_bold;
   }
 
-  return removeNullProperties(unflattened) as Theme;
+  const theme = removeNullProperties(unflattened) as Theme;
+  // Rows stored before the dark fields existed have all colors_dark_*
+  // columns NULL; report "no dark overrides" rather than an empty object.
+  if (theme.colors_dark && Object.keys(theme.colors_dark).length === 0) {
+    delete theme.colors_dark;
+  }
+  return theme;
 }
 
 export function createThemesAdapter(db: DrizzleDb) {

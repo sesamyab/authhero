@@ -962,6 +962,9 @@ const getInfo = defineRoute({
           favicon_url: ctx.var?.custom_domain
             ? branding.favicon_url
             : undefined,
+          favicon_url_dark: ctx.var?.custom_domain
+            ? branding.favicon_url_dark
+            : undefined,
         }
       : null;
     const darkMode = resolveDarkMode(ctx, brandingWithFavicon);
@@ -1280,6 +1283,9 @@ const getEmailVerificationTicket = defineRoute({
           ...branding,
           favicon_url: ctx.var?.custom_domain
             ? branding.favicon_url
+            : undefined,
+          favicon_url_dark: ctx.var?.custom_domain
+            ? branding.favicon_url_dark
             : undefined,
         }
       : null;
