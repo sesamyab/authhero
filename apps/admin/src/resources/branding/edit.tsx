@@ -5,37 +5,12 @@ import { UrlTabs } from "@/components/ui/url-tabs";
 import { ColorInput } from "./color-input";
 import { AssetUrlInput } from "./asset-url-input";
 import { ThemesTab } from "./themes-tab";
+import { transformBranding } from "./transform";
 import { UniversalLoginTab } from "./universal-login-tab";
 import { BrandingPreview } from "./preview";
 import { RawJsonTab } from "@/common/RawJsonTab";
 
 const keepEmptyString = (v: string | null | undefined) => v ?? "";
-
-function cleanObject(obj: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value === null || value === undefined) continue;
-    if (typeof value === "object" && !Array.isArray(value) && value !== null) {
-      const cleaned = cleanObject(value as Record<string, unknown>);
-      if (Object.keys(cleaned).length > 0) result[key] = cleaned;
-    } else {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-
-function transformBranding(data: Record<string, unknown>) {
-  const result = cleanObject(data);
-  if (
-    result.font &&
-    typeof result.font === "object" &&
-    !(result.font as Record<string, unknown>).url
-  ) {
-    delete result.font;
-  }
-  return result;
-}
 
 function PageBackgroundFields() {
   const type = useWatch({ name: "colors.page_background.type" }) as
@@ -79,9 +54,20 @@ function StyleTab() {
       <PageBackgroundFields />
       <div className="flex flex-col gap-4 rounded-md border p-3">
         <div className="text-sm font-medium">Assets</div>
+        <p className="text-xs text-muted-foreground">
+          When a theme exists it wins: the logo and page background below are
+          only used where the Themes tab leaves them empty. Edit light and dark
+          variants of the logo and background on the Themes tab.
+        </p>
         <AssetUrlInput
           source="favicon_url"
           label="Favicon URL"
+          kind="favicon"
+          parse={keepEmptyString}
+        />
+        <AssetUrlInput
+          source="favicon_url_dark"
+          label="Favicon URL (dark)"
           kind="favicon"
           parse={keepEmptyString}
         />
