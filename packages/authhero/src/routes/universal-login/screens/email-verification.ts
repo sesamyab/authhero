@@ -45,7 +45,10 @@ function getLanguage(uiLocales?: string) {
 export async function getLoginEmailVerification(
   context: ScreenContext,
 ): Promise<LoginEmailVerification> {
-  const method = getEmailVerificationMethod(context.client);
+  const method = getEmailVerificationMethod(
+    context.client,
+    context.ctx.var.loginSession?.authParams.connection,
+  );
   if (method === "code") {
     return { method };
   }
@@ -74,7 +77,10 @@ export async function emailVerificationRequiredScreen(
     messages: undefined,
     data: { ...context.data, email },
   };
-  return getEmailVerificationMethod(context.client) === "code"
+  return getEmailVerificationMethod(
+    context.client,
+    context.ctx.var.loginSession?.authParams.connection,
+  ) === "code"
     ? emailVerificationCodeScreen(nextContext)
     : emailVerificationLinkSentScreen(nextContext);
 }

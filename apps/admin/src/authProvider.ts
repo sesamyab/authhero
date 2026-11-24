@@ -503,6 +503,29 @@ export const getAuthProvider = (
 const authProvider = getAuthProvider(getSelectedDomainFromStorage());
 
 /**
+ * The message for a failed request, the way react-admin's `fetchJson` builds
+ * `HttpError`: the JSON body's `message` when there is one, else the status
+ * text. Never the raw body, which may be JSON or a proxy's HTML page.
+ */
+export function httpErrorMessage(text: string, statusText: string): string {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "message" in parsed &&
+      typeof parsed.message === "string" &&
+      parsed.message
+    ) {
+      return parsed.message;
+    }
+  } catch {
+    // Not JSON.
+  }
+  return statusText;
+}
+
+/**
  * An error that keeps the HTTP status of the response it stands for, so a
  * caller can tell a route the server does not have (404, 405) from a refusal
  * (403). It is `httpStatus` and not `status` on purpose: react-admin's
@@ -671,7 +694,13 @@ const authorizedHttpClient = (
             throw new Error("Navigating to Auth0 configuration");
           }
 
-          throw httpStatusError(response.statusText, response.status);
+          throw httpStatusError(
+            httpErrorMessage(
+              text,
+              response.statusText || `HTTP ${response.status}`,
+            ),
+            response.status,
+          );
         }
 
         const text = await response.text();
@@ -734,7 +763,13 @@ const authorizedHttpClient = (
             throw new Error("Navigating to Auth0 configuration");
           }
 
-          throw httpStatusError(text || response.statusText, response.status);
+          throw httpStatusError(
+            httpErrorMessage(
+              text,
+              response.statusText || `HTTP ${response.status}`,
+            ),
+            response.status,
+          );
         }
 
         const text = await response.text();
@@ -907,7 +942,12 @@ export const createOrganizationHttpClient = (organizationId: string) => {
         .then(async (response) => {
           if (response.status < 200 || response.status >= 300) {
             const text = await response.text();
-            throw new Error(text || response.statusText);
+            throw new Error(
+              httpErrorMessage(
+                text,
+                response.statusText || `HTTP ${response.status}`,
+              ),
+            );
           }
 
           const text = await response.text();

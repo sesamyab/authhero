@@ -69,13 +69,20 @@ describe("planMigrations", () => {
     // The last two migrations are rolled back together: a pending migration
     // may not sort before an executed one.
     const pending = [
-      "2026-11-20T12:00:00_self_service_sso",
-      "2026-11-20T13:00:00_theme_dark",
+      "2026-11-23T12:00:00_client_registration_token_invites",
+      "2026-11-24T12:00:00_theme_dark",
     ] as const;
     for (const name of [...pending].reverse()) {
       await migrations[name].down(db);
       await sql`DELETE FROM kysely_migration WHERE name = ${name}`.execute(db);
     }
+
+    const columns = async () =>
+      (
+        await sql<{
+          name: string;
+        }>`PRAGMA table_info(client_registration_tokens)`.execute(db)
+      ).rows.map((row) => row.name);
 
     const plan = await planMigrations(db);
 
@@ -88,20 +95,20 @@ describe("planMigrations", () => {
     expect(await columnNames(db, "themes")).not.toContain(
       "colors_dark_primary_button",
     );
-    for (const table of ["self_service_profiles", "sso_access_tickets"]) {
+    for (const column of ["name", "created_by", "source"]) {
       expect(output).toMatch(
-        new RegExp(`create table if not exists "${table}"`, "i"),
+        new RegExp(
+          `alter table "client_registration_tokens" add column "${column}"`,
+          "i",
+        ),
       );
-      expect(await tableNames(db)).not.toContain(table);
+      expect(await columns()).not.toContain(column);
     }
-    expect(output).toMatch(
-      /create unique index "sso_access_tickets_ticket_hash_idx"/i,
-    );
 
-    // The real run still applies them afterwards.
+    // The real run still applies it afterwards.
     await migrateToLatest(db, false);
-    for (const table of ["self_service_profiles", "sso_access_tickets"]) {
-      expect(await tableNames(db)).toContain(table);
+    for (const column of ["name", "created_by", "source"]) {
+      expect(await columns()).toContain(column);
     }
     expect(await columnNames(db, "themes")).toContain(
       "colors_dark_primary_button",
@@ -121,11 +128,11 @@ describe("2026-11-20T12:00:00_self_service_sso", () => {
   });
 });
 
-describe("2026-11-20T13:00:00_theme_dark", () => {
+describe("2026-11-24T12:00:00_theme_dark", () => {
   it("adds the dark theme columns, and can be rolled back and re-run", async () => {
     const db = createDb();
     await migrateToLatest(db, false);
-    const name = "2026-11-20T13:00:00_theme_dark";
+    const name = "2026-11-24T12:00:00_theme_dark";
     expect(await columnNames(db, "themes")).toContain(
       "colors_dark_primary_button",
     );

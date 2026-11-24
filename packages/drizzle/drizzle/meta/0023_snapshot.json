@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "86b8f750-cf31-403b-8d6a-39c2bdcb05d9",
+  "id": "9026b349-8cee-496d-9369-fcbf1d1f0629",
   "prevId": "9340e517-ee06-47e2-8971-ca6617b3bdeb",
   "tables": {
     "tenants": {
@@ -2688,6 +2688,27 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -2704,6 +2725,14 @@
           "columns": [
             "tenant_id",
             "client_id"
+          ],
+          "isUnique": false
+        },
+        "idx_client_registration_tokens_created": {
+          "name": "idx_client_registration_tokens_created",
+          "columns": [
+            "tenant_id",
+            "created_at_ts"
           ],
           "isUnique": false
         }
@@ -4623,13 +4652,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "favicon_url_dark": {
-          "name": "favicon_url_dark",
-          "type": "text(512)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "font_url": {
           "name": "font_url",
           "type": "text(512)",
@@ -6052,153 +6074,6 @@
           "type": "text(24)",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "colors_dark_base_focus_color": {
-          "name": "colors_dark_base_focus_color",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_base_hover_color": {
-          "name": "colors_dark_base_hover_color",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_body_text": {
-          "name": "colors_dark_body_text",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_error": {
-          "name": "colors_dark_error",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_header": {
-          "name": "colors_dark_header",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_icons": {
-          "name": "colors_dark_icons",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_input_background": {
-          "name": "colors_dark_input_background",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_input_border": {
-          "name": "colors_dark_input_border",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_input_filled_text": {
-          "name": "colors_dark_input_filled_text",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_input_labels_placeholders": {
-          "name": "colors_dark_input_labels_placeholders",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_links_focused_components": {
-          "name": "colors_dark_links_focused_components",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_primary_button": {
-          "name": "colors_dark_primary_button",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_primary_button_label": {
-          "name": "colors_dark_primary_button_label",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_secondary_button_border": {
-          "name": "colors_dark_secondary_button_border",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_secondary_button_label": {
-          "name": "colors_dark_secondary_button_label",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_success": {
-          "name": "colors_dark_success",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_widget_background": {
-          "name": "colors_dark_widget_background",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "colors_dark_widget_border": {
-          "name": "colors_dark_widget_border",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "page_background_background_color_dark": {
-          "name": "page_background_background_color_dark",
-          "type": "text(24)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "page_background_background_image_url_dark": {
-          "name": "page_background_background_image_url_dark",
-          "type": "text(255)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "widget_logo_url_dark": {
-          "name": "widget_logo_url_dark",
-          "type": "text(255)",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "created_at": {

@@ -3,6 +3,7 @@ import { testClient } from "hono/testing";
 import { parseJWT } from "../../../src/utils/jwt";
 import { getTestServer } from "../../helpers/test-server";
 import { mintRegistrationToken } from "../../../src/helpers/dcr/mint-token";
+import { MANAGEMENT_API_AUDIENCE } from "../../../src/middlewares/authentication";
 import type { Bindings } from "../../../src/types";
 
 async function enableDcr(
@@ -526,14 +527,53 @@ describe("POST /oidc/register — client_grants provisioning", () => {
     });
   }
 
-  it("creates a client_grants row when audience and scope are pre-bound on the IAT", async () => {
-    const { oauthApp, env } = await getTestServer();
+  async function requireIat(env: Bindings) {
     await env.data.tenants.update("tenantId", {
       flags: {
         enable_dynamic_client_registration: true,
         dcr_require_initial_access_token: true,
       },
     });
+  }
+
+  async function register(
+    oauthApp: any,
+    env: Bindings,
+    body: Record<string, unknown>,
+    iat?: string,
+  ) {
+    return oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+          ...(iat ? { authorization: `Bearer ${iat}` } : {}),
+        },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  async function grantsFor(env: Bindings, clientId: string) {
+    const { client_grants } = await env.data.clientGrants.list("tenantId", {
+      q: `client_id:"${clientId}"`,
+    });
+    return client_grants;
+  }
+
+  async function clientCount(env: Bindings) {
+    const { clients } = await env.data.clients.list("tenantId", {
+      per_page: 100,
+    });
+    return clients.length;
+  }
+
+  it("creates a client_grants row when audience and scope are pre-bound on the IAT", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await requireIat(env);
     await seedSesamyApi(env);
 
     const iat = await mintIat(env, {
@@ -545,64 +585,185 @@ describe("POST /oidc/register — client_grants provisioning", () => {
       },
     });
 
-    const response = await oauthApp.request(
-      "/oidc/register",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "tenant-id": "tenantId",
-          authorization: `Bearer ${iat}`,
-        },
-        body: JSON.stringify({
-          client_name: "Publisher Site",
-          token_endpoint_auth_method: "client_secret_basic",
-        }),
-      },
+    const response = await register(
+      oauthApp,
       env,
+      {
+        client_name: "Publisher Site",
+        token_endpoint_auth_method: "client_secret_basic",
+      },
+      iat,
     );
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.scope).toBe("paywalls:read products:read");
 
-    const { client_grants } = await env.data.clientGrants.list("tenantId", {
-      q: `client_id:"${body.client_id}"`,
-    });
+    const client_grants = await grantsFor(env, body.client_id);
     expect(client_grants).toHaveLength(1);
     expect(client_grants[0].audience).toBe("https://api.sesamy.com");
     expect(client_grants[0].scope).toEqual(["paywalls:read", "products:read"]);
   });
 
-  it("creates a client_grants row when audience+scope come from the request body (open DCR)", async () => {
+  it("accepts a request that repeats the pinned audience and scope", async () => {
     const { oauthApp, env } = await getTestServer();
-    await enableDcr(env);
+    await requireIat(env);
     await seedSesamyApi(env);
 
-    const response = await oauthApp.request(
-      "/oidc/register",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "tenant-id": "tenantId",
-        },
-        body: JSON.stringify({
-          client_name: "Open M2M",
-          grant_types: ["client_credentials"],
-          token_endpoint_auth_method: "client_secret_basic",
-          audience: "https://api.sesamy.com",
-          scope: "paywalls:read",
-        }),
+    const iat = await mintIat(env, {
+      constraints: {
+        audience: "https://api.sesamy.com",
+        scope: "paywalls:read",
+        grant_types: ["client_credentials"],
       },
+    });
+
+    const response = await register(
+      oauthApp,
       env,
+      {
+        client_name: "Repeats pins",
+        grant_types: ["client_credentials"],
+        audience: "https://api.sesamy.com",
+        scope: "paywalls:read",
+      },
+      iat,
     );
     expect(response.status).toBe(201);
     const body = await response.json();
-    const { client_grants } = await env.data.clientGrants.list("tenantId", {
-      q: `client_id:"${body.client_id}"`,
-    });
+    const client_grants = await grantsFor(env, body.client_id);
     expect(client_grants).toHaveLength(1);
     expect(client_grants[0].scope).toEqual(["paywalls:read"]);
+  });
+
+  it("rejects audience and scope in the request body on open registration", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    await seedSesamyApi(env);
+    const before = await clientCount(env);
+
+    const response = await register(oauthApp, env, {
+      client_name: "Open M2M",
+      grant_types: ["client_credentials"],
+      token_endpoint_auth_method: "client_secret_basic",
+      audience: "https://api.sesamy.com",
+      scope: "paywalls:read",
+    });
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_client_metadata");
+    expect(body.error_description).toMatch(
+      /can only be set by an Initial Access Token constraint/,
+    );
+    expect(await clientCount(env)).toBe(before);
+  });
+
+  it("rejects an audience in the request body when the IAT does not pin one", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await requireIat(env);
+    await seedSesamyApi(env);
+    const before = await clientCount(env);
+
+    const iat = await mintIat(env, {
+      constraints: { grant_types: ["client_credentials"] },
+    });
+    const response = await register(
+      oauthApp,
+      env,
+      {
+        client_name: "Picks its own API",
+        grant_types: ["client_credentials"],
+        audience: "https://api.sesamy.com",
+      },
+      iat,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(/"audience"/);
+    expect(await clientCount(env)).toBe(before);
+  });
+
+  it("rejects scope in the request body when the IAT pins only the audience", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await requireIat(env);
+    await seedSesamyApi(env);
+    const before = await clientCount(env);
+
+    const iat = await mintIat(env, {
+      constraints: {
+        audience: "https://api.sesamy.com",
+        grant_types: ["client_credentials"],
+      },
+    });
+    const response = await register(
+      oauthApp,
+      env,
+      {
+        client_name: "Widens its scopes",
+        grant_types: ["client_credentials"],
+        scope: "paywalls:read admin:write",
+      },
+      iat,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(/"scope"/);
+    expect(await clientCount(env)).toBe(before);
+  });
+
+  it("refuses the Management API audience even when pinned on the IAT", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await requireIat(env);
+    const before = await clientCount(env);
+
+    const iat = await mintIat(env, {
+      constraints: {
+        audience: MANAGEMENT_API_AUDIENCE,
+        scope: "read:users",
+        grant_types: ["client_credentials"],
+      },
+    });
+    const response = await register(
+      oauthApp,
+      env,
+      { client_name: "Management client" },
+      iat,
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_client_metadata");
+    expect(body.error_description).toMatch(
+      /cannot be granted through Dynamic Client Registration/,
+    );
+    expect(await clientCount(env)).toBe(before);
+  });
+
+  it("refuses an additional management audience configured on the deployment", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await requireIat(env);
+    const legacyAudience = "https://tenantId.token.example.com/v2/api/";
+    await env.data.resourceServers.create("tenantId", {
+      name: "Legacy management API",
+      identifier: legacyAudience,
+      scopes: [{ value: "read:users" }],
+    });
+    env.additionalManagementAudiences = ({ tenant_id }) => [
+      `https://${tenant_id}.token.example.com/v2/api/`,
+    ];
+
+    const iat = await mintIat(env, {
+      constraints: {
+        audience: legacyAudience,
+        grant_types: ["client_credentials"],
+      },
+    });
+    const response = await register(
+      oauthApp,
+      env,
+      { client_name: "Legacy management client" },
+      iat,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(
+      /cannot be granted through Dynamic Client Registration/,
+    );
   });
 
   it("rejects scope without audience", async () => {
@@ -610,75 +771,46 @@ describe("POST /oidc/register — client_grants provisioning", () => {
     await enableDcr(env);
     await seedSesamyApi(env);
 
-    const response = await oauthApp.request(
-      "/oidc/register",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "tenant-id": "tenantId",
-        },
-        body: JSON.stringify({
-          client_name: "Bad",
-          grant_types: ["client_credentials"],
-          scope: "paywalls:read",
-        }),
-      },
-      env,
-    );
+    const response = await register(oauthApp, env, {
+      client_name: "Bad",
+      grant_types: ["client_credentials"],
+      scope: "paywalls:read",
+    });
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toBe("invalid_client_metadata");
   });
 
-  it("rejects unknown audience", async () => {
+  it("rejects an unknown pinned audience", async () => {
     const { oauthApp, env } = await getTestServer();
-    await enableDcr(env);
+    await requireIat(env);
 
-    const response = await oauthApp.request(
-      "/oidc/register",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "tenant-id": "tenantId",
-        },
-        body: JSON.stringify({
-          client_name: "Bad",
-          grant_types: ["client_credentials"],
-          audience: "https://nope.example.com",
-        }),
+    const iat = await mintIat(env, {
+      constraints: {
+        audience: "https://nope.example.com",
+        grant_types: ["client_credentials"],
       },
-      env,
-    );
+    });
+    const response = await register(oauthApp, env, { client_name: "Bad" }, iat);
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toBe("invalid_client_metadata");
     expect(body.error_description).toMatch(/Unknown audience/);
   });
 
-  it("rejects scope not defined on the resource server", async () => {
+  it("rejects a pinned scope not defined on the resource server", async () => {
     const { oauthApp, env } = await getTestServer();
-    await enableDcr(env);
+    await requireIat(env);
     await seedSesamyApi(env);
 
-    const response = await oauthApp.request(
-      "/oidc/register",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "tenant-id": "tenantId",
-        },
-        body: JSON.stringify({
-          client_name: "Bad",
-          grant_types: ["client_credentials"],
-          audience: "https://api.sesamy.com",
-          scope: "paywalls:read root:everything",
-        }),
+    const iat = await mintIat(env, {
+      constraints: {
+        audience: "https://api.sesamy.com",
+        scope: "paywalls:read root:everything",
+        grant_types: ["client_credentials"],
       },
-      env,
-    );
+    });
+    const response = await register(oauthApp, env, { client_name: "Bad" }, iat);
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toBe("invalid_scope");
@@ -688,61 +820,39 @@ describe("POST /oidc/register — client_grants provisioning", () => {
     const { oauthApp, env } = await getTestServer();
     await enableDcr(env);
 
-    const response = await oauthApp.request(
-      "/oidc/register",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "tenant-id": "tenantId",
-        },
-        body: JSON.stringify({
-          client_name: "No grant",
-          redirect_uris: ["https://example.com/cb"],
-        }),
-      },
-      env,
-    );
+    const response = await register(oauthApp, env, {
+      client_name: "No grant",
+      redirect_uris: ["https://example.com/cb"],
+    });
     expect(response.status).toBe(201);
     const body = await response.json();
-    const { client_grants } = await env.data.clientGrants.list("tenantId", {
-      q: `client_id:"${body.client_id}"`,
-    });
-    expect(client_grants).toHaveLength(0);
+    expect(await grantsFor(env, body.client_id)).toHaveLength(0);
   });
 
   it("DELETE removes the client's grants alongside the soft-delete", async () => {
     const { oauthApp, env } = await getTestServer();
-    await enableDcr(env);
+    await requireIat(env);
     await seedSesamyApi(env);
 
-    const reg = await oauthApp.request(
-      "/oidc/register",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "tenant-id": "tenantId",
-        },
-        body: JSON.stringify({
-          client_name: "Will be deleted",
-          grant_types: ["client_credentials"],
-          token_endpoint_auth_method: "client_secret_basic",
-          audience: "https://api.sesamy.com",
-          scope: "paywalls:read",
-        }),
+    const iat = await mintIat(env, {
+      constraints: {
+        audience: "https://api.sesamy.com",
+        scope: "paywalls:read",
+        grant_types: ["client_credentials"],
       },
+    });
+    const reg = await register(
+      oauthApp,
       env,
+      {
+        client_name: "Will be deleted",
+        token_endpoint_auth_method: "client_secret_basic",
+      },
+      iat,
     );
     expect(reg.status).toBe(201);
     const created = await reg.json();
-    expect(
-      (
-        await env.data.clientGrants.list("tenantId", {
-          q: `client_id:"${created.client_id}"`,
-        })
-      ).client_grants,
-    ).toHaveLength(1);
+    expect(await grantsFor(env, created.client_id)).toHaveLength(1);
 
     const del = await oauthApp.request(
       `/oidc/register/${created.client_id}`,
@@ -756,35 +866,29 @@ describe("POST /oidc/register — client_grants provisioning", () => {
       env,
     );
     expect(del.status).toBe(204);
-
-    const { client_grants } = await env.data.clientGrants.list("tenantId", {
-      q: `client_id:"${created.client_id}"`,
-    });
-    expect(client_grants).toHaveLength(0);
+    expect(await grantsFor(env, created.client_id)).toHaveLength(0);
   });
 
-  it("end-to-end: registered client can mint an access token with the granted scopes via client_credentials", async () => {
+  it("end-to-end: registered client can mint an access token with the pinned scopes via client_credentials", async () => {
     const { oauthApp, env } = await getTestServer();
-    await enableDcr(env);
+    await requireIat(env);
     await seedSesamyApi(env);
 
-    const reg = await oauthApp.request(
-      "/oidc/register",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "tenant-id": "tenantId",
-        },
-        body: JSON.stringify({
-          client_name: "M2M App",
-          grant_types: ["client_credentials"],
-          token_endpoint_auth_method: "client_secret_basic",
-          audience: "https://api.sesamy.com",
-          scope: "paywalls:read products:read",
-        }),
+    const iat = await mintIat(env, {
+      constraints: {
+        audience: "https://api.sesamy.com",
+        scope: "paywalls:read products:read",
+        grant_types: ["client_credentials"],
       },
+    });
+    const reg = await register(
+      oauthApp,
       env,
+      {
+        client_name: "M2M App",
+        token_endpoint_auth_method: "client_secret_basic",
+      },
+      iat,
     );
     expect(reg.status).toBe(201);
     const { client_id, client_secret } = await reg.json();
@@ -843,5 +947,174 @@ describe("Discovery registration_endpoint gating", () => {
     expect(body.registration_endpoint).toBe(
       "http://localhost:3000/oidc/register",
     );
+  });
+});
+
+describe("omitted grant_types is validated as its authorization_code default", () => {
+  async function post(oauthApp: any, env: Bindings, body: object) {
+    return oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  it("requires redirect_uris when grant_types is omitted", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env);
+    const response = await post(oauthApp, env, { client_name: "No URIs" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("invalid_redirect_uri");
+  });
+
+  it("applies the tenant grant-type allowlist to the default", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env, { dcr_allowed_grant_types: ["client_credentials"] });
+    const response = await post(oauthApp, env, {
+      client_name: "Code flow by default",
+      redirect_uris: ["https://app.example.com/cb"],
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(
+      /authorization_code/,
+    );
+  });
+
+  it("applies the allowlist to the default on PUT", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableDcr(env, { dcr_allowed_grant_types: ["client_credentials"] });
+    const created = await (
+      await post(oauthApp, env, {
+        client_name: "M2M",
+        grant_types: ["client_credentials"],
+      })
+    ).json();
+
+    const response = await oauthApp.request(
+      `/oidc/register/${created.client_id}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${created.registration_access_token}`,
+        },
+        body: JSON.stringify({ client_name: "M2M" }),
+      },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.grant_types).toEqual(["client_credentials"]);
+  });
+});
+
+describe("full PUT on a public client", () => {
+  async function registerPublic(oauthApp: any, env: Bindings) {
+    await enableDcr(env);
+    const response = await oauthApp.request(
+      "/oidc/register",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+        },
+        body: JSON.stringify({
+          client_name: "Public",
+          redirect_uris: ["https://app.example.com/cb"],
+          token_endpoint_auth_method: "none",
+        }),
+      },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.client_secret).toBeUndefined();
+    return body;
+  }
+
+  async function put(
+    oauthApp: any,
+    env: Bindings,
+    created: { client_id: string; registration_access_token: string },
+    body: object,
+  ) {
+    return oauthApp.request(
+      `/oidc/register/${created.client_id}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "tenant-id": "tenantId",
+          authorization: `Bearer ${created.registration_access_token}`,
+        },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  it("keeps token_endpoint_auth_method none when the PUT omits it", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+    });
+    expect(response.status).toBe(200);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("none");
+  });
+
+  it("allows switching to key-based private_key_jwt without a secret", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+      token_endpoint_auth_method: "private_key_jwt",
+      jwks_uri: "https://app.example.com/.well-known/jwks.json",
+    });
+    expect(response.status).toBe(200);
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("private_key_jwt");
+  });
+
+  it.each(["client_secret_post", "client_secret_jwt"])(
+    "refuses %s for a client without a secret",
+    async (method) => {
+      const { oauthApp, env } = await getTestServer();
+      const created = await registerPublic(oauthApp, env);
+      const response = await put(oauthApp, env, created, {
+        client_name: "Public",
+        redirect_uris: ["https://app.example.com/cb"],
+        token_endpoint_auth_method: method,
+      });
+      expect(response.status).toBe(400);
+    },
+  );
+
+  it("refuses a secret-based method for a client without a secret", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const created = await registerPublic(oauthApp, env);
+    const response = await put(oauthApp, env, created, {
+      client_name: "Public",
+      redirect_uris: ["https://app.example.com/cb"],
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error_description).toMatch(
+      /needs a client secret/,
+    );
+    const client = await env.data.clients.get("tenantId", created.client_id);
+    expect(client?.token_endpoint_auth_method).toBe("none");
   });
 });

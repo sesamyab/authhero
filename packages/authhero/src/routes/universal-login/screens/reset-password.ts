@@ -79,7 +79,10 @@ export async function executePasswordReset(params: {
     env,
     tenant_id: client.tenant.id,
     username,
-    connection: resolveClientDatabaseConnectionName(client),
+    connection: resolveClientDatabaseConnectionName(
+      client,
+      loginSession.authParams.connection,
+    ),
   });
 
   if (!user) {
@@ -88,7 +91,11 @@ export async function executePasswordReset(params: {
 
   // Find the password connection by strategy
   const { connection: connectionName, connectionId } =
-    resolvePasswordConnection(client, user.connection);
+    resolvePasswordConnection(
+      client,
+      user.connection,
+      loginSession.authParams.connection,
+    );
 
   // Validate password against connection policy
   const policy = await getPasswordPolicy(

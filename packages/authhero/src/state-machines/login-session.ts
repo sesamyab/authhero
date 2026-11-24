@@ -57,6 +57,16 @@ export interface LoginSessionData {
   inviter_name?: string;
   roles?: string[];
   connect?: Record<string, unknown>;
+  /**
+   * Developer app setup page (#1776): which link opened the page (the
+   * registration token row id) and, once a create link registered its app,
+   * the new client. See routes/universal-login/screens/self-service-app.ts.
+   */
+  self_service?: {
+    kind: "app_create" | "app_edit";
+    token_id: string;
+    completed_client_id?: string;
+  };
   deviceFlow?: { deviceCodeHash?: string; userCode?: string; ready?: boolean };
   try_connection_result?: unknown;
   // What the browser sent on /authorize; copied onto the login log
@@ -64,6 +74,14 @@ export interface LoginSessionData {
   // Set on the login session behind a session_transfer_token: what the
   // redeeming /authorize needs to rebuild the login
   session_transfer?: SessionTransferCarrierState;
+  /**
+   * The database connection /co/authenticate checked a password in. Written
+   * only by its password branch, on the session it creates, and read by
+   * ticketAuth. Kept apart from `authParams.connection`, which /authorize and
+   * other routes set from the request, so a login ticket can only be redeemed
+   * where a password was actually checked.
+   */
+  ticket_connection?: string;
 }
 
 /** The on-disk JSON shape stays flat for compatibility with existing sessions. */

@@ -23,7 +23,10 @@ import {
   getUsernamePasswordUser,
   resolveUsernamePasswordProvider,
 } from "../../../utils/username-password-provider";
-import { resolveClientDatabaseConnectionName } from "../../../helpers/database-connection-scope";
+import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../../../helpers/database-connection-scope";
 import {
   getPasswordPolicy,
   validatePasswordPolicy,
@@ -702,8 +705,9 @@ export const signupScreenDefinition: ScreenDefinition = {
       }
 
       // Find the password connection from the client's connections
-      const passwordConnection = client.connections.find((c) =>
-        isDatabaseConnectionStrategy(c.strategy),
+      const passwordConnection = resolveClientDatabaseConnection(
+        client,
+        context.ctx.var.loginSession?.authParams.connection,
       );
       const connection = passwordConnection?.name || Strategy.USERNAME_PASSWORD;
 
@@ -812,7 +816,10 @@ export const signupScreenDefinition: ScreenDefinition = {
           email_verified: false,
           provider,
           // The connection this client's login lookups scope to (#1702).
-          connection: resolveClientDatabaseConnectionName(client),
+          connection: resolveClientDatabaseConnectionName(
+            client,
+            loginSession.authParams.connection,
+          ),
           is_social: false,
           password: { hash, algorithm },
           // Mappings come from the stored partial, never from the request.

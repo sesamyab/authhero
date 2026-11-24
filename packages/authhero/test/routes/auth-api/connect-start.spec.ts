@@ -271,6 +271,28 @@ describe("GET /connect/start", () => {
     expect(body.error_description).toMatch(/audience/);
   });
 
+  it("rejects the Management API audience", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await enableConnectFlow(env);
+    const qs = new URLSearchParams({
+      domain: "publisher.com",
+      return_to: "https://publisher.com/cb",
+      state: "csrf-abc",
+      audience: "urn:authhero:management",
+      scope: "read:users",
+    }).toString();
+    const response = await oauthApp.request(
+      `/connect/start?${qs}`,
+      { method: "GET", headers: { "tenant-id": "tenantId" } },
+      env,
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error_description).toMatch(
+      /cannot be granted through Dynamic Client Registration/,
+    );
+  });
+
   it("rejects unknown audience", async () => {
     const { oauthApp, env } = await getTestServer();
     await enableConnectFlow(env);

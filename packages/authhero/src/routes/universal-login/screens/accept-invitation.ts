@@ -18,7 +18,6 @@ import {
   LogTypes,
   Strategy,
   StrategyType,
-  isDatabaseConnectionStrategy,
   escapeLuceneValue,
 } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
@@ -27,7 +26,10 @@ import {
   getUsernamePasswordUser,
   resolveUsernamePasswordProvider,
 } from "../../../utils/username-password-provider";
-import { resolveClientDatabaseConnectionName } from "../../../helpers/database-connection-scope";
+import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../../../helpers/database-connection-scope";
 import {
   getPasswordPolicy,
   validatePasswordPolicy,
@@ -269,8 +271,9 @@ export const acceptInvitationScreenDefinition: ScreenDefinition = {
         };
       }
 
-      const passwordConnection = client.connections.find((c) =>
-        isDatabaseConnectionStrategy(c.strategy),
+      const passwordConnection = resolveClientDatabaseConnection(
+        client,
+        loginSession.authParams.connection,
       );
       const connection = passwordConnection?.name || Strategy.USERNAME_PASSWORD;
 
@@ -314,7 +317,10 @@ export const acceptInvitationScreenDefinition: ScreenDefinition = {
         env: ctx.env,
         tenant_id: client.tenant.id,
         username: email,
-        connection: resolveClientDatabaseConnectionName(client),
+        connection: resolveClientDatabaseConnectionName(
+          client,
+          loginSession.authParams.connection,
+        ),
       });
 
       if (!user) {
@@ -331,7 +337,10 @@ export const acceptInvitationScreenDefinition: ScreenDefinition = {
             email_verified: true,
             provider,
             // The connection this client's login lookups scope to (#1702).
-            connection: resolveClientDatabaseConnectionName(client),
+            connection: resolveClientDatabaseConnectionName(
+              client,
+              loginSession.authParams.connection,
+            ),
             is_social: false,
             password: { hash, algorithm },
             app_metadata: invite.app_metadata || {},

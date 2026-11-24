@@ -16,6 +16,7 @@ function setup() {
   const client = {
     client_id: "client",
     tenant: { id: "tenant" },
+    connections: [],
   } as Parameters<typeof requestPasswordReset>[1];
   return {
     sessions,
