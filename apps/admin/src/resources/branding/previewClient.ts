@@ -76,7 +76,7 @@ interface PreviewRequest {
   signal?: AbortSignal;
 }
 
-interface OpenFullPreviewOptions extends Omit<PreviewRequest, "signal"> {}
+type OpenFullPreviewOptions = Omit<PreviewRequest, "signal">;
 
 /**
  * Drop null, undefined and empty-string values (recursively). The preview
