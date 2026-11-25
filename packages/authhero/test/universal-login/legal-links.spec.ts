@@ -48,6 +48,34 @@ describe("clientLegalUrls", () => {
       clientLegalUrls({ tos_uri: "javascript:alert(1)", policy_uri: "x" }),
     ).toEqual({ termsAndConditionsUrl: undefined, privacyUrl: undefined });
   });
+
+  it("rejects data: URLs so the next source is used", () => {
+    const legal = clientLegalUrls({
+      tos_uri: "data:text/html,<p>terms</p>",
+      termsAndConditionsUrl: "https://e.com/legacy",
+      policy_uri: "data:text/html,<p>privacy</p>",
+    });
+    expect(legal).toEqual({
+      termsAndConditionsUrl: "https://e.com/legacy",
+      privacyUrl: undefined,
+    });
+    expect(
+      withTenantLegalDefaults(legal, { privacy_url: "https://t.com/privacy" })
+        .privacyUrl,
+    ).toBe("https://t.com/privacy");
+  });
+
+  it("keeps relative paths and returns URLs unescaped", () => {
+    expect(
+      clientLegalUrls({
+        tos_uri: "/terms",
+        policy_uri: "https://e.com/privacy?lang=en&region=us",
+      }),
+    ).toEqual({
+      termsAndConditionsUrl: "/terms",
+      privacyUrl: "https://e.com/privacy?lang=en&region=us",
+    });
+  });
 });
 
 describe("withTenantLegalDefaults", () => {
@@ -155,6 +183,18 @@ describe("u2 page legal links", () => {
     // Phone footer carries them too.
     const footer = html.slice(html.indexOf('<footer class="ah-footer"'));
     expect(footer).toContain("https://t.com/privacy");
+  });
+
+  it("escapes a query string exactly once in the rendered link", async () => {
+    const html = await render(
+      {},
+      { privacy_url: "https://t.com/privacy?lang=en&region=us" },
+    );
+    const chip = legalChip(html);
+    expect(chip).toContain(
+      'href="https://t.com/privacy?lang=en&amp;region=us"',
+    );
+    expect(chip).not.toContain("&amp;amp;");
   });
 
   it("emits no legal chip when nothing is configured", async () => {

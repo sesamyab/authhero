@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useInput, useRecordContext } from "ra-core";
+import { useFormContext } from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
 import {
   BooleanInput,
@@ -48,12 +49,16 @@ const EMAIL_VALIDATION_CHOICES = [
   { id: "enforced", name: "Enforced" },
 ];
 
+// client_metadata keys that have dedicated inputs on this tab.
+const KEPT_METADATA_KEYS = ["email_validation", "tos_uri", "policy_uri"];
+
 // Free-form key/value rows of client_metadata. `email_validation` is rendered
 // separately as a SelectInput above, so it's filtered out here. The legacy
 // `disable_sign_ups` key (now stored on the connection) is filtered out so
 // old records don't show it twice during a partial migration.
-function ClientMetadataInput() {
+export function ClientMetadataInput() {
   const { field } = useInput({ source: "client_metadata" });
+  const { getValues } = useFormContext();
   const record = useRecordContext();
   const value: Record<string, unknown> =
     field.value && typeof field.value === "object" ? field.value : {};
@@ -78,8 +83,16 @@ function ClientMetadataInput() {
 
   const commit = (next: Array<{ key: string; value: string }>) => {
     const out: Record<string, unknown> = {};
-    if ("email_validation" in value)
-      out.email_validation = value.email_validation;
+    // Keys edited by their own inputs above are not rows; carry them over so
+    // editing a row doesn't drop them from the saved metadata. Read the live
+    // form value: `value` from this render can predate an edit made in one of
+    // those inputs.
+    const current = getValues("client_metadata");
+    const latest: Record<string, unknown> =
+      current && typeof current === "object" ? current : {};
+    for (const key of KEPT_METADATA_KEYS) {
+      if (key in latest) out[key] = latest[key];
+    }
     for (const row of next) {
       const k = row.key.trim();
       if (k) out[k] = row.value;

@@ -31,6 +31,8 @@ describe("branding legal links (kysely)", () => {
     await data.branding.set("tenantId", { logo_url: "https://e.com/l.png" });
 
     const branding = await data.branding.get("tenantId");
+    // The row was read back, so the missing fields are really unset.
+    expect(branding?.logo_url).toBe("https://e.com/l.png");
     expect(branding?.terms_url).toBeUndefined();
     expect(branding?.privacy_url).toBeUndefined();
   });

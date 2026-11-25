@@ -1,5 +1,4 @@
 import type { Branding } from "@authhero/adapter-interfaces";
-import { sanitizeUrl } from "./sanitization-utils";
 
 export interface LegalUrls {
   /** Terms-of-service link (or the legacy combined "terms" link). */
@@ -8,20 +7,39 @@ export interface LegalUrls {
 }
 
 /**
+ * A URL that can be opened as a legal link: http(s), or a path starting with
+ * `/` (accepted before, so legacy links keep working). Anything else
+ * (`javascript:`, `data:`, garbage) is rejected so the next source is used
+ * instead.
+ *
+ * The value is returned as-is, NOT HTML-escaped: the page-chrome renderers
+ * (`renderLegalChip`, `renderMobileFooter`) escape it once when they write the
+ * `href`. Escaping here too would turn `?a=1&b=2` into `&amp;amp;`.
+ */
+function legalUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/")) return url;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The terms and privacy URLs for a client, from its `client_metadata`:
  * `tos_uri` / `policy_uri` (the DCR names), with the older single
  * `termsAndConditionsUrl` kept as the terms fallback so existing clients
- * render as before. Each value is sanitised and omitted when empty.
+ * render as before. Unusable values are omitted.
  */
 export function clientLegalUrls(
   metadata: Record<string, string | undefined> | undefined,
 ): LegalUrls {
   return {
     termsAndConditionsUrl:
-      sanitizeUrl(metadata?.tos_uri) ||
-      sanitizeUrl(metadata?.termsAndConditionsUrl) ||
-      undefined,
-    privacyUrl: sanitizeUrl(metadata?.policy_uri) || undefined,
+      legalUrl(metadata?.tos_uri) ?? legalUrl(metadata?.termsAndConditionsUrl),
+    privacyUrl: legalUrl(metadata?.policy_uri),
   };
 }
 
@@ -35,10 +53,7 @@ export function withTenantLegalDefaults(
 ): LegalUrls {
   return {
     termsAndConditionsUrl:
-      legal.termsAndConditionsUrl ||
-      sanitizeUrl(branding?.terms_url) ||
-      undefined,
-    privacyUrl:
-      legal.privacyUrl || sanitizeUrl(branding?.privacy_url) || undefined,
+      legal.termsAndConditionsUrl ?? legalUrl(branding?.terms_url),
+    privacyUrl: legal.privacyUrl ?? legalUrl(branding?.privacy_url),
   };
 }
