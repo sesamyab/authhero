@@ -81,7 +81,7 @@ describe("prompt partials on the sign-in form screens", () => {
 
 describe("withPromptPartials", () => {
   const baseScreen = {
-    name: "x",
+    name: "forgot-password",
     action: "/x",
     method: "POST" as const,
     components: [],
@@ -112,7 +112,10 @@ describe("withPromptPartials", () => {
       const get = vi.fn().mockResolvedValue({
         [target.key]: { "form-footer-end": TERMS },
       });
-      const wrapped = withPromptPartials(id, definition());
+      const wrapped = withPromptPartials(
+        id,
+        definition({ ...baseScreen, name: id }),
+      );
       const result = await wrapped.handler.get(context(null, get));
       expect(get).toHaveBeenCalledWith("t", target.prompt);
       expect(result.screen.partials).toEqual({ "form-footer-end": TERMS });
@@ -129,6 +132,61 @@ describe("withPromptPartials", () => {
       error: "boom",
       screen: { screen: { partials: { "form-content-end": TERMS } } },
     });
+  });
+
+  it("uses the partials of the screen a POST returns, not the requested one", async () => {
+    const codeScreen = { ...baseScreen, name: "reset-password-code" };
+    const wrapped = withPromptPartials("forgot-password", {
+      id: "forgot-password",
+      name: "forgot-password",
+      handler: {
+        get: async () => ({ screen: baseScreen }),
+        post: async () => ({ screen: { screen: codeScreen } }),
+      },
+    });
+    const result = await wrapped.handler.post!(
+      context({
+        "reset-password-request": { "form-content-end": "request" },
+        "reset-password-code": { "form-content-end": "code" },
+      }),
+      {},
+    );
+    expect(result).toMatchObject({
+      screen: { screen: { partials: { "form-content-end": "code" } } },
+    });
+  });
+
+  it("attaches partials when a screen without its own returns one that has them", async () => {
+    const otpScreen = { ...baseScreen, name: "email-otp-challenge" };
+    const get = vi.fn().mockResolvedValue({
+      "email-otp-challenge": { "form-content-end": TERMS },
+    });
+    const wrapped = withPromptPartials("identifier", {
+      id: "identifier",
+      name: "identifier",
+      handler: {
+        get: async () => ({ screen: baseScreen }),
+        post: async () => ({ screen: { screen: otpScreen } }),
+      },
+    });
+    const result = await wrapped.handler.post!(context(null, get), {});
+    expect(get).toHaveBeenCalledWith("t", "email-otp-challenge");
+    expect(result).toMatchObject({
+      screen: { screen: { partials: { "form-content-end": TERMS } } },
+    });
+  });
+
+  it("does not load partials for a screen without a partials target", async () => {
+    const get = vi.fn();
+    const wrapped = withPromptPartials("identifier", {
+      id: "identifier",
+      name: "identifier",
+      handler: {
+        get: async () => ({ screen: { ...baseScreen, name: "identifier" } }),
+      },
+    });
+    await wrapped.handler.get(context(null, get));
+    expect(get).not.toHaveBeenCalled();
   });
 
   it("keeps the screen as is without stored partials", async () => {

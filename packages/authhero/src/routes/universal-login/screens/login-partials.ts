@@ -30,7 +30,10 @@ export async function attachPromptPartials(
   screenId: string,
   result: ScreenResult,
 ): Promise<ScreenResult> {
-  const target = getPartialsTargetForScreen(screenId);
+  // A POST often answers with a different screen (identifier → email code,
+  // forgot-password → reset code), so pick the partials of the screen that is
+  // actually returned, falling back to the requested one.
+  const target = getPartialsTargetForScreen(result.screen.name || screenId);
   if (!target || result.screen.partials) return result;
 
   let stored: PromptPartials | null | undefined;
