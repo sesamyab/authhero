@@ -14,11 +14,23 @@ export const WIDGET_CLIENT_JS_PATH = `${WIDGET_ASSET_PATH}/client.js`;
 /** Legacy path that existing `widgetHandler` rewriteRequestPath functions strip. */
 const LEGACY_WIDGET_PATH = "/u/widget";
 
+let legacyWidgetFallbackWarned = false;
+
+function warnLegacyWidgetFallbackOnce() {
+  if (legacyWidgetFallbackWarned) return;
+  legacyWidgetFallbackWarned = true;
+  console.warn(
+    "[authhero] No widgetHandler is configured, so /widget/* redirects to /u/widget/*. Serve the @authhero/widget files at /widget/ (or set widgetHandler) before /u is removed.",
+  );
+}
+
 /**
  * Serves `/widget/client.js` and `/widget/*`. The configured `widgetHandler`
  * is invoked with the request path rewritten to the legacy `/u/widget/*`
  * form, so handlers that do `p.replace("/u/widget", "")` keep working as well
- * as handlers written for the neutral path.
+ * as handlers written for the neutral path. Without a `widgetHandler`,
+ * `/widget/*` redirects to `/u/widget/*`, where deployments that ship the
+ * widget as static files keep it today.
  */
 export function createWidgetAssetRoutes(config: AuthHeroConfig) {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -39,16 +51,20 @@ export function createWidgetAssetRoutes(config: AuthHeroConfig) {
 
   const handler = config.widgetHandler;
   if (!handler) {
-    app.get(`${WIDGET_ASSET_PATH}/*`, (ctx: Context) =>
-      ctx.json(
-        {
-          error: "widget_not_configured",
-          message:
-            "The AuthHero widget is not configured. Provide a widgetHandler in your AuthHeroConfig to serve widget files from @authhero/widget package.",
-        },
-        404,
-      ),
-    );
+    // No handler: the widget is most likely deployed as static files under the
+    // legacy /u/widget/ path (e.g. a Cloudflare assets directory), which a
+    // request for /widget/* never reaches. Redirect there instead of 404ing.
+    // The widget loads its chunks relative to the entry module's final URL, so
+    // only the entry file takes the redirect.
+    app.get(`${WIDGET_ASSET_PATH}/*`, (ctx: Context) => {
+      warnLegacyWidgetFallbackOnce();
+      const url = new URL(ctx.req.url);
+      const target =
+        LEGACY_WIDGET_PATH +
+        url.pathname.slice(WIDGET_ASSET_PATH.length) +
+        url.search;
+      return ctx.redirect(target, 302);
+    });
     return app;
   }
 

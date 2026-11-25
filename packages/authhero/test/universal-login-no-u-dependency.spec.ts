@@ -97,6 +97,35 @@ describe("universal login v2 does not depend on /u", () => {
     expect(client.headers.get("access-control-allow-origin")).toBe("*");
   });
 
+  it("redirects /widget/* to /u/widget/* when no widgetHandler is configured", async () => {
+    const routes = createWidgetAssetRoutes({} as any);
+    const app = new Hono().route("/", routes);
+
+    const res = await app.request("/widget/authhero-widget.esm.js?v=abc");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      "/u/widget/authhero-widget.esm.js?v=abc",
+    );
+    // CORS still applies to the redirect.
+    const cors = await app.request("/widget/p-1.js", {
+      headers: { Origin: "https://example.com" },
+    });
+    expect(cors.headers.get("access-control-allow-origin")).toBe("*");
+
+    // client.js is still served inline, not redirected.
+    const client = await app.request("/widget/client.js");
+    expect(client.status).toBe(200);
+    expect(client.headers.get("content-type")).toContain("javascript");
+  });
+
+  it("does not loop when neither /widget nor /u/widget is served", async () => {
+    const { app } = await getTestServer();
+    const res = await app.request("/widget/authhero-widget.esm.js");
+    expect(res.status).toBe(302);
+    const target = await app.request(res.headers.get("location")!);
+    expect(target.status).toBe(404);
+  });
+
   it("serves both widget URLs from a sub-app-only composition", async () => {
     const { universalApp, env } = await getTestServer();
     const host = new Hono()

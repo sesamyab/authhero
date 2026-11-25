@@ -380,6 +380,10 @@ export interface AuthHeroConfig {
    * are registered on the root app returned by init(), so mount that (or
    * createWidgetAssetRoutes) when serving the pages from a sub-app.
    *
+   * Without a widgetHandler, /widget/* redirects to /u/widget/*, so deployments
+   * that ship the widget as static files under /u/widget/ keep working. Serve the
+   * files at /widget/ as well before /u is removed.
+   *
    * The widget files are served from @authhero/widget package.
    * This must be a platform-specific static file handler.
    *
