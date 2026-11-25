@@ -51,7 +51,11 @@ import type {
   ChipStyle,
   LanguageOption,
 } from "@authhero/widget/page-chrome";
-import { buildLanguageOptions, resolveTermsLabel } from "./u2-widget-page";
+import {
+  buildLanguageOptions,
+  resolvePrivacyLabel,
+  resolveTermsLabel,
+} from "./u2-widget-page";
 
 /**
  * Exact default-form widget token. Kept for the default template body and as
@@ -98,6 +102,7 @@ export type TemplateSlotOptions = {
     height?: number;
   };
   termsAndConditionsUrl?: string;
+  privacyUrl?: string;
   /** Full branding/theme objects, exposed to the template as Liquid variables. */
   branding?: Branding | null;
   theme?: Theme | null;
@@ -235,6 +240,8 @@ function buildSlotFragments(
       renderLegalChip({
         termsAndConditionsUrl: opts.termsAndConditionsUrl,
         termsLabel: resolveTermsLabel(opts.language),
+        privacyUrl: opts.privacyUrl,
+        privacyLabel: resolvePrivacyLabel(opts.language),
         variant: style,
       }),
     // Phone footer bar. Templates that want the mobile chrome can place it
@@ -246,6 +253,8 @@ function buildSlotFragments(
         languages: languageOptions(opts.availableLanguages),
         termsAndConditionsUrl: opts.termsAndConditionsUrl,
         termsLabel: resolveTermsLabel(opts.language),
+        privacyUrl: opts.privacyUrl,
+        privacyLabel: resolvePrivacyLabel(opts.language),
         poweredBy: opts.poweredBy,
       }),
   };

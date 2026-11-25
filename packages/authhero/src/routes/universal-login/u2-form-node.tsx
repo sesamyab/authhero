@@ -36,7 +36,7 @@ import type {
   User,
 } from "@authhero/adapter-interfaces";
 import { renderWidgetPageResponse, resolveDarkMode } from "./u2-widget-page";
-import { sanitizeUrl } from "./sanitization-utils";
+import { clientLegalUrls } from "./legal-links";
 import { resolvePrimaryUser } from "../../helpers/users";
 
 import { defineRoute } from "../../utils/define-route";
@@ -136,7 +136,7 @@ async function renderFormNodeWidgetPage(
   theme: Theme | null,
   clientName: string,
   clientId: string,
-  termsAndConditionsUrl?: string,
+  legal: { termsAndConditionsUrl?: string; privacyUrl?: string } = {},
   locale?: string,
 ): Promise<Response> {
   const screenJson = JSON.stringify(screen);
@@ -157,7 +157,8 @@ async function renderFormNodeWidgetPage(
     theme,
     clientName,
     poweredByLogo: ctx.env.poweredByLogo,
-    termsAndConditionsUrl,
+    termsAndConditionsUrl: legal.termsAndConditionsUrl,
+    privacyUrl: legal.privacyUrl,
     darkMode,
     locale,
   });
@@ -262,7 +263,7 @@ const getFormIdNodesNodeId = defineRoute({
       theme,
       client.name || "AuthHero",
       client.client_id,
-      sanitizeUrl(client.client_metadata?.termsAndConditionsUrl),
+      clientLegalUrls(client.client_metadata),
       resolveLocaleFromContext(
         ctx,
         loginSession.authParams?.ui_locales,

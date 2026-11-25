@@ -36,6 +36,11 @@ export const brandingSchema = z.object({
   // Auth0 has no equivalent. Per-user toggle (ah-dark-mode cookie) still
   // overrides this at runtime.
   dark_mode: z.enum(["dark", "light", "auto"]).optional(),
+  // AuthHero-specific: tenant-wide default terms-of-service and privacy-policy
+  // URLs shown on the universal login page. A client's `tos_uri` /
+  // `policy_uri` client_metadata overrides them. Auth0 has no equivalent.
+  terms_url: z.string().optional(),
+  privacy_url: z.string().optional(),
 });
 
 export type Branding = z.infer<typeof brandingSchema>;

@@ -176,6 +176,13 @@
       "when": 1795501490298,
       "tag": "0024_theme_dark",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1795539911374,
+      "tag": "0025_branding_legal_links",
+      "breakpoints": true
     }
   ]
 }
