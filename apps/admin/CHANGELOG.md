@@ -1,5 +1,56 @@
 # @authhero/admin
 
+## 0.32.0
+
+### Minor Changes
+
+- 1db1dbe: Developer app invites (#1776): an outside developer can register and update their own OAuth app through time-limited links, without an account.
+  - **Invites.** `POST /api/v2/client-registration-tokens` accepts a `preset` (`native`, `spa`, `regular_web`) with a `name`, optional `connections` and `is_first_party`, and returns a setup link in `ticket`. Presets pin the app type, grant types (`authorization_code`, `refresh_token`), client authentication (none for native and single-page apps, `client_secret_post` for web apps) and PKCE with S256. Invite and edit links last 7 days by default, at most 30.
+  - **Setup page.** `/u2/self-service/app` registers the app (invite link) or updates it (edit link), with the tenant's branding and translations in every shipped locale. The client secret of a web app is shown once.
+  - **Edit links.** `POST /api/v2/clients/{id}/registration-ticket` returns an edit link and revokes the client's previous ones. It also works for clients created by hand. Through an edit link, and for every invite-created app, updates are limited to the name, logo, callback, logout and web origin URLs and contact details, and `DELETE /oidc/register/{id}` returns `405`.
+  - **Invite management.** `GET /api/v2/client-registration-tokens` (with `type`, `source`, `client_id`), `GET /{id}` and `POST /{id}/revoke`, with the new scopes `read:client_registration_tokens` and `delete:client_registration_tokens`. Tokens and hashes are never returned.
+  - **Registration fixes.** Public clients (`token_endpoint_auth_method: none`) no longer get a client secret. RFC 7592 `PUT` keeps a constrained field the caller omits instead of resetting it. Registration accepts `application_type`, `post_logout_redirect_uris` and `web_origins`. Script and data URL schemes are rejected as redirect URIs; private-use schemes without a host (`com.example.app:/callback`) are accepted.
+  - **Management API.** `DELETE /api/v2/clients/{id}` revokes the client's registration tokens.
+  - **Storage.** `client_registration_tokens` gains `name`, `created_by` and `source`, plus `list()` on the adapter and an optional `client_id` on `markUsed()`. Migrations: drizzle `0023_client_registration_token_invites`, kysely `2026-11-23T12:00:00_client_registration_token_invites`.
+  - **Admin UI.** "Invite a developer" on Applications, an App invites list, a "Registered by invite" badge, and a Developer Access tab with edit links and revoke.
+  - Ticket ids of self-service links (SSO tickets and app links) share one helper, and `ticket` query parameters are redacted from logs.
+
+### Patch Changes
+
+- 07ed74e: The client Connections tab lists database connections in their own section, in order, marks the first as the default for password login, and lets you reorder them. Failed admin API requests now report the response's JSON `message` (or the status text) instead of the raw body, and the Connections tab shows it when a save fails.
+- 184a658: API errors without a JSON `message` show `HTTP <status>` when the response has no status text (HTTP/2), instead of an empty message.
+- Updated dependencies [07ed74e]
+- Updated dependencies [1db1dbe]
+  - @authhero/adapter-interfaces@4.32.0
+
+## 0.31.1
+
+### Patch Changes
+
+- Updated dependencies [a580312]
+- Updated dependencies [96a2910]
+  - @authhero/adapter-interfaces@4.31.0
+
+## 0.31.0
+
+### Minor Changes
+
+- b0cb2c3: Branding file uploads (#1738). New optional `StorageAdapter` (`data.storage`) with an R2 implementation in `@authhero/cloudflare-adapter` (`storage: { bucket, publicBaseUrl? }`). `POST /api/v2/branding/uploads/{kind}` validates type, size and content (SVG is checked and served with a restrictive CSP), stores objects under `tenants/{tenant_id}/branding/{kind}/`, and returns a URL. Files are served publicly with cache headers and CORS at `/assets/...`; `publicBaseUrl` only changes the URL returned by the upload API (the `/assets` route stays mounted, and SVGs always use it for its CSP). The admin branding page gets upload buttons for logo, favicon, powered-by logo, font and background image.
+
+### Patch Changes
+
+- 9c185ad: Outgoing email is sent from the template's own `from` if it has one, then the email provider's `default_from_address`. When neither is set it now uses the tenant's `sender_email` and `sender_name`, then the new optional `DEFAULT_SENDER_EMAIL` binding, and last `login@` followed by the hostname of `ISSUER` instead of the whole URL, which gave an invalid address such as `login@https://localhost:3000/`. A sender name with punctuation is sent as a quoted display name. Settings > General in the admin edits `sender_email` and `sender_name` and shows the tenant's `audience` read-only. `sender_email` can now be cleared with `null` in a tenant update; the Kysely and Drizzle adapters store it as unset.
+- Updated dependencies [b0cb2c3]
+- Updated dependencies [a6e447d]
+- Updated dependencies [9c185ad]
+  - @authhero/adapter-interfaces@4.30.0
+
+## 0.30.0
+
+### Minor Changes
+
+- 5d51b37: Show a user their own tenant-creation limit. `GET /tenants/creation-limit` returns `{ key, used, limit, source }` for the caller (`limit: null` is unlimited; `source` is `override`, `default` or `none`). The admin shows "2 of 3 tenants used" next to Create in the tenants list and in the create form, and says so when the limit is reached.
+
 ## 0.29.2
 
 ### Patch Changes

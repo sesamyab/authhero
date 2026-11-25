@@ -86,6 +86,46 @@ describe("authorizedHttpClient errors", () => {
     }
   });
 
+  it.each([
+    ["a stored token", { connectionMethod: "token", token: "t" } as const],
+    ["a login", { connectionMethod: "login" } as const],
+  ])(
+    "uses the JSON body's message, not the raw body (%s)",
+    async (_label, config) => {
+      useDomain(config);
+      answerWith(
+        400,
+        JSON.stringify({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "A client can have only one database connection enabled.",
+          errorCode: "multiple_database_connections",
+        }),
+      );
+
+      const failure = await authorizedHttpClient(
+        `https://${DOMAIN}/api/v2/clients/app/connections`,
+      ).catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).toHaveProperty(
+        "message",
+        "A client can have only one database connection enabled.",
+      );
+    },
+  );
+
+  it("falls back to the status text for a body that isn't JSON", async () => {
+    useDomain({ connectionMethod: "token", token: "t" });
+    answerWith(502, "<html>Bad gateway</html>");
+
+    const failure = await authorizedHttpClient(
+      `https://${DOMAIN}/api/v2/clients`,
+    ).catch((error: unknown) => error);
+
+    expect(failure).toHaveProperty("message", "status 502");
+  });
+
   it("does not set `status`, so react-admin does not sign the user out on a 403", async () => {
     useDomain({ connectionMethod: "login" });
     answerWith(403, '{"message":"no"}');
@@ -108,5 +148,33 @@ describe("authorizedHttpClient errors", () => {
 
     expect(res.status).toBe(200);
     expect(res.json).toEqual({ ok: true });
+  });
+});
+
+describe("authorizedHttpClient request dedupe", () => {
+  it("does not hand an aborted request's promise to a replacement with the same body", async () => {
+    useDomain({ connectionMethod: "token", token: "t" });
+    answerWith(200, '{"ok":true}');
+    const url = `https://${DOMAIN}/api/v2/branding/preview`;
+    const body = JSON.stringify({ screen: "login" });
+
+    const first = new AbortController();
+    const firstCall = authorizedHttpClient(url, {
+      method: "POST",
+      body,
+      signal: first.signal,
+    }).catch((error: unknown) => error);
+    first.abort();
+
+    const second = await authorizedHttpClient(url, {
+      method: "POST",
+      body,
+      signal: new AbortController().signal,
+    });
+    await firstCall;
+
+    expect(second.status).toBe(200);
+    // Two separate requests went out; the second did not reuse the first.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 });

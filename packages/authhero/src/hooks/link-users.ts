@@ -7,6 +7,7 @@ import { getPrimaryUserByEmail, resolveClusterRootId } from "../helpers/users";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { isUniqueConstraintError } from "../errors/is-unique-constraint-error";
 import { normalizeEmail } from "../utils/email";
+import { filterTrustedLinkTargets } from "../helpers/self-service-connections";
 
 export interface CommitUserResult {
   user: User;
@@ -76,6 +77,15 @@ export function commitUserHook(data: DataAdapters) {
               // worth an error. Read paths pass this off: with linking
               // disabled, duplicate primaries are the expected steady state.
               warnOnMultiplePrimaries: true,
+              // Never link into a self-service SSO user whose email domain
+              // is not verified: its identity provider may have asserted
+              // someone else's email (#1763).
+              filterCandidates: (candidates) =>
+                filterTrustedLinkTargets(
+                  trxData.connections,
+                  tenant_id,
+                  candidates,
+                ),
             });
 
             if (primaryUser) {

@@ -7,11 +7,12 @@ import {
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
-import { getOrCreateUserByProvider } from "../helpers/users";
+import { resolvePrimaryUser } from "../helpers/users";
+import { resolveClientDatabaseConnectionName } from "../helpers/database-connection-scope";
 import { createFrontChannelAuthResponse } from "./common";
+import { readLoginSessionData } from "../state-machines/login-session";
 import { getEnrichedClient } from "../helpers/client";
 import {
-  getOrCreateUsernamePasswordUser,
   isUsernamePasswordProvider,
   resolveUsernamePasswordProvider,
 } from "../utils/username-password-provider";
@@ -20,8 +21,9 @@ async function getProviderFromRealm(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   tenant_id: string,
   realm: string,
+  isDatabaseRealm: boolean,
 ) {
-  if (realm === Strategy.USERNAME_PASSWORD) {
+  if (isDatabaseRealm) {
     return resolveUsernamePasswordProvider(ctx.env, tenant_id);
   }
 
@@ -92,10 +94,51 @@ export async function ticketAuth(
 
   await env.data.codes.used(tenant_id, ticketId);
 
-  const provider = await getProviderFromRealm(ctx, tenant_id, realm);
+  // A database realm is the generic `Username-Password-Authentication` or the
+  // name of a database connection enabled on the client (#1703).
+  const isDatabaseRealm =
+    realm === Strategy.USERNAME_PASSWORD ||
+    client.connections.some(
+      (c) => c.name === realm && isDatabaseConnectionStrategy(c.strategy),
+    );
+
+  // A login ticket only covers a password in the connection /co/authenticate
+  // checked it in, which only that route records, as `ticket_connection` in
+  // the login session's state_data. `authParams.connection` is not used: other
+  // routes set it from the request without checking a password. The realm
+  // sent here must resolve to the recorded database connection; any other
+  // realm, including `email`, is refused. Other `ticket` codes (for example
+  // guardian enrollment tickets) point at login sessions without a recorded
+  // connection and never covered a password, so a missing connection is
+  // refused too.
+  const verifiedConnection = readLoginSessionData(
+    loginSession.state_data,
+  ).ticket_connection;
+  const databaseConnection = isDatabaseRealm
+    ? resolveClientDatabaseConnectionName(client, realm)
+    : undefined;
+  if (
+    !verifiedConnection ||
+    !databaseConnection ||
+    databaseConnection !== verifiedConnection
+  ) {
+    throw new JSONHTTPException(403, { message: "Invalid realm" });
+  }
+
+  const provider = await getProviderFromRealm(
+    ctx,
+    tenant_id,
+    realm,
+    isDatabaseRealm,
+  );
+  if (databaseConnection) {
+    ctx.set("connection", databaseConnection);
+  }
 
   // Look up the connection to get its strategy
-  const connection = client.connections.find((c) => c.name === realm);
+  const connection = client.connections.find(
+    (c) => c.name === (databaseConnection ?? realm),
+  );
   const strategy =
     connection?.strategy ||
     (isUsernamePasswordProvider(provider)
@@ -105,22 +148,25 @@ export async function ticketAuth(
     ? StrategyType.DATABASE
     : StrategyType.PASSWORDLESS;
 
-  let user =
-    realm === Strategy.USERNAME_PASSWORD
-      ? await getOrCreateUsernamePasswordUser(ctx, {
-          client,
-          username: loginSession.authParams.username,
-          connection: realm,
-          ip: ctx.var.ip,
-        })
-      : await getOrCreateUserByProvider(ctx, {
-          username: loginSession.authParams.username,
-          provider,
-          client,
-          connection: realm,
-          isSocial: false,
-          ip: ctx.var.ip,
-        });
+  // The ticket records the user /co/authenticate verified the password of.
+  // Log in that user, resolved to its cluster root, rather than looking the
+  // username up again: another row could match the same username by now. A
+  // ticket without a recorded user, or whose user no longer exists, is
+  // refused.
+  const verifiedUser = code.user_id
+    ? await env.data.users.get(tenant_id, code.user_id)
+    : null;
+  if (!verifiedUser) {
+    throw new JSONHTTPException(403, { message: "Invalid ticket" });
+  }
+  const user = await resolvePrimaryUser(
+    env.data.users,
+    tenant_id,
+    verifiedUser,
+  );
+  if (user.linked_to) {
+    throw new JSONHTTPException(403, { message: "Invalid ticket" });
+  }
 
   ctx.set("username", user.email || user.phone_number);
   ctx.set("user_id", user.user_id);
@@ -146,6 +192,8 @@ export async function ticketAuth(
     ...omitUndefined(authParams),
     client_id: loginSession.authParams.client_id,
     username: loginSession.authParams.username,
+    // Likewise the connection the password was checked in.
+    connection: verifiedConnection,
   };
 
   await env.data.loginSessions.update(tenant_id, loginSession.id, {
@@ -159,7 +207,7 @@ export async function ticketAuth(
     loginSession: { ...loginSession, authParams: mergedAuthParams },
     user,
     client,
-    authConnection: realm,
+    authConnection: databaseConnection ?? realm,
     authStrategy: {
       strategy,
       strategy_type,

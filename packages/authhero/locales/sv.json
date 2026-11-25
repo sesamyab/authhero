@@ -816,5 +816,63 @@
       "successTitle": "Klart",
       "title": "Status"
     }
+  },
+  "self-service": {
+    "self-service-app": {
+      "title": "Registrera din app",
+      "description": "${tenantName} har bjudit in dig att registrera en app som loggar in dess användare.",
+      "editTitle": "Uppdatera ${appName}",
+      "editDescription": "Ändra inloggningsinställningarna för ${appName}.",
+      "expiresText": "Länken går ut ${date}.",
+      "appTypeLabel": "Apptyp",
+      "appTypeNative": "Native-app",
+      "appTypeSpa": "Ensidesapp (SPA)",
+      "appTypeRegularWeb": "Vanlig webbapp",
+      "nameLabel": "Appens namn",
+      "callbacksLabel": "Callback-URL:er",
+      "callbacksHintNative": "En per rad. Använd appens universella länk eller ett eget schema, till exempel com.example.app:/callback",
+      "callbacksHintWeb": "En per rad, till exempel https://app.example.com/callback",
+      "logoutUrlsLabel": "Utloggnings-URL:er",
+      "webOriginsLabel": "Tillåtna webbursprung",
+      "webOriginsHint": "Ett per rad, till exempel https://app.example.com",
+      "logoUrlLabel": "Logotypens URL",
+      "websiteLabel": "Webbplats",
+      "privacyLabel": "URL till integritetspolicy",
+      "termsLabel": "URL till användarvillkor",
+      "contactLabel": "Kontaktadress (e-post)",
+      "registerButton": "Registrera appen",
+      "saveButton": "Spara ändringar",
+      "savedText": "Ändringarna har sparats.",
+      "clientIdLabel": "Klient-ID",
+      "requiredError": "Fältet måste fyllas i.",
+      "invalidValueError": "Värdet är inte giltigt.",
+      "uriTooMany": "Använd högst 20 URL:er.",
+      "uriTooLong": "En URL får vara högst 1024 tecken lång.",
+      "uriInvalid": "\"${value}\" är ingen giltig URL.",
+      "uriWildcard": "\"${value}\": jokertecken är inte tillåtna.",
+      "uriFragment": "\"${value}\": fragment (#) är inte tillåtna.",
+      "uriUserinfo": "\"${value}\": användarnamn och lösenord i URL:er är inte tillåtna.",
+      "uriHttpNotLoopback": "\"${value}\": använd https. http tillåts bara för localhost, 127.0.0.1 eller [::1].",
+      "uriSchemeNotAllowed": "\"${value}\": den här typen av URL är inte tillåten för apptypen.",
+      "uriCustomSchemeNeedsDot": "\"${value}\": egna scheman måste innehålla en punkt, till exempel com.example.app:/callback",
+      "uriOriginOnly": "\"${value}\": ange bara ursprunget, utan sökväg, till exempel https://app.example.com",
+      "uriNotForNative": "Native-appar använder inte webbursprung.",
+      "errorText": "Något gick fel. Försök igen."
+    },
+    "self-service-app-done": {
+      "title": "Din app är registrerad",
+      "description": "Använd de här värdena för att ställa in inloggningen i ${appName}.",
+      "clientIdLabel": "Klient-ID",
+      "domainLabel": "Domän",
+      "discoveryLabel": "Discovery-URL",
+      "clientSecretLabel": "Klienthemlighet",
+      "clientSecretWarning": "Kopiera klienthemligheten nu. Den visas inte igen.",
+      "pkceNote": "Använd PKCE med S256. De flesta inloggnings-SDK:er gör det som standard.",
+      "editLaterText": "Behöver du ändra något senare? Be ${tenantName} om en redigeringslänk."
+    },
+    "self-service-ticket-invalid": {
+      "title": "Länken kan inte användas",
+      "description": "Den kan ha gått ut, redan ha använts eller ha återkallats. Be den som skickade den om en ny länk."
+    }
   }
 }

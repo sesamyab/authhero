@@ -75,6 +75,11 @@ export function applyConfigMiddleware(
       ctx.env.unsafeAllowAzpCustomClaim = config.unsafeAllowAzpCustomClaim;
     }
 
+    if (config.additionalManagementAudiences) {
+      ctx.env.additionalManagementAudiences =
+        config.additionalManagementAudiences;
+    }
+
     if (config.tenantOperationExecutor) {
       ctx.env.tenantOperationExecutor = config.tenantOperationExecutor;
     }

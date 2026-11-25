@@ -816,5 +816,63 @@
       "successTitle": "Onnistui",
       "title": "Tila"
     }
+  },
+  "self-service": {
+    "self-service-app": {
+      "title": "Rekisteröi sovelluksesi",
+      "description": "${tenantName} on kutsunut sinut rekisteröimään sovelluksen, jolla sen käyttäjät kirjautuvat sisään.",
+      "editTitle": "Päivitä ${appName}",
+      "editDescription": "Muuta sovelluksen ${appName} kirjautumisasetuksia.",
+      "expiresText": "Linkki vanhenee ${date}.",
+      "appTypeLabel": "Sovellustyyppi",
+      "appTypeNative": "Natiivisovellus",
+      "appTypeSpa": "Yhden sivun sovellus (SPA)",
+      "appTypeRegularWeb": "Tavallinen verkkosovellus",
+      "nameLabel": "Sovelluksen nimi",
+      "callbacksLabel": "Paluu-URL-osoitteet",
+      "callbacksHintNative": "Yksi per rivi. Käytä sovelluksen universaalia linkkiä tai omaa skeemaa, esimerkiksi com.example.app:/callback",
+      "callbacksHintWeb": "Yksi per rivi, esimerkiksi https://app.example.com/callback",
+      "logoutUrlsLabel": "Uloskirjautumisen URL-osoitteet",
+      "webOriginsLabel": "Sallitut verkkoalkuperät",
+      "webOriginsHint": "Yksi per rivi, esimerkiksi https://app.example.com",
+      "logoUrlLabel": "Logon URL-osoite",
+      "websiteLabel": "Verkkosivusto",
+      "privacyLabel": "Tietosuojaselosteen URL-osoite",
+      "termsLabel": "Käyttöehtojen URL-osoite",
+      "contactLabel": "Yhteyssähköposti",
+      "registerButton": "Rekisteröi sovellus",
+      "saveButton": "Tallenna muutokset",
+      "savedText": "Muutokset tallennettu.",
+      "clientIdLabel": "Asiakastunnus",
+      "requiredError": "Tämä kenttä on pakollinen.",
+      "invalidValueError": "Arvo ei kelpaa.",
+      "uriTooMany": "Käytä enintään 20 URL-osoitetta.",
+      "uriTooLong": "URL-osoite saa olla enintään 1024 merkkiä pitkä.",
+      "uriInvalid": "\"${value}\" ei ole kelvollinen URL-osoite.",
+      "uriWildcard": "\"${value}\": jokerimerkit eivät ole sallittuja.",
+      "uriFragment": "\"${value}\": fragmentit (#) eivät ole sallittuja.",
+      "uriUserinfo": "\"${value}\": käyttäjänimet ja salasanat URL-osoitteissa eivät ole sallittuja.",
+      "uriHttpNotLoopback": "\"${value}\": käytä https:ää. http on sallittu vain osoitteille localhost, 127.0.0.1 tai [::1].",
+      "uriSchemeNotAllowed": "\"${value}\": tällainen URL-osoite ei ole sallittu tälle sovellustyypille.",
+      "uriCustomSchemeNeedsDot": "\"${value}\": oman skeeman täytyy sisältää piste, esimerkiksi com.example.app:/callback",
+      "uriOriginOnly": "\"${value}\": anna vain alkuperä ilman polkua, esimerkiksi https://app.example.com",
+      "uriNotForNative": "Natiivisovellukset eivät käytä verkkoalkuperiä.",
+      "errorText": "Jokin meni vikaan. Yritä uudelleen."
+    },
+    "self-service-app-done": {
+      "title": "Sovelluksesi on rekisteröity",
+      "description": "Määritä kirjautuminen sovellukseen ${appName} näillä arvoilla.",
+      "clientIdLabel": "Asiakastunnus",
+      "domainLabel": "Verkkotunnus",
+      "discoveryLabel": "Discovery-URL-osoite",
+      "clientSecretLabel": "Asiakassalaisuus",
+      "clientSecretWarning": "Kopioi asiakassalaisuus nyt. Sitä ei näytetä uudelleen.",
+      "pkceNote": "Käytä PKCE:tä S256-menetelmällä. Useimmat kirjautumis-SDK:t tekevät tämän oletuksena.",
+      "editLaterText": "Pitääkö jotain muuttaa myöhemmin? Pyydä muokkauslinkkiä taholta ${tenantName}."
+    },
+    "self-service-ticket-invalid": {
+      "title": "Linkkiä ei voi käyttää",
+      "description": "Se on ehkä vanhentunut, jo käytetty tai peruttu. Pyydä lähettäjältä uusi linkki."
+    }
   }
 }

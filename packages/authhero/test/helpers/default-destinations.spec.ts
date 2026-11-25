@@ -6,7 +6,10 @@ import type {
   OutboxEvent,
   UserDataAdapter,
 } from "@authhero/adapter-interfaces";
-import { createDefaultDestinations } from "../../src/helpers/default-destinations";
+import {
+  createArchiveDestinations,
+  createDefaultDestinations,
+} from "../../src/helpers/default-destinations";
 import { LogsDestination } from "../../src/helpers/outbox-destinations/logs";
 import { WebhookDestination } from "../../src/helpers/outbox-destinations/webhooks";
 import { RegistrationFinalizerDestination } from "../../src/helpers/outbox-destinations/registration-finalizer";
@@ -203,6 +206,25 @@ describe("createDefaultDestinations", () => {
     expect(getServiceToken).toHaveBeenCalledWith("tenant-1", "webhook");
     expect(getServiceToken).toHaveBeenCalledWith("tenant-1", "custom-scope");
     expect(receivedScopes).toContain("custom-scope");
+  });
+});
+
+describe("createArchiveDestinations", () => {
+  it("returns nothing when no archive is configured", () => {
+    expect(createArchiveDestinations(undefined)).toEqual([]);
+    expect(createArchiveDestinations({})).toEqual([]);
+  });
+
+  it("returns the Pipelines archive when pipeline is configured", () => {
+    const destinations = createArchiveDestinations({
+      pipeline: {
+        endpoint: "https://stream-1.ingest.cloudflare.com",
+        token: "ingest-token",
+      },
+    });
+
+    expect(destinations).toHaveLength(1);
+    expect(destinations[0]).toBeInstanceOf(PipelineDestination);
   });
 });
 

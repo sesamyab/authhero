@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { credentialString } from "../utils/credentials";
 import { attackProtectionSchema } from "./AttackProtection";
 import { mfaPolicySchema, mfaRememberBrowserShape } from "./TenantSettings";
 
@@ -29,7 +30,8 @@ export const tenantInsertSchema = z.object({
   picture_url: z.string().optional(),
   support_email: z.string().optional(),
   support_url: z.string().optional(),
-  sender_email: z.string().email().optional(),
+  // Null clears it: the admin sends null for an emptied field.
+  sender_email: z.string().email().nullish(),
   sender_name: z.string().optional(),
 
   // Tenant Settings fields (merged from TenantSettings)
@@ -320,8 +322,8 @@ export const tenantInsertSchema = z.object({
       // Twilio-specific configuration
       twilio: z
         .object({
-          sid: z.string().optional(),
-          auth_token: z.string().optional(),
+          sid: credentialString().optional(),
+          auth_token: credentialString().optional(),
           from: z.string().optional(),
           messaging_service_sid: z.string().optional(),
         })

@@ -10,6 +10,7 @@ import { LoginSessionState, LogTypes } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import bcryptjs from "bcryptjs";
 import { getUsernamePasswordUser } from "../../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../../helpers/database-connection-scope";
 import {
   recordPasswordReset,
   recordPasswordResetCompletion,
@@ -78,6 +79,10 @@ export async function executePasswordReset(params: {
     env,
     tenant_id: client.tenant.id,
     username,
+    connection: resolveClientDatabaseConnectionName(
+      client,
+      loginSession.authParams.connection,
+    ),
   });
 
   if (!user) {
@@ -86,7 +91,11 @@ export async function executePasswordReset(params: {
 
   // Find the password connection by strategy
   const { connection: connectionName, connectionId } =
-    resolvePasswordConnection(client, user.connection);
+    resolvePasswordConnection(
+      client,
+      user.connection,
+      loginSession.authParams.connection,
+    );
 
   // Validate password against connection policy
   const policy = await getPasswordPolicy(

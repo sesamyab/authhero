@@ -192,6 +192,9 @@ from Auth0.
 | Organization not found   | `No organization found by that id or name`          | `inexistent_organization` |
 | Action not found         | `That action does not exist.`                       | `inexistent_action`       |
 | Organization name in use | `An organization with this name already exists.`    | `organization_conflict`   |
+| Self-service profile not found | `Self-service profile not found.`             | `inexistent_self_service_profile` |
+| Self-service profile limit reached | `No more profiles can be created for this tenant.` | `self_service_profile_limit` |
+| SSO ticket connection name in use | `A connection with this name already exists.` | `connection_conflict` |
 | Malformed JSON body      | `Invalid request payload JSON format`               | `invalid_json`            |
 | No bearer token          | `Missing authentication` (401)                      | `missing_authentication`  |
 | Invalid or expired token | `Invalid token` (401)                               | `invalid_token`           |

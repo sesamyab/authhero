@@ -148,6 +148,41 @@
       "when": 1794836982646,
       "tag": "0020_resource_server_org_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1795018334243,
+      "tag": "0021_connection_self_service",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1795186448214,
+      "tag": "0022_self_service_sso",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1795437963706,
+      "tag": "0023_client_registration_token_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1795501490298,
+      "tag": "0024_theme_dark",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1795539911374,
+      "tag": "0025_branding_legal_links",
+      "breakpoints": true
     }
   ]
 }

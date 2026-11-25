@@ -1,19 +1,12 @@
 import {
   ClientConnectionsAdapter,
   Connection,
-  connectionSchema,
 } from "@authhero/adapter-interfaces";
 import { DynamoDBContext, DynamoDBBaseItem } from "../types";
-import { clientConnectionKeys, connectionKeys } from "../keys";
-import {
-  putItem,
-  deleteItem,
-  queryItems,
-  getItem,
-  stripDynamoDBFields,
-  removeNullProperties,
-} from "../utils";
+import { clientConnectionKeys } from "../keys";
+import { putItem, deleteItem, queryItems } from "../utils";
 import { BatchWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { createConnectionsAdapter } from "./connections";
 
 interface ClientConnectionItem extends DynamoDBBaseItem {
   tenant_id: string;
@@ -22,28 +15,10 @@ interface ClientConnectionItem extends DynamoDBBaseItem {
   order: number;
 }
 
-interface ConnectionItem extends DynamoDBBaseItem {
-  id: string;
-  tenant_id: string;
-  name: string;
-  strategy: string;
-  options?: string;
-}
-
-function toConnection(item: ConnectionItem): Connection {
-  const { tenant_id, ...rest } = stripDynamoDBFields(item);
-
-  const data = removeNullProperties({
-    ...rest,
-    options: item.options ? JSON.parse(item.options) : undefined,
-  });
-
-  return connectionSchema.parse(data);
-}
-
 export function createClientConnectionsAdapter(
   ctx: DynamoDBContext,
 ): ClientConnectionsAdapter {
+  const connectionAdapter = createConnectionsAdapter(ctx);
   return {
     async listByClient(
       tenantId: string,
@@ -61,13 +36,12 @@ export function createClientConnectionsAdapter(
       // Fetch the actual connection details
       const connections: Connection[] = [];
       for (const clientConnection of items) {
-        const connectionItem = await getItem<ConnectionItem>(
-          ctx,
-          connectionKeys.pk(tenantId),
-          connectionKeys.sk(clientConnection.connection_id),
+        const connection = await connectionAdapter.get(
+          tenantId,
+          clientConnection.connection_id,
         );
-        if (connectionItem) {
-          connections.push(toConnection(connectionItem));
+        if (connection) {
+          connections.push(connection);
         }
       }
 

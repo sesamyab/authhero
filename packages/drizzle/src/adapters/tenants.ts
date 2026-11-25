@@ -187,6 +187,7 @@ export function createTenantsAdapter(db: DrizzleDb) {
         "parent_tenant_id",
         "config_sync_hash",
         "config_synced_at",
+        "sender_email",
       ] as const) {
         if (tenant[field] === null) sqlTenant[field] = null;
       }

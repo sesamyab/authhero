@@ -9,7 +9,6 @@ import {
   Strategy,
   StrategyType,
   User,
-  isDatabaseConnectionStrategy,
 } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../types";
 import { EnrichedClient } from "../helpers/client";
@@ -18,6 +17,7 @@ import { logMessage } from "../helpers/logging";
 import { resolvePrimaryUser } from "../helpers/users";
 import { OTP_EXPIRATION_TIME } from "../constants";
 import generateOTP from "../utils/otp";
+import { resolveClientDatabaseConnection } from "../helpers/database-connection-scope";
 
 export type EmailVerificationMethod = "link" | "code";
 
@@ -138,10 +138,10 @@ function isRateLimitDecision(value: unknown): value is RateLimitDecision {
  */
 export function getEmailVerificationMethod(
   client: EnrichedClient,
+  // The database connection the login session names, if any (#1703).
+  requested?: string,
 ): EmailVerificationMethod {
-  const passwordConnection = client.connections.find((c) =>
-    isDatabaseConnectionStrategy(c.strategy),
-  );
+  const passwordConnection = resolveClientDatabaseConnection(client, requested);
   return (
     passwordConnection?.options?.attributes?.email?.verification_method ??
     "code"

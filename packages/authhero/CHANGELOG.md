@@ -1,5 +1,98 @@
 # authhero
 
+## 9.37.0
+
+### Minor Changes
+
+- 07ed74e: Choose the database connection for password login, signup and password reset the way Auth0 does when an application enables several (#1703):
+  - A connection the request names is used when the application enables it: `/authorize` `connection` (carried on the login session for universal login), the password-realm `realm` on `/co/authenticate` and the login-ticket flow, and the `connection` field of `/dbconnections/signup` and `/dbconnections/change_password`. These no longer accept only `Username-Password-Authentication`. A name the application doesn't enable is rejected (`/authorize` 403, the others `400 invalid_request`).
+  - Otherwise the application's first enabled database connection is used. An application with no connections enabled uses the tenant's oldest database connection, and `GET /api/v2/clients/{id}/connections` lists its database connections in that order.
+  - The choice is made in one place, `resolveClientDatabaseConnection` in `helpers/database-connection-scope.ts`, which every password flow uses. The "Multiple username-password connections configured for this client" error is gone.
+  - A login ticket from `/co/authenticate` is bound to the database connection its password was checked in: `/co/authenticate` records the connection on the ticket's login session, and redeeming the ticket at `/authorize` with a `realm` that resolves to another connection, or with `realm=email`, is refused with `403 Invalid realm`.
+  - `PATCH /api/v2/connections/{id}/clients` applies repeated entries for one client in request order.
+
+- 52aaa73: Dynamic Client Registration only provisions a client grant when the Initial Access Token pins it. `audience` and `scope` in a `POST /oidc/register` body are accepted only when they repeat values pinned in the token's constraints, and otherwise return `400 invalid_client_metadata`. Open registration can no longer request API access. The Management API audience (and any `additionalManagementAudiences`) is never granted through registration, `/connect/start` or a minted Initial Access Token.
+
+  `/connect/start` consent on a tenant (not through the control-plane workspace picker) now requires the user to hold `create:clients` on the Management API at tenant level. Other users see an error instead of the confirm button.
+
+- 1db1dbe: Developer app invites (#1776): an outside developer can register and update their own OAuth app through time-limited links, without an account.
+  - **Invites.** `POST /api/v2/client-registration-tokens` accepts a `preset` (`native`, `spa`, `regular_web`) with a `name`, optional `connections` and `is_first_party`, and returns a setup link in `ticket`. Presets pin the app type, grant types (`authorization_code`, `refresh_token`), client authentication (none for native and single-page apps, `client_secret_post` for web apps) and PKCE with S256. Invite and edit links last 7 days by default, at most 30.
+  - **Setup page.** `/u2/self-service/app` registers the app (invite link) or updates it (edit link), with the tenant's branding and translations in every shipped locale. The client secret of a web app is shown once.
+  - **Edit links.** `POST /api/v2/clients/{id}/registration-ticket` returns an edit link and revokes the client's previous ones. It also works for clients created by hand. Through an edit link, and for every invite-created app, updates are limited to the name, logo, callback, logout and web origin URLs and contact details, and `DELETE /oidc/register/{id}` returns `405`.
+  - **Invite management.** `GET /api/v2/client-registration-tokens` (with `type`, `source`, `client_id`), `GET /{id}` and `POST /{id}/revoke`, with the new scopes `read:client_registration_tokens` and `delete:client_registration_tokens`. Tokens and hashes are never returned.
+  - **Registration fixes.** Public clients (`token_endpoint_auth_method: none`) no longer get a client secret. RFC 7592 `PUT` keeps a constrained field the caller omits instead of resetting it. Registration accepts `application_type`, `post_logout_redirect_uris` and `web_origins`. Script and data URL schemes are rejected as redirect URIs; private-use schemes without a host (`com.example.app:/callback`) are accepted.
+  - **Management API.** `DELETE /api/v2/clients/{id}` revokes the client's registration tokens.
+  - **Storage.** `client_registration_tokens` gains `name`, `created_by` and `source`, plus `list()` on the adapter and an optional `client_id` on `markUsed()`. Migrations: drizzle `0023_client_registration_token_invites`, kysely `2026-11-23T12:00:00_client_registration_token_invites`.
+  - **Admin UI.** "Invite a developer" on Applications, an App invites list, a "Registered by invite" badge, and a Developer Access tab with edit links and revoke.
+  - Ticket ids of self-service links (SSO tickets and app links) share one helper, and `ticket` query parameters are redacted from logs.
+
+### Patch Changes
+
+- 184a658: Database connection selection (#1703) follow-ups:
+  - A password reset stores the database connection it targets on its login session, so both completion screens look in the same connection even if the client's connection list changes in between.
+  - `/authorize` with `connection=Username-Password-Authentication` uses the client's default database connection when no enabled connection has that exact name, instead of treating it as an external connection.
+  - Connection-scoped user lookups read every page of the tenant's connections, not only the adapter's first page.
+  - A login ticket records the user whose password `/co/authenticate` verified, and `/authorize` logs in that user (its primary) instead of looking the username up again.
+  - The connection a login ticket may be redeemed in is recorded in the login session's `state_data` (`ticket_connection`), which only the password branch of `/co/authenticate` writes. `authParams.connection`, which `/authorize` and `/dbconnections` set from the request, no longer counts for tickets.
+  - The oldest-first order for clients without an explicit connection list compares `created_at` as instants, so offset timestamps sort correctly.
+
+- c82fd5e: Management API users are created and updated within their database connection. `POST /api/v2/users` accepts the connection's name or id, stores the name on a database user, and checks email and username against that connection, answering a duplicate with Auth0's `409 The user already exists.` body (a duplicate caught by the unique index used to return a bare `User already exists`). `PATCH /api/v2/users/{id}` checks a username change within the user's connection (a taken username used to fail with a 500), treats legacy rows the login lookups see as part of the same connection when checking an email change, and accepts any database connection's name in `connection` to target the identity or set its password.
+- Updated dependencies [07ed74e]
+- Updated dependencies [1db1dbe]
+  - @authhero/adapter-interfaces@4.32.0
+  - @authhero/proxy@0.11.19
+  - @authhero/saml@0.6.12
+  - @authhero/widget@0.41.16
+
+## 9.36.0
+
+### Minor Changes
+
+- 6d3be5c: Add the Auth0-compatible Self-Service SSO Management API (#1763), mounted when the data adapter provides `selfServiceProfiles` and `ssoAccessTickets`:
+  - `GET/POST /api/v2/self-service-profiles`, `GET/PATCH/DELETE /api/v2/self-service-profiles/{id}`
+  - `GET/PUT /api/v2/self-service-profiles/{id}/custom-text/{language}/{page}`
+  - `POST /api/v2/self-service-profiles/{id}/sso-ticket`, which returns `{ "ticket": "<url>" }`
+  - `POST /api/v2/self-service-profiles/{profileId}/sso-ticket/{id}/revoke`, which returns `202`
+
+  Request bodies are parsed strictly. Auth0 fields AuthHero does not implement yet (`provisioning_config`, `use_for_organization_discovery`, `enabled_features`, `third_party_client_access_config`, `universal_logout_config`, `user_attribute_profile_id`, `connection_config.options.idpinitiated`, `domain_aliases_config.pending_domains`) and fields Auth0 does not define are rejected with `400` naming the field. Profiles and tickets accept the `oidc`, `samlp` and `waad` strategies. Tickets last 5 days by default and at most 30 days, and domain verification defaults to `required`. The ticket URL points at `/u2/self-service` on the tenant's domain. The setup screens come in a later release, so the URL does not open a page yet.
+
+### Patch Changes
+
+- 515e9cf: Scope database-user lookups by connection. Every database connection stores its users under the `auth0` provider, so password login, password reset, `/dbconnections`, invitations and the ticket flow could match a user that belongs to another database connection of the tenant. These lookups now take the connection they target and skip users of the tenant's other database connections, preferring a row in the connection itself over a legacy row that can't be attributed to one. Tenants with a single database connection get the same lookups as before, as do rows whose `connection` doesn't name one of the tenant's database connections.
+
+  New database users created by `/dbconnections/signup`, a password-reset request, an accepted invitation and the ticket flow now store the client's database connection name, like the universal-login signup already did, instead of the `Username-Password-Authentication` literal. Signup duplicate checks stay unscoped until the unique index moves to connections, so a signup for an address used in another database connection still answers like an existing user.
+
+- a580312: A login ticket from `/co/authenticate` is now bound to the connection that verified the credentials. `/co/authenticate` records the connection as `authParams.connection` on the ticket's login session, and redeeming a ticket at `/authorize` is rejected with `403 Invalid realm` when the `realm` is any other connection, including `realm=email`, or when the ticket's login session records no connection. Login tickets minted by `/co/authenticate` before this change are no longer redeemable; the user logs in again.
+- Updated dependencies [a580312]
+- Updated dependencies [96a2910]
+  - @authhero/adapter-interfaces@4.31.0
+  - @authhero/proxy@0.11.18
+  - @authhero/saml@0.6.11
+  - @authhero/widget@0.41.15
+
+## 9.35.0
+
+### Minor Changes
+
+- b0cb2c3: Branding file uploads (#1738). New optional `StorageAdapter` (`data.storage`) with an R2 implementation in `@authhero/cloudflare-adapter` (`storage: { bucket, publicBaseUrl? }`). `POST /api/v2/branding/uploads/{kind}` validates type, size and content (SVG is checked and served with a restrictive CSP), stores objects under `tenants/{tenant_id}/branding/{kind}/`, and returns a URL. Files are served publicly with cache headers and CORS at `/assets/...`; `publicBaseUrl` only changes the URL returned by the upload API (the `/assets` route stays mounted, and SVGs always use it for its CSP). The admin branding page gets upload buttons for logo, favicon, powered-by logo, font and background image.
+- a6e447d: Self-Service SSO (#1763), account-linking guard. Connections get an internal `self_service` field (a new nullable `self_service` column; run the drizzle and kysely migrations) recording that a connection is set up through Self-Service SSO and which email domains are verified for it. It is not part of the Auth0 connection object: the Management API neither accepts nor returns it, and tenant export, import and config sync do not copy it.
+
+  For a self-service connection, an email is only trusted inside its verified domains. Outside verified domains, new users are stored with `email_verified: false`. The guard also clears a previously stored `true` outside verified domains in every root-attribute sync mode. Built-in linking, the `account-linking` template hook and code hooks' `link_candidates` exclude users whose email domain is unverified for their self-service connection. This keeps an identity provider configured by an outside admin from taking over existing accounts or capturing accounts created later with the same email. Ordinary connections are unchanged.
+
+  The Management API rejects name changes for self-service connections so existing identities retain their domain trust checks. Display names remain editable.
+
+- 9c185ad: Outgoing email is sent from the template's own `from` if it has one, then the email provider's `default_from_address`. When neither is set it now uses the tenant's `sender_email` and `sender_name`, then the new optional `DEFAULT_SENDER_EMAIL` binding, and last `login@` followed by the hostname of `ISSUER` instead of the whole URL, which gave an invalid address such as `login@https://localhost:3000/`. A sender name with punctuation is sent as a quoted display name. Settings > General in the admin edits `sender_email` and `sender_name` and shows the tenant's `audience` read-only. `sender_email` can now be cleared with `null` in a tenant update; the Kysely and Drizzle adapters store it as unset.
+
+### Patch Changes
+
+- Updated dependencies [b0cb2c3]
+- Updated dependencies [a6e447d]
+- Updated dependencies [9c185ad]
+  - @authhero/adapter-interfaces@4.30.0
+  - @authhero/proxy@0.11.17
+  - @authhero/saml@0.6.10
+  - @authhero/widget@0.41.14
+
 ## 9.34.0
 
 ### Minor Changes

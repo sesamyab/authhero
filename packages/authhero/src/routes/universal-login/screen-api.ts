@@ -18,7 +18,7 @@ import { HTTPException } from "hono/http-exception";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
 import { renderWidgetPageResponse, resolveDarkMode } from "./u2-widget-page";
-import { sanitizeUrl } from "./sanitization-utils";
+import { clientLegalUrls } from "./legal-links";
 import { isValidEmail } from "../../utils/email";
 import {
   getScreen,
@@ -610,9 +610,7 @@ screenApiRoutes.use("/:screenId", async (ctx, next) => {
       clientName: screenContext.client.name || "AuthHero",
       poweredByLogo: ctx.env.poweredByLogo,
       language: screenContext.language,
-      termsAndConditionsUrl: sanitizeUrl(
-        screenContext.client.client_metadata?.termsAndConditionsUrl,
-      ),
+      ...clientLegalUrls(screenContext.client.client_metadata),
       darkMode,
     });
   }

@@ -816,5 +816,63 @@
       "successTitle": "Sukces",
       "title": "Status"
     }
+  },
+  "self-service": {
+    "self-service-app": {
+      "title": "Zarejestruj swoją aplikację",
+      "description": "${tenantName} zaprasza Cię do zarejestrowania aplikacji, przez którą logują się jego użytkownicy.",
+      "editTitle": "Zaktualizuj ${appName}",
+      "editDescription": "Zmień ustawienia logowania aplikacji ${appName}.",
+      "expiresText": "Ten link wygasa ${date}.",
+      "appTypeLabel": "Typ aplikacji",
+      "appTypeNative": "Aplikacja natywna",
+      "appTypeSpa": "Aplikacja jednostronicowa (SPA)",
+      "appTypeRegularWeb": "Zwykła aplikacja internetowa",
+      "nameLabel": "Nazwa aplikacji",
+      "callbacksLabel": "Adresy URL wywołania zwrotnego",
+      "callbacksHintNative": "Jeden w wierszu. Użyj uniwersalnego linku aplikacji lub własnego schematu, na przykład com.example.app:/callback",
+      "callbacksHintWeb": "Jeden w wierszu, na przykład https://app.example.com/callback",
+      "logoutUrlsLabel": "Adresy URL wylogowania",
+      "webOriginsLabel": "Dozwolone źródła internetowe",
+      "webOriginsHint": "Jedno w wierszu, na przykład https://app.example.com",
+      "logoUrlLabel": "Adres URL logo",
+      "websiteLabel": "Strona internetowa",
+      "privacyLabel": "Adres URL polityki prywatności",
+      "termsLabel": "Adres URL regulaminu",
+      "contactLabel": "Kontaktowy adres e-mail",
+      "registerButton": "Zarejestruj aplikację",
+      "saveButton": "Zapisz zmiany",
+      "savedText": "Zmiany zostały zapisane.",
+      "clientIdLabel": "Identyfikator klienta",
+      "requiredError": "To pole jest wymagane.",
+      "invalidValueError": "Ta wartość jest nieprawidłowa.",
+      "uriTooMany": "Użyj najwyżej 20 adresów URL.",
+      "uriTooLong": "Adres URL może mieć najwyżej 1024 znaki.",
+      "uriInvalid": "\"${value}\" nie jest prawidłowym adresem URL.",
+      "uriWildcard": "\"${value}\": symbole wieloznaczne są niedozwolone.",
+      "uriFragment": "\"${value}\": fragmenty (#) są niedozwolone.",
+      "uriUserinfo": "\"${value}\": nazwy użytkowników i hasła w adresach URL są niedozwolone.",
+      "uriHttpNotLoopback": "\"${value}\": użyj https. http jest dozwolone tylko dla localhost, 127.0.0.1 lub [::1].",
+      "uriSchemeNotAllowed": "\"${value}\": ten rodzaj adresu URL jest niedozwolony dla tego typu aplikacji.",
+      "uriCustomSchemeNeedsDot": "\"${value}\": własne schematy muszą zawierać kropkę, na przykład com.example.app:/callback",
+      "uriOriginOnly": "\"${value}\": podaj tylko źródło, bez ścieżki, na przykład https://app.example.com",
+      "uriNotForNative": "Aplikacje natywne nie używają źródeł internetowych.",
+      "errorText": "Coś poszło nie tak. Spróbuj ponownie."
+    },
+    "self-service-app-done": {
+      "title": "Twoja aplikacja jest zarejestrowana",
+      "description": "Użyj tych wartości, aby skonfigurować logowanie w ${appName}.",
+      "clientIdLabel": "Identyfikator klienta",
+      "domainLabel": "Domena",
+      "discoveryLabel": "Adres URL discovery",
+      "clientSecretLabel": "Sekret klienta",
+      "clientSecretWarning": "Skopiuj teraz sekret klienta. Nie zostanie pokazany ponownie.",
+      "pkceNote": "Używaj PKCE z S256. Większość pakietów SDK do logowania robi to domyślnie.",
+      "editLaterText": "Chcesz później coś zmienić? Poproś ${tenantName} o link do edycji."
+    },
+    "self-service-ticket-invalid": {
+      "title": "Tego linku nie można użyć",
+      "description": "Mógł wygasnąć, zostać już użyty lub odwołany. Poproś nadawcę o nowy link."
+    }
   }
 }

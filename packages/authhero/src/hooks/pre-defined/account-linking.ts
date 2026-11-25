@@ -185,6 +185,7 @@ export function accountLinking(
     // picks the oldest, i.e. the first element.
     const candidates = await resolveLinkCandidates({
       userAdapter: data.users,
+      connectionAdapter: data.connections,
       tenantId,
       user,
     });

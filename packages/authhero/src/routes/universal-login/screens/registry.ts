@@ -7,6 +7,7 @@ import type { AccountActionOperation } from "../../../types/Hooks";
 import type { User } from "@authhero/adapter-interfaces";
 import { gatedPost, gatedScreen } from "./account-helpers";
 import { getPrimaryUserByEmail } from "../../../helpers/users";
+import { withPromptPartials } from "./login-partials";
 import { identifierScreenDefinition } from "./identifier";
 import { loginScreenDefinition } from "./login";
 import { emailOtpChallengeScreenDefinition } from "./email-otp-challenge";
@@ -35,6 +36,7 @@ import { passkeyEnrollmentScreenDefinition } from "./passkey-enrollment";
 import { passkeyChallengeScreenDefinition } from "./passkey-challenge";
 import { resetPasswordCodeScreenDefinition } from "./reset-password-code";
 import { connectConsentScreenDefinition } from "./connect-consent";
+import { selfServiceAppScreenDefinition } from "./self-service-app";
 import {
   deviceCodeScreenDefinition,
   deviceConfirmationScreenDefinition,
@@ -165,6 +167,7 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["passkey-challenge", passkeyChallengeScreenDefinition],
   ["reset-password-code", resetPasswordCodeScreenDefinition],
   ["connect-consent", connectConsentScreenDefinition],
+  ["self-service-app", selfServiceAppScreenDefinition],
   ["consent", consentScreenDefinition],
   ["device-code", deviceCodeScreenDefinition],
   ["device-confirmation", deviceConfirmationScreenDefinition],
@@ -175,6 +178,14 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["email-verification-code", emailVerificationCodeScreenDefinition],
   ["email-verification-link-sent", emailVerificationLinkSentScreenDefinition],
 ]);
+
+// Attach tenant prompt partials to the sign-in form screens that don't read
+// them themselves (see `screen-prompt-map.ts`). Every definition is wrapped,
+// since a POST on one screen can return another (identifier → email code);
+// screens without a partials target pass through untouched.
+for (const [screenId, definition] of screenRegistry) {
+  screenRegistry.set(screenId, withPromptPartials(screenId, definition));
+}
 
 /**
  * Get a screen definition by ID

@@ -24,6 +24,10 @@ import {
   userExistsByEmail,
 } from "../../../helpers/users";
 import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
+import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../../../helpers/database-connection-scope";
 import { validateSignupEmail } from "../../../hooks";
 import { getConnectionFromIdentifier } from "../../../utils/username";
 import { createTranslation } from "../../../i18n";
@@ -172,8 +176,9 @@ export async function loginScreen(
   const socialButtonCount = socialButtons.length;
 
   // Check if we have a password connection
-  const passwordConnection = context.connections.find((c) =>
-    isDatabaseConnectionStrategy(c.strategy),
+  const passwordConnection = resolveClientDatabaseConnection(
+    { connections: context.connections },
+    context.ctx.var.loginSession?.authParams.connection,
   );
   const hasPasswordConnection = !!passwordConnection;
   const identifierConfig = getConnectionIdentifierConfig(passwordConnection);
@@ -530,8 +535,9 @@ export const loginScreenDefinition: ScreenDefinition = {
       );
 
       // Check if the password connection has username identifier enabled
-      const passwordConnection = client.connections.find((c) =>
-        isDatabaseConnectionStrategy(c.strategy),
+      const passwordConnection = resolveClientDatabaseConnection(
+        client,
+        context.ctx.var.loginSession?.authParams.connection,
       );
       const identifierConfig =
         getConnectionIdentifierConfig(passwordConnection);
@@ -640,6 +646,10 @@ export const loginScreenDefinition: ScreenDefinition = {
                 env: ctx.env,
                 tenant_id: client.tenant.id,
                 username: normalized,
+                connection: resolveClientDatabaseConnectionName(
+                  client,
+                  ctx.var.loginSession?.authParams.connection,
+                ),
               }))
             : !!(await getPrimaryUserByProvider({
                 userAdapter: ctx.env.data.users,

@@ -165,7 +165,23 @@ describe("createDispatchSyncDefaults", () => {
     // D1" bug where the tenant's own `tenants` FK-target row was never seeded,
     // so every tenant-scoped insert FK-failed.
     const cp = await makeAdapters();
-    await cp.tenants.create({ id: CP, friendly_name: "Control Plane" });
+    await cp.tenants.create({
+      id: CP,
+      friendly_name: "Control Plane",
+      session_lifetime: 999,
+    });
+    // The tenant's own row on the control plane, as `tenantDefaults` left it on
+    // create, plus deployment fields that must stay on the control plane.
+    await cp.tenants.create({
+      id: "acme",
+      friendly_name: "Acme",
+      audience: "urn:authhero:tenant:acme",
+      session_lifetime: 168,
+      idle_session_lifetime: 72,
+      deployment_type: "wfp",
+      d1_database_id: "d1-acme",
+      worker_script_name: "tenant-acme-auth",
+    });
     // A control-plane signing key (no tenant_id) — projected so the tenant can
     // verify control-plane-minted tokens.
     await cp.keys.create({
@@ -223,6 +239,19 @@ describe("createDispatchSyncDefaults", () => {
     expect(result.tenants.upserted).toBe(2);
     const { tenants } = await tenantAdapters.tenants.list();
     expect(tenants.map((t) => t.id).sort()).toEqual([CP, "acme"].sort());
+
+    // The tenant's own settings (e.g. from `tenantDefaults`) reached its own
+    // row; deployment fields and the control plane's settings did not.
+    const own = await tenantAdapters.tenants.get("acme");
+    expect(own?.friendly_name).toBe("Acme");
+    expect(own?.session_lifetime).toBe(168);
+    expect(own?.idle_session_lifetime).toBe(72);
+    expect(own?.audience).toBeFalsy();
+    expect(own?.d1_database_id).toBeFalsy();
+    expect(own?.worker_script_name).toBeFalsy();
+    expect(
+      (await tenantAdapters.tenants.get(CP))?.session_lifetime,
+    ).toBeFalsy();
 
     // The control-plane verify key landed as a shared (no tenant_id) key.
     expect(result.signingKeys.upserted).toBe(1);
@@ -625,6 +654,91 @@ describe("createWfpTenantApp /internal/sync-defaults", () => {
       q: "type:jwt_signing AND -_exists_:tenant_id",
     });
     expect(signingKeys.filter((k) => k.pkcs7)).toHaveLength(1);
+  });
+
+  it("creates the tenant's interactive default client and points default_client_id at it (#1754)", async () => {
+    const withTenant = {
+      ...payload,
+      tenants: [
+        { id: CP, friendly_name: "Control plane" },
+        { id: "acme", friendly_name: "Acme" },
+      ],
+    };
+    const push = () =>
+      app.fetch(
+        new Request("https://tenant.internal/internal/sync-defaults", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer push-secret",
+          },
+          body: JSON.stringify(withTenant),
+        }),
+        { ...env, TENANT_ID: "acme" },
+        { waitUntil() {}, passThroughOnException() {} },
+      );
+
+    expect((await push()).status).toBe(200);
+    const { clients } = await tenant.clients.list("acme");
+    expect(clients).toHaveLength(1);
+    expect(clients[0].name).toBe("Default App");
+    expect((await tenant.tenants.get("acme"))?.default_client_id).toBe(
+      clients[0].client_id,
+    );
+
+    // A re-sync keeps the client it finds, and never adds a Management API one.
+    const firstId = clients[0].client_id;
+    expect((await push()).status).toBe(200);
+    const again = (await tenant.clients.list("acme")).clients;
+    expect(again.map((c) => c.client_id)).toEqual([firstId]);
+    expect((await tenant.tenants.get("acme"))?.default_client_id).toBe(firstId);
+  });
+
+  it("skips the default client for a push filtered without the tenant's seed row (#1754)", async () => {
+    const res = await app.fetch(
+      new Request("https://tenant.internal/internal/sync-defaults", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer push-secret",
+        },
+        body: JSON.stringify({ ...payload, tenants: [] }),
+      }),
+      { ...env, TENANT_ID: "acme" },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    expect(res.status).toBe(200);
+    // The rest of the payload still applies.
+    expect((await res.json()).signingKeys.upserted).toBe(1);
+    expect((await tenant.clients.list("acme")).clients).toHaveLength(0);
+  });
+
+  it("fails the push when the tenant's seed row was supplied but did not land (#1754)", async () => {
+    // Seed rows are applied through the tenants adapter; make acme's fail.
+    const create = tenant.tenants.create.bind(tenant.tenants);
+    tenant.tenants.create = async (params) => {
+      if (params.id === "acme") throw new Error("seed write failed");
+      return create(params);
+    };
+    const res = await app.fetch(
+      new Request("https://tenant.internal/internal/sync-defaults", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer push-secret",
+        },
+        body: JSON.stringify({
+          ...payload,
+          tenants: [{ id: "acme", friendly_name: "Acme" }],
+        }),
+      }),
+      { ...env, TENANT_ID: "acme" },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    expect(res.status).toBe(500);
+    expect(res.headers.get("X-Authhero-Error")).toBe(
+      "sync_defaults_default_client_failed",
+    );
   });
 
   it("invokes onSyncResult with the applied result", async () => {

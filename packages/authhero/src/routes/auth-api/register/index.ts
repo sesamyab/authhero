@@ -1,133 +1,28 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import type { Context } from "hono";
 import { LogTypes, escapeLuceneValue } from "@authhero/adapter-interfaces";
-import type { Client, ClientInsert } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../../types";
 import { JSONHTTPException } from "../../../errors/json-http-exception";
 import { logMessage } from "../../../helpers/logging";
-import { mintRegistrationToken } from "../../../helpers/dcr/mint-token";
-import { enforceConstraints } from "../../../helpers/dcr/constraint-enforcement";
 import {
   dcrRequestSchema,
   dcrResponseSchema,
-  dcrRequestToClient,
   clientToDcrResponse,
 } from "../../../helpers/dcr/metadata-mapping";
-import { isPlainObject } from "@authhero/adapter-interfaces";
+import {
+  registerClient,
+  updateRegisteredClient,
+  updatesRestrictedToEditableFields,
+} from "../../../helpers/dcr/client-registration";
+import { clientPreset } from "../../../helpers/dcr/presets";
 import {
   authenticateManagementRequest,
   authenticateRegistrationRequest,
   assertDcrEnabled,
-  generateClientId,
-  generateClientSecret,
   isClientSoftDeleted,
   loadTenantOrFail,
   registrationClientUri,
   requireClientRegistrationTokens,
 } from "./shared";
-
-function readIatConstraints(
-  registrationMetadata: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (!registrationMetadata) return undefined;
-  const value = registrationMetadata.iat_constraints;
-  return isPlainObject(value) ? value : undefined;
-}
-
-function validateRedirectUris(uris: string[] | undefined) {
-  if (!uris) return;
-  for (const u of uris) {
-    try {
-      const parsed = new URL(u);
-      if (!parsed.protocol || !parsed.host) {
-        throw new JSONHTTPException(400, {
-          error: "invalid_redirect_uri",
-          error_description: `Invalid redirect_uri: ${u}`,
-        });
-      }
-    } catch {
-      throw new JSONHTTPException(400, {
-        error: "invalid_redirect_uri",
-        error_description: `Invalid redirect_uri: ${u}`,
-      });
-    }
-  }
-}
-
-function validateGrantTypesAllowed(
-  requested: string[] | undefined,
-  allowlist: string[] | undefined,
-) {
-  if (!requested || !allowlist || allowlist.length === 0) return;
-  for (const gt of requested) {
-    if (!allowlist.includes(gt)) {
-      throw new JSONHTTPException(400, {
-        error: "invalid_client_metadata",
-        error_description: `grant_type "${gt}" is not allowed for this tenant`,
-      });
-    }
-  }
-}
-
-interface DcrAudienceGrant {
-  audience: string;
-  scopes: string[];
-}
-
-/**
- * Resolve `audience` + `scope` from a DCR request into a validated grant
- * spec. Returns `null` if no audience was requested (no grant to provision).
- *
- * Rejects with 400 when the audience does not match a resource server on
- * the tenant or when a requested scope is not defined on that resource
- * server. Mirrors the validation in `/connect/start` so a client created
- * without going through the consent flow (e.g. via Mgmt-API minted IAT)
- * still gets a sane grant.
- */
-async function resolveAudienceGrant(
-  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
-  audience: string | undefined,
-  scope: string | undefined,
-): Promise<DcrAudienceGrant | null> {
-  if (!audience) {
-    if (scope) {
-      throw new JSONHTTPException(400, {
-        error: "invalid_client_metadata",
-        error_description: "scope requires audience",
-      });
-    }
-    return null;
-  }
-
-  const { resource_servers } = await ctx.env.data.resourceServers.list(
-    ctx.var.tenant_id,
-  );
-  const resourceServer = resource_servers.find(
-    (rs) => rs.identifier === audience,
-  );
-  if (!resourceServer) {
-    throw new JSONHTTPException(400, {
-      error: "invalid_client_metadata",
-      error_description: `Unknown audience: ${audience}`,
-    });
-  }
-
-  const scopes = scope ? scope.split(/\s+/).filter(Boolean) : [];
-  if (scopes.length > 0) {
-    const definedScopes = new Set(
-      (resourceServer.scopes ?? []).map((s) => s.value),
-    );
-    const unknown = scopes.filter((s) => !definedScopes.has(s));
-    if (unknown.length > 0) {
-      throw new JSONHTTPException(400, {
-        error: "invalid_scope",
-        error_description: `Scope(s) not defined on the resource server: ${unknown.join(", ")}`,
-      });
-    }
-  }
-
-  return { audience, scopes };
-}
 
 export const registerRoutes = new OpenAPIHono<{
   Bindings: Bindings;
@@ -166,139 +61,16 @@ export const registerRoutes = new OpenAPIHono<{
       const iat = await authenticateRegistrationRequest(ctx, tenant);
       const body = ctx.req.valid("json");
 
-      // Enforce IAT pre-bound constraints against the raw request body
-      // (before RFC -> Client mapping) so constraint keys stay in wire form.
-      const constraintResult = enforceConstraints(iat?.constraints, body);
-      if (!constraintResult.ok) {
-        throw new JSONHTTPException(400, {
-          error: "invalid_client_metadata",
-          error_description: `Field "${constraintResult.violation?.field}" conflicts with Initial Access Token constraint`,
-        });
-      }
-
-      const mergedRequestParse = dcrRequestSchema.safeParse(
-        constraintResult.filled,
-      );
-      if (!mergedRequestParse.success) {
-        throw new JSONHTTPException(400, {
-          error: "invalid_client_metadata",
-          error_description:
-            "Merged request (with IAT constraints applied) is not valid RFC 7591 metadata",
-        });
-      }
-      const mergedRequest = mergedRequestParse.data;
-      if (
-        mergedRequest.grant_types?.some(
-          (gt) => gt === "authorization_code" || gt === "implicit",
-        ) &&
-        (!mergedRequest.redirect_uris ||
-          mergedRequest.redirect_uris.length === 0)
-      ) {
-        throw new JSONHTTPException(400, {
-          error: "invalid_redirect_uri",
-          error_description:
-            "redirect_uris is required for authorization_code and implicit grant types",
-        });
-      }
-      validateRedirectUris(mergedRequest.redirect_uris);
-      validateGrantTypesAllowed(
-        mergedRequest.grant_types,
-        tenant.flags?.dcr_allowed_grant_types,
-      );
-
-      const audienceGrant = await resolveAudienceGrant(
-        ctx,
-        mergedRequest.audience,
-        mergedRequest.scope,
-      );
-
-      const { clientFields, extraMetadata } = dcrRequestToClient(mergedRequest);
-
-      const client_id = generateClientId();
-      const client_secret = generateClientSecret();
-
-      const rat = await mintRegistrationToken();
-
-      const registration_metadata: Record<string, unknown> = {
-        ...extraMetadata,
-      };
-      delete registration_metadata.iat_constraints;
-      if (iat?.constraints) {
-        registration_metadata.iat_constraints = iat.constraints;
-      }
-
-      const clientInsert: ClientInsert = {
-        client_id,
-        name: clientFields.name ?? `Client ${client_id.slice(0, 8)}`,
-        client_secret,
-        callbacks: clientFields.callbacks ?? [],
-        grant_types: clientFields.grant_types ?? ["authorization_code"],
-        token_endpoint_auth_method:
-          clientFields.token_endpoint_auth_method ?? "client_secret_basic",
-        logo_uri: clientFields.logo_uri,
-        client_metadata: clientFields.client_metadata,
-        owner_user_id: iat?.sub,
-        registration_type: iat ? "iat_dcr" : "open_dcr",
-        registration_metadata,
-        // DCR clients are RFC-compliant by definition — no Auth0-SDK quirks
-        // to preserve. Opt out of Auth0-compat token-endpoint behaviors
-        // (e.g. 403 for invalid_grant) so we return RFC 6749 §5.2's 400.
-        auth0_conformant: false,
-      };
-
-      let createdClient: Client | undefined;
-
-      await ctx.env.data.transaction(async (trx) => {
-        const trxTokens = requireClientRegistrationTokens(trx);
-        if (iat) {
-          const marked = await trxTokens.markUsed(
-            ctx.var.tenant_id,
-            iat.id,
-            new Date().toISOString(),
-          );
-          if (!marked) {
-            throw new JSONHTTPException(401, {
-              error: "invalid_token",
-              error_description: "Initial access token already used",
-            });
-          }
-        }
-
-        createdClient = await trx.clients.create(
-          ctx.var.tenant_id,
-          clientInsert,
-        );
-
-        if (audienceGrant) {
-          await trx.clientGrants.create(ctx.var.tenant_id, {
-            client_id,
-            audience: audienceGrant.audience,
-            scope: audienceGrant.scopes,
-          });
-        }
-
-        await trxTokens.create(ctx.var.tenant_id, {
-          id: rat.id,
-          token_hash: rat.token_hash,
-          type: "rat",
-          client_id,
-          single_use: false,
-        });
+      const registered = await registerClient(ctx, tenant, iat, body, {
+        issueRegistrationAccessToken: true,
       });
+      const client_id = registered.client.client_id;
 
-      if (!createdClient) {
-        throw new JSONHTTPException(500, {
-          error: "server_error",
-          error_description: "Failed to create client",
-        });
-      }
-
-      const registration_client_uri = registrationClientUri(ctx, client_id);
-      const response = clientToDcrResponse(createdClient, {
-        client_secret,
-        registration_access_token: rat.token,
-        registration_client_uri,
-        include_client_secret: true,
+      const response = clientToDcrResponse(registered.client, {
+        client_secret: registered.client_secret,
+        registration_access_token: registered.registration_access_token,
+        registration_client_uri: registrationClientUri(ctx, client_id),
+        include_client_secret: registered.client_secret !== undefined,
       });
 
       await logMessage(ctx, ctx.var.tenant_id, {
@@ -382,7 +154,7 @@ export const registerRoutes = new OpenAPIHono<{
       assertDcrEnabled(tenant);
 
       const { client_id } = ctx.req.valid("param");
-      await authenticateManagementRequest(ctx, client_id);
+      const token = await authenticateManagementRequest(ctx, client_id);
 
       const existing = await ctx.env.data.clients.get(
         ctx.var.tenant_id,
@@ -404,77 +176,25 @@ export const registerRoutes = new OpenAPIHono<{
         });
       }
 
-      // Enforce IAT-pre-bound constraint immutability via registration_metadata.iat_constraints
-      const iatConstraints = readIatConstraints(existing.registration_metadata);
-      if (iatConstraints) {
-        const check = enforceConstraints(iatConstraints, body);
-        if (!check.ok) {
-          throw new JSONHTTPException(400, {
-            error: "invalid_client_metadata",
-            error_description: `Field "${check.violation?.field}" was bound at registration time and cannot be changed`,
-          });
-        }
-      }
-
-      validateRedirectUris(body.redirect_uris);
-      validateGrantTypesAllowed(
-        body.grant_types,
-        tenant.flags?.dcr_allowed_grant_types,
+      const { client: updated, changed } = await updateRegisteredClient(
+        ctx,
+        tenant,
+        existing,
+        body,
+        {
+          editableFieldsOnly: updatesRestrictedToEditableFields(
+            existing,
+            token,
+          ),
+        },
       );
-
-      const { clientFields, extraMetadata } = dcrRequestToClient(body);
-
-      // Preserve iat_constraints across PUT (replace semantics on everything else)
-      const mergedMetadata: Record<string, unknown> = { ...extraMetadata };
-      if (iatConstraints) {
-        mergedMetadata.iat_constraints = iatConstraints;
-      }
-
-      // RFC 7592 §2.2 replace semantics: set every standard registration
-      // field explicitly so omitted fields are reset to their RFC 7591
-      // default (or cleared) rather than carrying over the previous value.
-      // Fields mapped into client_metadata (client_uri, tos_uri, policy_uri,
-      // jwks_uri, contacts, scope, software_id, software_version) and
-      // registration_metadata (response_types, jwks) are replaced wholesale
-      // by the freshly-built objects below. client_secret is intentionally
-      // omitted — RFC 7592 PUT must not rotate it.
-      const update: Partial<Client> = {
-        name: clientFields.name ?? `Client ${client_id.slice(0, 8)}`,
-        callbacks: clientFields.callbacks ?? [],
-        grant_types: clientFields.grant_types ?? ["authorization_code"],
-        token_endpoint_auth_method:
-          clientFields.token_endpoint_auth_method ?? "client_secret_basic",
-        logo_uri: clientFields.logo_uri,
-        client_metadata: clientFields.client_metadata ?? {},
-        registration_metadata: mergedMetadata,
-      };
-
-      const ok = await ctx.env.data.clients.update(
-        ctx.var.tenant_id,
-        client_id,
-        update,
-      );
-      if (!ok) {
-        throw new JSONHTTPException(500, {
-          error: "server_error",
-          error_description: "Failed to update client",
-        });
-      }
-
-      const updated = await ctx.env.data.clients.get(
-        ctx.var.tenant_id,
-        client_id,
-      );
-      if (!updated) {
-        throw new JSONHTTPException(500, {
-          error: "server_error",
-          error_description: "Failed to read back updated client",
-        });
-      }
 
       await logMessage(ctx, ctx.var.tenant_id, {
         type: LogTypes.SUCCESS_API_OPERATION,
-        description: "RFC 7592 Client Update",
+        description:
+          changed.length > 0
+            ? `RFC 7592 Client Update: ${changed.join(", ")}`
+            : "RFC 7592 Client Update",
         targetType: "client",
         targetId: client_id,
       });
@@ -506,7 +226,7 @@ export const registerRoutes = new OpenAPIHono<{
       assertDcrEnabled(tenant);
 
       const { client_id } = ctx.req.valid("param");
-      await authenticateManagementRequest(ctx, client_id);
+      const token = await authenticateManagementRequest(ctx, client_id);
 
       const existing = await ctx.env.data.clients.get(
         ctx.var.tenant_id,
@@ -516,6 +236,19 @@ export const registerRoutes = new OpenAPIHono<{
         throw new JSONHTTPException(401, {
           error: "invalid_token",
           error_description: "Client not found",
+        });
+      }
+
+      // The operator owns the lifecycle of apps registered by invite and of
+      // apps opened up through an edit link: the developer may update them,
+      // not delete them (RFC 7592 §2.3 allows refusing with 405).
+      if (
+        token.source === "edit_link" ||
+        clientPreset(existing.registration_metadata) !== undefined
+      ) {
+        throw new JSONHTTPException(405, {
+          error: "invalid_request",
+          error_description: "This client cannot be deleted with this token",
         });
       }
 

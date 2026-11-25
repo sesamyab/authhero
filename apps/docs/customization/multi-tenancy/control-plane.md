@@ -533,6 +533,30 @@ The limit is a check before creation, not an atomic reservation: two requests fr
 
 The two operations permissions are what lets the admin show the new user their provisioning: the steps and the failure reason (`read:tenant_operations`) and a retry (`retry:tenant_provisioning`). They are safe to hold globally because the [tenant operations routes](./tenant-operations.md#management-api) only answer for tenants the caller is a member of. The exception is operators: a machine token, or a caller holding `create:tenant_operations`, `create:rollouts` or `admin:organizations`, reaches every tenant when its token is not scoped to an organization, so for them `read:tenant_operations` is not limited to their own tenants. **Upgrade authhero and `@authhero/multi-tenancy` together**: an authhero without that check would let any holder of `read:tenant_operations` read every tenant's operations.
 
+### Default settings for new tenants
+
+`tenantDefaults` sets the tenant row's own settings when a tenant is created: MFA, attack protection, flags, sessions and the other fields on the tenant. It is a copy, not inheritance. The tenant owns the values from then on, so a later change to `tenantDefaults` does not reach existing tenants, and the tenant can change every one of them.
+
+```typescript
+initMultiTenant({
+  dataAdapter,
+  controlPlane: { tenantId: "main", clientId: "main_client" },
+  tenantDefaults: {
+    mfa: { policy: "confidence" },
+    flags: { disable_impersonation: true },
+  },
+});
+```
+
+- **The request wins.** A value in the `POST /tenants` body replaces the default. Nested objects such as `flags` merge key by key, and arrays are replaced whole.
+- **A function works too.** `tenantDefaults: (params, ctx) => ({ ... })` is called per creation, so a plan can decide the values.
+- **Not for identity or sync fields.** `id`, `friendly_name`, `audience`, `parent_tenant_id` and the `config_sync` fields are not accepted.
+- **Login version.** A new tenant's default client is created with `client_metadata.universal_login_version: "2"`, so it logs in through `/u2`. Clients created later choose their own version until the tenant-level setting in #1741 exists.
+- **Unset means unchanged.** Without `tenantDefaults` nothing is applied.
+- **Tenants with their own database too.** A `wfp` tenant reads its row from its own database, not the control plane's. When it is provisioned, the seed that creates that row copies the tenant's settings from the control plane's copy of its row (where `tenantDefaults` were applied), so the defaults reach it as well. Only the tenant row's settings travel: identity, deployment and sync fields stay on the control plane, as do `default_client_id` and the other references to rows elsewhere, and the Twilio `auth_token` under `mfa` is never copied. The row is created only if missing, so a later sync never overwrites settings the tenant has changed.
+
+Rows such as connections, resource servers and branding are not set here: they come from the control plane through [`sync-defaults`](./control-plane-defaults.md) according to their scope.
+
 ## The role a tenant's creator gets
 
 Creating a tenant makes an organization on the control plane (named after the tenant id), adds the creator to it and gives them a role scoped to that organization. That role is what the creator's token carries when they work in the tenant.

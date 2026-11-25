@@ -7,10 +7,14 @@ export function markUsed(db: Kysely<Database>) {
     tenant_id: string,
     id: string,
     used_at: string,
+    client_id?: string,
   ): Promise<boolean> => {
     const result = await db
       .updateTable("client_registration_tokens")
-      .set({ used_at_ts: isoToDbDate(used_at) })
+      .set({
+        used_at_ts: isoToDbDate(used_at),
+        ...(client_id ? { client_id } : {}),
+      })
       .where("tenant_id", "=", tenant_id)
       .where("id", "=", id)
       .where("used_at_ts", "is", null)

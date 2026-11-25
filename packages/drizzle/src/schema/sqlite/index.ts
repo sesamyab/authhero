@@ -52,6 +52,7 @@ export * from "./scim";
 
 // Custom Token Exchange profiles (#1417)
 export * from "./tokenExchangeProfiles";
+export * from "./selfServiceSso";
 
 // Log streams
 export * from "./logStreams";

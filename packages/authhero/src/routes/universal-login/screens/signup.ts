@@ -24,6 +24,10 @@ import {
   resolveUsernamePasswordProvider,
 } from "../../../utils/username-password-provider";
 import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../../../helpers/database-connection-scope";
+import {
   getPasswordPolicy,
   validatePasswordPolicy,
   hashPassword,
@@ -701,8 +705,9 @@ export const signupScreenDefinition: ScreenDefinition = {
       }
 
       // Find the password connection from the client's connections
-      const passwordConnection = client.connections.find((c) =>
-        isDatabaseConnectionStrategy(c.strategy),
+      const passwordConnection = resolveClientDatabaseConnection(
+        client,
+        context.ctx.var.loginSession?.authParams.connection,
       );
       const connection = passwordConnection?.name || Strategy.USERNAME_PASSWORD;
 
@@ -737,7 +742,10 @@ export const signupScreenDefinition: ScreenDefinition = {
         };
       }
 
-      // Check if user already exists
+      // Check if user already exists. Deliberately unscoped: the users table
+      // is unique per (email, provider) until #1704, so an address held in
+      // another database connection would pass a scoped check and then fail
+      // the insert. Scope this together with the index.
       const existingUser = await getUsernamePasswordUser({
         env: ctx.env,
         tenant_id: client.tenant.id,
@@ -807,7 +815,11 @@ export const signupScreenDefinition: ScreenDefinition = {
           email,
           email_verified: false,
           provider,
-          connection,
+          // The connection this client's login lookups scope to (#1702).
+          connection: resolveClientDatabaseConnectionName(
+            client,
+            loginSession.authParams.connection,
+          ),
           is_social: false,
           password: { hash, algorithm },
           // Mappings come from the stored partial, never from the request.

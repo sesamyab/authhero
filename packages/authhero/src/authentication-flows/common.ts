@@ -1612,6 +1612,9 @@ export async function createFrontChannelAuthResponse(
       code_id: nanoid(32), // Use high entropy for security
       code_type: "ticket",
       login_id: params.loginSession.id,
+      // The user whose credentials were just verified. Redemption logs in
+      // exactly this user rather than looking the username up again.
+      user_id: user?.user_id,
       expires_at: new Date(Date.now() + TICKET_EXPIRATION_TIME).toISOString(),
       code_verifier: [co_id, co_verifier].join("|"),
       redirect_uri: authParams.redirect_uri,

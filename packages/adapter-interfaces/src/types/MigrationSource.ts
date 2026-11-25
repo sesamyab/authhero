@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { credentialString } from "../utils/credentials";
 
 export const migrationProviderTypeSchema = z.enum([
   "auth0",
@@ -11,7 +12,7 @@ export type MigrationProviderType = z.infer<typeof migrationProviderTypeSchema>;
 export const migrationSourceCredentialsSchema = z.object({
   domain: z.string(),
   client_id: z.string(),
-  client_secret: z.string(),
+  client_secret: credentialString(),
   audience: z.string().optional(),
   scope: z.string().optional(),
 });

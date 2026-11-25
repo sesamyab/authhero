@@ -4,6 +4,7 @@ import { Database } from "../db";
 import { create } from "./create";
 import { get } from "./get";
 import { getByHash } from "./getByHash";
+import { list } from "./list";
 import { listByClient } from "./listByClient";
 import { markUsed } from "./markUsed";
 import { revoke } from "./revoke";
@@ -17,6 +18,7 @@ export function createClientRegistrationTokensAdapter(
     create: create(db),
     get: get(db),
     getByHash: getByHash(db),
+    list: list(db),
     listByClient: listByClient(db),
     markUsed: markUsed(db),
     revoke: revoke(db),

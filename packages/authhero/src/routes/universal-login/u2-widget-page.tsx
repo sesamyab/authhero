@@ -52,10 +52,10 @@ import {
   renderPoweredByChip,
   renderLegalChip,
   renderMobileFooter,
-  DARK_MODE_CSS_VARS,
+  buildDarkVars,
   darkContrastRatio,
-  lightenHexDark,
 } from "@authhero/widget/page-chrome";
+import type { ColorsDark } from "@authhero/widget/page-chrome";
 import type {
   DarkModePreference,
   LogoPosition,
@@ -68,8 +68,10 @@ export type {
   LanguageOption,
 } from "@authhero/widget/page-chrome";
 import type { Branding, Theme } from "@authhero/adapter-interfaces";
+import { withTenantLegalDefaults } from "./legal-links";
 import { getCookie } from "hono/cookie";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { resolveDarkPageInputs } from "./dark-theme";
 import { buildHash } from "../../build-hash";
 import { createTranslation, getLocaleDisplayName } from "../../i18n";
 import { resolveLocaleFromContext } from "../../utils/locale";
@@ -122,6 +124,7 @@ export type WidgetPageProps = {
     };
     logo_url?: string;
     favicon_url?: string;
+    favicon_url_dark?: string;
     font?: { url?: string };
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -142,6 +145,7 @@ export type WidgetPageProps = {
   language?: string;
   availableLanguages?: string[];
   termsAndConditionsUrl?: string;
+  privacyUrl?: string;
   darkMode?: DarkModePreference;
   /**
    * Where to render the tenant logo on the page.
@@ -246,6 +250,16 @@ export function resolveTermsLabel(language?: string): string {
   return commonT.termsShortText();
 }
 
+/** The "Privacy Policy" link label, in the page's language. */
+export function resolvePrivacyLabel(language?: string): string {
+  const { m: commonT } = createTranslation(
+    "common",
+    "common",
+    language || "en",
+  );
+  return commonT.privacyPolicyText();
+}
+
 // ---------------------------------------------------------------------------
 // Widget container style
 // ---------------------------------------------------------------------------
@@ -293,27 +307,11 @@ function buildWidgetContainerStyle(
  * Mirrors the contrast adjustments `darkModeCssVarRules` applies so the
  * toggled dark theme matches the prefers-dark CSS.
  */
-function buildDarkVarsJson(effectivePrimary?: string): string {
-  const darkVars: Record<string, string> = { ...DARK_MODE_CSS_VARS };
-  if (effectivePrimary) {
-    const darkBg = DARK_MODE_CSS_VARS["--ah-color-bg"] || "#1f2937";
-    if (darkContrastRatio(effectivePrimary, darkBg) < 3) {
-      let adjusted = effectivePrimary;
-      for (let i = 1; i <= 10; i++) {
-        adjusted = lightenHexDark(effectivePrimary, i * 0.1);
-        if (darkContrastRatio(adjusted, darkBg) >= 3) break;
-      }
-      darkVars["--ah-color-primary"] = adjusted;
-      darkVars["--ah-color-primary-hover"] = adjusted;
-    }
-    const BIAS = 1.35;
-    const btnBg = darkVars["--ah-color-primary"] || effectivePrimary;
-    const wc = darkContrastRatio(btnBg, "#ffffff");
-    const bc = darkContrastRatio(btnBg, "#000000");
-    darkVars["--ah-color-text-on-primary"] =
-      bc > wc * BIAS ? "#000000" : "#ffffff";
-  }
-  return JSON.stringify(darkVars);
+function buildDarkVarsJson(
+  effectivePrimary?: string,
+  opts: { linkColor?: string; colorsDark?: ColorsDark } = {},
+): string {
+  return JSON.stringify(buildDarkVars(effectivePrimary, opts));
 }
 
 /** Inline JS that applies dark-mode CSS vars to the widget's shadow DOM. */
@@ -359,6 +357,7 @@ export function buildHeadEssentials(opts: {
   theme?: any;
 }): string {
   const faviconUrl = sanitizeUrl(opts.branding?.favicon_url);
+  const faviconUrlDark = sanitizeUrl(opts.branding?.favicon_url_dark);
   const fontUrl = sanitizeUrl(opts.branding?.font?.url);
   const primaryColor = sanitizeCssColor(opts.branding?.colors?.primary);
   const themePrimary = sanitizeCssColor(opts.theme?.colors?.primary_button);
@@ -373,20 +372,35 @@ export function buildHeadEssentials(opts: {
     brandingPageBackground: opts.branding?.colors?.page_background,
     fontUrl,
   });
+  const dark = resolveDarkPageInputs(
+    opts.theme,
+    opts.branding,
+    opts.theme?.page_background,
+  );
   const pageCss = buildPageCss({
     primaryColor,
     themePrimary,
     widgetBackground,
-    hasBgImage: !!opts.theme?.page_background?.background_image_url,
+    hasBgImage: dark.hasBgImage,
     bodyLayout,
+    colorsDark: dark.colorsDark,
+    linkColor: dark.linkColor,
+    darkBackground: dark.darkBackground,
+    hasDarkLogo: dark.hasDarkLogo,
   });
-  const darkVarsJson = buildDarkVarsJson(themePrimary || primaryColor);
+  const darkVarsJson = buildDarkVarsJson(themePrimary || primaryColor, {
+    linkColor: dark.linkColor,
+    colorsDark: dark.colorsDark,
+  });
 
   return [
     `<meta charset="UTF-8">`,
     `<meta name="viewport" content="width=device-width, initial-scale=1.0">`,
     `<title>Sign in - ${escapeHtml(opts.clientName)}</title>`,
     faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : "",
+    faviconUrl && faviconUrlDark
+      ? `<link rel="icon" href="${faviconUrlDark}" media="(prefers-color-scheme: dark)">`
+      : "",
     fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : "",
     `<style>${pageCss}</style>`,
     `<script type="module" src="/widget/authhero-widget.esm.js?v=${buildHash}"></script>`,
@@ -411,6 +425,7 @@ export function WidgetPage({
   language,
   availableLanguages,
   termsAndConditionsUrl,
+  privacyUrl,
   darkMode = "auto",
   logoPosition,
   extraScript,
@@ -425,8 +440,10 @@ export function WidgetPage({
   // container's CSS variables are computed by `buildWidgetContainerStyle`.
   const primaryColor = sanitizeCssColor(branding?.colors?.primary);
 
-  const hasBgImage = !!themePageBackground?.background_image_url;
+  const dark = resolveDarkPageInputs(theme, branding, themePageBackground);
+  const hasBgImage = dark.hasBgImage;
   const faviconUrl = sanitizeUrl(branding?.favicon_url);
+  const faviconUrlDark = sanitizeUrl(branding?.favicon_url_dark);
   const fontUrl = sanitizeUrl(branding?.font?.url);
   const widgetBackground =
     sanitizeCssColor(theme?.colors?.widget_background) || "#ffffff";
@@ -440,9 +457,8 @@ export function WidgetPage({
   });
 
   // ---- Sanitize logo URL ----
-  const safeLogoUrl = branding?.logo_url
-    ? sanitizeUrl(branding.logo_url)
-    : null;
+  // Theme wins over branding (see dark-theme.ts).
+  const safeLogoUrl = dark.logoUrl;
 
   const widgetContainerStyle = buildWidgetContainerStyle(branding, theme);
 
@@ -461,6 +477,7 @@ export function WidgetPage({
   // ---- Dark-mode runtime vars (for client-side toggle) ----
   const darkVarsJson = buildDarkVarsJson(
     sanitizeCssColor(theme?.colors?.primary_button) || primaryColor,
+    { linkColor: dark.linkColor, colorsDark: dark.colorsDark },
   );
 
   const pageCss = buildPageCss({
@@ -469,6 +486,10 @@ export function WidgetPage({
     widgetBackground,
     hasBgImage,
     bodyLayout,
+    colorsDark: dark.colorsDark,
+    linkColor: dark.linkColor,
+    darkBackground: dark.darkBackground,
+    hasDarkLogo: dark.hasDarkLogo,
   });
 
   // -------------------------------------------------------------------------
@@ -482,12 +503,17 @@ export function WidgetPage({
   // take finished labels so they stay free of authhero's i18n stack.
   const languages = buildLanguageOptions(availableLanguages);
   const termsLabel = resolveTermsLabel(language);
+  const privacyLabel = resolvePrivacyLabel(language);
 
   // Embedded pages render no chrome: the embedding modal owns the frame,
   // and the chips' links would navigate inside the iframe.
   const chromeHtml = embed
     ? ""
-    : renderLogoChip({ logoUrl: safeLogoUrl, clientName }) +
+    : renderLogoChip({
+        logoUrl: safeLogoUrl,
+        logoUrlDark: dark.logoUrlDark,
+        clientName,
+      }) +
       renderSettingsChip({ darkMode, language, languages }) +
       (poweredByLogo
         ? renderPoweredByChip({
@@ -497,7 +523,12 @@ export function WidgetPage({
             height: poweredByLogo.height,
           })
         : "") +
-      renderLegalChip({ termsAndConditionsUrl, termsLabel }) +
+      renderLegalChip({
+        termsAndConditionsUrl,
+        termsLabel,
+        privacyUrl,
+        privacyLabel,
+      }) +
       // Phone footer. Always emitted; CSS reveals it only under 480px, where
       // the corner chips are hidden because they'd overlap the full-screen card.
       renderMobileFooter({
@@ -506,6 +537,8 @@ export function WidgetPage({
         languages,
         termsAndConditionsUrl,
         termsLabel,
+        privacyUrl,
+        privacyLabel,
         poweredBy: poweredByLogo,
       });
 
@@ -529,6 +562,13 @@ export function WidgetPage({
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Sign in - {clientName}</title>
         {faviconUrl && <link rel="icon" href={faviconUrl} />}
+        {faviconUrl && faviconUrlDark && (
+          <link
+            rel="icon"
+            href={faviconUrlDark}
+            media="(prefers-color-scheme: dark)"
+          />
+        )}
         {fontUrl && <link rel="stylesheet" href={fontUrl} />}
         <style
           dangerouslySetInnerHTML={{
@@ -754,6 +794,7 @@ export function extractBrandingProps(
     colors: branding.colors,
     logo_url: branding.logo_url,
     favicon_url: branding.favicon_url,
+    favicon_url_dark: branding.favicon_url_dark,
     font: branding.font,
   };
 }
@@ -780,6 +821,7 @@ export async function renderWidgetPageResponse(
     locale?: string;
     availableLanguages?: string[];
     termsAndConditionsUrl?: string;
+    privacyUrl?: string;
     darkMode?: DarkModePreference;
     logoPosition?: LogoPosition;
     extraScript?: string;
@@ -810,6 +852,14 @@ export async function renderWidgetPageResponse(
   // page template is skipped for them since it lays out a whole page.
   const embed: EmbedLoginContext | undefined = ctx.var?.embedLogin;
   const customTemplateBody = embed ? undefined : opts.customTemplateBody;
+  // Per-client links win; the tenant's branding defaults fill the gaps.
+  const legal = withTenantLegalDefaults(
+    {
+      termsAndConditionsUrl: opts.termsAndConditionsUrl,
+      privacyUrl: opts.privacyUrl,
+    },
+    opts.branding,
+  );
   const widgetHtml = await renderWidgetSSR({
     screenId: opts.screenId,
     screenJson: opts.screenJson,
@@ -825,7 +875,8 @@ export async function renderWidgetPageResponse(
     // block and the widget stylesheet's `[floating]` variant. An embedded
     // page is a card inside the application's modal at any width, so it
     // always floats.
-    floating: !!embed || !!opts.theme?.page_background?.background_image_url,
+    floating:
+      !!embed || resolveDarkPageInputs(opts.theme, opts.branding).hasBgImage,
   });
 
   // Shared slot inputs for both the body-fragment and full-document paths.
@@ -839,7 +890,8 @@ export async function renderWidgetPageResponse(
         language: opts.language,
         availableLanguages: opts.availableLanguages,
         poweredBy: opts.poweredByLogo,
-        termsAndConditionsUrl: opts.termsAndConditionsUrl,
+        termsAndConditionsUrl: legal.termsAndConditionsUrl,
+        privacyUrl: legal.privacyUrl,
         // Expose the full branding/theme objects as Liquid variables so
         // templates can reference e.g. `{{ branding.logo_url }}`.
         branding: opts.branding,
@@ -895,7 +947,8 @@ export async function renderWidgetPageResponse(
       poweredByLogo={opts.poweredByLogo}
       language={opts.language}
       availableLanguages={opts.availableLanguages}
-      termsAndConditionsUrl={opts.termsAndConditionsUrl}
+      termsAndConditionsUrl={legal.termsAndConditionsUrl}
+      privacyUrl={legal.privacyUrl}
       darkMode={opts.darkMode}
       logoPosition={opts.logoPosition ?? derivedPosition}
       extraScript={opts.extraScript}

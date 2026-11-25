@@ -26,6 +26,7 @@ import { findCaseCollidingTenantId } from "../utils/tenant-id-collision";
 import { resolveDeploymentTypes } from "../utils/deployment-types";
 import {
   callerIsOperator,
+  getTenantCreationUsage,
   enforceTenantCreationLimits,
 } from "../utils/tenant-creation-limits";
 
@@ -41,6 +42,13 @@ const deploymentTypeSchema = z.enum(["shared", "wfp"]);
 // the cluster's configured default instead.
 const createTenantBodySchema = tenantInsertSchema.extend({
   deployment_type: deploymentTypeSchema.optional(),
+});
+
+const creationLimitSchema = z.object({
+  key: z.literal("tenants_per_user"),
+  used: z.number(),
+  limit: z.number().nullable(),
+  source: z.enum(["override", "default", "none"]),
 });
 
 const deploymentOptionsSchema = z.object({
@@ -427,6 +435,59 @@ export function createTenantsOpenAPIRouter(
         },
         200,
       );
+    },
+  );
+
+  // --------------------------------
+  // GET /creation-limit - How many tenants the caller may still create
+  // --------------------------------
+  app.openapi(
+    createRoute({
+      tags: ["tenants"],
+      method: "get",
+      path: "/creation-limit",
+      security: [
+        {
+          Bearer: ["create:tenants"],
+        },
+      ],
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: creationLimitSchema,
+            },
+          },
+          description:
+            "Tenants the caller owns and the cap on them (`limit: null` is unlimited)",
+        },
+      },
+    }),
+    async (ctx) => {
+      const user = ctx.var.user;
+      if (!user?.sub) {
+        throw new HTTPException(401, {
+          message: "Authentication required",
+        });
+      }
+      const callerOrgScoped = Boolean(
+        parseCaller(ctx.var.user)?.org_id ??
+        ctx.var.organization_id ??
+        ctx.var.org_name,
+      );
+      // Operators are exempt from the cap, so there is none to show; what
+      // they own is still counted, as it is when no limits are configured.
+      const usage = await getTenantCreationUsage({
+        limits: config.tenantCreationLimits,
+        exempt: callerIsOperator(ctx.var.user, callerOrgScoped),
+        data: getRequestData(ctx),
+        controlPlaneTenantId:
+          config.accessControl?.controlPlaneTenantId ??
+          getRequestData(ctx).multiTenancyConfig?.controlPlaneTenantId,
+        ownerRoleName: config.accessControl?.ownerRoleName,
+        user: { sub: user.sub },
+      });
+      return ctx.json(usage, 200);
     },
   );
 

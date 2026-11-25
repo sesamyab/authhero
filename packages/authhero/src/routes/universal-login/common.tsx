@@ -10,6 +10,7 @@ import {
   getPrimaryUserByProvider,
 } from "../../helpers/users";
 import { getPrimaryUsernamePasswordUser } from "../../utils/username-password-provider";
+import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import { RedirectException } from "../../errors/redirect-exception";
 import {
   Strategy,
@@ -383,6 +384,10 @@ export async function getLoginStrategy(
             env: ctx.env,
             tenant_id: client.tenant.id,
             username,
+            connection: resolveClientDatabaseConnectionName(
+              client,
+              ctx.var.loginSession?.authParams.connection,
+            ),
           });
 
   // Check user's preferred login method (last used)

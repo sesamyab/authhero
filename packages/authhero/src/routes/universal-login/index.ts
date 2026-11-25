@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Context } from "hono";
+import { cors } from "hono/cors";
 import { AuthHeroConfig, Bindings, Variables } from "../../types";
 import { identifierRoutes } from "./identifier";
 import { enterCodeRoutes } from "./otp-challenge";
@@ -26,7 +27,7 @@ import { clientInfoMiddleware } from "../../middlewares/client-info";
 import { outboxMiddleware } from "../../middlewares/outbox";
 import { LogsDestination } from "../../helpers/outbox-destinations/logs";
 import { LogStreamDestination } from "../../helpers/outbox-destinations/log-streams";
-import { PipelineDestination } from "../../helpers/outbox-destinations/pipeline";
+import { createArchiveDestinations } from "../../helpers/default-destinations";
 import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
 import { CodeHookDestination } from "../../helpers/outbox-destinations/code-hooks";
 import { RegistrationFinalizerDestination } from "../../helpers/outbox-destinations/registration-finalizer";
@@ -41,6 +42,11 @@ import { createUniversalLoginErrorHandler } from "./error-handler";
 import { frameAncestorsMiddleware } from "./embed";
 
 export default function create(config: AuthHeroConfig) {
+  // Built once here rather than per request: the archive destinations validate
+  // their config in the constructor, and `getDestinations` runs in the outbox
+  // middleware's `finally` after the handler has committed. A bad config must
+  // fail `init()`, not a request whose writes already succeeded.
+  const archiveDestinations = createArchiveDestinations(config.outbox);
   const app = new OpenAPIHono<{
     Bindings: Bindings;
     Variables: Variables;
@@ -76,6 +82,10 @@ export default function create(config: AuthHeroConfig) {
   // Widget static file serving
   // If widgetHandler is provided in config, use it to serve widget files
   // Otherwise, return a helpful 404 error explaining how to configure it
+  // The widget files are public static assets. Allow any origin to load them,
+  // so the admin (often on another origin) can use the same build the login
+  // pages use. Module scripts are always fetched with CORS.
+  app.use("/widget/*", cors({ origin: "*", allowMethods: ["GET", "HEAD"] }));
   if (config.widgetHandler) {
     app.get("/widget/*", config.widgetHandler);
   } else {
@@ -113,10 +123,8 @@ export default function create(config: AuthHeroConfig) {
             }),
             new RegistrationFinalizerDestination(base.users),
             // Archive last: the relay stops the destination loop on first
-            // failure, so a Pipelines outage must not block real delivery.
-            ...(config.outbox?.pipeline
-              ? [new PipelineDestination(config.outbox.pipeline)]
-              : []),
+            // failure, so an archive outage must not block real delivery.
+            ...archiveDestinations,
           ];
         },
       }),

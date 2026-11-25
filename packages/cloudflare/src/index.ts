@@ -3,6 +3,7 @@ import {
   CacheAdapter,
   LogsDataAdapter,
   GeoAdapter,
+  StorageAdapter,
   RateLimitAdapter,
   AnalyticsAdapter,
   ActionExecutionsAdapter,
@@ -26,6 +27,7 @@ import {
   type AnalyticsEngineActionExecutionsAdapterConfig,
 } from "./analytics-engine-action-executions";
 import { createCloudflareGeoAdapter } from "./geo";
+import { createCloudflareStorageAdapter } from "./storage";
 import {
   createCloudflareRateLimitAdapter,
   type CloudflareRateLimitBinding,
@@ -44,6 +46,8 @@ export type { AnalyticsEngineActionExecutionsAdapterConfig };
 // Re-export rate-limit types so consumers can type their wrangler bindings
 export type { CloudflareRateLimitBinding, CloudflareRateLimitBindings };
 export { createCloudflareRateLimitAdapter } from "./rate-limit";
+export { createCloudflareStorageAdapter } from "./storage";
+export type { CloudflareStorageAdapterConfig, R2BucketLike } from "./storage";
 export type { CloudflareConfig };
 export { syncCustomDomains } from "./customDomains/sync";
 export type {
@@ -125,6 +129,7 @@ export interface CloudflareAdapters {
   analytics?: AnalyticsAdapter;
   stats?: StatsAdapter;
   geo?: GeoAdapter;
+  storage?: StorageAdapter;
   rateLimit?: RateLimitAdapter;
   actionExecutions?: ActionExecutionsAdapter;
 }
@@ -173,6 +178,10 @@ export default function createAdapters(
     adapters.actionExecutions = createAnalyticsEngineActionExecutionsAdapter(
       config.analyticsEngineActionExecutions,
     );
+  }
+
+  if (config.storage) {
+    adapters.storage = createCloudflareStorageAdapter(config.storage);
   }
 
   // Rate limiter is opt-in: only create the adapter if at least one

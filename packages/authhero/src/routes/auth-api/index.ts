@@ -30,7 +30,7 @@ import { outboxMiddleware } from "../../middlewares/outbox";
 import { serverTimingMiddleware } from "../../helpers/server-timing";
 import { LogsDestination } from "../../helpers/outbox-destinations/logs";
 import { LogStreamDestination } from "../../helpers/outbox-destinations/log-streams";
-import { PipelineDestination } from "../../helpers/outbox-destinations/pipeline";
+import { createArchiveDestinations } from "../../helpers/default-destinations";
 import { WebhookDestination } from "../../helpers/outbox-destinations/webhooks";
 import { CodeHookDestination } from "../../helpers/outbox-destinations/code-hooks";
 import { RegistrationFinalizerDestination } from "../../helpers/outbox-destinations/registration-finalizer";
@@ -38,6 +38,11 @@ import { makeOutboxServiceTokenFactory } from "../../helpers/service-token";
 import { getIssuer } from "../../variables";
 
 export default function create(config: AuthHeroConfig) {
+  // Built once here rather than per request: the archive destinations validate
+  // their config in the constructor, and `getDestinations` runs in the outbox
+  // middleware's `finally` after the handler has committed. A bad config must
+  // fail `init()`, not a request whose writes already succeeded.
+  const archiveDestinations = createArchiveDestinations(config.outbox);
   const app = new OpenAPIHono<{
     Bindings: Bindings;
     Variables: Variables;
@@ -72,10 +77,8 @@ export default function create(config: AuthHeroConfig) {
           // the upstream hook destinations actually succeeded.
           new RegistrationFinalizerDestination(base.users),
           // Archive last: the relay stops the destination loop on first failure,
-          // so a Pipelines outage must not be able to block real delivery.
-          ...(config.outbox?.pipeline
-            ? [new PipelineDestination(config.outbox.pipeline)]
-            : []),
+          // so an archive outage must not be able to block real delivery.
+          ...archiveDestinations,
         ];
       },
     }),

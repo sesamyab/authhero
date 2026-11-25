@@ -1,9 +1,11 @@
 import {
   Address,
+  ConnectionSelfService,
   User,
   UserDataAdapter,
   escapeLuceneValue,
 } from "@authhero/adapter-interfaces";
+import { isUntrustedSelfServiceEmail } from "./self-service-connections";
 import { EnrichedClient } from "./client";
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
@@ -11,6 +13,12 @@ import { userIdGenerate } from "../utils/user-id";
 import { isUsernamePasswordProvider } from "../utils/username-password-provider";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { normalizeEmail } from "../utils/email";
+import {
+  DatabaseConnectionScope,
+  compareByConnectionScope,
+  isUserInConnectionScope,
+  resolveDatabaseConnectionScope,
+} from "./database-connection-scope";
 
 export async function getUsersByEmail(
   userAdapter: UserDataAdapter,
@@ -43,6 +51,34 @@ export async function getAllUsersByEmail(
   tenantId: string,
   email: string,
 ): Promise<User[]> {
+  return listAllUsers(
+    userAdapter,
+    tenantId,
+    `email:${escapeLuceneValue(email)}`,
+  );
+}
+
+/**
+ * Every user sharing `username`, across all pages. The username counterpart
+ * of {@link getAllUsersByEmail}, for the same uniqueness checks.
+ */
+export async function getAllUsersByUsername(
+  userAdapter: UserDataAdapter,
+  tenantId: string,
+  username: string,
+): Promise<User[]> {
+  return listAllUsers(
+    userAdapter,
+    tenantId,
+    `username:${escapeLuceneValue(username)}`,
+  );
+}
+
+async function listAllUsers(
+  userAdapter: UserDataAdapter,
+  tenantId: string,
+  q: string,
+): Promise<User[]> {
   const pageSize = 100;
   const users: User[] = [];
   let page = 0;
@@ -52,7 +88,7 @@ export async function getAllUsersByEmail(
       page,
       per_page: pageSize,
       include_totals: false,
-      q: `email:${escapeLuceneValue(email)}`,
+      q,
     });
     users.push(...response.users);
     if (response.users.length < pageSize) break;
@@ -67,6 +103,13 @@ interface GetUserByProviderParams {
   tenant_id: string;
   username: string;
   provider: string;
+  /**
+   * Limit the match to one database connection. Every database connection
+   * shares the `auth0` provider, so without a scope a lookup can return a
+   * user from another database connection. Build it with
+   * `resolveDatabaseConnectionScope`; `undefined` keeps the unscoped lookup.
+   */
+  connection?: DatabaseConnectionScope;
 }
 
 export async function getUserByProvider({
@@ -74,6 +117,7 @@ export async function getUserByProvider({
   tenant_id,
   username,
   provider,
+  connection,
 }: GetUserByProviderParams): Promise<User | null> {
   let userIdQuery: string;
 
@@ -97,11 +141,17 @@ export async function getUserByProvider({
     q: `${userIdQuery} provider:${escapeLuceneValue(provider)}`,
   });
 
-  if (users.length > 1) {
+  const matches = connection
+    ? users
+        .filter((user) => isUserInConnectionScope(user, connection))
+        .sort(compareByConnectionScope(connection))
+    : users;
+
+  if (!connection && matches.length > 1) {
     console.error("More than one user found for same username and provider");
   }
 
-  return users[0] || null;
+  return matches[0] || null;
 }
 
 /**
@@ -183,6 +233,14 @@ interface GetPrimaryUserByEmailParams {
   tenant_id: string;
   email: string;
   /**
+   * Account-linking paths pass this to drop users that must never be a link
+   * target (see `filterTrustedLinkTargets`). Applied to the primaries, or to
+   * the resolved root when every match is a secondary. When it drops them all,
+   * no user is returned. Read paths (login lookup, forgot password) leave it
+   * unset.
+   */
+  filterCandidates?: (users: User[]) => Promise<User[]>;
+  /**
    * Log when more than one primary shares the email. Only meaningful on
    * account-linking paths, where duplicate primaries mean linking failed to
    * converge. With `userLinkingMode: "off"` several primaries per email is the
@@ -197,6 +255,7 @@ export async function getPrimaryUserByEmail({
   tenant_id,
   email,
   warnOnMultiplePrimaries = false,
+  filterCandidates,
 }: GetPrimaryUserByEmailParams): Promise<User | undefined> {
   const { users } = await userAdapter.list(tenant_id, {
     page: 0,
@@ -209,9 +268,14 @@ export async function getPrimaryUserByEmail({
     return;
   }
 
-  const primaryUsers = users.filter((user) => !user.linked_to);
+  const unlinked = users.filter((user) => !user.linked_to);
 
-  if (primaryUsers.length > 0) {
+  if (unlinked.length > 0) {
+    const primaryUsers = filterCandidates
+      ? await filterCandidates(unlinked)
+      : unlinked;
+    if (primaryUsers.length === 0) return undefined;
+
     if (warnOnMultiplePrimaries && primaryUsers.length > 1) {
       console.error("More than one primary user found for same email");
     }
@@ -235,6 +299,11 @@ export async function getPrimaryUserByEmail({
 
   if (!primaryAccount) {
     throw new Error("Primary account not found");
+  }
+
+  if (filterCandidates) {
+    const [trusted] = await filterCandidates([primaryAccount]);
+    return trusted;
   }
 
   return primaryAccount;
@@ -539,11 +608,21 @@ interface EmailConflictParams {
    * of its linked secondaries (when the caller passed `connection`).
    */
   clusterRootId: string;
+  /**
+   * The target's database connection scope, when the tenant has several
+   * database connections (see `resolveDatabaseConnectionScope`). Between two
+   * database users, "same connection" then means what the login lookups see:
+   * a legacy row whose `connection` names no database connection counts as
+   * part of every connection. Without a scope it is a plain name comparison.
+   */
+  connectionScope?: DatabaseConnectionScope;
 }
 
 /**
  * Find the user, if any, that genuinely blocks changing `target`'s email to an
- * address already present on other rows.
+ * address already present on other rows. The same rules apply to a username
+ * change, with candidates from {@link getAllUsersByUsername}: usernames have
+ * the same `(tenant_id, provider, username)` unique index.
  *
  * Two rows sharing an email is only a *conflict* when it makes a login ambiguous,
  * and login lookups are always provider-scoped (`getUserByProvider` filters on
@@ -574,7 +653,11 @@ export function findEmailConflict({
   candidates,
   target,
   clusterRootId,
+  connectionScope,
 }: EmailConflictParams): User | undefined {
+  const bothDatabaseUsers = (candidate: User) =>
+    isUsernamePasswordProvider(candidate.provider) &&
+    isUsernamePasswordProvider(target.provider);
   return candidates.find((candidate) => {
     if (candidate.user_id === target.user_id) return false;
     if (candidate.provider === target.provider) return true;
@@ -582,6 +665,9 @@ export function findEmailConflict({
       candidate.user_id === clusterRootId ||
       candidate.linked_to === clusterRootId;
     if (isClusterMate) return false;
+    if (connectionScope && bothDatabaseUsers(candidate)) {
+      return isUserInConnectionScope(candidate, connectionScope);
+    }
     return candidate.connection === target.connection;
   });
 }
@@ -676,6 +762,8 @@ interface GetPrimaryUserByProviderParams {
   tenant_id: string;
   username: string;
   provider: string;
+  /** See {@link GetUserByProviderParams.connection}. */
+  connection?: DatabaseConnectionScope;
 }
 
 export async function getPrimaryUserByProvider({
@@ -683,12 +771,14 @@ export async function getPrimaryUserByProvider({
   tenant_id,
   username,
   provider,
+  connection,
 }: GetPrimaryUserByProviderParams): Promise<User | null> {
   const user = await getUserByProvider({
     userAdapter,
     tenant_id,
     username,
     provider,
+    connection,
   });
 
   if (!user) {
@@ -838,6 +928,13 @@ interface GetOrCreateUserByProviderParams {
   username: string;
   provider: string;
   connection: string;
+  /**
+   * The connection's Self-Service SSO state (#1763). When set, an email is
+   * only trusted inside the domains verified for the connection: elsewhere
+   * `email_verified` is stored as `false`, whatever the identity provider
+   * asserted, so email-based linking never acts on it.
+   */
+  selfService?: ConnectionSelfService | null;
   userId?: string;
   profileData?: Record<string, unknown>;
   ip?: string;
@@ -866,6 +963,7 @@ export async function getOrCreateUserByProvider(
     profileData = {},
     ip = "",
     set_user_root_attributes,
+    selfService,
   } = params;
 
   // Normalized once, before the lookup, because this function both reads and
@@ -886,31 +984,50 @@ export async function getOrCreateUserByProvider(
       ? extractRootAttributesFromProfile(profileData)
       : {};
 
+  // Self-Service SSO guard: whoever configured the identity provider controls
+  // what it asserts, so outside the connection's verified domains its
+  // `email_verified` is never trusted.
+  const untrustedEmail = isUntrustedSelfServiceEmail(selfService, username);
+
   // When the caller passes the upstream subject (social/enterprise callback,
   // refresh-token migration) the user id is deterministic, and it is the
   // stable identity: the stored email can drift from the IdP's (a user or
   // admin edit, an import, an IdP-side rename). Look up by id first and only
   // fall back to email + provider for older rows whose id isn't `provider|sub`.
   const expectedUserId = userId ? `${provider}|${userId}` : undefined;
-  const findExistingUser = async (): Promise<User | null> => {
+  // Database users of several connections share one provider, so their
+  // identifier lookup is scoped to the target connection (#1702). Other
+  // providers identify one connection already.
+  const connectionScope = isUsernamePasswordProvider(provider)
+    ? await resolveDatabaseConnectionScope(
+        ctx.env.data.connections,
+        client.tenant.id,
+        connection,
+      )
+    : undefined;
+  const findExistingIdentity = async (): Promise<User | null> => {
     if (expectedUserId) {
       const byId = await ctx.env.data.users.get(
         client.tenant.id,
         expectedUserId,
       );
       if (byId) {
-        return resolvePrimaryUser(ctx.env.data.users, client.tenant.id, byId);
+        return byId;
       }
     }
-    return getPrimaryUserByProvider({
+    return getUserByProvider({
       userAdapter: ctx.env.data.users,
       tenant_id: client.tenant.id,
       username,
       provider,
+      connection: connectionScope,
     });
   };
 
-  let user = await findExistingUser();
+  const resolveIdentity = (identity: User) =>
+    resolvePrimaryUser(ctx.env.data.users, client.tenant.id, identity);
+  let identity = await findExistingIdentity();
+  let user = identity ? await resolveIdentity(identity) : null;
 
   let wasCreated = false;
 
@@ -938,8 +1055,9 @@ export async function getOrCreateUserByProvider(
       address: rootAttrs.address,
       provider,
       connection,
-      email_verified:
-        rootAttrs.email_verified ?? (isSocial || connection === "email"),
+      email_verified: untrustedEmail
+        ? false
+        : (rootAttrs.email_verified ?? (isSocial || connection === "email")),
       last_ip: ip,
       is_social: isSocial,
       last_login: new Date().toISOString(),
@@ -958,20 +1076,42 @@ export async function getOrCreateUserByProvider(
       if ((err as { status?: unknown })?.status !== 409) {
         throw err;
       }
-      const existing = await findExistingUser();
-      if (!existing) {
+      identity = await findExistingIdentity();
+      if (!identity) {
         throw err;
       }
-      user = existing;
+      user = await resolveIdentity(identity);
     }
 
     ctx.set("user_id", user.user_id);
   }
 
-  if (!wasCreated && effectiveMode === "on_each_login") {
+  const syncRootAttributes = effectiveMode === "on_each_login";
+  // A self-service secondary authenticates its linked primary, but the
+  // primary's verification belongs to a different identity.
+  const preservePrimaryVerification =
+    !!selfService && !!identity && identity.user_id !== user.user_id;
+  const clearEmailVerification =
+    !preservePrimaryVerification &&
+    (untrustedEmail || isUntrustedSelfServiceEmail(selfService, user.email));
+
+  if (!wasCreated && (syncRootAttributes || clearEmailVerification)) {
+    // Root sync retains the account's email. An assertion for another address
+    // cannot change verification for that retained address.
+    let emailVerified: boolean | undefined;
+    if (clearEmailVerification) {
+      emailVerified = false;
+    } else if (
+      !preservePrimaryVerification &&
+      (!selfService || (user.email && normalizeEmail(user.email) === username))
+    ) {
+      emailVerified = rootAttrs.email_verified;
+    }
     const updates: Record<string, unknown> = {
-      ...rootAttrs,
-      profileData: JSON.stringify(profileData),
+      ...(syncRootAttributes
+        ? { ...rootAttrs, profileData: JSON.stringify(profileData) }
+        : {}),
+      email_verified: emailVerified,
     };
     // Filter out undefined values to avoid overwriting existing data, and
     // drop fields whose stored value already matches — most logins sync an

@@ -17,6 +17,7 @@ export type {
   ControlPlaneDefaultsPayload,
   ControlPlaneDefaultsApplyResult,
   ControlPlaneTenantSeed,
+  SeededTenantSettings,
   DefaultsPayloadEntities,
 } from "./payload";
 export {
@@ -24,6 +25,7 @@ export {
   applyControlPlaneDefaultsPayload,
   buildControlPlaneSigningKeys,
   applyControlPlaneSigningKeys,
+  SEEDED_TENANT_SETTING_KEYS,
 } from "./payload";
 export type {
   ApplyResolvedBlockOptions,

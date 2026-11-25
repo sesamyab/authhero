@@ -54,6 +54,7 @@ import type { ControlPlaneResolver } from "./middleware";
 import type { InheritanceShadowOptions } from "./inheritance";
 import {
   DatabaseIsolationConfig,
+  MultiTenancyConfig,
   TenantDeploymentTypesConfig,
   TenantCreationLimitsConfig,
   TenantEntityHooks,
@@ -114,6 +115,13 @@ export interface MultiTenantConfig extends Omit<
    * exempt. Unset leaves creation unlimited.
    */
   tenantCreationLimits?: TenantCreationLimitsConfig;
+
+  /**
+   * Settings a new tenant starts with (MFA, attack protection, flags, ...),
+   * copied once when it is created and the tenant's own after that. A value in
+   * the create request wins. May be a function. Unset changes nothing.
+   */
+  tenantDefaults?: MultiTenancyConfig["tenantDefaults"];
 
   /**
    * The hostname a new tenant gets, with `{id}` standing for the tenant id,
@@ -424,6 +432,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     databaseIsolation,
     deploymentTypes,
     tenantCreationLimits,
+    tenantDefaults,
     tenantHostTemplate,
     inheritanceShadow,
     syncDefaults,
@@ -743,6 +752,7 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
       provisionRoles: true,
     },
     databaseIsolation,
+    tenantDefaults,
   });
 
   // Chain provisioning hooks (org creation) with sync hooks (entity syncing)
@@ -761,7 +771,17 @@ export function initMultiTenant(config: MultiTenantConfig): MultiTenantResult {
     },
     async afterCreate(ctx: TenantHookContext, tenant: Tenant): Promise<void> {
       await provisioningHooks.afterCreate?.(ctx, tenant);
-      await tenantHooks.afterCreate?.(ctx, tenant);
+      // A `wfp` tenant has its own database and is seeded through
+      // `onProvision`. With the default `getAdapters`, this sync writes through
+      // the control plane's adapters, so it would only leave resource servers
+      // and roles in the control plane's database under the tenant's id, where
+      // nothing reads them. A `shared` tenant lives in this database, so it
+      // keeps the sync.
+      const hasOwnDatabase =
+        !!databaseIsolation?.onProvision && tenant.deployment_type === "wfp";
+      if (!hasOwnDatabase) {
+        await tenantHooks.afterCreate?.(ctx, tenant);
+      }
     },
     async beforeDelete(
       ctx: TenantHookContext,

@@ -92,12 +92,18 @@ export function renderLanguagePicker(opts: {
 /** Top-left logo chip. Only rendered when the caller opts into the chip variant. */
 export function renderLogoChip(opts: {
   logoUrl?: string | null;
+  /** Dark-scheme logo. Both images are emitted; page CSS shows one per scheme. */
+  logoUrlDark?: string | null;
   clientName: string;
   variant?: ChipStyle;
 }): string {
   const safe = opts.logoUrl ? sanitizeUrl(opts.logoUrl) : "";
+  const safeDark = opts.logoUrlDark ? sanitizeUrl(opts.logoUrlDark) : "";
+  const alt = escapeHtml(opts.clientName);
   const inner = safe
-    ? `<img src="${safe}" alt="${escapeHtml(opts.clientName)}">`
+    ? safeDark
+      ? `<img class="ah-logo-img ah-logo-img--light" src="${safe}" alt="${alt}"><img class="ah-logo-img ah-logo-img--dark" src="${safeDark}" alt="${alt}">`
+      : `<img src="${safe}" alt="${alt}">`
     : `<span class="ah-logo-text">${escapeHtml(opts.clientName)}</span>`;
   return `<div class="ah-chip ah-chip-logo${chipVariantClass(opts.variant)}" data-ah-slot="top-left">${inner}</div>`;
 }
@@ -141,20 +147,51 @@ export function renderPoweredByChip(opts: {
   return `<div class="ah-chip ah-chip-trust${chipVariantClass(opts.variant)}" data-ah-slot="bottom-left">${inner}</div>`;
 }
 
-/** Bottom-right terms/privacy link. `termsLabel` arrives already translated. */
+/**
+ * Bottom-right terms/privacy links. Labels arrive already translated. With
+ * only `termsAndConditionsUrl` this is the single link it always was; a
+ * `privacyUrl` adds a second, separate link next to it.
+ */
 export function renderLegalChip(opts: {
   termsAndConditionsUrl?: string;
   termsLabel: string;
+  privacyUrl?: string;
+  privacyLabel?: string;
   variant?: ChipStyle;
 }): string {
-  if (!opts.termsAndConditionsUrl) return "";
-  const href = sanitizeUrl(opts.termsAndConditionsUrl);
-  if (!href) return "";
+  const links = legalLinks(
+    opts,
+    (href, label) =>
+      `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`,
+  );
+  if (!links.length) return "";
   return (
     `<div class="ah-chip-legal${chipVariantClass(opts.variant)}" data-ah-slot="bottom-right">` +
-    `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(opts.termsLabel)}</a>` +
+    links.join(`<span class="ah-sep" aria-hidden="true">·</span>`) +
     `</div>`
   );
+}
+
+/** The terms and privacy links that survive sanitising, in display order. */
+function legalLinks(
+  opts: {
+    termsAndConditionsUrl?: string;
+    termsLabel: string;
+    privacyUrl?: string;
+    privacyLabel?: string;
+  },
+  render: (href: string, label: string) => string,
+): string[] {
+  const links: string[] = [];
+  const termsHref = opts.termsAndConditionsUrl
+    ? sanitizeUrl(opts.termsAndConditionsUrl)
+    : "";
+  if (termsHref) links.push(render(termsHref, opts.termsLabel));
+  const privacyHref = opts.privacyUrl ? sanitizeUrl(opts.privacyUrl) : "";
+  if (privacyHref) {
+    links.push(render(privacyHref, opts.privacyLabel || "Privacy"));
+  }
+  return links;
 }
 
 /**
@@ -176,14 +213,15 @@ export function renderMobileFooter(opts: {
   languages?: LanguageOption[];
   termsAndConditionsUrl?: string;
   termsLabel: string;
+  privacyUrl?: string;
+  privacyLabel?: string;
   poweredBy?: { url: string; href?: string; alt?: string; height?: number };
 }): string {
-  const termsHref = opts.termsAndConditionsUrl
-    ? sanitizeUrl(opts.termsAndConditionsUrl)
-    : "";
-  const terms = termsHref
-    ? `<a class="ah-footer-terms" href="${termsHref}" target="_blank" rel="noopener noreferrer">${escapeHtml(opts.termsLabel)}</a>`
-    : "";
+  const terms = legalLinks(
+    opts,
+    (href, label) =>
+      `<a class="ah-footer-terms" href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`,
+  ).join("");
 
   let poweredBy = "";
   if (opts.poweredBy) {

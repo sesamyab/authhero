@@ -816,5 +816,63 @@
       "successTitle": "Vellykket",
       "title": "Status"
     }
+  },
+  "self-service": {
+    "self-service-app": {
+      "title": "Registrer appen din",
+      "description": "${tenantName} har invitert deg til å registrere en app som logger inn brukerne deres.",
+      "editTitle": "Oppdater ${appName}",
+      "editDescription": "Endre innloggingsinnstillingene for ${appName}.",
+      "expiresText": "Lenken utløper ${date}.",
+      "appTypeLabel": "Apptype",
+      "appTypeNative": "Native-app",
+      "appTypeSpa": "Enkeltsideapp (SPA)",
+      "appTypeRegularWeb": "Vanlig nettapp",
+      "nameLabel": "Appnavn",
+      "callbacksLabel": "Callback-URL-er",
+      "callbacksHintNative": "Én per linje. Bruk appens universelle lenke eller et eget skjema, for eksempel com.example.app:/callback",
+      "callbacksHintWeb": "Én per linje, for eksempel https://app.example.com/callback",
+      "logoutUrlsLabel": "Utloggings-URL-er",
+      "webOriginsLabel": "Tillatte nettopprinnelser",
+      "webOriginsHint": "Én per linje, for eksempel https://app.example.com",
+      "logoUrlLabel": "Logo-URL",
+      "websiteLabel": "Nettsted",
+      "privacyLabel": "URL til personvernerklæring",
+      "termsLabel": "URL til vilkår for bruk",
+      "contactLabel": "Kontakt-e-post",
+      "registerButton": "Registrer appen",
+      "saveButton": "Lagre endringer",
+      "savedText": "Endringene er lagret.",
+      "clientIdLabel": "Klient-ID",
+      "requiredError": "Dette feltet må fylles ut.",
+      "invalidValueError": "Verdien er ikke gyldig.",
+      "uriTooMany": "Bruk høyst 20 URL-er.",
+      "uriTooLong": "En URL kan være høyst 1024 tegn lang.",
+      "uriInvalid": "\"${value}\" er ikke en gyldig URL.",
+      "uriWildcard": "\"${value}\": jokertegn er ikke tillatt.",
+      "uriFragment": "\"${value}\": fragmenter (#) er ikke tillatt.",
+      "uriUserinfo": "\"${value}\": brukernavn og passord i URL-er er ikke tillatt.",
+      "uriHttpNotLoopback": "\"${value}\": bruk https. http er bare tillatt for localhost, 127.0.0.1 eller [::1].",
+      "uriSchemeNotAllowed": "\"${value}\": denne typen URL er ikke tillatt for denne apptypen.",
+      "uriCustomSchemeNeedsDot": "\"${value}\": egne skjemaer må inneholde et punktum, for eksempel com.example.app:/callback",
+      "uriOriginOnly": "\"${value}\": oppgi bare opprinnelsen, uten sti, for eksempel https://app.example.com",
+      "uriNotForNative": "Native-apper bruker ikke nettopprinnelser.",
+      "errorText": "Noe gikk galt. Prøv igjen."
+    },
+    "self-service-app-done": {
+      "title": "Appen din er registrert",
+      "description": "Bruk disse verdiene til å sette opp innlogging i ${appName}.",
+      "clientIdLabel": "Klient-ID",
+      "domainLabel": "Domene",
+      "discoveryLabel": "Discovery-URL",
+      "clientSecretLabel": "Klienthemmelighet",
+      "clientSecretWarning": "Kopier klienthemmeligheten nå. Den vises ikke igjen.",
+      "pkceNote": "Bruk PKCE med S256. De fleste innloggings-SDK-er gjør dette som standard.",
+      "editLaterText": "Må du endre noe senere? Be ${tenantName} om en redigeringslenke."
+    },
+    "self-service-ticket-invalid": {
+      "title": "Lenken kan ikke brukes",
+      "description": "Den kan ha utløpt, allerede være brukt eller være trukket tilbake. Be avsenderen om en ny lenke."
+    }
   }
 }

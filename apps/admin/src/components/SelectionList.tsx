@@ -79,7 +79,9 @@ export function SelectionList({
           <ul className="divide-y">
             {filtered.map((item) => (
               <li key={item.key} className="flex items-start gap-2 p-2">
+                {/* mt-0.5 centres the 16px box on the 20px first text line. */}
                 <Checkbox
+                  className="mt-0.5"
                   id={`${idPrefix}-${item.key}`}
                   checked={selected.has(item.key)}
                   onCheckedChange={() => onToggle(item.key)}

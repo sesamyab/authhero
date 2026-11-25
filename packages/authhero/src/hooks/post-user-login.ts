@@ -692,6 +692,7 @@ export async function postUserLoginHook(
       const linkCandidates = linkingOptedIn
         ? await resolveLinkCandidates({
             userAdapter: data.users,
+            connectionAdapter: data.connections,
             tenantId: tenant_id,
             user,
           })

@@ -312,6 +312,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               link: "/features/invitations-and-tickets",
             },
             {
+              text: "Developer App Invites",
+              link: "/features/developer-app-invites",
+            },
+            {
               text: "Email Templates",
               link: "/features/email-templates",
             },
@@ -546,6 +550,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
             {
               text: "Rate Limit Adapter",
               link: "/customization/adapter-interfaces/rate-limit",
+            },
+            {
+              text: "Storage (Branding Uploads)",
+              link: "/customization/adapter-interfaces/storage",
             },
             {
               text: "Failed Events (Dead-letter)",

@@ -1,0 +1,1 @@
+ALTER TABLE `connections` ADD `self_service` text(4096);

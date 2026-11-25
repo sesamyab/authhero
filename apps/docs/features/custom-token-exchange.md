@@ -43,6 +43,8 @@ AuthHero verifies the subject token itself:
   - `create_if_not_exists` (default `true`): when `false`, unknown users are rejected.
   - `trust_email_verified` (default `false`): copy the token's `email_verified` onto new users. A verified email is what [account linking](./account-linking) keys on, so enabling it lets your token issuer attach new identities to existing accounts with the same address. Only enable it if your backend really verifies emails.
 
+The connection doesn't need to be enabled on any application; the exchange finds it by name. A dedicated database connection that only receives exchanged users stays out of login, signup and password reset as long as no application uses it as its database connection: either it isn't enabled, or it isn't first and no login request names it. Applications with no connections enabled use the tenant's oldest database connection, so if the exchange connection is the oldest, enable connections on those applications explicitly. To move exchanged users into another application with [session transfer](./session-transfer), enable the connection on that application. See [Connections](../entities/configuration/connections#several-database-connections-on-one-application).
+
 ### Creating a profile
 
 ```http

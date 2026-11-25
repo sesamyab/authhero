@@ -2,6 +2,7 @@ import {
   ClientRegistrationTokensAdapter,
   ClientRegistrationToken,
   ClientRegistrationTokenInsert,
+  ClientRegistrationTokenSource,
   ClientRegistrationTokenType,
   clientRegistrationTokenSchema,
 } from "@authhero/adapter-interfaces";
@@ -29,6 +30,9 @@ interface ClientRegistrationTokenItem extends DynamoDBBaseItem {
   expires_at?: string;
   used_at?: string;
   revoked_at?: string;
+  name?: string;
+  created_by?: string;
+  source?: ClientRegistrationTokenSource;
 }
 
 function toToken(item: ClientRegistrationTokenItem): ClientRegistrationToken {
@@ -67,6 +71,9 @@ export function createClientRegistrationTokensAdapter(
           : undefined,
         single_use: token.single_use,
         expires_at: token.expires_at,
+        name: token.name,
+        created_by: token.created_by,
+        source: token.source,
         created_at: now,
         updated_at: now,
       };
@@ -110,6 +117,45 @@ export function createClientRegistrationTokensAdapter(
       return result.items[0] ? toToken(result.items[0]) : null;
     },
 
+    async list(tenantId, params = {}) {
+      const page = params.page ?? 0;
+      const per_page = params.per_page ?? 50;
+
+      // Sort keys are not time-ordered and the filters are not indexed, so
+      // read the tenant's tokens and filter in memory. Expired tokens are
+      // removed by TTL, which keeps this set small.
+      const items: ClientRegistrationTokenItem[] = [];
+      let startKey: Record<string, unknown> | undefined;
+      do {
+        const result = await queryItems<ClientRegistrationTokenItem>(
+          ctx,
+          clientRegistrationTokenKeys.pk(tenantId),
+          { skPrefix: clientRegistrationTokenKeys.skPrefix(), startKey },
+        );
+        items.push(...result.items);
+        startKey = result.lastKey;
+      } while (startKey);
+
+      const tokens = items
+        .map(toToken)
+        .filter(
+          (token) =>
+            (!params.type || token.type === params.type) &&
+            (!params.client_id || token.client_id === params.client_id) &&
+            (!params.source || token.source === params.source),
+        )
+        .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+      const pageTokens = tokens.slice(page * per_page, (page + 1) * per_page);
+      return {
+        client_registration_tokens: pageTokens,
+        start: page * per_page,
+        limit: per_page,
+        length: pageTokens.length,
+        ...(params.include_totals ? { total: tokens.length } : {}),
+      };
+    },
+
     async listByClient(tenantId, clientId) {
       const result = await queryItems<ClientRegistrationTokenItem>(
         ctx,
@@ -123,7 +169,12 @@ export function createClientRegistrationTokensAdapter(
       return result.items.map(toToken);
     },
 
-    async markUsed(tenantId, id, used_at) {
+    async markUsed(tenantId, id, used_at, client_id) {
+      // Recording the created client also indexes the token under it (GSI2),
+      // so listByClient finds the invite that created the client.
+      const clientSet = client_id
+        ? ", #client_id = :client_id, #gsi2pk = :gsi2pk, #gsi2sk = :gsi2sk"
+        : "";
       try {
         await ctx.client.send(
           new UpdateCommand({
@@ -132,17 +183,33 @@ export function createClientRegistrationTokensAdapter(
               PK: clientRegistrationTokenKeys.pk(tenantId),
               SK: clientRegistrationTokenKeys.sk(id),
             },
-            UpdateExpression:
-              "SET #used_at = :used_at, #updated_at = :updated_at",
+            UpdateExpression: `SET #used_at = :used_at, #updated_at = :updated_at${clientSet}`,
             ConditionExpression:
               "attribute_exists(PK) AND attribute_not_exists(#used_at)",
             ExpressionAttributeNames: {
               "#used_at": "used_at",
               "#updated_at": "updated_at",
+              ...(client_id
+                ? {
+                    "#client_id": "client_id",
+                    "#gsi2pk": "GSI2PK",
+                    "#gsi2sk": "GSI2SK",
+                  }
+                : {}),
             },
             ExpressionAttributeValues: {
               ":used_at": used_at,
               ":updated_at": new Date().toISOString(),
+              ...(client_id
+                ? {
+                    ":client_id": client_id,
+                    ":gsi2pk": clientRegistrationTokenKeys.gsi2pk(
+                      tenantId,
+                      client_id,
+                    ),
+                    ":gsi2sk": clientRegistrationTokenKeys.gsi2sk(id),
+                  }
+                : {}),
             },
           }),
         );

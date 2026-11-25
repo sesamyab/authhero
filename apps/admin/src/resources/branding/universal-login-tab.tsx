@@ -182,7 +182,7 @@ export function UniversalLoginTab() {
   }
 
   return (
-    <div className="flex max-w-4xl flex-col gap-4">
+    <div className="flex max-w-3xl flex-col gap-4">
       <div>
         <h3 className="text-lg font-semibold">Universal Login Page Template</h3>
         <p className="mt-1 text-sm text-muted-foreground">

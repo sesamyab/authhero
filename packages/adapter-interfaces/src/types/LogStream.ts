@@ -7,6 +7,9 @@ export const logStreamTypeSchema = z.enum([
   "splunk",
   "datadog",
   "sumo",
+  // AuthHero extension: Amazon Data Firehose Direct PUT stream. Not an Auth0
+  // log stream type.
+  "firehose",
 ]);
 
 export const logStreamStatusSchema = z.enum(["active", "paused", "suspended"]);

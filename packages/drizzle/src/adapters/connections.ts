@@ -20,13 +20,29 @@ function generateConnectionId(): string {
 }
 
 function sqlToConnection(row: any): Connection {
-  const { tenant_id: _, is_system, options, metadata, ...rest } = row;
+  const {
+    tenant_id: _,
+    is_system,
+    options,
+    metadata,
+    self_service,
+    ...rest
+  } = row;
   return removeNullProperties({
     ...rest,
     options: parseJsonIfString(options, {}),
     metadata: parseJsonIfString(metadata),
+    self_service: parseJsonIfString(self_service),
     is_system: is_system ? true : undefined,
   });
+}
+
+/** `null` clears the column; an object is stored as JSON. */
+function selfServiceToSql(
+  value: Connection["self_service"],
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  return value === null ? null : JSON.stringify(value);
 }
 
 export function createConnectionsAdapter(db: DrizzleDb) {
@@ -39,6 +55,7 @@ export function createConnectionsAdapter(db: DrizzleDb) {
         tenant_id,
         options: JSON.stringify(params.options || {}),
         metadata: params.metadata ? JSON.stringify(params.metadata) : undefined,
+        self_service: selfServiceToSql(params.self_service),
         is_system: params.is_system ? 1 : 0,
         created_at: now,
         updated_at: now,
@@ -95,6 +112,8 @@ export function createConnectionsAdapter(db: DrizzleDb) {
         updateData.options = JSON.stringify(params.options);
       if (params.metadata !== undefined)
         updateData.metadata = JSON.stringify(params.metadata);
+      if (params.self_service !== undefined)
+        updateData.self_service = selfServiceToSql(params.self_service);
       if (params.display_name !== undefined)
         updateData.display_name = params.display_name;
       if (params.response_type !== undefined)

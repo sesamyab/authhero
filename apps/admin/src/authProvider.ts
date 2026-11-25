@@ -503,6 +503,29 @@ export const getAuthProvider = (
 const authProvider = getAuthProvider(getSelectedDomainFromStorage());
 
 /**
+ * The message for a failed request, the way react-admin's `fetchJson` builds
+ * `HttpError`: the JSON body's `message` when there is one, else the status
+ * text. Never the raw body, which may be JSON or a proxy's HTML page.
+ */
+export function httpErrorMessage(text: string, statusText: string): string {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "message" in parsed &&
+      typeof parsed.message === "string" &&
+      parsed.message
+    ) {
+      return parsed.message;
+    }
+  } catch {
+    // Not JSON.
+  }
+  return statusText;
+}
+
+/**
  * An error that keeps the HTTP status of the response it stands for, so a
  * caller can tell a route the server does not have (404, 405) from a refusal
  * (403). It is `httpStatus` and not `status` on purpose: react-admin's
@@ -519,6 +542,14 @@ function httpStatusError(
 // Create a debounced http client to prevent parallel token requests
 type HttpResponse = Awaited<ReturnType<typeof fetchUtils.fetchJson>>;
 const pendingRequests = new Map<string, Promise<HttpResponse>>();
+
+// FormData and AbortSignal both serialize to `{}`, so uploads and abortable
+// requests must never share a dedupe key. A caller that aborts would otherwise
+// hand its rejected promise to the next caller with the same URL and body.
+const optionsKey = (options: HttpOptions) =>
+  options.body instanceof FormData || options.signal
+    ? crypto.randomUUID()
+    : JSON.stringify(options);
 export interface HttpOptions extends RequestInit {
   headers?: HeadersInit;
 }
@@ -527,7 +558,7 @@ const authorizedHttpClient = (
   url: string,
   options: HttpOptions = {},
 ): Promise<HttpResponse> => {
-  const requestKey = `${url}-${JSON.stringify(options)}`;
+  const requestKey = `${url}-${optionsKey(options)}`;
 
   // If there's already a pending request for this URL and options, return it
   if (pendingRequests.has(requestKey)) {
@@ -629,7 +660,10 @@ const authorizedHttpClient = (
           // For POST, DELETE, PATCH: only send Authorization and content-type (force application/json for POST/PATCH)
           headersObj = new Headers();
           headersObj.set("Authorization", `Bearer ${token}`);
-          if (method === "POST" || method === "PATCH") {
+          if (
+            (method === "POST" || method === "PATCH") &&
+            !(options.body instanceof FormData)
+          ) {
             headersObj.set("content-type", "application/json");
           }
         } else {
@@ -662,7 +696,13 @@ const authorizedHttpClient = (
             throw new Error("Navigating to Auth0 configuration");
           }
 
-          throw httpStatusError(response.statusText, response.status);
+          throw httpStatusError(
+            httpErrorMessage(
+              text,
+              response.statusText || `HTTP ${response.status}`,
+            ),
+            response.status,
+          );
         }
 
         const text = await response.text();
@@ -698,7 +738,10 @@ const authorizedHttpClient = (
         const headersObj = new Headers();
         headersObj.set("Authorization", `Bearer ${token}`);
         const method = (options.method || "GET").toUpperCase();
-        if (method === "POST" || method === "PATCH") {
+        if (
+          (method === "POST" || method === "PATCH") &&
+          !(options.body instanceof FormData)
+        ) {
           headersObj.set("content-type", "application/json");
         }
         return fetch(url, { ...options, headers: headersObj });
@@ -722,7 +765,13 @@ const authorizedHttpClient = (
             throw new Error("Navigating to Auth0 configuration");
           }
 
-          throw httpStatusError(text || response.statusText, response.status);
+          throw httpStatusError(
+            httpErrorMessage(
+              text,
+              response.statusText || `HTTP ${response.status}`,
+            ),
+            response.status,
+          );
         }
 
         const text = await response.text();
@@ -788,7 +837,7 @@ export const createOrganizationHttpClient = (organizationId: string) => {
   const normalizedOrgId = organizationId.toLowerCase();
 
   return (url: string, options: HttpOptions = {}) => {
-    const requestKey = `${normalizedOrgId}:${url}-${JSON.stringify(options)}`;
+    const requestKey = `${normalizedOrgId}:${url}-${optionsKey(options)}`;
 
     // If there's already a pending request for this URL and options, return it
     if (pendingRequests.has(requestKey)) {
@@ -884,7 +933,10 @@ export const createOrganizationHttpClient = (organizationId: string) => {
           headersObj.set("tenant-id", normalizedOrgId);
           headersObj.set("Authorization", `Bearer ${token}`);
           const method = (options.method || "GET").toUpperCase();
-          if (method === "POST" || method === "PATCH") {
+          if (
+            (method === "POST" || method === "PATCH") &&
+            !(options.body instanceof FormData)
+          ) {
             headersObj.set("content-type", "application/json");
           }
           return fetch(url, { ...options, headers: headersObj });
@@ -892,7 +944,12 @@ export const createOrganizationHttpClient = (organizationId: string) => {
         .then(async (response) => {
           if (response.status < 200 || response.status >= 300) {
             const text = await response.text();
-            throw new Error(text || response.statusText);
+            throw new Error(
+              httpErrorMessage(
+                text,
+                response.statusText || `HTTP ${response.status}`,
+              ),
+            );
           }
 
           const text = await response.text();

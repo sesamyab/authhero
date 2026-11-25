@@ -87,6 +87,18 @@ async function grantTenantAdmin(
   return role;
 }
 
+/**
+ * Direct mode (no control-plane pick) mints on the request tenant, so the
+ * consenting user needs `create:clients` on the Management API at tenant
+ * level: a global role, not one scoped to an organization.
+ */
+async function grantCreateClientsOnRequestTenant(
+  env: Bindings,
+  userId = "email|userId",
+) {
+  return grantTenantAdmin(env, userId, "", "Client Registrar");
+}
+
 async function provisionControlPlane(env: Bindings) {
   // Mark the existing tenant as the control plane and create a child tenant.
   // The org name on the control plane intentionally matches the child tenant
@@ -190,6 +202,7 @@ describe("/u2/connect/start — audience + scope plumbing", () => {
     const { oauthApp, u2App, env } = await getTestServer();
     await enableConnectFlow(env);
     await seedSesamyApi(env);
+    await grantCreateClientsOnRequestTenant(env);
     const stateId = await startConnectFlowWithAudience(oauthApp, env);
     const session = await createUserSession(env);
 
@@ -253,6 +266,7 @@ describe("/u2/connect/start — direct-to-child mode (no multi-tenancy)", () => 
   it("POST consent mints the IAT on the request tenant and omits authhero_tenant", async () => {
     const { oauthApp, u2App, env } = await getTestServer();
     await enableConnectFlow(env);
+    await grantCreateClientsOnRequestTenant(env);
     const stateId = await startConnectFlow(oauthApp, env);
     const session = await createUserSession(env);
 
@@ -285,6 +299,111 @@ describe("/u2/connect/start — direct-to-child mode (no multi-tenancy)", () => 
     );
     expect(stored).toBeTruthy();
     expect(stored!.sub).toBe("email|userId");
+  });
+
+  async function postConsent(u2App: any, env: Bindings, stateId: string) {
+    const session = await createUserSession(env);
+    return u2App.request(
+      `/connect/start?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "",
+      },
+      env,
+    );
+  }
+
+  it("GET shows an error and no confirm button to a user without create:clients", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    const stateId = await startConnectFlow(oauthApp, env);
+    const session = await createUserSession(env);
+
+    const response = await u2App.request(
+      `/connect/start?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "GET",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+          accept: "application/json",
+        },
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("You don't have access to that workspace");
+    expect(body).not.toContain('"id":"submit"');
+
+    // With the permission, the same screen offers the confirm button.
+    await grantCreateClientsOnRequestTenant(env);
+    const allowed = await u2App.request(
+      `/connect/start?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "GET",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: `tenantId-auth-token=${session.id}`,
+          accept: "application/json",
+        },
+      },
+      env,
+    );
+    const allowedBody = await allowed.text();
+    expect(allowedBody).toContain('"id":"submit"');
+    expect(allowedBody).not.toContain(
+      "You don't have access to that workspace",
+    );
+  });
+
+  it("POST does not mint an IAT for a user without create:clients (an end user)", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    const stateId = await startConnectFlow(oauthApp, env);
+
+    const response = await postConsent(u2App, env, stateId);
+    expect(response.status).not.toBe(302);
+    expect(response.headers.get("location")).toBeNull();
+    expect(await response.text()).not.toContain("authhero_iat");
+  });
+
+  it("POST does not accept create:clients from an organization-scoped role", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    const org = await env.data.organizations.create("tenantId", {
+      name: "some-org",
+    });
+    await grantTenantAdmin(env, "email|userId", org.id, "Org Admin");
+    const stateId = await startConnectFlow(oauthApp, env);
+
+    const response = await postConsent(u2App, env, stateId);
+    expect(response.status).not.toBe(302);
+  });
+
+  it("POST does not accept create:clients on an API other than the Management API", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    await enableConnectFlow(env);
+    const role = await env.data.roles.create("tenantId", {
+      name: "Other API role",
+    });
+    await env.data.rolePermissions.assign("tenantId", role.id, [
+      {
+        role_id: role.id,
+        resource_server_identifier: "https://api.example.com",
+        permission_name: "create:clients",
+      },
+    ]);
+    await env.data.userRoles.create("tenantId", "email|userId", role.id, "");
+    const stateId = await startConnectFlow(oauthApp, env);
+
+    const response = await postConsent(u2App, env, stateId);
+    expect(response.status).not.toBe(302);
   });
 });
 

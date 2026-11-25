@@ -1,5 +1,57 @@
 # @authhero/adapter-interfaces
 
+## 4.32.0
+
+### Minor Changes
+
+- 1db1dbe: Developer app invites (#1776): an outside developer can register and update their own OAuth app through time-limited links, without an account.
+  - **Invites.** `POST /api/v2/client-registration-tokens` accepts a `preset` (`native`, `spa`, `regular_web`) with a `name`, optional `connections` and `is_first_party`, and returns a setup link in `ticket`. Presets pin the app type, grant types (`authorization_code`, `refresh_token`), client authentication (none for native and single-page apps, `client_secret_post` for web apps) and PKCE with S256. Invite and edit links last 7 days by default, at most 30.
+  - **Setup page.** `/u2/self-service/app` registers the app (invite link) or updates it (edit link), with the tenant's branding and translations in every shipped locale. The client secret of a web app is shown once.
+  - **Edit links.** `POST /api/v2/clients/{id}/registration-ticket` returns an edit link and revokes the client's previous ones. It also works for clients created by hand. Through an edit link, and for every invite-created app, updates are limited to the name, logo, callback, logout and web origin URLs and contact details, and `DELETE /oidc/register/{id}` returns `405`.
+  - **Invite management.** `GET /api/v2/client-registration-tokens` (with `type`, `source`, `client_id`), `GET /{id}` and `POST /{id}/revoke`, with the new scopes `read:client_registration_tokens` and `delete:client_registration_tokens`. Tokens and hashes are never returned.
+  - **Registration fixes.** Public clients (`token_endpoint_auth_method: none`) no longer get a client secret. RFC 7592 `PUT` keeps a constrained field the caller omits instead of resetting it. Registration accepts `application_type`, `post_logout_redirect_uris` and `web_origins`. Script and data URL schemes are rejected as redirect URIs; private-use schemes without a host (`com.example.app:/callback`) are accepted.
+  - **Management API.** `DELETE /api/v2/clients/{id}` revokes the client's registration tokens.
+  - **Storage.** `client_registration_tokens` gains `name`, `created_by` and `source`, plus `list()` on the adapter and an optional `client_id` on `markUsed()`. Migrations: drizzle `0023_client_registration_token_invites`, kysely `2026-11-23T12:00:00_client_registration_token_invites`.
+  - **Admin UI.** "Invite a developer" on Applications, an App invites list, a "Registered by invite" badge, and a Developer Access tab with edit links and revoke.
+  - Ticket ids of self-service links (SSO tickets and app links) share one helper, and `ticket` query parameters are redacted from logs.
+
+### Patch Changes
+
+- 07ed74e: `AuthParams.connection` also carries the database connection the `/authorize` `connection` parameter names, so universal login uses it for password login, signup and reset. It is stored in the login session's `authParams` JSON, so no migration is needed.
+
+## 4.31.0
+
+### Minor Changes
+
+- 96a2910: Add Self-Service SSO storage (#1763): self-service profiles (with their custom text) and SSO access tickets.
+  - New optional adapters `selfServiceProfiles` and `ssoAccessTickets`, implemented by the drizzle and kysely adapters.
+  - Custom text is a JSON column of the profile (language → page → texts), so it needs no table of its own and goes with the profile.
+  - SSO access tickets are stored by a hash of the ticket id only; the ticket id itself (the bearer value in the ticket URL) is never stored.
+  - Deleting a profile also deletes its tickets, atomically. In drizzle, deleting a tenant also deletes its profiles and tickets (cascading foreign keys, like the other drizzle tables).
+  - A profile's stored `allowed_strategies` read back fail-closed: an unknown entry is dropped on its own, and an unreadable value reads as `[]` (nothing allowed). Only a profile that never set the field reads it as absent.
+  - A self-service connection's email domains stay on the connection (`connections.self_service`, added in the previous release); there is no separate domains table.
+
+  Migrations: drizzle `0022_self_service_sso` and kysely `2026-11-20T12:00:00_self_service_sso` create two new tables (`self_service_profiles`, `sso_access_tickets`). They only add tables, so they are safe to run before deploying the new code.
+
+### Patch Changes
+
+- a580312: A login ticket from `/co/authenticate` is now bound to the connection that verified the credentials. `/co/authenticate` records the connection as `authParams.connection` on the ticket's login session, and redeeming a ticket at `/authorize` is rejected with `403 Invalid realm` when the `realm` is any other connection, including `realm=email`, or when the ticket's login session records no connection. Login tickets minted by `/co/authenticate` before this change are no longer redeemable; the user logs in again.
+
+## 4.30.0
+
+### Minor Changes
+
+- b0cb2c3: Branding file uploads (#1738). New optional `StorageAdapter` (`data.storage`) with an R2 implementation in `@authhero/cloudflare-adapter` (`storage: { bucket, publicBaseUrl? }`). `POST /api/v2/branding/uploads/{kind}` validates type, size and content (SVG is checked and served with a restrictive CSP), stores objects under `tenants/{tenant_id}/branding/{kind}/`, and returns a URL. Files are served publicly with cache headers and CORS at `/assets/...`; `publicBaseUrl` only changes the URL returned by the upload API (the `/assets` route stays mounted, and SVGs always use it for its CSP). The admin branding page gets upload buttons for logo, favicon, powered-by logo, font and background image.
+- a6e447d: Self-Service SSO (#1763), account-linking guard. Connections get an internal `self_service` field (a new nullable `self_service` column; run the drizzle and kysely migrations) recording that a connection is set up through Self-Service SSO and which email domains are verified for it. It is not part of the Auth0 connection object: the Management API neither accepts nor returns it, and tenant export, import and config sync do not copy it.
+
+  For a self-service connection, an email is only trusted inside its verified domains. Outside verified domains, new users are stored with `email_verified: false`. The guard also clears a previously stored `true` outside verified domains in every root-attribute sync mode. Built-in linking, the `account-linking` template hook and code hooks' `link_candidates` exclude users whose email domain is unverified for their self-service connection. This keeps an identity provider configured by an outside admin from taking over existing accounts or capturing accounts created later with the same email. Ordinary connections are unchanged.
+
+  The Management API rejects name changes for self-service connections so existing identities retain their domain trust checks. Display names remain editable.
+
+### Patch Changes
+
+- 9c185ad: Outgoing email is sent from the template's own `from` if it has one, then the email provider's `default_from_address`. When neither is set it now uses the tenant's `sender_email` and `sender_name`, then the new optional `DEFAULT_SENDER_EMAIL` binding, and last `login@` followed by the hostname of `ISSUER` instead of the whole URL, which gave an invalid address such as `login@https://localhost:3000/`. A sender name with punctuation is sent as a quoted display name. Settings > General in the admin edits `sender_email` and `sender_name` and shows the tenant's `audience` read-only. `sender_email` can now be cleared with `null` in a tenant update; the Kysely and Drizzle adapters store it as unset.
+
 ## 4.29.0
 
 ### Minor Changes

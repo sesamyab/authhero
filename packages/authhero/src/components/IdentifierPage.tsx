@@ -17,6 +17,7 @@ import SocialButton from "./SocialButton";
 import FormComponent from "./Form";
 import Button from "./Button";
 import { BUILTIN_STRATEGIES } from "../strategies";
+import { resolveClientDatabaseConnection } from "../helpers/database-connection-scope";
 
 type Props = {
   error?: string;
@@ -46,8 +47,9 @@ const IdentifierPage: FC<Props> = ({
   // Check if the password connection has username identifier enabled.
   // Matched via isDatabaseConnectionStrategy since the strategy field can be
   // any of the "auth0"/"auth2"/"Username-Password-Authentication" spellings.
-  const passwordConnection = client.connections.find((c) =>
-    isDatabaseConnectionStrategy(c.strategy),
+  const passwordConnection = resolveClientDatabaseConnection(
+    client,
+    loginSession.authParams.connection,
   );
   const requiresUsername =
     getConnectionIdentifierConfig(passwordConnection).usernameIdentifierActive;

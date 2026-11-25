@@ -25,6 +25,8 @@ import {
   roleSchema,
   configScopeSchema,
   configOverrideSchema,
+  SelfServiceProfileRow,
+  SsoAccessTicketRow,
 } from "@authhero/adapter-interfaces";
 import { flattenSchema } from "./utils/flatten";
 
@@ -74,6 +76,9 @@ const sqlConnectionSchema = flattenSchema(connectionSchema).extend({
   // `options` is persisted as a JSON-encoded string; the in-memory schema
   // types it as a parsed object, so override here for the DB row shape.
   options: z.string(),
+  // Self-Service SSO state as JSON (`ConnectionSelfService`); NULL for a
+  // connection that was not set up through self-service.
+  self_service: z.string().nullish(),
 });
 
 const sqlBrandingSchema = flattenSchema(brandingSchema).extend({
@@ -521,6 +526,9 @@ export const sqlClientRegistrationTokenSchema = z.object({
   expires_at_ts: z.number().optional().nullable(),
   created_at_ts: z.number(),
   revoked_at_ts: z.number().optional().nullable(),
+  name: z.string().optional().nullable(),
+  created_by: z.string().optional().nullable(),
+  source: z.string().optional().nullable(),
 });
 
 export const sqlAuthenticationMethodSchema = z.object({
@@ -693,6 +701,9 @@ export interface Database {
     created_at: string;
     updated_at: string;
   };
+  // Self-Service SSO (#1763).
+  self_service_profiles: SelfServiceProfileRow;
+  sso_access_tickets: SsoAccessTicketRow;
   // SCIM inbound provisioning (#1191).
   scim_configurations: {
     connection_id: string;

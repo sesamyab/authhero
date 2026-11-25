@@ -28,6 +28,10 @@ import { LoginSessionsAdapter } from "./LoginSessions";
 import { PromptSettingsAdapter } from "./PromptSettings";
 import { ProxyRoutesAdapter } from "./ProxyRoutes";
 import { TokenExchangeProfilesAdapter } from "./TokenExchangeProfiles";
+import {
+  SelfServiceProfilesAdapter,
+  SsoAccessTicketsAdapter,
+} from "./SelfServiceSso";
 import { ScimConfigurationsAdapter } from "./ScimConfigurations";
 import { ScimTokensAdapter } from "./ScimTokens";
 import { ScimExternalIdsAdapter } from "./ScimExternalIds";
@@ -47,6 +51,7 @@ import { OrganizationConnectionsAdapter } from "./OrganizationConnections";
 import { UserOrganizationsAdapter } from "./UserOrganizations";
 import { InvitesAdapter } from "./Invites";
 import { GeoAdapter } from "./Geo";
+import { StorageAdapter } from "./Storage";
 import { AuthenticationMethodsAdapter } from "./AuthenticationMethods";
 import { StatsAdapter } from "./Stats";
 import { AnalyticsAdapter } from "./Analytics";
@@ -93,6 +98,11 @@ export interface DataAdapters {
   flows: FlowsAdapter;
   forms: FormsAdapter;
   geo?: GeoAdapter;
+  /**
+   * Optional object storage for tenant branding uploads. When undefined the
+   * upload endpoint is not available (501) and branding URLs stay external.
+   */
+  storage?: StorageAdapter;
   hookCode: HookCodeAdapter;
   hooks: HooksAdapter;
   invites: InvitesAdapter;
@@ -168,6 +178,15 @@ export interface DataAdapters {
    * token-exchange grant accepts customer-defined `subject_token_type`s.
    */
   tokenExchangeProfiles?: TokenExchangeProfilesAdapter;
+  /**
+   * Optional Self-Service SSO storage (issue #1763): profiles with their
+   * custom text, and SSO access tickets (stored hashed). When both are set,
+   * the `/api/v2/self-service-profiles` management API is mounted. The email
+   * domains of a self-service connection live on the connection itself
+   * (`connection.self_service.domains`).
+   */
+  selfServiceProfiles?: SelfServiceProfilesAdapter;
+  ssoAccessTickets?: SsoAccessTicketsAdapter;
   /**
    * Optional control-plane log of durable tenant lifecycle operations
    * (provision / seed / upgrade / backup / deprovision — issue #1026).
@@ -303,6 +322,7 @@ export * from "./Passwords";
 export * from "./PromptSettings";
 export * from "./ProxyRoutes";
 export * from "./TokenExchangeProfiles";
+export * from "./SelfServiceSso";
 export * from "./ScimConfigurations";
 export * from "./ScimTokens";
 export * from "./ScimExternalIds";
@@ -321,3 +341,4 @@ export * from "./TenantOperationRows";
 export * from "./Rollouts";
 export * from "./ActionCodeGenerator";
 export * from "./TenantMemberRequests";
+export * from "./Storage";

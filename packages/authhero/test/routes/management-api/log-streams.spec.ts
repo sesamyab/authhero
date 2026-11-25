@@ -454,6 +454,291 @@ describe("log-streams", () => {
     });
   });
 
+  describe("firehose type", () => {
+    const SECRET = "super-secret-aws-key";
+    const SINK = {
+      aws_region: "eu-north-1",
+      delivery_stream_name: "authhero-logs",
+      aws_access_key_id: "AKIDEXAMPLE",
+      aws_secret_access_key: SECRET,
+    };
+
+    async function setup() {
+      const { managementApp, env } = await getTestServer();
+      const client = testClient(managementApp, env);
+      const token = await getAdminToken();
+      const headers = { headers: { authorization: `Bearer ${token}` } };
+      return { client, env, headers };
+    }
+
+    async function createFirehose(
+      ctx: Awaited<ReturnType<typeof setup>>,
+      sink: Record<string, unknown> = SINK,
+    ) {
+      return ctx.client["log-streams"].$post(
+        {
+          header: { "tenant-id": "tenantId" },
+          json: { name: "firehose", type: "firehose", status: "active", sink },
+        },
+        ctx.headers,
+      );
+    }
+
+    it("stores the secret but never returns it", async () => {
+      const ctx = await setup();
+
+      const created = await createFirehose(ctx);
+      expect(created.status).toBe(201);
+      const body = (await created.json()) as {
+        id: string;
+        sink: Record<string, unknown>;
+      };
+      expect(body.sink).toEqual({
+        aws_region: "eu-north-1",
+        delivery_stream_name: "authhero-logs",
+        aws_access_key_id: "AKIDEXAMPLE",
+      });
+
+      const fetched = await ctx.client["log-streams"][":id"].$get(
+        { param: { id: body.id }, header: { "tenant-id": "tenantId" } },
+        ctx.headers,
+      );
+      const list = await ctx.client["log-streams"].$get(
+        { header: { "tenant-id": "tenantId" } },
+        ctx.headers,
+      );
+      expect(JSON.stringify(await fetched.json())).not.toContain(SECRET);
+      expect(JSON.stringify(await list.json())).not.toContain(SECRET);
+
+      const stored = await ctx.env.data.logStreams.get("tenantId", body.id);
+      expect(stored?.sink.aws_secret_access_key).toBe(SECRET);
+    });
+
+    it("returns 400 for an unusable firehose sink", async () => {
+      const ctx = await setup();
+
+      const response = await createFirehose(ctx, {
+        ...SINK,
+        aws_secret_access_key: "",
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        errorCode: "invalid_body",
+        message: expect.stringContaining("secret access key are required"),
+      });
+    });
+
+    it("keeps the stored secret when a sink update omits it", async () => {
+      const ctx = await setup();
+      const { id } = (await (await createFirehose(ctx)).json()) as {
+        id: string;
+      };
+
+      const { aws_secret_access_key: _omitted, ...sinkWithoutSecret } = SINK;
+      const patched = await ctx.client["log-streams"][":id"].$patch(
+        {
+          param: { id },
+          header: { "tenant-id": "tenantId" },
+          json: {
+            sink: { ...sinkWithoutSecret, delivery_stream_name: "renamed" },
+          },
+        },
+        ctx.headers,
+      );
+
+      expect(patched.status).toBe(200);
+      const stored = await ctx.env.data.logStreams.get("tenantId", id);
+      expect(stored?.sink.delivery_stream_name).toBe("renamed");
+      expect(stored?.sink.aws_secret_access_key).toBe(SECRET);
+    });
+
+    it("replaces the secret when an update supplies a new one", async () => {
+      const ctx = await setup();
+      const { id } = (await (await createFirehose(ctx)).json()) as {
+        id: string;
+      };
+
+      await ctx.client["log-streams"][":id"].$patch(
+        {
+          param: { id },
+          header: { "tenant-id": "tenantId" },
+          json: { sink: { ...SINK, aws_secret_access_key: "rotated" } },
+        },
+        ctx.headers,
+      );
+
+      const stored = await ctx.env.data.logStreams.get("tenantId", id);
+      expect(stored?.sink.aws_secret_access_key).toBe("rotated");
+    });
+
+    it("returns 400 when an update would leave the sink unusable", async () => {
+      const ctx = await setup();
+      const { id } = (await (await createFirehose(ctx)).json()) as {
+        id: string;
+      };
+
+      const patched = await ctx.client["log-streams"][":id"].$patch(
+        {
+          param: { id },
+          header: { "tenant-id": "tenantId" },
+          json: { sink: { ...SINK, aws_region: "evil.example.com/x" } },
+        },
+        ctx.headers,
+      );
+
+      expect(patched.status).toBe(400);
+    });
+  });
+
+  describe("http_authorization is write-only", () => {
+    const AUTH = "Bearer super-secret-token";
+    const SINK = {
+      http_endpoint: "https://logs.example.com",
+      http_content_type: "application/json",
+      http_content_format: "JSONLINES",
+      http_authorization: AUTH,
+    };
+
+    async function setup() {
+      const { managementApp, env } = await getTestServer();
+      const client = testClient(managementApp, env);
+      const token = await getAdminToken();
+      const headers = { headers: { authorization: `Bearer ${token}` } };
+      const created = await client["log-streams"].$post(
+        {
+          header: { "tenant-id": "tenantId" },
+          json: { name: "loki", type: "http", status: "active", sink: SINK },
+        },
+        headers,
+      );
+      expect(created.status).toBe(201);
+      const body = (await created.json()) as {
+        id: string;
+        sink: Record<string, unknown>;
+      };
+      return { client, env, headers, id: body.id, createdSink: body.sink };
+    }
+
+    async function patchSink(
+      ctx: Awaited<ReturnType<typeof setup>>,
+      sink: Record<string, unknown>,
+      type?: "http" | "firehose",
+    ) {
+      return ctx.client["log-streams"][":id"].$patch(
+        {
+          param: { id: ctx.id },
+          header: { "tenant-id": "tenantId" },
+          json: { sink, ...(type ? { type } : {}) },
+        },
+        ctx.headers,
+      );
+    }
+
+    async function storedSink(ctx: Awaited<ReturnType<typeof setup>>) {
+      const stored = await ctx.env.data.logStreams.get("tenantId", ctx.id);
+      return stored?.sink;
+    }
+
+    it("stores the header but never returns it", async () => {
+      const ctx = await setup();
+
+      expect(ctx.createdSink).not.toHaveProperty("http_authorization");
+      expect(ctx.createdSink.http_endpoint).toBe("https://logs.example.com");
+
+      const fetched = await ctx.client["log-streams"][":id"].$get(
+        { param: { id: ctx.id }, header: { "tenant-id": "tenantId" } },
+        ctx.headers,
+      );
+      const list = await ctx.client["log-streams"].$get(
+        { header: { "tenant-id": "tenantId" } },
+        ctx.headers,
+      );
+      const patched = await patchSink(ctx, {
+        ...SINK,
+        http_endpoint: "https://x.test",
+      });
+      for (const response of [fetched, list, patched]) {
+        expect(JSON.stringify(await response.json())).not.toContain(AUTH);
+      }
+
+      expect((await storedSink(ctx))?.http_authorization).toBe(AUTH);
+    });
+
+    it("also hides the camelCase httpAuthorization Auth0 clients send", async () => {
+      const ctx = await setup();
+      await patchSink(ctx, {
+        httpEndpoint: "https://logs.example.com",
+        httpAuthorization: "Bearer camel-secret",
+      });
+
+      const fetched = await ctx.client["log-streams"][":id"].$get(
+        { param: { id: ctx.id }, header: { "tenant-id": "tenantId" } },
+        ctx.headers,
+      );
+      expect(JSON.stringify(await fetched.json())).not.toContain(
+        "camel-secret",
+      );
+    });
+
+    it("keeps the stored header when a sink update omits it or sends it blank", async () => {
+      const ctx = await setup();
+      const { http_authorization: _omitted, ...withoutAuth } = SINK;
+
+      await patchSink(ctx, {
+        ...withoutAuth,
+        http_content_format: "JSONARRAY",
+      });
+      expect(await storedSink(ctx)).toMatchObject({
+        http_content_format: "JSONARRAY",
+        http_authorization: AUTH,
+      });
+
+      await patchSink(ctx, { ...SINK, http_authorization: "" });
+      expect((await storedSink(ctx))?.http_authorization).toBe(AUTH);
+    });
+
+    it("replaces the header when an update supplies a new one", async () => {
+      const ctx = await setup();
+
+      await patchSink(ctx, { ...SINK, http_authorization: "Bearer rotated" });
+
+      expect((await storedSink(ctx))?.http_authorization).toBe(
+        "Bearer rotated",
+      );
+    });
+
+    it("removes the header when an update sends null", async () => {
+      const ctx = await setup();
+
+      const response = await patchSink(ctx, {
+        ...SINK,
+        http_authorization: null,
+      });
+
+      expect(response.status).toBe(200);
+      expect(await storedSink(ctx)).not.toHaveProperty("http_authorization");
+    });
+
+    it("does not carry the header into a sink of a different type", async () => {
+      const ctx = await setup();
+
+      const response = await patchSink(
+        ctx,
+        {
+          aws_region: "eu-north-1",
+          delivery_stream_name: "authhero-logs",
+          aws_access_key_id: "AKIDEXAMPLE",
+          aws_secret_access_key: "secret",
+        },
+        "firehose",
+      );
+
+      expect(response.status).toBe(200);
+      expect(await storedSink(ctx)).not.toHaveProperty("http_authorization");
+    });
+  });
+
   it("creates, gets, lists, updates, and deletes a log stream - full integration", async () => {
     const { managementApp, env } = await getTestServer();
     const client = testClient(managementApp, env);

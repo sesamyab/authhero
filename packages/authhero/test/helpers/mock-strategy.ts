@@ -16,6 +16,14 @@ export const mockStrategy: Strategy = {
     _connection,
     code: string,
   ) => {
+    // `asserts-verified:<sub>:<email>`: an identity provider that asserts any
+    // email as verified, as one configured by an outside admin through
+    // Self-Service SSO could.
+    if (code.startsWith("asserts-verified:")) {
+      const [, sub = "", email = ""] = code.split(":");
+      return { sub, email, email_verified: true };
+    }
+
     // This is a way to provide different mock responses
     switch (code) {
       case "foo@example.com":

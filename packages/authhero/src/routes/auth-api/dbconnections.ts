@@ -1,11 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import {
-  AuthParams,
-  LogTypes,
-  Strategy,
-  isDatabaseConnectionStrategy,
-} from "@authhero/adapter-interfaces";
+import { AuthParams, LogTypes, Strategy } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { logMessage } from "../../helpers/logging";
 import {
@@ -26,6 +21,10 @@ import { stringifyAuth0Client } from "../../utils/client-info";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { getEnrichedClient } from "../../helpers/client";
 import { cimdTenantHint } from "../../helpers/cimd";
+import {
+  resolveClientDatabaseConnection,
+  resolveClientDatabaseConnectionName,
+} from "../../helpers/database-connection-scope";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
 const postSignup = defineRoute({
@@ -39,7 +38,10 @@ const postSignup = defineRoute({
           "application/json": {
             schema: z.object({
               client_id: z.string(),
-              connection: z.literal(Strategy.USERNAME_PASSWORD),
+              // The database connection to use (#1703); it must be enabled
+              // on the client. The generic Username-Password-Authentication
+              // means the client's default database connection.
+              connection: z.string(),
               email: z.string().transform((u) => normalizeEmail(u)),
               password: z.string(),
             }),
@@ -65,7 +67,7 @@ const postSignup = defineRoute({
     },
   }),
   handler: async (ctx) => {
-    const { email, password, client_id } = ctx.req.valid("json");
+    const { email, password, client_id, connection } = ctx.req.valid("json");
 
     const client = await getEnrichedClient(
       ctx.env,
@@ -75,12 +77,12 @@ const postSignup = defineRoute({
     ctx.set("client_id", client.client_id);
     setTenantId(ctx, client.tenant.id);
 
-    // Find the password connection from the client's connections to get the correct password policy
-    const passwordConnection = client.connections.find((c) =>
-      isDatabaseConnectionStrategy(c.strategy),
+    // The database connection this signup targets; its password policy
+    // applies and the user is written with its name.
+    const connectionName = resolveClientDatabaseConnectionName(
+      client,
+      connection,
     );
-    const connectionName =
-      passwordConnection?.name || Strategy.USERNAME_PASSWORD;
 
     // Validate password against connection policy
     const policy = await getPasswordPolicy(
@@ -103,6 +105,10 @@ const postSignup = defineRoute({
       });
     }
 
+    // Deliberately unscoped: the users table is unique per (email, provider)
+    // until #1704, so an address held in another database connection would
+    // pass a scoped check and then fail the insert with a 409 that reveals
+    // the account. Scope this together with the index.
     const existingUser = await getPrimaryUsernamePasswordUser({
       env: ctx.env,
       tenant_id: client.tenant.id,
@@ -128,7 +134,8 @@ const postSignup = defineRoute({
       email,
       email_verified: false,
       provider,
-      connection: Strategy.USERNAME_PASSWORD,
+      // The connection the login lookups for this client scope to.
+      connection: connectionName,
       is_social: false,
       password: { hash, algorithm },
     });
@@ -174,7 +181,10 @@ const postChangePassword = defineRoute({
           "application/json": {
             schema: z.object({
               client_id: z.string(),
-              connection: z.literal(Strategy.USERNAME_PASSWORD),
+              // The database connection to use (#1703); it must be enabled
+              // on the client. The generic Username-Password-Authentication
+              // means the client's default database connection.
+              connection: z.string(),
               email: z.string().transform((u) => normalizeEmail(u)),
             }),
           },
@@ -188,7 +198,7 @@ const postChangePassword = defineRoute({
     },
   }),
   handler: async (ctx) => {
-    const { email, client_id } = ctx.req.valid("json");
+    const { email, client_id, connection } = ctx.req.valid("json");
 
     const client = await getEnrichedClient(
       ctx.env,
@@ -198,10 +208,17 @@ const postChangePassword = defineRoute({
     ctx.set("client_id", client.client_id);
     setTenantId(ctx, client.tenant.id);
 
+    const databaseConnection = resolveClientDatabaseConnection(
+      client,
+      connection,
+    );
+    const connectionName =
+      databaseConnection?.name ?? Strategy.USERNAME_PASSWORD;
     const existingUser = await getUsernamePasswordUser({
       env: ctx.env,
       tenant_id: client.tenant.id,
       username: email,
+      connection: connectionName,
     });
 
     if (!existingUser) {
@@ -215,6 +232,8 @@ const postChangePassword = defineRoute({
       client_id: client_id,
       username: email,
       audience: client.tenant.default_audience,
+      // The reset continues in the connection the request resolved to.
+      connection: databaseConnection?.name,
     };
 
     const loginSession = await ctx.env.data.loginSessions.create(

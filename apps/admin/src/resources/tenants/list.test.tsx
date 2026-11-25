@@ -32,6 +32,7 @@ function renderList({
   tenants = [],
   permissions,
   url = "/tenants",
+  creationLimit = null,
 }: {
   tenants?: {
     id: string;
@@ -41,10 +42,13 @@ function renderList({
   /** "pending" never answers, to see what shows while the token is read. */
   permissions: string[] | null | "pending";
   url?: string;
+  /** What the creation-limit endpoint answers; `null` is no answer. */
+  creationLimit?: unknown;
 }) {
   const getOne = vi.fn(() =>
     Promise.reject(Object.assign(new Error("Forbidden"), { statusCode: 403 })),
   );
+  const getTenantCreationLimit = vi.fn(() => Promise.resolve(creationLimit));
   const dataProvider = testDataProvider({
     getList: vi.fn((_resource: string, params: { filter?: { q?: string } }) => {
       const q = params.filter?.q;
@@ -52,6 +56,7 @@ function renderList({
       return Promise.resolve({ data, total: data.length });
     }) as never,
     getOne: getOne as never,
+    getTenantCreationLimit,
   });
   render(
     <TestMemoryRouter initialEntries={[url]}>
@@ -68,7 +73,7 @@ function renderList({
       </CoreAdminContext>
     </TestMemoryRouter>,
   );
-  return { getOne };
+  return { getOne, getTenantCreationLimit };
 }
 
 describe("TenantsList empty state", () => {
@@ -144,6 +149,35 @@ describe("TenantsList actions", () => {
     });
     await screen.findByText("Acme");
     expect(await screen.findByRole("link", { name: /Create/ })).toBeTruthy();
+  });
+});
+
+describe("TenantsList creation limit", () => {
+  const capped = {
+    key: "tenants_per_user",
+    used: 1,
+    limit: 3,
+    source: "default",
+  };
+
+  it("shows how many tenants a user with create:tenants has used", async () => {
+    renderList({
+      tenants: [{ id: "a", friendly_name: "A" }],
+      permissions: ["create:tenants", "read:tenants"],
+      creationLimit: capped,
+    });
+    expect(await screen.findByText("1 of 3 tenants used")).toBeTruthy();
+  });
+
+  it("does not ask for the limit without create:tenants", async () => {
+    const { getTenantCreationLimit } = renderList({
+      tenants: [{ id: "a", friendly_name: "A" }],
+      permissions: ["read:tenants"],
+      creationLimit: capped,
+    });
+    await screen.findByText("A");
+    expect(getTenantCreationLimit).not.toHaveBeenCalled();
+    expect(screen.queryByText(/tenants used/)).toBeNull();
   });
 });
 

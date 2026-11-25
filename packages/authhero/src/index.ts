@@ -1,3 +1,4 @@
+import { createAssetsApp } from "./routes/assets";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -355,6 +356,8 @@ export function init(config: AuthHeroConfig) {
       createProxyControlPlaneApp(config.proxyControlPlane),
     );
   }
+
+  app.route("/assets", createAssetsApp(config));
 
   const universalApp = createUniversalLogin(config);
   app.route("/u", universalApp);

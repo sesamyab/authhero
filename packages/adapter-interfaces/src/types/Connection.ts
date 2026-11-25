@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { credentialString } from "../utils/credentials";
 import {
   AuthorizationResponseMode,
   AuthorizationResponseType,
@@ -11,8 +12,8 @@ export const connectionOptionsSchema = z.object({
   realms: z.string().optional(),
   authentication_method: z.string().optional(),
   client_id: z.string().optional(),
-  client_secret: z.string().optional(),
-  app_secret: z.string().optional(),
+  client_secret: credentialString().optional(),
+  app_secret: credentialString().optional(),
   scope: z.string().optional(),
   // Response-only masked previews of the secret fields above. The management
   // API strips the secrets themselves and returns a hint (e.g. "3a9f••••••••")
@@ -35,8 +36,8 @@ export const connectionOptionsSchema = z.object({
     .optional(),
   provider: z.string().optional(),
   from: z.string().optional(),
-  twilio_sid: z.string().optional(),
-  twilio_token: z.string().optional(),
+  twilio_sid: credentialString().optional(),
+  twilio_token: credentialString().optional(),
   icon_url: z.string().optional(),
   // Email domains that route to this connection via Home Realm Discovery
   domain_aliases: z.array(z.string()).optional(),
@@ -88,7 +89,7 @@ export const connectionOptionsSchema = z.object({
       token_endpoint: z.string().optional(),
       userinfo_endpoint: z.string().optional(),
       client_id: z.string().optional(),
-      client_secret: z.string().optional(),
+      client_secret: credentialString().optional(),
       // Response-only masked preview of `client_secret`, see above.
       client_secret_hint: z.string().optional(),
       // Optional override for the `realm` sent in the password-realm grant.
@@ -260,4 +261,40 @@ export const connectionSchema = z
   })
   .extend(connectionInsertSchema.shape);
 
-export type Connection = z.infer<typeof connectionSchema>;
+/**
+ * An email domain claimed by a self-service SSO connection. Only a `verified`
+ * domain is trusted: a user of the connection whose email is in it may have
+ * `email_verified: true` and take part in email-based account linking.
+ */
+export const connectionSelfServiceDomainSchema = z.object({
+  domain: z.string(),
+  status: z.enum(["pending", "verified"]),
+  verified_at: z.string().optional(),
+});
+
+/**
+ * Marks a connection as set up or managed through Self-Service SSO (#1763).
+ * Internal state, not part of the Auth0 connection: it is not in
+ * `connectionInsertSchema` (so the Management API cannot set it, and
+ * import, rollout and config sync do not copy it) nor in `connectionSchema`
+ * (so it is not in the API's response schema), and the Management API strips
+ * it from every response.
+ */
+export const connectionSelfServiceSchema = z.object({
+  profile_id: z.string().optional(),
+  domains: z.array(connectionSelfServiceDomainSchema).default([]),
+});
+
+export type ConnectionSelfServiceDomain = z.infer<
+  typeof connectionSelfServiceDomainSchema
+>;
+export type ConnectionSelfService = z.infer<typeof connectionSelfServiceSchema>;
+
+/** Fields adapters store on a connection that are not part of the Auth0 API. */
+export type ConnectionInternalFields = {
+  /** Set for a self-service SSO connection, `null`/absent otherwise. */
+  self_service?: ConnectionSelfService | null;
+};
+
+export type Connection = z.infer<typeof connectionSchema> &
+  ConnectionInternalFields;

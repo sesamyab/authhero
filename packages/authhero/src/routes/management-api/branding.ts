@@ -8,6 +8,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
 import { themesRoutes } from "./themes";
+import { brandingUploadsRoutes } from "./branding-uploads";
 import { DEFAULT_BRANDING } from "../../constants/defaultBranding";
 import {
   DEFAULT_UNIVERSAL_LOGIN_TEMPLATE,
@@ -343,7 +344,11 @@ const postTemplatesUniversalLoginPreview = defineRoute({
     const clientName = tenant?.friendly_name || "Preview";
 
     const previewScreen = buildPreviewScreen(screen ?? "login");
-    const darkMode = resolveDarkMode(ctx, resolvedBranding);
+    // An explicit `branding.dark_mode` from the caller wins over the viewer's
+    // own `ah-dark-mode` cookie, so the admin preview shows the scheme it asks
+    // for rather than whatever this browser last chose on the login page.
+    const darkMode =
+      brandingOverride?.dark_mode ?? resolveDarkMode(ctx, resolvedBranding);
 
     return renderWidgetPageResponse(ctx, {
       screenId: previewScreen.name,
@@ -376,4 +381,5 @@ export const brandingRoutes = new OpenAPIHono<{
     deleteTemplatesUniversalLogin,
     postTemplatesUniversalLoginPreview,
   ] as const)
+  .route("/uploads", brandingUploadsRoutes)
   .route("/themes", themesRoutes);
