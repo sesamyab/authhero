@@ -24,7 +24,7 @@ function redirectToErrorPage(
   errorDescription?: string,
 ) {
   const errorUrl = new URL(
-    "/u/error",
+    "/u2/error",
     getIssuer(ctx.env, ctx.var.custom_domain),
   );
   setSearchParams(errorUrl, {

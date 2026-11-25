@@ -54,7 +54,8 @@
       "pictureLabel": "URL profilové fotografie",
       "buttonText": "Uložit změny",
       "backToAccountText": "Zpět na účet",
-      "updateFailed": "Profil se nepodařilo aktualizovat"
+      "updateFailed": "Profil se nepodařilo aktualizovat",
+      "changeEmailText": "Změnit e-mailovou adresu"
     },
     "account-delete": {
       "title": "Smazat účet",
@@ -159,6 +160,35 @@
       "invalidCodeText": "Neplatný kód. Zkuste to znovu.",
       "verificationFailedText": "Ověření se nezdařilo. Zkuste to znovu.",
       "tooManyFailuresText": "Příliš mnoho neúspěšných pokusů. Vraťte se ke svému účtu a zkuste to později."
+    },
+    "invalid-session": {
+      "title": "Neplatný odkaz",
+      "description": "Odkaz již není platný. Ujistěte se, že jste odkaz na přihlášení otevřeli ve stejném prohlížeči, ve kterém jste přihlášení zahájili. Kliknutím na odkaz níže můžete zahájit nové přihlášení.",
+      "backText": "Vrátit se zpět"
+    },
+    "account-change-email": {
+      "title": "Změnit e-mailovou adresu",
+      "description": "Na vaši novou e-mailovou adresu bude zaslán jednorázový kód, zadejte kód v dalším kroku.",
+      "currentEmailLabel": "Aktuální e-mailová adresa",
+      "emailLabel": "Nová e-mailová adresa",
+      "invalidEmail": "Neplatný e-mail",
+      "buttonText": "Odeslat kód",
+      "sendFailed": "Kód se nepodařilo odeslat. Zkuste to prosím znovu.",
+      "backToAccountText": "Zpět na účet"
+    },
+    "account-change-email-verify": {
+      "title": "Ověřte svůj nový e-mail",
+      "description": "Poslali jsme kód na ${email}. Zadejte jej pro potvrzení nové e-mailové adresy.",
+      "codeLabel": "Ověřovací kód",
+      "buttonText": "Potvrdit",
+      "noCode": "Zadejte ověřovací kód",
+      "invalidCode": "Zadaný kód je neplatný nebo vypršel",
+      "tooManyAttempts": "Příliš mnoho pokusů. Zkuste to prosím později.",
+      "emailTaken": "Tuto e-mailovou adresu nelze použít. Zkuste jinou.",
+      "successTitle": "E-mail byl změněn",
+      "successDescription": "Vaše e-mailová adresa je nyní ${email}.",
+      "continueText": "Pokračovat",
+      "backText": "Změnit e-mailovou adresu"
     }
   },
   "consent": {

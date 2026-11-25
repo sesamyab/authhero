@@ -54,7 +54,8 @@
       "pictureLabel": "URL till profilbild",
       "buttonText": "Spara ändringar",
       "backToAccountText": "Tillbaka till kontot",
-      "updateFailed": "Det gick inte att uppdatera profilen"
+      "updateFailed": "Det gick inte att uppdatera profilen",
+      "changeEmailText": "Byt e-postadress"
     },
     "account-delete": {
       "title": "Radera konto",
@@ -159,6 +160,35 @@
       "invalidCodeText": "Ogiltig kod. Försök igen.",
       "verificationFailedText": "Verifieringen misslyckades. Försök igen.",
       "tooManyFailuresText": "För många misslyckade försök. Gå tillbaka till ditt konto och försök igen senare."
+    },
+    "invalid-session": {
+      "title": "Ogiltig länk",
+      "description": "Länken är inte längre giltig. Vänligen se till att öppna inloggningslänken i samma webbläsare som du startade inloggningen med. Du kan klicka på länken nedan för att starta en ny inloggning.",
+      "backText": "Gå tillbaka"
+    },
+    "account-change-email": {
+      "title": "Byt e-postadress",
+      "description": "En engångskod skickas till din nya e-postadress, ange koden i nästa steg.",
+      "currentEmailLabel": "Nuvarande e-postadress",
+      "emailLabel": "Ny e-postadress",
+      "invalidEmail": "Ogiltig e-postadress",
+      "buttonText": "Skicka kod",
+      "sendFailed": "Det gick inte att skicka koden. Försök igen.",
+      "backToAccountText": "Tillbaka till kontot"
+    },
+    "account-change-email-verify": {
+      "title": "Verifiera din nya e-postadress",
+      "description": "Vi har skickat en kod till ${email}. Ange den för att bekräfta din nya e-postadress.",
+      "codeLabel": "Verifieringskod",
+      "buttonText": "Bekräfta",
+      "noCode": "Ange verifieringskoden",
+      "invalidCode": "Koden är ogiltig eller har gått ut",
+      "tooManyAttempts": "För många försök. Försök igen senare.",
+      "emailTaken": "Den här e-postadressen kan inte användas. Prova en annan.",
+      "successTitle": "E-postadressen har ändrats",
+      "successDescription": "Din e-postadress är nu ${email}.",
+      "continueText": "Fortsätt",
+      "backText": "Byt e-postadress"
     }
   },
   "consent": {

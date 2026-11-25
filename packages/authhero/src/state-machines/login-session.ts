@@ -41,6 +41,8 @@ export interface LoginSessionData {
   mfa_failed_attempts?: number;
   mfa_sms_sent?: number;
   pending_email_verification?: unknown;
+  /** u2 change-email: the address a code was sent to, shown on the verify step */
+  pending_email_change?: { email: string };
   // Hooks and continuation
   hookId?: string;
   form_values?: Record<string, unknown>;

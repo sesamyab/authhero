@@ -9,6 +9,7 @@ import type {
   FormNodeComponent,
   User,
   CustomText,
+  LoginSession,
 } from "@authhero/adapter-interfaces";
 import {
   LogTypes,
@@ -17,7 +18,7 @@ import {
   isDatabaseConnectionStrategy,
 } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
-import { getLoginPath } from "./types";
+import { getLoginPath, urlCodeSuffix } from "./types";
 import { createTranslation } from "../../../i18n";
 import {
   getUsernamePasswordUser,
@@ -592,7 +593,7 @@ export async function signupScreen(
   const screen: UiScreen = {
     name: "signup",
     // Action points to HTML endpoint for no-JS fallback
-    action: `${routePrefix}/signup?state=${encodeURIComponent(state)}`,
+    action: `${routePrefix}/signup?state=${encodeURIComponent(state)}${urlCodeSuffix("signup", typeof context.data?.code === "string" ? context.data.code : undefined)}`,
     method: "POST",
     title: m.title(),
     description: m.description(),
@@ -618,6 +619,46 @@ export async function signupScreen(
 /**
  * Screen definition for the signup screen
  */
+/**
+ * The code from a pre-signup verification email
+ * (`sendSignupValidateEmailAddress`, sent by /u/pre-signup), when it proves
+ * the address being signed up: minted for this login session and its
+ * username, unexpired and unused. Any other code is ignored and the signup
+ * continues unverified. The caller consumes it once the user exists, so a
+ * failed signup doesn't burn the link.
+ */
+async function findPreSignupCode(
+  context: ScreenContext,
+  loginSession: LoginSession,
+  email: string,
+): Promise<string | undefined> {
+  const code =
+    typeof context.data?.code === "string" ? context.data.code.trim() : "";
+  if (!code) return undefined;
+
+  const { ctx, tenant } = context;
+  const stored = await ctx.env.data.codes.get(
+    tenant.id,
+    code,
+    "email_verification",
+  );
+  if (
+    !stored ||
+    stored.login_id !== loginSession.id ||
+    // Pre-signup codes carry no user and no purpose; every other
+    // email_verification code (login verification, change-email) has one.
+    stored.user_id ||
+    stored.state ||
+    stored.used_at ||
+    stored.expires_at < new Date().toISOString() ||
+    loginSession.authParams.username?.toLowerCase() !== email.toLowerCase()
+  ) {
+    return undefined;
+  }
+
+  return code;
+}
+
 export const signupScreenDefinition: ScreenDefinition = {
   id: "signup",
   name: "Sign Up",
@@ -782,6 +823,16 @@ export const signupScreenDefinition: ScreenDefinition = {
         };
       }
 
+      // A pre-signup verification link (/u pre-signup email) proves the
+      // address before the account exists; only checked here, before the
+      // session's username is replaced by the submitted email.
+      const preSignupCode = await findPreSignupCode(
+        context,
+        loginSession,
+        email,
+      );
+      const emailVerifiedByCode = preSignupCode !== undefined;
+
       // Update the login session with the username
       loginSession.authParams.username = email;
       await ctx.env.data.loginSessions.update(
@@ -813,7 +864,7 @@ export const signupScreenDefinition: ScreenDefinition = {
         newUser = await ctx.env.data.users.create(client.tenant.id, {
           user_id,
           email,
-          email_verified: false,
+          email_verified: emailVerifiedByCode,
           provider,
           // The connection this client's login lookups scope to (#1702).
           connection: resolveClientDatabaseConnectionName(
@@ -848,6 +899,10 @@ export const signupScreenDefinition: ScreenDefinition = {
         };
       }
 
+      if (preSignupCode) {
+        await ctx.env.data.codes.consume(client.tenant.id, preSignupCode);
+      }
+
       logMessage(ctx, client.tenant.id, {
         type: LogTypes.SUCCESS_SIGNUP,
         description: "Successful signup",
@@ -866,7 +921,10 @@ export const signupScreenDefinition: ScreenDefinition = {
       // When verification is enforced the login below sends it (code or
       // link, per the connection) and shows the matching screen; sending here
       // too would email the user twice.
-      if (client.client_metadata?.email_validation !== "enforced") {
+      if (
+        !emailVerifiedByCode &&
+        client.client_metadata?.email_validation !== "enforced"
+      ) {
         // Send verification email - wrapped in try/catch to prevent signup
         // failure if email sending fails. User can always re-request
         // verification later.

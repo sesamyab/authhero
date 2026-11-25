@@ -31,6 +31,7 @@ import {
   listScreenIds,
 } from "./screens/registry";
 import type { ScreenContext } from "./screens/types";
+import { screenUsesUrlCode, urlCodeSuffix } from "./screens/types";
 import { HTTPException } from "hono/http-exception";
 import { RedirectException } from "../../errors/redirect-exception";
 import {
@@ -228,7 +229,7 @@ function createScreenRouteHandler(screenId: string) {
       notice: readSessionNotice(loginSession),
     };
 
-    if (screenId === "reset-password") {
+    if (screenUsesUrlCode(screenId)) {
       screenData.code = ctx.req.query("code");
     }
 
@@ -320,7 +321,7 @@ function createScreenRouteHandler(screenId: string) {
     // The screen handlers return /u/widget/:screenId but we want /u2/screen/:screenId
     const screen = {
       ...result.screen,
-      action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}${screenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
+      action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}${urlCodeSuffix(screenId, ctx.req.query("code"))}`,
     };
 
     const authParams = {
@@ -479,9 +480,7 @@ function createScreenPostHandler(screenId: string) {
       },
       data: {
         email: loginSession.authParams.username,
-        ...(screenId === "reset-password"
-          ? { code: ctx.req.query("code") }
-          : {}),
+        ...(screenUsesUrlCode(screenId) ? { code: ctx.req.query("code") } : {}),
       },
       customText,
       language,
@@ -642,6 +641,8 @@ const SCREEN_GET_PATHS = {
   impersonate: "impersonate",
   account: "account",
   "account/profile": "account-profile",
+  "account/change-email": "account-change-email",
+  "account/change-email/verify": "account-change-email-verify",
   "account/security": "account-security",
   "account/security/totp-enrollment": "account-mfa-totp-enrollment",
   "account/security/phone-enrollment": "account-mfa-phone-enrollment",
@@ -656,6 +657,7 @@ const SCREEN_GET_PATHS = {
   "device/confirmation": "device-confirmation",
   "device/complete": "device-complete",
   "try-connection-result": "try-connection-result",
+  "invalid-session": "invalid-session",
 } as const;
 
 // Subset that also accepts POST (form submissions). All entries here also
@@ -683,6 +685,8 @@ const SCREEN_POST_PATHS = {
   "passkey/enrollment-nudge": "passkey-enrollment-nudge",
   impersonate: "impersonate",
   "account/profile": "account-profile",
+  "account/change-email": "account-change-email",
+  "account/change-email/verify": "account-change-email-verify",
   "account/security": "account-security",
   "account/security/totp-enrollment": "account-mfa-totp-enrollment",
   "account/security/phone-enrollment": "account-mfa-phone-enrollment",

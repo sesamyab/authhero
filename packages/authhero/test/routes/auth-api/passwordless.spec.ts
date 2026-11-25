@@ -100,7 +100,7 @@ describe("passwordless", async () => {
       expect(wrongIpResponse.status).toBe(302);
       const wrongIpLocation = new URL(wrongIpResponse.headers.get("location")!);
 
-      expect(wrongIpLocation.pathname).toBe("/u/invalid-session");
+      expect(wrongIpLocation.pathname).toBe("/u2/invalid-session");
       const loginSessionId = wrongIpLocation.searchParams.get("state");
       expect(loginSessionId).toBeTypeOf("string");
       const wrongIpLoginSession = await env.data.loginSessions.get(

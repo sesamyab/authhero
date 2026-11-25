@@ -54,7 +54,8 @@
       "pictureLabel": "Adres URL zdjęcia profilowego",
       "buttonText": "Zapisz zmiany",
       "backToAccountText": "Wróć do konta",
-      "updateFailed": "Nie udało się zaktualizować profilu"
+      "updateFailed": "Nie udało się zaktualizować profilu",
+      "changeEmailText": "Zmień adres e-mail"
     },
     "account-delete": {
       "title": "Usuń konto",
@@ -159,6 +160,35 @@
       "invalidCodeText": "Nieprawidłowy kod. Spróbuj ponownie.",
       "verificationFailedText": "Weryfikacja nie powiodła się. Spróbuj ponownie.",
       "tooManyFailuresText": "Zbyt wiele nieudanych prób. Wróć do swojego konta i spróbuj ponownie później."
+    },
+    "invalid-session": {
+      "title": "Nieprawidłowy link",
+      "description": "Link jest już nieaktualny. Upewnij się, że otworzyłeś link logowania w tej samej przeglądarce, w której rozpocząłeś logowanie. Możesz kliknąć poniższy link, aby rozpocząć nowe logowanie.",
+      "backText": "Wróć"
+    },
+    "account-change-email": {
+      "title": "Zmień adres e-mail",
+      "description": "Jednorazowy kod zostanie wysłany na Twój nowy adres e-mail, wprowadź kod w następnym kroku.",
+      "currentEmailLabel": "Aktualny adres e-mail",
+      "emailLabel": "Nowy adres e-mail",
+      "invalidEmail": "Nieprawidłowy adres e-mail",
+      "buttonText": "Wyślij kod",
+      "sendFailed": "Nie udało się wysłać kodu. Spróbuj ponownie.",
+      "backToAccountText": "Wróć do konta"
+    },
+    "account-change-email-verify": {
+      "title": "Zweryfikuj nowy adres e-mail",
+      "description": "Wysłaliśmy kod na adres ${email}. Wpisz go, aby potwierdzić nowy adres e-mail.",
+      "codeLabel": "Kod weryfikacyjny",
+      "buttonText": "Potwierdź",
+      "noCode": "Wpisz kod weryfikacyjny",
+      "invalidCode": "Wprowadzony kod jest nieprawidłowy lub wygasł",
+      "tooManyAttempts": "Zbyt wiele prób. Spróbuj ponownie później.",
+      "emailTaken": "Tego adresu e-mail nie można użyć. Spróbuj innego.",
+      "successTitle": "Adres e-mail został zmieniony",
+      "successDescription": "Twój adres e-mail to teraz ${email}.",
+      "continueText": "Kontynuuj",
+      "backText": "Zmień adres e-mail"
     }
   },
   "consent": {

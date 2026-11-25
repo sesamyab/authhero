@@ -54,7 +54,8 @@
       "pictureLabel": "URL dell'immagine del profilo",
       "buttonText": "Salva modifiche",
       "backToAccountText": "Torna all'account",
-      "updateFailed": "Impossibile aggiornare il profilo"
+      "updateFailed": "Impossibile aggiornare il profilo",
+      "changeEmailText": "Cambia indirizzo email"
     },
     "account-delete": {
       "title": "Elimina account",
@@ -159,6 +160,35 @@
       "invalidCodeText": "Codice non valido. Riprova.",
       "verificationFailedText": "Verifica non riuscita. Riprova.",
       "tooManyFailuresText": "Troppi tentativi non riusciti. Torna al tuo account e riprova più tardi."
+    },
+    "invalid-session": {
+      "title": "Collegamento non valido",
+      "description": "Il link non è più valido. Assicuratevi di aprire il link di accesso con lo stesso browser con cui avete iniziato l'accesso. Potete fare clic sul link sottostante per iniziare un nuovo accesso.",
+      "backText": "Torna indietro"
+    },
+    "account-change-email": {
+      "title": "Cambia indirizzo email",
+      "description": "Un codice monouso verrà inviato al tuo nuovo indirizzo email, inserisci il codice nel passaggio successivo.",
+      "currentEmailLabel": "Indirizzo email attuale",
+      "emailLabel": "Nuovo indirizzo email",
+      "invalidEmail": "Email non valida",
+      "buttonText": "Invia codice",
+      "sendFailed": "Impossibile inviare il codice. Riprova.",
+      "backToAccountText": "Torna all'account"
+    },
+    "account-change-email-verify": {
+      "title": "Verifica il tuo nuovo indirizzo email",
+      "description": "Abbiamo inviato un codice a ${email}. Inseriscilo per confermare il nuovo indirizzo email.",
+      "codeLabel": "Codice di verifica",
+      "buttonText": "Conferma",
+      "noCode": "Inserisci il codice di verifica",
+      "invalidCode": "Il codice inserito non è valido o è scaduto",
+      "tooManyAttempts": "Troppi tentativi. Riprova più tardi.",
+      "emailTaken": "Questo indirizzo email non può essere usato. Provane un altro.",
+      "successTitle": "Email modificata",
+      "successDescription": "Il tuo indirizzo email ora è ${email}.",
+      "continueText": "Continua",
+      "backText": "Cambia indirizzo email"
     }
   },
   "consent": {

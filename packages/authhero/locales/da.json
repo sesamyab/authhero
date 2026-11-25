@@ -54,7 +54,8 @@
       "pictureLabel": "URL til profilbillede",
       "buttonText": "Gem ændringer",
       "backToAccountText": "Tilbage til kontoen",
-      "updateFailed": "Profilen kunne ikke opdateres"
+      "updateFailed": "Profilen kunne ikke opdateres",
+      "changeEmailText": "Ændre e-mailadresse"
     },
     "account-delete": {
       "title": "Slet konto",
@@ -159,6 +160,35 @@
       "invalidCodeText": "Ugyldig kode. Prøv igen.",
       "verificationFailedText": "Bekræftelsen mislykkedes. Prøv igen.",
       "tooManyFailuresText": "For mange mislykkede forsøg. Gå tilbage til din konto, og prøv igen senere."
+    },
+    "invalid-session": {
+      "title": "Ugyldigt link",
+      "description": "Linket er ikke længere gyldigt. Sørg for at åbne login-linket i den samme browser, som du startede login med. Du kan klikke på linket nedenfor for at starte et nyt login.",
+      "backText": "Gå tilbage"
+    },
+    "account-change-email": {
+      "title": "Ændre e-mailadresse",
+      "description": "En engangskode vil blive sendt til din nye e-mailadresse, indtast koden i næste trin.",
+      "currentEmailLabel": "Nuværende e-mailadresse",
+      "emailLabel": "Ny emailadresse",
+      "invalidEmail": "Ugyldig e-mail",
+      "buttonText": "Send kode",
+      "sendFailed": "Koden kunne ikke sendes. Prøv igen.",
+      "backToAccountText": "Tilbage til kontoen"
+    },
+    "account-change-email-verify": {
+      "title": "Bekræft din nye e-mailadresse",
+      "description": "Vi har sendt en kode til ${email}. Indtast den for at bekræfte din nye e-mailadresse.",
+      "codeLabel": "Bekræftelseskode",
+      "buttonText": "Bekræft",
+      "noCode": "Indtast bekræftelseskoden",
+      "invalidCode": "Koden er ugyldig eller udløbet",
+      "tooManyAttempts": "For mange forsøg. Prøv igen senere.",
+      "emailTaken": "Denne e-mailadresse kan ikke bruges. Prøv en anden.",
+      "successTitle": "E-mailadressen er ændret",
+      "successDescription": "Din e-mailadresse er nu ${email}.",
+      "continueText": "Fortsæt",
+      "backText": "Ændre e-mailadresse"
     }
   },
   "consent": {

@@ -10,7 +10,7 @@ import {
 } from "@authhero/adapter-interfaces";
 
 describe("callback", () => {
-  it("should redirect to /u/error if the state isn't found", async () => {
+  it("should redirect to /u2/error if the state isn't found", async () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
 
@@ -27,7 +27,7 @@ describe("callback", () => {
       throw new Error("No location header");
     }
     const redirectUri = new URL(location);
-    expect(redirectUri.pathname).toEqual("/u/error");
+    expect(redirectUri.pathname).toEqual("/u2/error");
     expect(redirectUri.searchParams.get("error")).toEqual("state_not_found");
   });
 
@@ -366,7 +366,7 @@ describe("callback", () => {
       throw new Error("No location header");
     }
     const redirectUri = new URL(location);
-    expect(redirectUri.pathname).toEqual("/u/error");
+    expect(redirectUri.pathname).toEqual("/u2/error");
     expect(redirectUri.searchParams.get("error")).toEqual("state_not_found");
     expect(created).toEqual([]);
   });

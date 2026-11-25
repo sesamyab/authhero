@@ -54,7 +54,8 @@
       "pictureLabel": "Profile Picture URL",
       "buttonText": "Save Changes",
       "backToAccountText": "Back to Account",
-      "updateFailed": "Failed to update profile"
+      "updateFailed": "Failed to update profile",
+      "changeEmailText": "Change email address"
     },
     "account-delete": {
       "title": "Delete Account",
@@ -159,6 +160,35 @@
       "invalidCodeText": "Invalid code. Please try again.",
       "verificationFailedText": "Verification failed. Please try again.",
       "tooManyFailuresText": "Too many failed attempts. Please go back to your account and try again later."
+    },
+    "invalid-session": {
+      "title": "Invalid link",
+      "description": "The link is no longer valid. Please make sure to open the login link in the same browser you started the login with. You can click the link below to start a new login.",
+      "backText": "Go back"
+    },
+    "account-change-email": {
+      "title": "Change email address",
+      "description": "A one-time code will be sent to your new email address, enter the code in the next step.",
+      "currentEmailLabel": "Current email address",
+      "emailLabel": "New email address",
+      "invalidEmail": "Email is not valid.",
+      "buttonText": "Send code",
+      "sendFailed": "Failed to send the code. Please try again.",
+      "backToAccountText": "Back to Account"
+    },
+    "account-change-email-verify": {
+      "title": "Verify your new email",
+      "description": "We sent a code to ${email}. Enter it to confirm your new email address.",
+      "codeLabel": "Verification code",
+      "buttonText": "Confirm",
+      "noCode": "Please enter the verification code",
+      "invalidCode": "The code you entered is invalid or has expired",
+      "tooManyAttempts": "Too many attempts. Please try again later.",
+      "emailTaken": "This email address can't be used. Try another one.",
+      "successTitle": "Email changed",
+      "successDescription": "Your email address is now ${email}.",
+      "continueText": "Continue",
+      "backText": "Change email address"
     }
   },
   "consent": {

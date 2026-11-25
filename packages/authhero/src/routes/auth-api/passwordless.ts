@@ -18,6 +18,30 @@ import { getUniversalLoginUrl } from "../../variables";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
+import { JSONHTTPException } from "../../errors/json-http-exception";
+
+/**
+ * The message of a passwordless failure that may be shown to the user
+ * (`userSafe` errors such as an expired code). The invalid-session screen
+ * displays the `error` it is given, so anything else stays generic.
+ */
+function getUserSafeMessage(err: unknown): string | undefined {
+  if (!(err instanceof JSONHTTPException)) return undefined;
+  try {
+    const body: unknown = JSON.parse(err.message);
+    if (
+      body &&
+      typeof body === "object" &&
+      (body as { userSafe?: unknown }).userSafe === true &&
+      typeof (body as { message?: unknown }).message === "string"
+    ) {
+      return (body as { message: string }).message;
+    }
+  } catch {
+    // Not a JSON body
+  }
+  return undefined;
+}
 const postStart = defineRoute({
   route: createRoute({
     tags: ["passwordless"],
@@ -236,10 +260,7 @@ const getVerifyRedirect = defineRoute({
         return ctx.json(result);
       }
     } catch (err: unknown) {
-      const error = err as Error;
-      if ("message" in error && typeof error.message === "string") {
-        errorMessage = error.message;
-      }
+      errorMessage = getUserSafeMessage(err) ?? errorMessage;
     }
 
     // Create a new login session with the error message
@@ -264,7 +285,7 @@ const getVerifyRedirect = defineRoute({
     });
 
     return ctx.redirect(
-      `${getUniversalLoginUrl(ctx.env, ctx.var.custom_domain, "u")}invalid-session?state=${loginSession.id}&error=${encodeURIComponent(errorMessage)}`,
+      `${getUniversalLoginUrl(ctx.env, ctx.var.custom_domain)}invalid-session?state=${encodeURIComponent(loginSession.id)}&error=${encodeURIComponent(errorMessage)}`,
       302,
     );
   },

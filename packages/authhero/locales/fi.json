@@ -54,7 +54,8 @@
       "pictureLabel": "Profiilikuvan URL-osoite",
       "buttonText": "Tallenna muutokset",
       "backToAccountText": "Takaisin tiliin",
-      "updateFailed": "Profiilin päivittäminen epäonnistui"
+      "updateFailed": "Profiilin päivittäminen epäonnistui",
+      "changeEmailText": "Vaihda sähköpostiosoite"
     },
     "account-delete": {
       "title": "Poista tili",
@@ -159,6 +160,35 @@
       "invalidCodeText": "Virheellinen koodi. Yritä uudelleen.",
       "verificationFailedText": "Vahvistus epäonnistui. Yritä uudelleen.",
       "tooManyFailuresText": "Liian monta epäonnistunutta yritystä. Palaa tilillesi ja yritä myöhemmin uudelleen."
+    },
+    "invalid-session": {
+      "title": "Virheellinen linkki",
+      "description": "Linkki ei ole enää voimassa. Varmista, että avaat kirjautumislinkin samalla selaimella, jolla aloitit kirjautumisen. Voit aloittaa uuden kirjautumisen klikkaamalla alla olevaa linkkiä.",
+      "backText": "Palaa takaisin"
+    },
+    "account-change-email": {
+      "title": "Vaihda sähköpostiosoite",
+      "description": "Yksi kertainen koodi lähetetään uuteen sähköpostiosoitteeseesi, syötä koodi seuraavassa vaiheessa.",
+      "currentEmailLabel": "Nykyinen sähköpostiosoite",
+      "emailLabel": "Uusi sähköpostiosoite",
+      "invalidEmail": "Virheellinen sähköpostiosoite",
+      "buttonText": "Lähetä koodi",
+      "sendFailed": "Koodin lähettäminen epäonnistui. Yritä uudelleen.",
+      "backToAccountText": "Takaisin tiliin"
+    },
+    "account-change-email-verify": {
+      "title": "Vahvista uusi sähköpostiosoitteesi",
+      "description": "Lähetimme koodin osoitteeseen ${email}. Syötä se vahvistaaksesi uuden sähköpostiosoitteesi.",
+      "codeLabel": "Vahvistuskoodi",
+      "buttonText": "Vahvista",
+      "noCode": "Syötä vahvistuskoodi",
+      "invalidCode": "Koodi on virheellinen tai vanhentunut",
+      "tooManyAttempts": "Liian monta yritystä. Yritä myöhemmin uudelleen.",
+      "emailTaken": "Tätä sähköpostiosoitetta ei voi käyttää. Kokeile toista.",
+      "successTitle": "Sähköpostiosoite vaihdettu",
+      "successDescription": "Sähköpostiosoitteesi on nyt ${email}.",
+      "continueText": "Jatka",
+      "backText": "Vaihda sähköpostiosoite"
     }
   },
   "consent": {

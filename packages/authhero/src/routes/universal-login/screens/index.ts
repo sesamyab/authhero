@@ -13,8 +13,10 @@
  * - forgot-password: /u/forgot-password
  * - reset-password: /u/reset-password
  * - impersonate: /u/impersonate
- * - pre-signup: /u/pre-signup
- * - pre-signup-sent: /u/pre-signup-sent
+ *
+ * /u/pre-signup and /u/pre-signup-sent have no u2 screen: u2 signup creates
+ * the account directly and verifies the address afterwards, and redeems the
+ * `code` of pre-signup emails sent from /u (see screens/signup.ts).
  */
 
 export { identifierScreen } from "./identifier";

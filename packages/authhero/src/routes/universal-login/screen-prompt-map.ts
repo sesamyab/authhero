@@ -37,6 +37,8 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
   "mfa-recovery-code": "mfa-recovery-code",
   account: "common",
   "account-profile": "common",
+  "account-change-email": "common",
+  "account-change-email-verify": "common",
   "account-security": "common",
   "account-mfa-totp-enrollment": "common",
   "account-mfa-phone-enrollment": "common",
@@ -44,6 +46,7 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
   "account-delete": "common",
   "account-passkeys": "common",
   status: "status",
+  "invalid-session": "common",
   // Locale defaults live under the "self-service" prompt, which is not a
   // custom-text prompt in the API, so tenant overrides go under "common".
   "self-service-app": "common",
