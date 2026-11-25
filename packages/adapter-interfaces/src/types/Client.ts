@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { credentialString } from "../utils/credentials";
 import { nanoid } from "nanoid";
 import { sessionTransferSchema } from "./SessionTransfer";
 
@@ -19,8 +20,7 @@ export const clientInsertSchema = z.object({
     description:
       "Whether this is your global 'All Applications' client representing legacy tenant settings (true) or a regular client (false).",
   }),
-  client_secret: z
-    .string()
+  client_secret: credentialString()
     .default(() => nanoid())
     .optional()
     .openapi({

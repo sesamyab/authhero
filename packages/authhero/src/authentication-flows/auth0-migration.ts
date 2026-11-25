@@ -45,7 +45,8 @@ export function readAuth0SourceCredentials(
   const tokenEndpoint = readString(c.token_endpoint);
   const userinfoEndpoint = readString(c.userinfo_endpoint);
   const clientId = readString(c.client_id);
-  const clientSecret = readString(c.client_secret);
+  // Trimmed for secrets saved before the management API trimmed on write.
+  const clientSecret = readString(c.client_secret)?.trim();
   const realm = readString(c.realm);
 
   if (!tokenEndpoint || !userinfoEndpoint || !clientId || !clientSecret) {

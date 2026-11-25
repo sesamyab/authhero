@@ -5,10 +5,28 @@ import {
   notFound,
 } from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { emailProviderSchema, LogTypes } from "@authhero/adapter-interfaces";
+import {
+  emailProviderSchema,
+  LogTypes,
+  trimCredentialFields,
+} from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId } from "./helpers";
+
+/**
+ * Provider-issued keys in `credentials` that get leading/trailing whitespace
+ * trimmed on write (a pasted key often carries a trailing newline).
+ * `smtp_pass` is left as sent: it is a password someone chose.
+ */
+const TRIMMED_CREDENTIAL_KEYS = [
+  "api_key",
+  "accessKeyId",
+  "secretAccessKey",
+  "clientSecret",
+  "connectionString",
+] as const;
+
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["emails"],
@@ -82,7 +100,14 @@ const postRoot = defineRoute({
   }),
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
-    const emailProvider = ctx.req.valid("json");
+    const body = ctx.req.valid("json");
+    const emailProvider = {
+      ...body,
+      credentials: trimCredentialFields(
+        body.credentials,
+        TRIMMED_CREDENTIAL_KEYS,
+      ),
+    };
 
     // Match Auth0: POST is strict create. If the singleton already exists,
     // return 409 — clients should PATCH to update, or DELETE first.
@@ -140,7 +165,16 @@ const patchRoot = defineRoute({
   }),
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
-    const patch = ctx.req.valid("json");
+    const body = ctx.req.valid("json");
+    const patch = body.credentials
+      ? {
+          ...body,
+          credentials: trimCredentialFields(
+            body.credentials,
+            TRIMMED_CREDENTIAL_KEYS,
+          ),
+        }
+      : body;
 
     await ctx.env.data.emailProviders.update(tenantId, patch);
 

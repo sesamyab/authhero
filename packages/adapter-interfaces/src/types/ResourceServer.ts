@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { credentialString } from "../utils/credentials";
 import { configInheritanceShape } from "./ConfigInheritance";
 
 export const resourceServerScopeSchema = z.object({
@@ -28,7 +29,7 @@ export const resourceServerInsertSchema = z.object({
   identifier: z.string(),
   scopes: z.array(resourceServerScopeSchema).optional(),
   signing_alg: z.string().optional(),
-  signing_secret: z.string().optional(),
+  signing_secret: credentialString().optional(),
   token_lifetime: z.number().default(86400),
   token_lifetime_for_web: z.number().default(7200),
   skip_consent_for_verifiable_first_party_clients: z.boolean().optional(),

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { credentialString } from "../utils/credentials";
 
 /**
  * The tenant MFA policy (`tenant.mfa.policy`).
@@ -171,8 +172,8 @@ export const tenantSettingsSchema = z.object({
       // Twilio-specific configuration
       twilio: z
         .object({
-          sid: z.string().optional(),
-          auth_token: z.string().optional(),
+          sid: credentialString().optional(),
+          auth_token: credentialString().optional(),
           from: z.string().optional(),
           messaging_service_sid: z.string().optional(),
         })
