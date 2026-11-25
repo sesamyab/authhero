@@ -339,6 +339,7 @@ async function buildScreenContext(
   if (username) {
     if (
       screenId === "email-otp-challenge" ||
+      screenId === "magic-link-sent" ||
       screenId === "enter-password" ||
       screenId === "reset-password-code" ||
       screenId === "email-verification-code" ||
@@ -816,6 +817,7 @@ screenApiRoutes.openapi(
         "identifier",
         "email-otp-challenge",
         "sms-otp-challenge",
+        "magic-link-sent",
         "login-passwordless-identifier",
       ];
       // Screen IDs that map to non-standard URL paths

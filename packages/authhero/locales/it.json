@@ -269,6 +269,8 @@
       "noCode": "Inserisci il codice di verifica",
       "pageTitle": "Inserisci il codice | ${clientName}",
       "resendText": "Reinvio del codice",
+      "resendSuccess": "Un nuovo codice è stato inviato alla tua e-mail",
+      "resendFailed": "Impossibile inviare nuovamente il codice. Riprova.",
       "sessionExpired": "La sessione è scaduta. Riprova.",
       "title": "Controlla la tua email",
       "unexpectedError": "Si è verificato un errore imprevisto",
@@ -496,6 +498,8 @@
       "defaultDescription": "Clicca il link nella tua email per accedere",
       "description": "Abbiamo inviato un link a ${username}. Cliccalo per accedere.",
       "resendText": "Reinvia link",
+      "resendSuccess": "Un nuovo link è stato inviato alla tua e-mail",
+      "resendFailed": "Impossibile inviare nuovamente l'e-mail. Riprova.",
       "spamText": "Non hai ricevuto l'email? Controlla la cartella spam.",
       "title": "Controlla la tua email"
     }
@@ -832,6 +836,8 @@
       "noCode": "Inserisci il codice di verifica",
       "pageTitle": "Inserisci il codice | ${clientName}",
       "resendText": "Reinvia codice",
+      "resendSuccess": "Abbiamo inviato un nuovo codice al tuo telefono",
+      "resendFailed": "Impossibile inviare nuovamente il codice. Riprova.",
       "sessionExpired": "La sessione è scaduta. Riprova.",
       "title": "Controlla il tuo telefono",
       "unexpectedError": "Si è verificato un errore imprevisto",

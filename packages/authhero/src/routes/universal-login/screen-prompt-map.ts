@@ -11,6 +11,8 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
   "enter-password": "login-password",
   "email-otp-challenge": "email-otp-challenge",
   "sms-otp-challenge": "email-otp-challenge", // SMS shares email-otp-challenge prompt
+  // Not a custom-text prompt of its own; overrides go under login-passwordless
+  "magic-link-sent": "login-passwordless",
   signup: "signup",
   "forgot-password": "reset-password",
   "reset-password": "reset-password",

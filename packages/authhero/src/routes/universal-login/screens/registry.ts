@@ -12,6 +12,7 @@ import { identifierScreenDefinition } from "./identifier";
 import { loginScreenDefinition } from "./login";
 import { emailOtpChallengeScreenDefinition } from "./email-otp-challenge";
 import { smsOtpChallengeScreenDefinition } from "./sms-otp-challenge";
+import { magicLinkSentScreenDefinition } from "./magic-link-sent";
 import { enterPasswordScreenDefinition } from "./enter-password";
 import { signupScreenDefinition } from "./signup";
 import { forgotPasswordScreenDefinition } from "./forgot-password";
@@ -120,6 +121,7 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["login", loginScreenDefinition],
   ["email-otp-challenge", emailOtpChallengeScreenDefinition],
   ["sms-otp-challenge", smsOtpChallengeScreenDefinition],
+  ["magic-link-sent", magicLinkSentScreenDefinition],
   ["enter-password", enterPasswordScreenDefinition],
   ["signup", signupScreenDefinition],
   [

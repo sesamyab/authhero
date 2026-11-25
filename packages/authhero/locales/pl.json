@@ -269,6 +269,8 @@
       "noCode": "Wprowadź kod weryfikacyjny",
       "pageTitle": "Wprowadź kod | ${clientName}",
       "resendText": "Wyślij ponownie kod",
+      "resendSuccess": "Nowy kod został wysłany na Twój adres e-mail",
+      "resendFailed": "Nie udało się ponownie wysłać kodu. Spróbuj ponownie.",
       "sessionExpired": "Twoja sesja wygasła. Spróbuj ponownie.",
       "title": "Sprawdź swoją pocztę",
       "unexpectedError": "Wystąpił nieoczekiwany błąd",
@@ -496,6 +498,8 @@
       "defaultDescription": "Kliknij link w wiadomości e-mail, aby się zalogować",
       "description": "Wysłaliśmy link na ${username}. Kliknij go, aby się zalogować.",
       "resendText": "Wyślij ponownie link",
+      "resendSuccess": "Nowy link został wysłany na Twój adres e-mail",
+      "resendFailed": "Nie udało się ponownie wysłać wiadomości. Spróbuj ponownie.",
       "spamText": "Nie otrzymałeś wiadomości? Sprawdź folder spam.",
       "title": "Sprawdź swoją pocztę"
     }
@@ -832,6 +836,8 @@
       "noCode": "Wprowadź kod weryfikacyjny",
       "pageTitle": "Wprowadź kod | ${clientName}",
       "resendText": "Wyślij ponownie kod",
+      "resendSuccess": "Wysłaliśmy nowy kod na Twój telefon",
+      "resendFailed": "Nie udało się ponownie wysłać kodu. Spróbuj ponownie.",
       "sessionExpired": "Twoja sesja wygasła. Spróbuj ponownie.",
       "title": "Sprawdź swój telefon",
       "unexpectedError": "Wystąpił nieoczekiwany błąd",

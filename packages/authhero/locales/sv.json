@@ -269,6 +269,8 @@
       "noCode": "Ange verifieringskoden",
       "pageTitle": "Ange kod | ${clientName}",
       "resendText": "Skicka koden igen",
+      "resendSuccess": "En ny kod har skickats till din e-post",
+      "resendFailed": "Det gick inte att skicka koden igen. Försök igen.",
       "sessionExpired": "Din session har gått ut. Försök igen.",
       "title": "Kolla din e-post",
       "unexpectedError": "Ett oväntat fel uppstod",
@@ -496,6 +498,8 @@
       "defaultDescription": "Klicka på länken i ditt e-postmeddelande för att logga in",
       "description": "Vi skickade en länk till ${username}. Klicka på den för att logga in.",
       "resendText": "Skicka länken igen",
+      "resendSuccess": "En ny länk har skickats till din e-post",
+      "resendFailed": "Det gick inte att skicka e-postmeddelandet igen. Försök igen.",
       "spamText": "Fick du inte e-postmeddelandet? Kolla din skräppost.",
       "title": "Kolla din e-post"
     }
@@ -832,6 +836,8 @@
       "noCode": "Ange verifieringskoden",
       "pageTitle": "Ange kod | ${clientName}",
       "resendText": "Skicka koden igen",
+      "resendSuccess": "Vi skickade en ny kod till din telefon",
+      "resendFailed": "Det gick inte att skicka koden igen. Försök igen.",
       "sessionExpired": "Din session har gått ut. Försök igen.",
       "title": "Kolla din telefon",
       "unexpectedError": "Ett oväntat fel uppstod",

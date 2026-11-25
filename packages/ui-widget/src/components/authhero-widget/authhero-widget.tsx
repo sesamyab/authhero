@@ -1038,6 +1038,7 @@ export class AuthheroWidget {
   private handleSubmit = async (
     e: Event,
     overrideData?: Record<string, string>,
+    options: { skipValidation?: boolean } = {},
   ) => {
     e.preventDefault();
 
@@ -1045,6 +1046,7 @@ export class AuthheroWidget {
 
     const form = this.el.shadowRoot?.querySelector("form");
     if (
+      !options.skipValidation &&
       this._screen.partials &&
       form?.reportValidity &&
       !form.reportValidity()
@@ -1767,8 +1769,8 @@ export class AuthheroWidget {
       return;
     }
 
-    // Handle resend button
-    if (detail.type === "RESEND_BUTTON" && this.shouldAutoNavigate) {
+    // Handle resend button. authhero-node emits type "resend".
+    if (detail.type === "resend" || detail.type === "RESEND_BUTTON") {
       this.handleResend();
       return;
     }
@@ -1815,23 +1817,21 @@ export class AuthheroWidget {
   }
 
   /**
-   * Handle resend button click (e.g., resend OTP code)
+   * Handle resend button click (e.g., resend OTP code).
+   *
+   * Posts `{ data: { action: "resend" } }` to the screen's action through the
+   * normal submit pipeline, so the screen the server returns (with its
+   * "code sent" or error message) is rendered. Required fields are not
+   * checked: the user is asking for a new code because they have none.
    */
-  private async handleResend() {
+  private handleResend() {
     if (!this._screen?.action) return;
-
-    try {
-      const url =
-        this._screen.action +
-        (this._screen.action.includes("?") ? "&" : "?") +
-        "action=resend";
-      await fetch(this.buildUrl(url), {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch (error) {
-      console.error("Resend failed:", error);
-    }
+    const syntheticEvent = { preventDefault: () => {} } as Event;
+    this.handleSubmit(
+      syntheticEvent,
+      { action: "resend" },
+      { skipValidation: true },
+    );
   }
 
   /**

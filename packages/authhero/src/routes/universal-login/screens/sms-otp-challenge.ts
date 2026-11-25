@@ -14,6 +14,7 @@ import { HTTPException } from "hono/http-exception";
 import { passwordlessGrant } from "../../../authentication-flows/passwordless";
 import { createFrontChannelAuthResponse } from "../../../authentication-flows/common";
 import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
+import { loginOtpResendResult } from "./login-otp";
 
 /**
  * Create the sms-otp-challenge screen
@@ -160,6 +161,16 @@ export const smsOtpChallengeScreenDefinition: ScreenDefinition = {
         locale,
         context.customText,
       );
+
+      if (data.action === "resend") {
+        return loginOtpResendResult(context, {
+          render: smsOtpChallengeScreen,
+          magicLink: false,
+          successText: m.resendSuccess(),
+          failedText: m.resendFailed(),
+          expiredText: m.sessionExpired(),
+        });
+      }
 
       // Get the login session to find the username
       const loginSession = await ctx.env.data.loginSessions.get(

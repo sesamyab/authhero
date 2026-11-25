@@ -269,6 +269,8 @@
       "noCode": "Syötä vahvistuskoodi",
       "pageTitle": "Syötä koodi | ${clientName}",
       "resendText": "Lähetä koodi uudelleen",
+      "resendSuccess": "Uusi koodi on lähetetty sähköpostiisi",
+      "resendFailed": "Koodin uudelleenlähetys epäonnistui. Yritä uudelleen.",
       "sessionExpired": "Istuntosi on vanhentunut. Yritä uudelleen.",
       "title": "Tarkista sähköpostisi",
       "unexpectedError": "Odottamaton virhe tapahtui",
@@ -496,6 +498,8 @@
       "defaultDescription": "Napsauta sähköpostissasi olevaa linkkiä kirjautuaksesi sisään",
       "description": "Lähetimme linkin osoitteeseen ${username}. Napsauta sitä kirjautuaksesi.",
       "resendText": "Lähetä linkki uudelleen",
+      "resendSuccess": "Uusi linkki on lähetetty sähköpostiisi",
+      "resendFailed": "Sähköpostin uudelleenlähetys epäonnistui. Yritä uudelleen.",
       "spamText": "Etkö saanut sähköpostia? Tarkista roskapostikansiosi.",
       "title": "Tarkista sähköpostisi"
     }
@@ -832,6 +836,8 @@
       "noCode": "Syötä vahvistuskoodi",
       "pageTitle": "Syötä koodi | ${clientName}",
       "resendText": "Lähetä koodi uudelleen",
+      "resendSuccess": "Lähetimme uuden koodin puhelimeesi",
+      "resendFailed": "Koodin uudelleenlähetys epäonnistui. Yritä uudelleen.",
       "sessionExpired": "Istuntosi on vanhentunut. Yritä uudelleen.",
       "title": "Tarkista puhelimesi",
       "unexpectedError": "Odottamaton virhe tapahtui",

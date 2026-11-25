@@ -5,6 +5,7 @@ import type { Bindings, Variables } from "../../../types";
 import generateOTP from "../../../utils/otp";
 import { sendCode, sendLink } from "../../../emails";
 import { OTP_EXPIRATION_TIME } from "../../../constants";
+import type { ScreenContext, ScreenFactory, ScreenResult } from "./types";
 
 /**
  * Create a one-time code bound to the login session and deliver it to the
@@ -67,4 +68,109 @@ export async function sendLoginOtp(
       language,
     });
   }
+}
+
+/**
+ * Re-send the login OTP (code or magic link) for the login session behind
+ * `state`, to the username the identifier step stored on it.
+ *
+ * Only re-sends when a login OTP was issued for this session before. The
+ * enumeration-safe stub path in the identifier screens shows the challenge
+ * without issuing a code, and a resend must not start delivering to an
+ * unknown address either.
+ *
+ * Returns false when the login session is gone or has no username.
+ */
+export async function resendLoginOtp(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  {
+    client,
+    state,
+    magicLink,
+  }: {
+    client: EnrichedClient;
+    state: string;
+    magicLink: boolean;
+  },
+): Promise<boolean> {
+  const loginSession = await ctx.env.data.loginSessions.get(
+    client.tenant.id,
+    state,
+  );
+  const to = loginSession?.authParams?.username;
+  if (!loginSession || !to) return false;
+
+  const { codes } = await ctx.env.data.codes.list(client.tenant.id, {
+    q: `login_id:${loginSession.id}`,
+    per_page: 100,
+  });
+  const issued = codes.some(
+    (code) => code.login_id === loginSession.id && code.code_type === "otp",
+  );
+  if (!issued) return true;
+
+  await sendLoginOtp(ctx, { client, loginSession, to, magicLink });
+  return true;
+}
+
+/**
+ * POST handler body for the RESEND_BUTTON on the login OTP screens
+ * (email-otp-challenge, sms-otp-challenge, magic-link-sent): re-send and
+ * re-render the screen with a success or error message.
+ */
+export async function loginOtpResendResult(
+  context: ScreenContext,
+  {
+    render,
+    magicLink,
+    successText,
+    failedText,
+    expiredText,
+  }: {
+    render: ScreenFactory;
+    magicLink: boolean;
+    successText: string;
+    failedText: string;
+    expiredText: string;
+  },
+): Promise<{ screen: ScreenResult } | { error: string; screen: ScreenResult }> {
+  let sent: boolean;
+  try {
+    sent = await resendLoginOtp(context.ctx, {
+      client: context.client,
+      state: context.state,
+      magicLink,
+    });
+  } catch (err) {
+    const safeErr =
+      err instanceof Error
+        ? { name: err.name, message: err.message }
+        : { name: "UnknownError" };
+    console.error("Failed to resend login code:", safeErr);
+    return {
+      error: failedText,
+      screen: await render({
+        ...context,
+        messages: [{ text: failedText, type: "error" }],
+      }),
+    };
+  }
+
+  if (!sent) {
+    return {
+      error: expiredText,
+      screen: await render({
+        ...context,
+        messages: [{ text: expiredText, type: "error" }],
+      }),
+    };
+  }
+
+  return {
+    screen: await render({
+      ...context,
+      errors: undefined,
+      messages: [{ text: successText, type: "success" }],
+    }),
+  };
 }
