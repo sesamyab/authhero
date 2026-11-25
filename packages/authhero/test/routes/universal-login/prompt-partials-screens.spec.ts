@@ -49,7 +49,11 @@ describe("prompt partials on the sign-in form screens", () => {
       "login-passwordless",
       "login-passwordless-identifier",
     ],
-    ["email-otp-challenge", "email-otp-challenge", "email-otp-challenge"],
+    [
+      "email-otp-challenge",
+      "login-passwordless",
+      "login-passwordless-email-code",
+    ],
   ])("renders %s partials from %s/%s", async (screen, prompt, key) => {
     const body = await getScreen(screen, {
       [prompt]: {
@@ -66,6 +70,36 @@ describe("prompt partials on the sign-in form screens", () => {
     "email-otp-challenge",
   ])("renders %s unchanged when no partials are stored", async (screen) => {
     const body = await getScreen(screen, {});
+    expect(body.screen.partials).toBeUndefined();
+  });
+
+  it("reads the code screen's partials from the Auth0 alias prompt as a fallback", async () => {
+    const body = await getScreen("email-otp-challenge", {
+      "login-passwordless-email-code": {
+        "login-passwordless-email-code": { "form-content-end": TERMS },
+      },
+    });
+    expect(body.screen.partials).toEqual({ "form-content-end": TERMS });
+  });
+
+  it("prefers login-passwordless over the alias prompt", async () => {
+    const body = await getScreen("email-otp-challenge", {
+      "login-passwordless": {
+        "login-passwordless-email-code": { "form-content-end": "primary" },
+      },
+      "login-passwordless-email-code": {
+        "login-passwordless-email-code": { "form-content-end": "alias" },
+      },
+    });
+    expect(body.screen.partials).toEqual({ "form-content-end": "primary" });
+  });
+
+  it("no longer reads the email-otp-challenge prompt", async () => {
+    const body = await getScreen("email-otp-challenge", {
+      "email-otp-challenge": {
+        "email-otp-challenge": { "form-content-end": TERMS },
+      },
+    });
     expect(body.screen.partials).toBeUndefined();
   });
 
@@ -159,7 +193,7 @@ describe("withPromptPartials", () => {
   it("attaches partials when a screen without its own returns one that has them", async () => {
     const otpScreen = { ...baseScreen, name: "email-otp-challenge" };
     const get = vi.fn().mockResolvedValue({
-      "email-otp-challenge": { "form-content-end": TERMS },
+      "login-passwordless-email-code": { "form-content-end": TERMS },
     });
     const wrapped = withPromptPartials("identifier", {
       id: "identifier",
@@ -170,7 +204,7 @@ describe("withPromptPartials", () => {
       },
     });
     const result = await wrapped.handler.post!(context(null, get), {});
-    expect(get).toHaveBeenCalledWith("t", "email-otp-challenge");
+    expect(get).toHaveBeenCalledWith("t", "login-passwordless");
     expect(result).toMatchObject({
       screen: { screen: { partials: { "form-content-end": TERMS } } },
     });

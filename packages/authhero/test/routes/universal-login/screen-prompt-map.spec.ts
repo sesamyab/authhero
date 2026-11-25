@@ -26,15 +26,21 @@ describe("screen-prompt-map", () => {
   it("stores every partials prompt under an API-accepted prompt name", () => {
     const allowed = new Set<string>(promptPartialPrompts);
     for (const id of listPartialsScreenIds()) {
-      expect(allowed.has(getPartialsTargetForScreen(id)!.prompt)).toBe(true);
+      const target = getPartialsTargetForScreen(id)!;
+      for (const prompt of [target.prompt, ...(target.fallbackPrompts ?? [])]) {
+        expect(allowed.has(prompt)).toBe(true);
+      }
     }
   });
 
-  it("uses the screen's custom-text prompt for its partials", () => {
-    for (const id of listPartialsScreenIds()) {
-      expect(getPartialsTargetForScreen(id)!.prompt).toBe(
-        getPromptScreenForScreen(id),
-      );
-    }
+  it("reads the passwordless code screens from Auth0's login-passwordless prompt", () => {
+    expect(getPartialsTargetForScreen("email-otp-challenge")).toMatchObject({
+      prompt: "login-passwordless",
+      key: "login-passwordless-email-code",
+    });
+    expect(getPartialsTargetForScreen("sms-otp-challenge")).toMatchObject({
+      prompt: "login-passwordless",
+      key: "login-passwordless-sms-otp",
+    });
   });
 });

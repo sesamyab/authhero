@@ -66,8 +66,9 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
 /**
  * Screens that render tenant prompt partials (Auth0-style HTML injected at the
  * form insertion points), and where to find them. Partials are stored per
- * prompt and keyed by screen name; the prompt is the one the screen uses for
- * custom text (`SCREEN_TO_PROMPT_MAP`), and `key` is the screen name under it.
+ * prompt and keyed by screen name; the prompt is usually the one the screen
+ * uses for custom text (`SCREEN_TO_PROMPT_MAP`), except where Auth0 stores
+ * partials elsewhere, and `key` is the screen name under it.
  * `key` follows Auth0's screen names where there is an equivalent and is the
  * u2 screen id otherwise.
  *
@@ -80,8 +81,14 @@ const SCREEN_TO_PROMPT_MAP: Record<string, PromptScreen> = {
  * Auth0 prompt-partials equivalent or are not part of the sign-in form flow.
  */
 export interface PromptPartialsTarget {
-  prompt: PromptScreen;
+  prompt: string;
   key: string;
+  /**
+   * Prompts read when `prompt` has nothing for `key`. The partials API also
+   * accepts Auth0's screen names as prompt names, so a tenant may have stored
+   * the same partials under e.g. `login-passwordless-email-code`.
+   */
+  fallbackPrompts?: string[];
 }
 
 const SCREEN_PARTIALS: Record<string, PromptPartialsTarget> = {
@@ -89,13 +96,17 @@ const SCREEN_PARTIALS: Record<string, PromptPartialsTarget> = {
     prompt: "login-passwordless",
     key: "login-passwordless-identifier",
   },
+  // The passwordless code-entry screens. Auth0 keeps their partials under the
+  // `login-passwordless` prompt; `email-otp-challenge` has no partials there.
   "email-otp-challenge": {
-    prompt: "email-otp-challenge",
-    key: "email-otp-challenge",
+    prompt: "login-passwordless",
+    key: "login-passwordless-email-code",
+    fallbackPrompts: ["login-passwordless-email-code"],
   },
   "sms-otp-challenge": {
-    prompt: "email-otp-challenge",
-    key: "sms-otp-challenge",
+    prompt: "login-passwordless",
+    key: "login-passwordless-sms-otp",
+    fallbackPrompts: ["login-passwordless-sms-otp"],
   },
   "forgot-password": {
     prompt: "reset-password",

@@ -36,19 +36,25 @@ export async function attachPromptPartials(
   const target = getPartialsTargetForScreen(result.screen.name || screenId);
   if (!target || result.screen.partials) return result;
 
-  let stored: PromptPartials | null | undefined;
+  let partials: PromptPartials[string] | undefined;
   try {
-    stored = await context.ctx.env.data.promptPartials?.get(
-      context.tenant.id,
-      target.prompt,
-    );
+    for (const prompt of [target.prompt, ...(target.fallbackPrompts ?? [])]) {
+      const stored = await context.ctx.env.data.promptPartials?.get(
+        context.tenant.id,
+        prompt,
+      );
+      const found = stored?.[target.key];
+      if (found && Object.keys(found).length > 0) {
+        partials = found;
+        break;
+      }
+    }
   } catch (err) {
     // Partials are an enhancement: never take the login screen down with them.
     console.error("Failed to load prompt partials:", err);
     return result;
   }
-  const partials = stored?.[target.key];
-  if (!partials || Object.keys(partials).length === 0) return result;
+  if (!partials) return result;
   return { ...result, screen: { ...result.screen, partials } };
 }
 
