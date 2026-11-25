@@ -70,6 +70,7 @@ import {
   hasBatch,
   ownsOpenTransaction,
   runExclusive,
+  runInSavepoint,
 } from "./atomic";
 import type { DrizzleDb } from "./types";
 
@@ -173,10 +174,11 @@ export default function createAdapters(
         return fn(adapters);
       }
       // A transaction() called through the adapters of the open transaction
-      // joins it: SQLite can't start a transaction within a transaction, and
-      // the outer BEGIN/COMMIT already covers the callback.
+      // joins it: SQLite can't start a transaction within a transaction. A
+      // SAVEPOINT keeps it all-or-nothing, so if its callback fails and the
+      // outer callback catches the error, none of its writes are committed.
       if (ownsOpenTransaction(db)) {
-        return fn(adapters);
+        return runInSavepoint(db, () => fn(adapters));
       }
       // Sync drivers (better-sqlite3): manual BEGIN/COMMIT/ROLLBACK so we can
       // properly await the async callback before deciding whether to commit

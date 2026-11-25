@@ -70,6 +70,67 @@ describe("writes inside transaction() on better-sqlite3", () => {
     expect(await data.users.get("tenant1", "auth2|nested-rollback")).toBeNull();
   });
 
+  it("rolls back a failed joined write even when the callback catches it", async () => {
+    const event = (id: string) => ({
+      id,
+      tenant_id: "tenant1",
+      event_type: "hook.post-user-registration",
+      log_type: "sapi",
+      category: "system",
+      actor: { type: "system" },
+      target: { type: "user", id: "auth2|x" },
+      request: { method: "POST", path: "/", ip: "" },
+      hostname: "",
+      timestamp: "2026-11-25T00:00:00.000Z",
+    });
+
+    await data.transaction(async (trx) => {
+      await trx.users.rawCreate(
+        "tenant1",
+        userWithPassword("first") as any,
+        {
+          outboxEvents: [event("evt-dup")],
+        } as any,
+      );
+      // Same event id: the user and password rows insert, then the outbox
+      // insert fails on its primary key.
+      await expect(
+        trx.users.rawCreate(
+          "tenant1",
+          userWithPassword("second") as any,
+          {
+            outboxEvents: [event("evt-dup")],
+          } as any,
+        ),
+      ).rejects.toBeTruthy();
+      // The callback carries on and the transaction commits.
+    });
+
+    expect(await data.users.get("tenant1", "auth2|first")).toBeTruthy();
+    // Nothing of the failed write may be committed.
+    expect(await data.users.get("tenant1", "auth2|second")).toBeNull();
+    expect(await data.passwords.get("tenant1", "auth2|second")).toBeNull();
+  });
+
+  it("rolls back a failed nested transaction() the outer callback catches", async () => {
+    await data.transaction(async (outer) => {
+      await outer.users.create("tenant1", userWithPassword("kept") as any);
+      await expect(
+        outer.transaction(async (inner) => {
+          await inner.users.create(
+            "tenant1",
+            userWithPassword("discarded") as any,
+          );
+          throw new Error("inner failed");
+        }),
+      ).rejects.toThrow("inner failed");
+    });
+
+    expect(await data.users.get("tenant1", "auth2|kept")).toBeTruthy();
+    expect(await data.users.get("tenant1", "auth2|discarded")).toBeNull();
+    expect(await data.passwords.get("tenant1", "auth2|discarded")).toBeNull();
+  });
+
   it("still creates a user with a password outside a transaction", async () => {
     await data.users.create("tenant1", userWithPassword("outside") as any);
     expect(await data.passwords.get("tenant1", "auth2|outside")).toBeTruthy();

@@ -166,6 +166,36 @@ export async function runExclusive<T>(
   }
 }
 
+let savepointCounter = 0;
+
+/**
+ * Run `work` inside the transaction that `db` already owns, behind a SAVEPOINT.
+ * If `work` fails, everything it wrote is rolled back to the savepoint, so a
+ * caller that catches the error and carries on cannot commit half of it. On
+ * success the savepoint is released into the enclosing transaction.
+ */
+export async function runInSavepoint<T>(
+  db: DrizzleDb,
+  work: () => Promise<T>,
+): Promise<T> {
+  // An internal counter, never user input, so a raw identifier is safe.
+  const name = sql.raw(`authhero_sp_${++savepointCounter}`);
+  await db.run(sql`SAVEPOINT ${name}`);
+  try {
+    const result = await work();
+    await db.run(sql`RELEASE ${name}`);
+    return result;
+  } catch (error) {
+    try {
+      await db.run(sql`ROLLBACK TO ${name}`);
+      await db.run(sql`RELEASE ${name}`);
+    } catch (rollbackError) {
+      console.error("savepoint rollback failed", rollbackError);
+    }
+    throw error;
+  }
+}
+
 async function runInOrder(statements: AtomicStatements): Promise<unknown[]> {
   const results: unknown[] = [];
   for (const statement of statements) {
@@ -185,8 +215,9 @@ async function runInOrder(statements: AtomicStatements): Promise<unknown[]> {
  * D1, which is why the batch path exists.
  *
  * On better-sqlite3, statements made through a transaction's own adapters run
- * inside that transaction without their own BEGIN/COMMIT. Any other call waits
- * for an open transaction to finish before starting its own.
+ * inside that transaction behind a SAVEPOINT instead of their own
+ * BEGIN/COMMIT, so a failure still rolls back all of them. Any other call
+ * waits for an open transaction to finish before starting its own.
  *
  * Returns the per-statement results in order (the batch response on D1; each
  * awaited builder's result on better-sqlite3).
@@ -200,7 +231,7 @@ export async function runAtomic(
   }
 
   if (ownsOpenTransaction(db)) {
-    return runInOrder(statements);
+    return runInSavepoint(db, () => runInOrder(statements));
   }
 
   return runExclusive(db, async () => {
