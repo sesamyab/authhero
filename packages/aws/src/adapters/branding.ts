@@ -19,6 +19,8 @@ interface BrandingItem extends DynamoDBBaseItem {
   logo_url?: string;
   powered_by_logo_url?: string;
   font?: string; // JSON string
+  terms_url?: string;
+  privacy_url?: string;
 }
 
 function toBranding(item: BrandingItem): Branding {
@@ -55,6 +57,8 @@ export function createBrandingAdapter(ctx: DynamoDBContext): BrandingAdapter {
         logo_url: branding.logo_url,
         powered_by_logo_url: branding.powered_by_logo_url,
         font: branding.font ? JSON.stringify(branding.font) : undefined,
+        terms_url: branding.terms_url,
+        privacy_url: branding.privacy_url,
         created_at: existing?.created_at || now,
         updated_at: now,
       };

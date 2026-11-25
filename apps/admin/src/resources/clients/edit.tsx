@@ -34,6 +34,8 @@ function transformClient(data: Record<string, unknown>) {
     const stringified: Record<string, string> = {};
     for (const [k, v] of Object.entries(out.client_metadata)) {
       if (k === "disable_sign_ups") continue;
+      // A cleared legal link falls back to the tenant default.
+      if ((k === "tos_uri" || k === "policy_uri") && v === "") continue;
       if (typeof v === "boolean") stringified[k] = v ? "true" : "false";
       else if (v != null) stringified[k] = String(v);
     }

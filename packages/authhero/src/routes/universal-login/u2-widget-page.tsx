@@ -68,6 +68,7 @@ export type {
   LanguageOption,
 } from "@authhero/widget/page-chrome";
 import type { Branding, Theme } from "@authhero/adapter-interfaces";
+import { withTenantLegalDefaults } from "./legal-links";
 import { getCookie } from "hono/cookie";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { resolveDarkPageInputs } from "./dark-theme";
@@ -144,6 +145,7 @@ export type WidgetPageProps = {
   language?: string;
   availableLanguages?: string[];
   termsAndConditionsUrl?: string;
+  privacyUrl?: string;
   darkMode?: DarkModePreference;
   /**
    * Where to render the tenant logo on the page.
@@ -246,6 +248,16 @@ export function resolveTermsLabel(language?: string): string {
     language || "en",
   );
   return commonT.termsShortText();
+}
+
+/** The "Privacy Policy" link label, in the page's language. */
+export function resolvePrivacyLabel(language?: string): string {
+  const { m: commonT } = createTranslation(
+    "common",
+    "common",
+    language || "en",
+  );
+  return commonT.privacyPolicyText();
 }
 
 // ---------------------------------------------------------------------------
@@ -413,6 +425,7 @@ export function WidgetPage({
   language,
   availableLanguages,
   termsAndConditionsUrl,
+  privacyUrl,
   darkMode = "auto",
   logoPosition,
   extraScript,
@@ -490,6 +503,7 @@ export function WidgetPage({
   // take finished labels so they stay free of authhero's i18n stack.
   const languages = buildLanguageOptions(availableLanguages);
   const termsLabel = resolveTermsLabel(language);
+  const privacyLabel = resolvePrivacyLabel(language);
 
   // Embedded pages render no chrome: the embedding modal owns the frame,
   // and the chips' links would navigate inside the iframe.
@@ -509,7 +523,12 @@ export function WidgetPage({
             height: poweredByLogo.height,
           })
         : "") +
-      renderLegalChip({ termsAndConditionsUrl, termsLabel }) +
+      renderLegalChip({
+        termsAndConditionsUrl,
+        termsLabel,
+        privacyUrl,
+        privacyLabel,
+      }) +
       // Phone footer. Always emitted; CSS reveals it only under 480px, where
       // the corner chips are hidden because they'd overlap the full-screen card.
       renderMobileFooter({
@@ -518,6 +537,8 @@ export function WidgetPage({
         languages,
         termsAndConditionsUrl,
         termsLabel,
+        privacyUrl,
+        privacyLabel,
         poweredBy: poweredByLogo,
       });
 
@@ -800,6 +821,7 @@ export async function renderWidgetPageResponse(
     locale?: string;
     availableLanguages?: string[];
     termsAndConditionsUrl?: string;
+    privacyUrl?: string;
     darkMode?: DarkModePreference;
     logoPosition?: LogoPosition;
     extraScript?: string;
@@ -830,6 +852,14 @@ export async function renderWidgetPageResponse(
   // page template is skipped for them since it lays out a whole page.
   const embed: EmbedLoginContext | undefined = ctx.var?.embedLogin;
   const customTemplateBody = embed ? undefined : opts.customTemplateBody;
+  // Per-client links win; the tenant's branding defaults fill the gaps.
+  const legal = withTenantLegalDefaults(
+    {
+      termsAndConditionsUrl: opts.termsAndConditionsUrl,
+      privacyUrl: opts.privacyUrl,
+    },
+    opts.branding,
+  );
   const widgetHtml = await renderWidgetSSR({
     screenId: opts.screenId,
     screenJson: opts.screenJson,
@@ -860,7 +890,8 @@ export async function renderWidgetPageResponse(
         language: opts.language,
         availableLanguages: opts.availableLanguages,
         poweredBy: opts.poweredByLogo,
-        termsAndConditionsUrl: opts.termsAndConditionsUrl,
+        termsAndConditionsUrl: legal.termsAndConditionsUrl,
+        privacyUrl: legal.privacyUrl,
         // Expose the full branding/theme objects as Liquid variables so
         // templates can reference e.g. `{{ branding.logo_url }}`.
         branding: opts.branding,
@@ -916,7 +947,8 @@ export async function renderWidgetPageResponse(
       poweredByLogo={opts.poweredByLogo}
       language={opts.language}
       availableLanguages={opts.availableLanguages}
-      termsAndConditionsUrl={opts.termsAndConditionsUrl}
+      termsAndConditionsUrl={legal.termsAndConditionsUrl}
+      privacyUrl={legal.privacyUrl}
       darkMode={opts.darkMode}
       logoPosition={opts.logoPosition ?? derivedPosition}
       extraScript={opts.extraScript}

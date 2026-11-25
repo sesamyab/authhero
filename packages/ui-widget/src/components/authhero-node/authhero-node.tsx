@@ -912,6 +912,12 @@ export class AuthheroNode {
       return (
         <div class="input-wrapper" part="input-wrapper">
           {this.renderLabel(component.label, inputId, component.required)}
+          {/* Never render the value as a child text node: SSR prefixes vdom
+              text nodes with a <!--t.N--> hydration comment, and inside a
+              textarea that comment is shown as literal text. Setting
+              `textContent` in the ref (not a vdom child, so no marker) puts
+              the value into the SSR markup as the textarea's default value;
+              `value` keeps the live value in sync on the client. */}
           <textarea
             id={inputId}
             class={this.getInputFieldClass(errors.length > 0)}
@@ -921,10 +927,12 @@ export class AuthheroNode {
             required={component.required}
             disabled={this.disabled}
             maxLength={max_length}
+            value={effectiveValue ?? ""}
+            ref={(el) => {
+              if (el) el.textContent = effectiveValue ?? "";
+            }}
             onInput={this.handleInput}
-          >
-            {effectiveValue ?? ""}
-          </textarea>
+          />
           {this.renderErrors()}
           {errors.length === 0 && this.renderHint(component.hint)}
         </div>

@@ -39,6 +39,7 @@ import * as connectionSelfService from "./2026-11-18T12:00:00_connection_self_se
 import * as selfServiceSso from "./2026-11-20T12:00:00_self_service_sso";
 import * as clientRegistrationTokenInvites from "./2026-11-23T12:00:00_client_registration_token_invites";
 import * as themeDark from "./2026-11-24T12:00:00_theme_dark";
+import * as brandingLegalLinks from "./2026-11-24T13:00:00_branding_legal_links";
 
 export default {
   "2026-07-16T14:00:00_baseline": baseline,
@@ -70,4 +71,5 @@ export default {
   "2026-11-23T12:00:00_client_registration_token_invites":
     clientRegistrationTokenInvites,
   "2026-11-24T12:00:00_theme_dark": themeDark,
+  "2026-11-24T13:00:00_branding_legal_links": brandingLegalLinks,
 };
