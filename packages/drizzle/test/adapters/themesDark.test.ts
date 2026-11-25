@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { themeSchema } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../helpers/test-server";
 
 const baseTheme = {
@@ -130,5 +131,39 @@ describe("themes dark fields", () => {
     expect(theme!.colors_dark).toBeUndefined();
     expect(theme!.widget).not.toHaveProperty("logo_url_dark");
     expect(theme!.page_background).not.toHaveProperty("background_color_dark");
+  });
+});
+
+describe("themes fonts", () => {
+  it("round-trips nested font details losslessly", async () => {
+    const { data } = await getTestServer();
+    await data.tenants.create({
+      id: "tenantId",
+      friendly_name: "Test Tenant",
+      audience: "https://example.com",
+      sender_email: "login@example.com",
+      sender_name: "SenderName",
+    });
+
+    const created = await data.themes.create("tenantId", baseTheme);
+    expect(created.fonts).toEqual(baseTheme.fonts);
+
+    const theme = await data.themes.get("tenantId", created.themeId);
+    expect(theme!.fonts).toEqual(baseTheme.fonts);
+    expect(theme!.fonts).not.toHaveProperty("body_text_bold");
+    expect(themeSchema.safeParse(theme).success).toBe(true);
+
+    // A partial update of one font group keeps the nested shape.
+    await data.themes.update("tenantId", created.themeId, {
+      fonts: {
+        ...baseTheme.fonts,
+        title: { bold: false, size: 30 },
+      },
+    });
+    const updated = await data.themes.get("tenantId", created.themeId);
+    expect(updated!.fonts).toEqual({
+      ...baseTheme.fonts,
+      title: { bold: false, size: 30 },
+    });
   });
 });
