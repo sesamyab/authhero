@@ -65,7 +65,7 @@ import { createTenantOperationsAdapter } from "./tenantOperations";
 import { createTenantOperationRowsAdapter } from "./tenantOperationRows";
 import { createTenantOperationEventsAdapter } from "./tenantOperationEvents";
 import { createRolloutsAdapter } from "./rollouts";
-import { hasBatch } from "./atomic";
+import { hasBatch, isInTransaction } from "./atomic";
 import type { DrizzleDb } from "./types";
 
 export interface CreateAdaptersOptions {
@@ -165,6 +165,12 @@ export default function createAdapters(
       // same as useTransactions: false. Multi-statement writes inside the
       // individual adapters stay atomic via runAtomic's batch path.
       if (hasBatch(db)) {
+        return fn(adapters);
+      }
+      // A nested transaction() joins the enclosing one: SQLite can't start a
+      // transaction within a transaction, and the outer BEGIN/COMMIT already
+      // covers the callback.
+      if (isInTransaction(db)) {
         return fn(adapters);
       }
       // Sync drivers (better-sqlite3): manual BEGIN/COMMIT/ROLLBACK so we can

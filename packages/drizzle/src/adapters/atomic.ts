@@ -30,6 +30,22 @@ export function hasBatch(db: DrizzleDb): db is DrizzleDb & BatchCapableDb {
 }
 
 /**
+ * Whether a sync (better-sqlite3) connection already has an open transaction.
+ * Drizzle exposes the driver client as `$client`, and better-sqlite3 reports
+ * `inTransaction`. Drivers without that flag are treated as not in one.
+ */
+export function isInTransaction(db: DrizzleDb): boolean {
+  const candidate: unknown = db;
+  if (typeof candidate !== "object" || candidate === null) return false;
+  const client: unknown = (candidate as { $client?: unknown }).$client;
+  return (
+    typeof client === "object" &&
+    client !== null &&
+    (client as { inTransaction?: unknown }).inTransaction === true
+  );
+}
+
+/**
  * Apply a set of dependent write statements atomically across drivers.
  *
  * On D1 (async) this uses `db.batch()`, which D1 runs as one atomic unit, so a
@@ -41,6 +57,11 @@ export function hasBatch(db: DrizzleDb): db is DrizzleDb & BatchCapableDb {
  *
  * Returns the per-statement results in order (the batch response on D1; each
  * awaited builder's result on better-sqlite3).
+ *
+ * Inside an open transaction (for example the adapters' `transaction()`), the
+ * statements run in order without their own BEGIN/COMMIT: SQLite can't start a
+ * transaction within a transaction, and the enclosing one already makes them
+ * atomic.
  */
 export async function runAtomic(
   db: DrizzleDb,
@@ -48,6 +69,14 @@ export async function runAtomic(
 ): Promise<unknown[]> {
   if (hasBatch(db)) {
     return db.batch(statements);
+  }
+
+  if (isInTransaction(db)) {
+    const results: unknown[] = [];
+    for (const statement of statements) {
+      results.push(await statement);
+    }
+    return results;
   }
 
   await db.run(sql`BEGIN`);
