@@ -47,6 +47,56 @@ describe("universal login v2 does not depend on /u", () => {
     expect(client.headers.get("content-type")).toContain("javascript");
   });
 
+  it("gives the widget handler the host context variables on /widget/*", async () => {
+    const seen: unknown[] = [];
+    const routes = createWidgetAssetRoutes({
+      widgetHandler: (c) => {
+        seen.push(c.var.tenant_id);
+        return c.text("widget");
+      },
+    } as any);
+    const app = new Hono<{ Variables: { tenant_id: string } }>();
+    app.use("*", async (c, next) => {
+      c.set("tenant_id", "tenantId");
+      await next();
+    });
+    app.route("/", routes);
+
+    const res = await app.request("/widget/authhero-widget.esm.js");
+    expect(res.status).toBe(200);
+    expect(seen).toEqual(["tenantId"]);
+  });
+
+  it("sends the legacy CORS headers on /widget/*", async () => {
+    const routes = createWidgetAssetRoutes({
+      widgetHandler: (c) => c.text("widget"),
+    } as any);
+    const app = new Hono().route("/", routes);
+
+    const res = await app.request("/widget/authhero-widget.esm.js", {
+      headers: { Origin: "https://example.com" },
+    });
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+
+    const preflight = await app.request("/widget/authhero-widget.esm.js", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://example.com",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.headers.get("access-control-allow-methods")).toContain(
+      "GET",
+    );
+
+    const client = await app.request("/widget/client.js", {
+      headers: { Origin: "https://example.com" },
+    });
+    expect(client.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
   it("serves both widget URLs from a sub-app-only composition", async () => {
     const { universalApp, env } = await getTestServer();
     const host = new Hono()
