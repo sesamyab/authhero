@@ -20,6 +20,35 @@ const UNFLATTEN_PREFIXES = [
   "widget",
 ];
 
+// Font detail groups are stored as `fonts_<group>_bold` / `fonts_<group>_size`
+// columns. unflattenObject only splits one level, so without this step they
+// would come back as `fonts.body_text_bold` instead of `fonts.body_text.bold`.
+const FONT_DETAIL_KEYS = [
+  "body_text",
+  "buttons_text",
+  "input_labels",
+  "links",
+  "subtitle",
+  "title",
+] as const;
+
+function nestFontDetails(fonts: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = { ...fonts };
+  for (const key of FONT_DETAIL_KEYS) {
+    const bold = result[`${key}_bold`];
+    const size = result[`${key}_size`];
+    delete result[`${key}_bold`];
+    delete result[`${key}_size`];
+    if (bold === undefined && size === undefined) continue;
+    result[key] = {
+      // SQLite stores booleans as integers
+      bold: bold === null || bold === undefined ? bold : !!bold,
+      size,
+    };
+  }
+  return result;
+}
+
 function sqlToTheme(row: any): Theme {
   const { tenant_id: _, ...rest } = row;
   const unflattened = unflattenObject(rest, UNFLATTEN_PREFIXES);
@@ -30,12 +59,7 @@ function sqlToTheme(row: any): Theme {
       !!unflattened.borders.show_widget_shadow;
   }
   if (unflattened.fonts) {
-    unflattened.fonts.body_text_bold = !!unflattened.fonts.body_text_bold;
-    unflattened.fonts.buttons_text_bold = !!unflattened.fonts.buttons_text_bold;
-    unflattened.fonts.input_labels_bold = !!unflattened.fonts.input_labels_bold;
-    unflattened.fonts.links_bold = !!unflattened.fonts.links_bold;
-    unflattened.fonts.subtitle_bold = !!unflattened.fonts.subtitle_bold;
-    unflattened.fonts.title_bold = !!unflattened.fonts.title_bold;
+    unflattened.fonts = nestFontDetails(unflattened.fonts);
   }
 
   const theme = removeNullProperties(unflattened) as Theme;
