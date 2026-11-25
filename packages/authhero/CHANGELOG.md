@@ -1,5 +1,42 @@
 # authhero
 
+## 9.38.0
+
+### Minor Changes
+
+- 1e1340b: The branding preview endpoint (`POST /api/v2/branding/templates/universal-login/preview`) supports the `otp`, `mfa`, `consent` and `error` sample screens, and an explicit `branding.dark_mode` in the request now overrides the viewer's `ah-dark-mode` cookie. `/u/widget/*` is served with permissive CORS so the admin can load the widget from another origin.
+- d70e034: Add an Amazon Data Firehose log stream type. A `firehose` stream (`sink`: `aws_region`, `delivery_stream_name`, `aws_access_key_id`, `aws_secret_access_key`, optional `newline_delimited`) is configured per tenant in the admin UI or the management API, and receives each audit event as one record in the Auth0 log stream payload format, sent with SigV4-signed `PutRecordBatch` calls. The secret key is write-only: never returned by the API, kept when an update omits it, and redacted from the audit log. Invalid sinks are rejected with a `400`. Events over Firehose's 1,000 KiB record limit have their `details` truncated; an event still over the limit after that (because of oversized top-level fields such as `description` or `user_agent`) is logged as an error and skipped, so it is not delivered to the stream. `firehose` is an AuthHero extension, not an Auth0 log stream type.
+
+  `runOutboxRelay` now accepts `pipeline`, so events retried by the cron drain also reach the Pipelines archive. Previously, an event whose inline archive delivery failed was marked processed by the cron drain without being archived. Archive destinations are now built when the app is created, so an invalid `outbox.pipeline` config fails `init()` instead of failing requests after their writes committed.
+
+  `LogsDestination` now recognises duplicate log inserts with the shared `isUniqueViolation` helper, so outbox replays on Postgres (SQLSTATE 23505) and drizzle (whose wrapped "Failed query" errors the old message check missed) are treated as already delivered instead of failing every retry before later destinations run.
+
+- ee57a52: Make a log stream's `http_authorization` write-only, like the Firehose `aws_secret_access_key`. The management API no longer returns it (including Auth0's camelCase `httpAuthorization`) from list, get, create or update. A sink update that omits it or sends an empty string keeps the stored header, a new value replaces it, and `null` removes it. Stored credentials are only carried over when the stream keeps its type. API clients that read `sink.http_authorization` back will no longer see it.
+
+  In the admin UI, the Authorization header field is now a password field. When editing, leave it blank to keep the current header, or use **Remove the stored Authorization header** to clear it.
+
+- 2f19488: Optional dark-scheme overrides for themes (#1740, part of #1508). New AuthHero-only fields, all optional and ignored by Auth0-shaped clients: `colors_dark` (partial of `colors`), `widget.logo_url_dark`, `page_background.background_color_dark`, `page_background.background_image_url_dark`, and `branding.favicon_url_dark`. Existing payloads keep validating. The kysely adapter gets a migration (nullable columns on `themes`, `favicon_url_dark` on `branding`); drizzle ships `0022_theme_dark.sql`; DynamoDB stores `colors_dark` as JSON.
+
+  The universal login page now resolves dark values as: explicit dark field, then the derived dark palette, then the light value. The page background, logo and form-control `color-scheme` are chosen by server-rendered CSS (no flash); black provider icons (Apple, GitHub) are inverted in dark. The derived dark palette now keeps the tenant's brand link colour (lightened to stay readable) instead of falling back to a stock blue. When a theme sets `widget.logo_url`, the page's logo chip uses it ahead of `branding.logo_url`, as the widget already did.
+
+- e3a4d70: Universal login v2: prompt partials now render on more sign-in screens (passwordless email/SMS code, passwordless identifier, forgot/reset password, MFA authenticator-app and phone, MFA login options), stored under the prompt and Auth0 screen name (for example `reset-password` → `reset-password-request`). The passwordless code screens read Auth0's `login-passwordless` prompt (`login-passwordless-email-code`, `login-passwordless-sms-otp`), falling back to partials stored under those names as the prompt. Tenants that already stored partials there (previously accepted by the API but not rendered by /u2) will now see them on the code screens. The partials API accepts the new prompts `reset-password`, `mfa-otp`, `mfa-phone` and `mfa-login-options`. Screens without stored partials render exactly as before. `self-service-app` and `try-connection-result` are now covered by the custom-text screen map, and tests guard that every registered screen is mapped and that sign-in errors are localized.
+- 96d3b79: Separate terms and privacy links on the universal login page (#1735, part of #1508). A client's `client_metadata.tos_uri` and `policy_uri` (the DCR names) are now rendered as individual "Terms" and "Privacy Policy" links in the page chip and the phone footer. New optional `branding.terms_url` and `branding.privacy_url` act as tenant-wide defaults for clients that set neither. The existing `client_metadata.termsAndConditionsUrl` keeps working as the terms fallback, so existing tenants render exactly as before. The kysely adapter gets a migration (two nullable `branding` columns), drizzle ships `0025_branding_legal_links.sql`, DynamoDB stores the two strings. The admin gets "Terms of service URL" / "Privacy policy URL" fields on the client Details tab and a "Legal links" section on the Branding tab.
+
+  Legal links accept only http(s) URLs and paths, so a `data:` or other unusable value falls through to the next source, and they are HTML-escaped once (a query string such as `?a=1&b=2` used to be double-escaped in the old terms link).
+
+### Patch Changes
+
+- 3c1aae0: Trim leading and trailing whitespace from provider-issued credentials (connection, client, resource-server and migration-source secrets, Twilio tokens, email-provider keys and log-stream sink keys) when they are written through the management API, and when connection secrets are used for upstream token calls. User-chosen values such as SMTP passwords and action secrets are stored as sent. The admin secret inputs now warn when a value starts or ends with whitespace.
+- Updated dependencies [d70e034]
+- Updated dependencies [2f19488]
+- Updated dependencies [3c1aae0]
+- Updated dependencies [96d3b79]
+- Updated dependencies [7211c41]
+  - @authhero/adapter-interfaces@4.33.0
+  - @authhero/widget@0.42.0
+  - @authhero/proxy@0.11.20
+  - @authhero/saml@0.6.13
+
 ## 9.37.0
 
 ### Minor Changes

@@ -1,5 +1,27 @@
 # @authhero/drizzle
 
+## 1.24.0
+
+### Minor Changes
+
+- 2f19488: Optional dark-scheme overrides for themes (#1740, part of #1508). New AuthHero-only fields, all optional and ignored by Auth0-shaped clients: `colors_dark` (partial of `colors`), `widget.logo_url_dark`, `page_background.background_color_dark`, `page_background.background_image_url_dark`, and `branding.favicon_url_dark`. Existing payloads keep validating. The kysely adapter gets a migration (nullable columns on `themes`, `favicon_url_dark` on `branding`); drizzle ships `0022_theme_dark.sql`; DynamoDB stores `colors_dark` as JSON.
+
+  The universal login page now resolves dark values as: explicit dark field, then the derived dark palette, then the light value. The page background, logo and form-control `color-scheme` are chosen by server-rendered CSS (no flash); black provider icons (Apple, GitHub) are inverted in dark. The derived dark palette now keeps the tenant's brand link colour (lightened to stay readable) instead of falling back to a stock blue. When a theme sets `widget.logo_url`, the page's logo chip uses it ahead of `branding.logo_url`, as the widget already did.
+
+- 96d3b79: Separate terms and privacy links on the universal login page (#1735, part of #1508). A client's `client_metadata.tos_uri` and `policy_uri` (the DCR names) are now rendered as individual "Terms" and "Privacy Policy" links in the page chip and the phone footer. New optional `branding.terms_url` and `branding.privacy_url` act as tenant-wide defaults for clients that set neither. The existing `client_metadata.termsAndConditionsUrl` keeps working as the terms fallback, so existing tenants render exactly as before. The kysely adapter gets a migration (two nullable `branding` columns), drizzle ships `0025_branding_legal_links.sql`, DynamoDB stores the two strings. The admin gets "Terms of service URL" / "Privacy policy URL" fields on the client Details tab and a "Legal links" section on the Branding tab.
+
+  Legal links accept only http(s) URLs and paths, so a `data:` or other unusable value falls through to the next source, and they are HTML-escaped once (a query string such as `?a=1&b=2` used to be double-escaped in the old terms link).
+
+### Patch Changes
+
+- 31d2094: Return theme `fonts` in the nested Auth0 shape (`fonts.body_text.bold` instead of `fonts.body_text_bold`) from `themes.get`, so stored themes pass `themeSchema` validation (e.g. the branding preview endpoint).
+- Updated dependencies [d70e034]
+- Updated dependencies [2f19488]
+- Updated dependencies [3c1aae0]
+- Updated dependencies [96d3b79]
+  - @authhero/adapter-interfaces@4.33.0
+  - @authhero/proxy@0.11.20
+
 ## 1.23.0
 
 ### Minor Changes

@@ -1,5 +1,36 @@
 # @authhero/admin
 
+## 0.33.0
+
+### Minor Changes
+
+- ea41ccd: Branding editor: simple/advanced themes view (six core colours, the rest derived), a light/dark switch that edits the optional dark overrides (`colors_dark`, `widget.logo_url_dark`, `page_background.*_dark`) with a "Generate dark from light" action, WCAG contrast warnings, colour validation in `ColorInput`, a dark favicon field, and labels explaining that the theme wins over the Style tab. Clearing a field now actually saves (sent as an empty string, which also resets a dark override to derived).
+- 1e1340b: Branding preview now renders through the server's own preview endpoint instead of a client-side widget pinned to unpkg 0.41.6. It adds a light/dark toggle (`BrandingPreview` accepts `colorScheme` and `onColorSchemeChange` so the theme form can drive it), OTP, MFA, consent and error screens, and respects the stored template and background image. `WidgetPreview` (prompt partials) loads the widget from the connected server's `/u/widget` and sets data as element properties instead of `dangerouslySetInnerHTML`.
+- d70e034: Add an Amazon Data Firehose log stream type. A `firehose` stream (`sink`: `aws_region`, `delivery_stream_name`, `aws_access_key_id`, `aws_secret_access_key`, optional `newline_delimited`) is configured per tenant in the admin UI or the management API, and receives each audit event as one record in the Auth0 log stream payload format, sent with SigV4-signed `PutRecordBatch` calls. The secret key is write-only: never returned by the API, kept when an update omits it, and redacted from the audit log. Invalid sinks are rejected with a `400`. Events over Firehose's 1,000 KiB record limit have their `details` truncated; an event still over the limit after that (because of oversized top-level fields such as `description` or `user_agent`) is logged as an error and skipped, so it is not delivered to the stream. `firehose` is an AuthHero extension, not an Auth0 log stream type.
+
+  `runOutboxRelay` now accepts `pipeline`, so events retried by the cron drain also reach the Pipelines archive. Previously, an event whose inline archive delivery failed was marked processed by the cron drain without being archived. Archive destinations are now built when the app is created, so an invalid `outbox.pipeline` config fails `init()` instead of failing requests after their writes committed.
+
+  `LogsDestination` now recognises duplicate log inserts with the shared `isUniqueViolation` helper, so outbox replays on Postgres (SQLSTATE 23505) and drizzle (whose wrapped "Failed query" errors the old message check missed) are treated as already delivered instead of failing every retry before later destinations run.
+
+- ee57a52: Make a log stream's `http_authorization` write-only, like the Firehose `aws_secret_access_key`. The management API no longer returns it (including Auth0's camelCase `httpAuthorization`) from list, get, create or update. A sink update that omits it or sends an empty string keeps the stored header, a new value replaces it, and `null` removes it. Stored credentials are only carried over when the stream keeps its type. API clients that read `sink.http_authorization` back will no longer see it.
+
+  In the admin UI, the Authorization header field is now a password field. When editing, leave it blank to keep the current header, or use **Remove the stored Authorization header** to clear it.
+
+- 96d3b79: Separate terms and privacy links on the universal login page (#1735, part of #1508). A client's `client_metadata.tos_uri` and `policy_uri` (the DCR names) are now rendered as individual "Terms" and "Privacy Policy" links in the page chip and the phone footer. New optional `branding.terms_url` and `branding.privacy_url` act as tenant-wide defaults for clients that set neither. The existing `client_metadata.termsAndConditionsUrl` keeps working as the terms fallback, so existing tenants render exactly as before. The kysely adapter gets a migration (two nullable `branding` columns), drizzle ships `0025_branding_legal_links.sql`, DynamoDB stores the two strings. The admin gets "Terms of service URL" / "Privacy policy URL" fields on the client Details tab and a "Legal links" section on the Branding tab.
+
+  Legal links accept only http(s) URLs and paths, so a `data:` or other unusable value falls through to the next source, and they are HTML-escaped once (a query string such as `?a=1&b=2` used to be double-escaped in the old terms link).
+
+### Patch Changes
+
+- 44e953a: Fix text sitting low in buttons, inputs and other fixed-height boxes in the admin UI, the docs site and the website. Familjen Grotesk is now self-hosted with corrected vertical metrics instead of loaded from Google Fonts. In the admin, the checkboxes in the add-permissions and similar pickers now line up with their labels.
+- bb8bcac: Branding page polish: tabs share one content width and the tab strip wraps instead of clipping labels; below `lg` a "Show preview" toggle at the top stacks the live preview; the dark colour grid uses one column below `xl` and unset colour swatches render as a checkered "none" state instead of black; the Dark mode select shows "Auto (follow system)" when unset; the preview hints when the dark scheme reuses the light logo; in admin dark mode labels, headings, helper text and borders on the branding page have stronger contrast. App-wide, small: the top bar search collapses to an icon below `sm` (no horizontal page scroll at 375px) and the header breadcrumb no longer wraps.
+- 3c1aae0: Trim leading and trailing whitespace from provider-issued credentials (connection, client, resource-server and migration-source secrets, Twilio tokens, email-provider keys and log-stream sink keys) when they are written through the management API, and when connection secrets are used for upstream token calls. User-chosen values such as SMTP passwords and action secrets are stored as sent. The admin secret inputs now warn when a value starts or ends with whitespace.
+- Updated dependencies [d70e034]
+- Updated dependencies [2f19488]
+- Updated dependencies [3c1aae0]
+- Updated dependencies [96d3b79]
+  - @authhero/adapter-interfaces@4.33.0
+
 ## 0.32.0
 
 ### Minor Changes
