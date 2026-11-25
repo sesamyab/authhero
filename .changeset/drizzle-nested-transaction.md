@@ -8,6 +8,7 @@ On better-sqlite3, `transaction()` now hands its callback adapters bound to that
 
 - Multi-statement writes (`runAtomic`) and nested `transaction()` calls made through them join the open transaction. Each one runs in its own scope behind a SAVEPOINT, so a failed one is rolled back even if the callback catches the error.
 - Joined writes in the same scope run one at a time, so concurrent siblings (for example `Promise.all`) can't release or roll back each other's savepoints. Calls made inside a nested callback through its own adapters nest under it.
+- A transaction or savepoint only commits, releases or rolls back once every nested call started inside it has settled, so nested work that is still running can't continue outside it. Adapters of a transaction that has already finished refuse multi-statement writes and nested `transaction()` calls instead of running them on their own.
 - Any other caller on the shared connection waits for the open transaction to finish, instead of failing or writing into a transaction it doesn't own.
 - A write that waits more than 10 seconds fails with an error. That almost always means code inside a `transaction()` callback wrote through adapters other than that callback's own.
 

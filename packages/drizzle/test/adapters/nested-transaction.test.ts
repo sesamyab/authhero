@@ -340,3 +340,55 @@ describe("concurrent writes inside one transaction() on better-sqlite3", () => {
     expect(await data.users.get("tenant1", "auth2|after2")).toBeTruthy();
   });
 });
+
+describe("children that outlive a failing parent on better-sqlite3", () => {
+  let data: ReturnType<typeof getTestServer>["data"];
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+  beforeEach(async () => {
+    data = getTestServer().data;
+    await data.tenants.create({ id: "tenant1", name: "Test Tenant" } as any);
+  });
+
+  it("rolls back a slow nested write when a sibling fails the outer transaction", async () => {
+    let slowFinished = false;
+
+    await expect(
+      data.transaction((trx) =>
+        Promise.all([
+          trx.transaction(async () => {
+            throw new Error("fast sibling failed");
+          }),
+          trx.transaction(async (inner) => {
+            await settle();
+            await inner.users.create(
+              "tenant1",
+              userWithPassword("slow") as any,
+            );
+            slowFinished = true;
+          }),
+        ]),
+      ),
+    ).rejects.toThrow("fast sibling failed");
+
+    // transaction() only settled after the slow child, and rolled it back.
+    expect(slowFinished).toBe(true);
+    expect(await data.users.get("tenant1", "auth2|slow")).toBeNull();
+    expect(await data.passwords.get("tenant1", "auth2|slow")).toBeNull();
+  });
+
+  it("refuses writes through a transaction's adapters after it has finished", async () => {
+    let captured: typeof data | undefined;
+    await data.transaction(async (trx) => {
+      captured = trx;
+    });
+
+    await expect(
+      captured!.users.create("tenant1", userWithPassword("late") as any),
+    ).rejects.toBeTruthy();
+    await expect(captured!.transaction(async () => "late")).rejects.toThrow(
+      /already finished/,
+    );
+    expect(await data.users.get("tenant1", "auth2|late")).toBeNull();
+  });
+});

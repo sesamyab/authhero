@@ -72,6 +72,30 @@ export interface TransactionScope {
   readonly root: symbol;
   /** Settles when the children started in this scope so far have finished. */
   childTail: Promise<void>;
+  /** Child scopes started in this scope that have not settled yet. */
+  readonly children: Set<Promise<unknown>>;
+  /** Set once the scope has committed, released or rolled back. */
+  closed: boolean;
+}
+
+function newScope(root: symbol): TransactionScope {
+  return {
+    root,
+    childTail: Promise.resolve(),
+    children: new Set(),
+    closed: false,
+  };
+}
+
+/**
+ * Wait until every child started in `scope` has settled, including children
+ * started while waiting. A scope must not commit, release or roll back before
+ * this, or a child that is still running would continue outside it.
+ */
+export async function settleChildren(scope: TransactionScope): Promise<void> {
+  while (scope.children.size > 0) {
+    await Promise.allSettled([...scope.children]);
+  }
 }
 
 interface ConnectionState {
@@ -115,7 +139,27 @@ function scopeOf(db: DrizzleDb): TransactionScope | undefined {
  */
 export function ownsOpenTransaction(db: DrizzleDb): boolean {
   const scope = scopeOf(db);
-  return scope !== undefined && stateFor(db).owner === scope.root;
+  return (
+    scope !== undefined && !scope.closed && stateFor(db).owner === scope.root
+  );
+}
+
+/** Whether `db` was handed to a transaction() callback, open or not. */
+export function isBoundToTransaction(db: DrizzleDb): boolean {
+  return scopeOf(db) !== undefined;
+}
+
+/**
+ * Throw if `db` belongs to a transaction that has already finished. Writes
+ * through such adapters must fail rather than run on their own, outside the
+ * transaction they were meant for.
+ */
+export function assertTransactionOpen(db: DrizzleDb): void {
+  if (isBoundToTransaction(db) && !ownsOpenTransaction(db)) {
+    throw new Error(
+      "This transaction has already finished. Writes through the adapters passed to a transaction() callback must complete before the callback returns.",
+    );
+  }
 }
 
 /**
@@ -185,14 +229,14 @@ export async function runExclusive<T>(
 ): Promise<T> {
   const state = stateFor(db);
   const release = await takeTurn(state);
-  const scope: TransactionScope = {
-    root: Symbol("transaction"),
-    childTail: Promise.resolve(),
-  };
+  const scope = newScope(Symbol("transaction"));
   state.owner = scope.root;
   try {
     return await work(scope);
   } finally {
+    // work() settles children before it commits or rolls back; closing here
+    // too covers a work() that throws before it gets that far.
+    scope.closed = true;
     state.owner = null;
     release();
   }
@@ -208,28 +252,46 @@ let savepointCounter = 0;
  * into the enclosing scope. `work` gets a view of `db` bound to the child
  * scope, so calls it makes through that view nest under the child.
  */
-export async function runInChildScope<T>(
+export function runInChildScope<T>(
   db: DrizzleDb,
   work: (childDb: DrizzleDb) => Promise<T>,
 ): Promise<T> {
   const parent = scopeOf(db);
   if (!parent) {
-    throw new Error("runInChildScope needs a db bound to a transaction scope");
+    return Promise.reject(
+      new Error("runInChildScope needs a db bound to a transaction scope"),
+    );
   }
-  const release = await takeTurn(parent);
-  const child: TransactionScope = {
-    root: parent.root,
-    childTail: Promise.resolve(),
+  // Register the child with its parent from the moment it starts, including
+  // while it waits for its turn, so the parent can't close before it settles.
+  const running = runChild(db, parent, work);
+  parent.children.add(running);
+  const forget = () => {
+    parent.children.delete(running);
   };
-  // An internal counter, never user input, so a raw identifier is safe.
-  const name = sql.raw(`authhero_sp_${++savepointCounter}`);
+  running.then(forget, forget);
+  return running;
+}
+
+async function runChild<T>(
+  db: DrizzleDb,
+  parent: TransactionScope,
+  work: (childDb: DrizzleDb) => Promise<T>,
+): Promise<T> {
+  const release = await takeTurn(parent);
   try {
+    // The parent may have closed while this child waited for its turn.
+    assertTransactionOpen(db);
+    const child = newScope(parent.root);
+    // An internal counter, never user input, so a raw identifier is safe.
+    const name = sql.raw(`authhero_sp_${++savepointCounter}`);
     await db.run(sql`SAVEPOINT ${name}`);
+    let result: T;
     try {
-      const result = await work(bindToScope(db, child));
-      await db.run(sql`RELEASE ${name}`);
-      return result;
+      result = await work(bindToScope(db, child));
     } catch (error) {
+      await settleChildren(child);
+      child.closed = true;
       try {
         await db.run(sql`ROLLBACK TO ${name}`);
         await db.run(sql`RELEASE ${name}`);
@@ -238,6 +300,10 @@ export async function runInChildScope<T>(
       }
       throw error;
     }
+    await settleChildren(child);
+    child.closed = true;
+    await db.run(sql`RELEASE ${name}`);
+    return result;
   } finally {
     release();
   }
@@ -277,7 +343,10 @@ export async function runAtomic(
     return db.batch(statements);
   }
 
-  if (ownsOpenTransaction(db)) {
+  // Adapters handed to a transaction() callback write inside that transaction,
+  // never on their own, even after it has finished.
+  if (isBoundToTransaction(db)) {
+    assertTransactionOpen(db);
     return runInChildScope(db, () => runInOrder(statements));
   }
 

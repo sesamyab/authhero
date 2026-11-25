@@ -66,11 +66,13 @@ import { createTenantOperationRowsAdapter } from "./tenantOperationRows";
 import { createTenantOperationEventsAdapter } from "./tenantOperationEvents";
 import { createRolloutsAdapter } from "./rollouts";
 import {
+  assertTransactionOpen,
   bindToScope,
   hasBatch,
-  ownsOpenTransaction,
+  isBoundToTransaction,
   runExclusive,
   runInChildScope,
+  settleChildren,
 } from "./atomic";
 import type { DrizzleDb } from "./types";
 
@@ -178,7 +180,10 @@ export default function createAdapters(
       // runs as a child scope behind a SAVEPOINT, so it is all-or-nothing and
       // can't overlap a sibling's savepoint. Its callback gets adapters bound
       // to the child scope, so calls made through them nest under it.
-      if (ownsOpenTransaction(db)) {
+      // Adapters of a transaction that has already finished must not start a
+      // new, unrelated transaction on their own.
+      if (isBoundToTransaction(db)) {
+        assertTransactionOpen(db);
         return runInChildScope(db, (childDb) =>
           fn(createAdapters(childDb, databaseOptions)),
         );
@@ -196,14 +201,27 @@ export default function createAdapters(
           databaseOptions,
         );
         await db.run(sql`BEGIN`);
+        let result: T;
         try {
-          const result = await fn(trxAdapters);
+          result = await fn(trxAdapters);
+        } catch (e) {
+          // Nested work the callback started but didn't await is still
+          // running; let it finish inside the transaction before rolling it
+          // all back, so none of it can continue on its own afterwards.
+          await settleChildren(scope);
+          scope.closed = true;
+          await db.run(sql`ROLLBACK`);
+          throw e;
+        }
+        await settleChildren(scope);
+        scope.closed = true;
+        try {
           await db.run(sql`COMMIT`);
-          return result;
         } catch (e) {
           await db.run(sql`ROLLBACK`);
           throw e;
         }
+        return result;
       });
     },
   } as unknown as DataAdapters;
