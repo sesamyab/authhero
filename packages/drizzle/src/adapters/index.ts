@@ -65,7 +65,12 @@ import { createTenantOperationsAdapter } from "./tenantOperations";
 import { createTenantOperationRowsAdapter } from "./tenantOperationRows";
 import { createTenantOperationEventsAdapter } from "./tenantOperationEvents";
 import { createRolloutsAdapter } from "./rollouts";
-import { hasBatch, isInTransaction } from "./atomic";
+import {
+  bindToTransaction,
+  hasBatch,
+  ownsOpenTransaction,
+  runExclusive,
+} from "./atomic";
 import type { DrizzleDb } from "./types";
 
 export interface CreateAdaptersOptions {
@@ -167,25 +172,34 @@ export default function createAdapters(
       if (hasBatch(db)) {
         return fn(adapters);
       }
-      // A nested transaction() joins the enclosing one: SQLite can't start a
-      // transaction within a transaction, and the outer BEGIN/COMMIT already
-      // covers the callback.
-      if (isInTransaction(db)) {
+      // A transaction() called through the adapters of the open transaction
+      // joins it: SQLite can't start a transaction within a transaction, and
+      // the outer BEGIN/COMMIT already covers the callback.
+      if (ownsOpenTransaction(db)) {
         return fn(adapters);
       }
       // Sync drivers (better-sqlite3): manual BEGIN/COMMIT/ROLLBACK so we can
       // properly await the async callback before deciding whether to commit
       // or roll back. Drizzle's built-in db.transaction() runs the callback
       // synchronously there, which means async throws don't trigger rollback.
-      await db.run(sql`BEGIN`);
-      try {
-        const result = await fn(adapters);
-        await db.run(sql`COMMIT`);
-        return result;
-      } catch (e) {
-        await db.run(sql`ROLLBACK`);
-        throw e;
-      }
+      // The connection is shared, so wait for any other open transaction
+      // first, and give the callback adapters bound to this transaction so
+      // only its own work can join it.
+      return runExclusive(db, async (token) => {
+        const trxAdapters = createAdapters(
+          bindToTransaction(db, token),
+          databaseOptions,
+        );
+        await db.run(sql`BEGIN`);
+        try {
+          const result = await fn(trxAdapters);
+          await db.run(sql`COMMIT`);
+          return result;
+        } catch (e) {
+          await db.run(sql`ROLLBACK`);
+          throw e;
+        }
+      });
     },
   } as unknown as DataAdapters;
   return adapters;
