@@ -32,12 +32,13 @@ import type {
 } from "@authhero/adapter-interfaces";
 import { LogTypes, escapeLuceneValue } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenDefinition, ScreenResult } from "./types";
-import { getLoginPath } from "./types";
-import { resolveAccountUser } from "./account-helpers";
+import {
+  getContinuationReturnUrl,
+  resolveAccountUserOrContinuation,
+} from "./account-helpers";
 import { createTranslation } from "../../../i18n";
 import { escapeHtml } from "../sanitization-utils";
 import { RedirectException } from "../../../errors/redirect-exception";
-import { hasValidContinuationScope } from "../../../authentication-flows/common";
 import { updateLoginSessionData } from "../../../state-machines/login-session-data";
 import {
   LoginSessionEventType,
@@ -50,6 +51,8 @@ import generateOTP from "../../../utils/otp";
 import { isValidEmail, normalizeEmail } from "../../../utils/email";
 
 const CONTINUATION_SCOPE = "change-email";
+// The account hub links here, so its mid-login scope also authorizes this page.
+const CONTINUATION_SCOPES = [CONTINUATION_SCOPE, "account"] as const;
 const CHANGE_EMAIL_PURPOSE = "change_email";
 
 type PostResult = Awaited<
@@ -114,78 +117,49 @@ function getLanguage(uiLocales?: string) {
   return uiLocales?.split(" ")?.map((locale) => locale.split("-")[0])[0];
 }
 
-async function getLoginSession(
-  context: ScreenContext,
-): Promise<LoginSession | undefined> {
-  const { ctx, tenant, state } = context;
-  const loginSession = await ctx.env.data.loginSessions.get(tenant.id, state);
-  return loginSession ?? undefined;
-}
-
 /**
  * The user whose email is being changed. Mid-login (a form hook sent the user
- * here) the login session's continuation scope authorizes the page and names
- * the user; otherwise a signed-in session cookie is required.
+ * here, or to the account hub which links here) the login session's
+ * continuation scope authorizes the page and names the user; otherwise a
+ * signed-in session cookie is required.
+ *
+ * `continuationScope` is `change-email` when the hook targeted this page and
+ * `account` when the user came from the account hub mid-login.
  */
 export async function resolveChangeEmailUser(context: ScreenContext): Promise<{
   user: User;
   session: Session | null;
   loginSession: LoginSession;
   isContinuation: boolean;
+  continuationScope?: string;
 }> {
-  const { ctx, tenant, state } = context;
-  const loginSession = await getLoginSession(context);
-  if (!loginSession) {
-    throw new RedirectException(
-      `${await getLoginPath(context)}?state=${encodeURIComponent(state)}`,
-    );
-  }
-
-  if (hasValidContinuationScope(loginSession, CONTINUATION_SCOPE)) {
-    const user = loginSession.user_id
-      ? await ctx.env.data.users.get(tenant.id, loginSession.user_id)
-      : null;
-    if (!user) {
-      throw new RedirectException(
-        `${await getLoginPath(context)}?state=${encodeURIComponent(state)}`,
-      );
-    }
-    ctx.set("sessionAuth", {
-      strategy: "session",
-      user: {
-        user_id: user.user_id,
-        ...(user.name ? { name: user.name } : {}),
-        ...(user.email ? { email: user.email } : {}),
-      },
-    });
-    const session = loginSession.session_id
-      ? await ctx.env.data.sessions.get(tenant.id, loginSession.session_id)
-      : null;
-    return { user, session, loginSession, isContinuation: true };
-  }
-
-  const { user, session } = await resolveAccountUser(context);
-  return { user, session, loginSession, isContinuation: false };
+  const result = await resolveAccountUserOrContinuation(
+    context,
+    CONTINUATION_SCOPES,
+  );
+  return { ...result, isContinuation: !!result.continuationScope };
 }
 
 /**
  * Where the user goes once the email is changed: back into the login flow
- * when a form hook sent them here, to the application when it asked for
- * `screen_hint=change-email`, and to the account page otherwise.
+ * when a form hook sent them here, back to the account hub when they came
+ * from it (mid-login the hub then offers to continue the login), to the
+ * application when it asked for `screen_hint=change-email`, and to the
+ * account page otherwise.
  */
 function getContinueUrl(
   context: ScreenContext,
   loginSession: LoginSession,
-  isContinuation: boolean,
+  continuationScope: string | undefined,
 ): string {
   const { routePrefix = "/u2", state } = context;
   const accountUrl = `${routePrefix}/account?state=${encodeURIComponent(state)}`;
 
-  if (isContinuation) {
-    return (
-      readLoginSessionData(loginSession.state_data).continuationReturnUrl ||
-      accountUrl
-    );
+  if (continuationScope === CONTINUATION_SCOPE) {
+    return getContinuationReturnUrl(loginSession) || accountUrl;
+  }
+  if (continuationScope) {
+    return accountUrl;
   }
 
   if (loginSession.authorization_url) {
@@ -226,7 +200,7 @@ export async function accountChangeEmailScreen(
     prefill,
     routePrefix = "/u2",
   } = context;
-  const { user, isContinuation } = await resolveChangeEmailUser(context);
+  const { user, continuationScope } = await resolveChangeEmailUser(context);
   const { m } = createTranslation(
     "common",
     "account-change-email",
@@ -283,10 +257,12 @@ export async function accountChangeEmailScreen(
     description: m.description(),
     components,
     messages,
-    // Mid-login there is no account page to go back to.
-    links: isContinuation
-      ? undefined
-      : [accountLink(context, m.backToAccountText())],
+    // When a form hook sent the user straight here there is no account page
+    // to go back to; from the account hub (mid-login or not) there is.
+    links:
+      continuationScope === CONTINUATION_SCOPE
+        ? undefined
+        : [accountLink(context, m.backToAccountText())],
   };
 
   return { screen, branding };
@@ -487,7 +463,7 @@ async function handleChangeEmailVerifySubmit(
   data: Record<string, unknown>,
 ): Promise<PostResult> {
   const { ctx, tenant } = context;
-  const { user, loginSession, isContinuation } =
+  const { user, loginSession, continuationScope } =
     await resolveChangeEmailUser(context);
   const m = verifyTranslation(context);
 
@@ -626,7 +602,7 @@ async function handleChangeEmailVerifySubmit(
     screen: changeEmailDoneScreen(
       context,
       email,
-      getContinueUrl(context, loginSession, isContinuation),
+      getContinueUrl(context, loginSession, continuationScope),
     ),
   };
 }

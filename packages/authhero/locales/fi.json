@@ -42,7 +42,9 @@
       "linkedAccountsCount": "${count} linkitettyä tiliä",
       "deleteAccountLabel": "Poista tili",
       "deleteAccountDetail": "Poista tilisi ja tietosi pysyvästi",
-      "logoutText": "Kirjaudu ulos"
+      "logoutText": "Kirjaudu ulos",
+      "changeEmailLabel": "Vaihda sähköpostiosoite",
+      "continueText": "Jatka"
     },
     "account-profile": {
       "title": "Muokkaa profiilia",
