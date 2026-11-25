@@ -1,0 +1,5 @@
+---
+"authhero": minor
+---
+
+Universal login v2: prompt partials now render on more sign-in screens (passwordless email/SMS code, passwordless identifier, forgot/reset password, MFA authenticator-app and phone, MFA login options), stored under the prompt and Auth0 screen name (for example `reset-password` → `reset-password-request`). The passwordless code screens read Auth0's `login-passwordless` prompt (`login-passwordless-email-code`, `login-passwordless-sms-otp`), falling back to partials stored under those names as the prompt. Tenants that already stored partials there (previously accepted by the API but not rendered by /u2) will now see them on the code screens. The partials API accepts the new prompts `reset-password`, `mfa-otp`, `mfa-phone` and `mfa-login-options`. Screens without stored partials render exactly as before. `self-service-app` and `try-connection-result` are now covered by the custom-text screen map, and tests guard that every registered screen is mapped and that sign-in errors are localized.
