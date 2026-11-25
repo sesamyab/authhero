@@ -103,6 +103,43 @@ describe("prompt partials on the sign-in form screens", () => {
     expect(body.screen.partials).toBeUndefined();
   });
 
+  it("attaches the code screen's partials after a real identifier POST", async () => {
+    const { u2App, env } = await getTestServer({ mockEmail: true });
+    await env.data.connections.update("tenantId", "email", {
+      options: { authentication_method: "code" },
+    });
+    await env.data.promptPartials?.set("tenantId", "login-passwordless", {
+      "login-passwordless-email-code": { "form-content-end": TERMS },
+    });
+    const session = await env.data.loginSessions.create("tenantId", {
+      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+      csrf_token: "csrf",
+      authParams: {
+        client_id: "clientId",
+        redirect_uri: "https://example.com/callback",
+      },
+    });
+    const response = await u2App.request(
+      `/screen/identifier?state=${encodeURIComponent(session.id)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "tenantId",
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ data: { username: "new-user@example.com" } }),
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      screen: { name: string; partials?: Record<string, string> };
+    };
+    expect(body.screen.name).toBe("email-otp-challenge");
+    expect(body.screen.partials).toEqual({ "form-content-end": TERMS });
+  });
+
   it("does not leak partials between screens of the same prompt", async () => {
     const body = await getScreen("forgot-password", {
       "reset-password": {
