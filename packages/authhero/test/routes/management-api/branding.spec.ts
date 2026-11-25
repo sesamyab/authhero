@@ -374,7 +374,7 @@ describe("branding", () => {
       // The tenant's own document wrapper is preserved (not nested in the shell).
       expect(html).toContain('class="my-doc"');
       // auth0:head injected the functional essentials (the widget script).
-      expect(html).toContain("/u/widget/authhero-widget.esm.js");
+      expect(html).toContain('src="/widget/authhero-widget.esm.js');
       expect(html).toContain("data-authhero-widget-container");
     });
   });

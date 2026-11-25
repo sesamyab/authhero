@@ -557,7 +557,7 @@ export async function sendCode(
       templateName: "verify_email_by_code",
       legacyTemplate: "auth-code",
       fallbackSubject: t("code_email_subject", options),
-      fallbackHtml: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env)}validate-email`,
+      fallbackHtml: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env, undefined, "u")}validate-email`,
       tenant,
       branding: { logo, primary_color: buttonColor },
       code,
@@ -944,7 +944,7 @@ export async function sendSignupValidateEmailAddress(
     lng: language || "en",
   };
 
-  const signupUrl = `${getUniversalLoginUrl(ctx.env)}signup?state=${state}&code=${code}`;
+  const signupUrl = `${getUniversalLoginUrl(ctx.env, undefined, "u")}signup?state=${state}&code=${code}`;
 
   const data: Record<string, string> = {
     tenantId: tenant.id,

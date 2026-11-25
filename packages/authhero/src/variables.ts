@@ -10,10 +10,10 @@ export function getIssuer(env: Bindings, customDomain?: string) {
 export function getUniversalLoginUrl(
   env: Bindings,
   customDomain?: string,
-  routePrefix: string = "u",
+  routePrefix: string = "u2",
 ) {
   // Accept "/u2", "u2/" etc. and normalize to a bare path segment.
-  const prefix = routePrefix.replace(/^\/+|\/+$/g, "") || "u";
+  const prefix = routePrefix.replace(/^\/+|\/+$/g, "") || "u2";
   if (customDomain) {
     return `https://${customDomain}/${prefix}/`;
   }
@@ -37,7 +37,8 @@ export function getUniversalLoginUrl(
 export function getSelfCallbackWildcards(env: Bindings, customDomain?: string) {
   return [
     getIssuer(env, customDomain),
-    getUniversalLoginUrl(env, customDomain),
+    getUniversalLoginUrl(env, customDomain, "u"),
+    getUniversalLoginUrl(env, customDomain, "u2"),
   ].map((base) => `${base}${base.endsWith("/") ? "" : "/"}*`);
 }
 

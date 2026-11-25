@@ -1044,6 +1044,10 @@ export default function createApp(config: AppConfig) {
   // Initialize multi-tenant AuthHero
   const { app } = initMultiTenant({
     ...config,
+    widgetHandler: config.widgetHandler ?? ((ctx) =>
+      ctx.redirect(
+        \`\${config.widgetUrl}/widget/\${ctx.req.path.replace("/u/widget/", "")}\`,
+      )),
     controlPlane: {
       tenantId: CONTROL_PLANE_TENANT_ID,
       clientId: CONTROL_PLANE_CLIENT_ID,
@@ -1094,7 +1098,13 @@ interface AppConfig extends AuthHeroConfig {
 }
 
 export default function createApp(config: AppConfig) {
-  const { app } = init(config);
+  const { app } = init({
+    ...config,
+    widgetHandler: config.widgetHandler ?? ((ctx) =>
+      ctx.redirect(
+        \`\${config.widgetUrl}/widget/\${ctx.req.path.replace("/u/widget/", "")}\`,
+      )),
+  });
 
   // Enable CORS for all origins in development
   app.use("*", cors({

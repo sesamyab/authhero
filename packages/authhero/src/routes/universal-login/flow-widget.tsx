@@ -109,7 +109,7 @@ const getFormId = defineRoute({
       margin-bottom: 16px;
     }
   </style>
-  <script type="module" src="/u/widget/authhero-widget.esm.js?v=${buildHash}"></script>
+  <script type="module" src="/widget/authhero-widget.esm.js?v=${buildHash}"></script>
 </head>
 <body>
   <authhero-widget id="widget">
