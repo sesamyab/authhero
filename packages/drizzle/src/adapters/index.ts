@@ -66,11 +66,11 @@ import { createTenantOperationRowsAdapter } from "./tenantOperationRows";
 import { createTenantOperationEventsAdapter } from "./tenantOperationEvents";
 import { createRolloutsAdapter } from "./rollouts";
 import {
-  bindToTransaction,
+  bindToScope,
   hasBatch,
   ownsOpenTransaction,
   runExclusive,
-  runInSavepoint,
+  runInChildScope,
 } from "./atomic";
 import type { DrizzleDb } from "./types";
 
@@ -174,22 +174,25 @@ export default function createAdapters(
         return fn(adapters);
       }
       // A transaction() called through the adapters of the open transaction
-      // joins it: SQLite can't start a transaction within a transaction. A
-      // SAVEPOINT keeps it all-or-nothing, so if its callback fails and the
-      // outer callback catches the error, none of its writes are committed.
+      // joins it: SQLite can't start a transaction within a transaction. It
+      // runs as a child scope behind a SAVEPOINT, so it is all-or-nothing and
+      // can't overlap a sibling's savepoint. Its callback gets adapters bound
+      // to the child scope, so calls made through them nest under it.
       if (ownsOpenTransaction(db)) {
-        return runInSavepoint(db, () => fn(adapters));
+        return runInChildScope(db, (childDb) =>
+          fn(createAdapters(childDb, databaseOptions)),
+        );
       }
       // Sync drivers (better-sqlite3): manual BEGIN/COMMIT/ROLLBACK so we can
       // properly await the async callback before deciding whether to commit
       // or roll back. Drizzle's built-in db.transaction() runs the callback
       // synchronously there, which means async throws don't trigger rollback.
       // The connection is shared, so wait for any other open transaction
-      // first, and give the callback adapters bound to this transaction so
-      // only its own work can join it.
-      return runExclusive(db, async (token) => {
+      // first, and give the callback adapters bound to this transaction's
+      // root scope so only its own work can join it.
+      return runExclusive(db, async (scope) => {
         const trxAdapters = createAdapters(
-          bindToTransaction(db, token),
+          bindToScope(db, scope),
           databaseOptions,
         );
         await db.run(sql`BEGIN`);

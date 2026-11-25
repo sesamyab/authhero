@@ -236,3 +236,107 @@ describe("concurrent callers on one better-sqlite3 connection", () => {
     expect(await data.users.get("tenant1", "auth2|after")).toBeTruthy();
   });
 });
+
+describe("concurrent writes inside one transaction() on better-sqlite3", () => {
+  let data: ReturnType<typeof getTestServer>["data"];
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+  beforeEach(async () => {
+    data = getTestServer().data;
+    await data.tenants.create({ id: "tenant1", name: "Test Tenant" } as any);
+  });
+
+  afterEach(() => {
+    transactionLockSettings.timeoutMs = 10_000;
+  });
+
+  it("rolls back a failed sibling that overlaps a successful one", async () => {
+    await data.transaction(async (trx) => {
+      const [ok, failed] = await Promise.allSettled([
+        // Multi-statement write (runAtomic) that succeeds.
+        trx.users.create("tenant1", userWithPassword("sibling-ok") as any),
+        // Nested transaction that writes, outlives the first, then fails.
+        trx.transaction(async (inner) => {
+          await inner.users.create(
+            "tenant1",
+            userWithPassword("sibling-failed") as any,
+          );
+          await settle();
+          throw new Error("sibling failed");
+        }),
+      ]);
+      expect(ok.status).toBe("fulfilled");
+      expect(failed.status).toBe("rejected");
+      // The callback carries on and the transaction commits.
+    });
+
+    expect(await data.users.get("tenant1", "auth2|sibling-ok")).toBeTruthy();
+    expect(await data.users.get("tenant1", "auth2|sibling-failed")).toBeNull();
+    expect(
+      await data.passwords.get("tenant1", "auth2|sibling-failed"),
+    ).toBeNull();
+  });
+
+  it("commits overlapping siblings that both succeed without savepoint errors", async () => {
+    await data.transaction((trx) =>
+      Promise.all([
+        trx.transaction(async (inner) => {
+          await inner.users.create("tenant1", userWithPassword("s1") as any);
+          await settle();
+        }),
+        trx.transaction(async (inner) => {
+          await inner.users.create("tenant1", userWithPassword("s2") as any);
+          await settle();
+        }),
+        trx.users.create("tenant1", userWithPassword("s3") as any),
+      ]),
+    );
+
+    for (const id of ["s1", "s2", "s3"]) {
+      expect(await data.passwords.get("tenant1", `auth2|${id}`)).toBeTruthy();
+    }
+  });
+
+  it("nests calls made inside a nested transaction() under it", async () => {
+    await data.transaction((outer) =>
+      outer.transaction(async (inner) => {
+        await inner.users.create("tenant1", userWithPassword("level1") as any);
+        // A deeper failure that the middle level catches.
+        await expect(
+          inner.transaction(async (deepest) => {
+            await deepest.users.create(
+              "tenant1",
+              userWithPassword("level2") as any,
+            );
+            throw new Error("deepest failed");
+          }),
+        ).rejects.toThrow("deepest failed");
+      }),
+    );
+
+    expect(await data.users.get("tenant1", "auth2|level1")).toBeTruthy();
+    expect(await data.users.get("tenant1", "auth2|level2")).toBeNull();
+  });
+
+  it("fails clearly when a nested callback writes through the outer adapters", async () => {
+    transactionLockSettings.timeoutMs = 50;
+
+    await expect(
+      data.transaction((outer) =>
+        outer.transaction(async () => {
+          // Wrong: the outer callback's adapters inside the nested one.
+          await outer.users.create(
+            "tenant1",
+            userWithPassword("wrong-level") as any,
+          );
+        }),
+      ),
+      // users.create wraps the lock timeout in its own 500 error.
+    ).rejects.toThrow();
+    expect(await data.users.get("tenant1", "auth2|wrong-level")).toBeNull();
+
+    // The connection is usable again afterwards.
+    await data.users.create("tenant1", userWithPassword("after2") as any);
+    expect(await data.users.get("tenant1", "auth2|after2")).toBeTruthy();
+  });
+});

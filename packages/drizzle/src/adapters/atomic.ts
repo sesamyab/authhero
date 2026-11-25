@@ -30,36 +30,49 @@ export function hasBatch(db: DrizzleDb): db is DrizzleDb & BatchCapableDb {
 }
 
 // ---------------------------------------------------------------------------
-// Transaction ownership and queueing for sync drivers (better-sqlite3).
+// Transaction scopes for sync drivers (better-sqlite3).
 //
 // better-sqlite3 has a single connection that every request shares, and
 // SQLite can't start a transaction within a transaction. Interactive
-// BEGIN/COMMIT around an async callback therefore needs two guarantees:
+// BEGIN/COMMIT around async callbacks therefore needs these guarantees:
 //
-// - Only work that belongs to the open transaction may join it. The adapters'
-//   transaction() hands its callback adapters bound to a token for that
-//   transaction (see bindToTransaction); runAtomic and nested transaction()
-//   calls made through those adapters run inside it.
-// - Everything else waits. Another request's transaction() or runAtomic queues
-//   until the open transaction commits or rolls back, instead of failing on
-//   BEGIN or silently writing into a transaction it doesn't own (and losing
-//   its rows on that transaction's ROLLBACK).
+// - Only work that belongs to the open transaction may join it. transaction()
+//   hands its callback adapters bound to a scope (see bindToScope).
+//   runAtomic and nested transaction() calls made through them join the open
+//   transaction; everything else on the connection waits for it to finish.
+// - Joined work is all-or-nothing. Each joined runAtomic or nested
+//   transaction() runs in its own child scope behind a SAVEPOINT and rolls
+//   back to it on failure, so a caller that catches the error and carries on
+//   can't commit half of it.
+// - Savepoints never overlap. Children of the same scope run one at a time, so
+//   siblings started concurrently (Promise.all) can't release or roll back each
+//   other's savepoints. Work inside a child uses the child's adapters and nests
+//   under it instead of waiting behind it.
 //
 // D1 never reaches this: it uses db.batch() and runs transaction() callbacks
-// directly. Single-statement writes made outside the adapters' transaction
-// helpers still run on the shared connection and are not queued.
+// directly. Single-statement writes are not queued: made outside the
+// transaction helpers they run directly on the shared connection, and inside
+// a callback they run in whichever savepoint is open at that moment.
 // ---------------------------------------------------------------------------
 
-const TRANSACTION_TOKEN = Symbol("authhero.drizzle.transactionToken");
+const SCOPE = Symbol("authhero.drizzle.transactionScope");
 const CONNECTION = Symbol("authhero.drizzle.connection");
 
 /**
- * How long a write waits for another transaction on the same connection
+ * How long a write waits for its turn on the connection or in its scope
  * before giving up. A wait this long almost always means code inside a
- * transaction() callback wrote through adapters that are not the callback's
- * own, which would otherwise wait for itself forever.
+ * transaction() callback wrote through adapters other than that callback's
+ * own (for example an outer callback's), which would wait for itself forever.
  */
 export const transactionLockSettings = { timeoutMs: 10_000 };
+
+/** A level of an open transaction: the transaction itself or a savepoint. */
+export interface TransactionScope {
+  /** Token of the outermost transaction the scope belongs to. */
+  readonly root: symbol;
+  /** Settles when the children started in this scope so far have finished. */
+  childTail: Promise<void>;
+}
 
 interface ConnectionState {
   /** Token of the transaction that currently holds the connection. */
@@ -91,47 +104,50 @@ function stateFor(db: DrizzleDb): ConnectionState {
   return state;
 }
 
-/**
- * Whether `db` belongs to the transaction that currently holds its
- * connection, i.e. it was handed to that transaction's callback.
- */
-export function ownsOpenTransaction(db: DrizzleDb): boolean {
-  const token = (db as unknown as { [TRANSACTION_TOKEN]?: symbol })[
-    TRANSACTION_TOKEN
-  ];
-  return token !== undefined && stateFor(db).owner === token;
+function scopeOf(db: DrizzleDb): TransactionScope | undefined {
+  return (db as unknown as { [SCOPE]?: TransactionScope })[SCOPE];
 }
 
 /**
- * A view of `db` bound to the transaction `token`. Queries run on the same
- * connection; the token only lets runAtomic and transaction() recognise work
- * that belongs to the open transaction.
+ * Whether `db` belongs to the transaction that currently holds its
+ * connection, i.e. it was handed to that transaction's callback (or to a
+ * nested callback inside it).
  */
-export function bindToTransaction<T extends DrizzleDb>(
+export function ownsOpenTransaction(db: DrizzleDb): boolean {
+  const scope = scopeOf(db);
+  return scope !== undefined && stateFor(db).owner === scope.root;
+}
+
+/**
+ * A view of `db` bound to `scope`. Queries run on the same connection; the
+ * scope only lets runAtomic and transaction() recognise where work belongs.
+ */
+export function bindToScope<T extends DrizzleDb>(
   db: T,
-  token: symbol,
+  scope: TransactionScope,
 ): T {
   return Object.create(db, {
-    [TRANSACTION_TOKEN]: { value: token },
+    [SCOPE]: { value: scope },
     [CONNECTION]: { value: connectionKey(db) },
   });
 }
 
 /**
- * Run `work` once no other transaction holds the connection, holding it until
- * `work` settles. Waiters are served in order.
+ * Queue behind `tail` (a promise that settles when the holders before us are
+ * done) and return a function that hands the turn to the next waiter. Gives
+ * up after transactionLockSettings.timeoutMs.
  */
-export async function runExclusive<T>(
-  db: DrizzleDb,
-  work: (token: symbol) => Promise<T>,
-): Promise<T> {
-  const state = stateFor(db);
-  const previous = state.tail;
+async function takeTurn(
+  queue: { tail: Promise<void> } | { childTail: Promise<void> },
+): Promise<() => void> {
+  const key = "tail" in queue ? "tail" : "childTail";
+  const target = queue as Record<typeof key, Promise<void>>;
+  const previous = target[key];
   let release!: () => void;
   const released = new Promise<void>((resolve) => {
     release = resolve;
   });
-  state.tail = previous.then(() => released);
+  target[key] = previous.then(() => released);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -142,7 +158,7 @@ export async function runExclusive<T>(
           () =>
             reject(
               new Error(
-                `Timed out after ${transactionLockSettings.timeoutMs} ms waiting for another transaction on the same SQLite connection. Inside a transaction() callback, write through the adapters passed to the callback.`,
+                `Timed out after ${transactionLockSettings.timeoutMs} ms waiting for other writes on the same SQLite connection. Inside a transaction() callback, write through the adapters passed to that callback, including in nested callbacks.`,
               ),
             ),
           transactionLockSettings.timeoutMs,
@@ -155,11 +171,27 @@ export async function runExclusive<T>(
   } finally {
     clearTimeout(timer);
   }
+  return release;
+}
 
-  const token = Symbol("transaction");
-  state.owner = token;
+/**
+ * Run `work` once no other transaction holds the connection, holding it until
+ * `work` settles. Waiters are served in order. `work` gets the root scope of
+ * the new transaction.
+ */
+export async function runExclusive<T>(
+  db: DrizzleDb,
+  work: (scope: TransactionScope) => Promise<T>,
+): Promise<T> {
+  const state = stateFor(db);
+  const release = await takeTurn(state);
+  const scope: TransactionScope = {
+    root: Symbol("transaction"),
+    childTail: Promise.resolve(),
+  };
+  state.owner = scope.root;
   try {
-    return await work(token);
+    return await work(scope);
   } finally {
     state.owner = null;
     release();
@@ -169,30 +201,45 @@ export async function runExclusive<T>(
 let savepointCounter = 0;
 
 /**
- * Run `work` inside the transaction that `db` already owns, behind a SAVEPOINT.
- * If `work` fails, everything it wrote is rolled back to the savepoint, so a
- * caller that catches the error and carries on cannot commit half of it. On
- * success the savepoint is released into the enclosing transaction.
+ * Run `work` inside the transaction that `db` belongs to, as a child of
+ * `db`'s scope behind a SAVEPOINT. Children of the same scope run one at a
+ * time, so their savepoints never overlap. If `work` fails, everything it
+ * wrote is rolled back to the savepoint; on success the savepoint is released
+ * into the enclosing scope. `work` gets a view of `db` bound to the child
+ * scope, so calls it makes through that view nest under the child.
  */
-export async function runInSavepoint<T>(
+export async function runInChildScope<T>(
   db: DrizzleDb,
-  work: () => Promise<T>,
+  work: (childDb: DrizzleDb) => Promise<T>,
 ): Promise<T> {
+  const parent = scopeOf(db);
+  if (!parent) {
+    throw new Error("runInChildScope needs a db bound to a transaction scope");
+  }
+  const release = await takeTurn(parent);
+  const child: TransactionScope = {
+    root: parent.root,
+    childTail: Promise.resolve(),
+  };
   // An internal counter, never user input, so a raw identifier is safe.
   const name = sql.raw(`authhero_sp_${++savepointCounter}`);
-  await db.run(sql`SAVEPOINT ${name}`);
   try {
-    const result = await work();
-    await db.run(sql`RELEASE ${name}`);
-    return result;
-  } catch (error) {
+    await db.run(sql`SAVEPOINT ${name}`);
     try {
-      await db.run(sql`ROLLBACK TO ${name}`);
+      const result = await work(bindToScope(db, child));
       await db.run(sql`RELEASE ${name}`);
-    } catch (rollbackError) {
-      console.error("savepoint rollback failed", rollbackError);
+      return result;
+    } catch (error) {
+      try {
+        await db.run(sql`ROLLBACK TO ${name}`);
+        await db.run(sql`RELEASE ${name}`);
+      } catch (rollbackError) {
+        console.error("savepoint rollback failed", rollbackError);
+      }
+      throw error;
     }
-    throw error;
+  } finally {
+    release();
   }
 }
 
@@ -215,8 +262,8 @@ async function runInOrder(statements: AtomicStatements): Promise<unknown[]> {
  * D1, which is why the batch path exists.
  *
  * On better-sqlite3, statements made through a transaction's own adapters run
- * inside that transaction behind a SAVEPOINT instead of their own
- * BEGIN/COMMIT, so a failure still rolls back all of them. Any other call
+ * inside that transaction in a child scope behind a SAVEPOINT instead of their
+ * own BEGIN/COMMIT, so a failure still rolls back all of them. Any other call
  * waits for an open transaction to finish before starting its own.
  *
  * Returns the per-statement results in order (the batch response on D1; each
@@ -231,7 +278,7 @@ export async function runAtomic(
   }
 
   if (ownsOpenTransaction(db)) {
-    return runInSavepoint(db, () => runInOrder(statements));
+    return runInChildScope(db, () => runInOrder(statements));
   }
 
   return runExclusive(db, async () => {
