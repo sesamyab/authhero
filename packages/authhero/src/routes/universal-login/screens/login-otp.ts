@@ -13,7 +13,11 @@ import {
   isCodeRecipient,
 } from "../../../helpers/code-recipient";
 import type { ScreenContext, ScreenFactory, ScreenResult } from "./types";
-import { reserveLoginSessionCounter } from "../../../state-machines/login-session-data";
+import {
+  isFinalizedLoginSession,
+  readLoginSessionData,
+  reserveLoginSessionCounter,
+} from "../../../state-machines/login-session-data";
 
 type OtpContext = Context<{ Bindings: Bindings; Variables: Variables }>;
 
@@ -23,8 +27,10 @@ type OtpContext = Context<{ Bindings: Bindings; Variables: Variables }>;
  *
  * Reserved atomically (see reserveLoginSessionCounter), so concurrent requests
  * on one session cannot exceed it on adapters that implement
- * `updateIfStateDataUnchanged`. The optional per-recipient rate limit bounds
- * sends across sessions.
+ * `updateIfStateDataUnchanged`; other adapters fall back to a best-effort
+ * read/modify/write. The optional per-recipient rate limit adds a bound
+ * across sessions, but it is not configured by default and fails open on
+ * adapter errors, so it is not a hard guarantee.
  */
 export const LOGIN_OTP_MAX_SENDS = 5;
 
@@ -38,11 +44,34 @@ function isRateLimitDecision(value: unknown): value is RateLimitDecision {
 }
 
 /**
+ * login_otp_sent on the stored session, or undefined when it is gone or
+ * finalized (no further sends either way).
+ */
+async function readLoginOtpSent(
+  ctx: OtpContext,
+  tenantId: string,
+  loginSessionId: string,
+): Promise<number | undefined> {
+  const current = await ctx.env.data.loginSessions.get(
+    tenantId,
+    loginSessionId,
+  );
+  if (!current || isFinalizedLoginSession(current)) return undefined;
+  return readLoginSessionData(current.state_data).login_otp_sent ?? 0;
+}
+
+/**
  * Count a login OTP delivery on the login session and consume the optional
  * per-recipient rate limit. Returns false when either limit is reached, or
  * when the session is already finalized; callers then skip delivery but
  * respond as usual, so the response does not reveal the limit or whether
  * the address exists. Counted before sending, so failed sends count too.
+ *
+ * Order: check the session cap without writing, then the recipient rate
+ * limit, then reserve the slot atomically. A request the rate limit rejects
+ * does not use up the session's allowance, and a session already at its cap
+ * does not consume the recipient's rate limit. Concurrent requests may all
+ * pass the first check, but only LOGIN_OTP_MAX_SENDS of them can reserve.
  */
 export async function allowLoginOtpSend(
   ctx: OtpContext,
@@ -52,17 +81,10 @@ export async function allowLoginOtpSend(
     to,
   }: { tenantId: string; loginSessionId: string; to: string },
 ): Promise<boolean> {
-  const { status } = await reserveLoginSessionCounter(
-    ctx.env.data.loginSessions,
-    tenantId,
-    loginSessionId,
-    "login_otp_sent",
-    LOGIN_OTP_MAX_SENDS,
-  );
-  if (status !== "reserved") {
-    if (status === "limit_reached" || status === "contended") {
-      console.warn("Login OTP send limit reached for login session");
-    }
+  const before = await readLoginOtpSent(ctx, tenantId, loginSessionId);
+  if (before === undefined) return false;
+  if (before >= LOGIN_OTP_MAX_SENDS) {
+    console.warn("Login OTP send limit reached for login session");
     return false;
   }
 
@@ -85,7 +107,17 @@ export async function allowLoginOtpSend(
     }
   }
 
-  return true;
+  const { status } = await reserveLoginSessionCounter(
+    ctx.env.data.loginSessions,
+    tenantId,
+    loginSessionId,
+    "login_otp_sent",
+    LOGIN_OTP_MAX_SENDS,
+  );
+  if (status === "limit_reached" || status === "contended") {
+    console.warn("Login OTP send limit reached for login session");
+  }
+  return status === "reserved";
 }
 
 /**

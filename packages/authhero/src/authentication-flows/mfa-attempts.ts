@@ -192,8 +192,11 @@ export async function resetMfaFailures(
  * Count an MFA SMS send on the login session and consume the per-user (or,
  * without a user, per-number) rate limit. Throws MfaSmsRateLimitError when
  * either limit is reached. Counted before sending, so failed sends count too.
- * The session slot is reserved atomically (see reserveLoginSessionCounter), so
- * concurrent sends on one session cannot exceed MFA_MAX_SMS_SENDS.
+ *
+ * Order: check the session cap without writing, then the rate limit, then
+ * reserve the slot atomically (see reserveLoginSessionCounter). A send the
+ * rate limit rejects does not use up the session's allowance, and concurrent
+ * sends on one session cannot exceed MFA_MAX_SMS_SENDS.
  */
 export async function enforceMfaSmsSendLimit(
   ctx: MfaContext,
@@ -202,8 +205,34 @@ export async function enforceMfaSmsSendLimit(
   phoneNumber: string,
   userId?: string,
 ): Promise<void> {
+  const current = await ctx.env.data.loginSessions.get(
+    tenantId,
+    loginSessionId,
+  );
+  const sent = readLoginSessionData(current?.state_data).mfa_sms_sent ?? 0;
+  // Account sessions carry no user_id, so callers pass the resolved user.
+  // The phone number is only the key for genuinely userless flows.
+  const subject = userId ?? current?.user_id ?? phoneNumber;
+
+  const limitReached = () => {
+    logMessage(ctx, tenantId, {
+      type: LogTypes.ERROR_SENDING_MFA_SMS,
+      description: "MFA SMS send limit reached",
+      userId: userId ?? current?.user_id,
+    });
+    return new MfaSmsRateLimitError();
+  };
+
+  if (
+    sent >= MFA_MAX_SMS_SENDS ||
+    !(await consumeRateLimit(ctx, `mfa-sms:${tenantId}:${subject}`))
+  ) {
+    throw limitReached();
+  }
+
   // Without a session there is no per-session cap, only the rate limit.
-  const { status, session: current } = await reserveLoginSessionCounter(
+  if (!current) return;
+  const { status } = await reserveLoginSessionCounter(
     ctx.env.data.loginSessions,
     tenantId,
     loginSessionId,
@@ -213,20 +242,7 @@ export async function enforceMfaSmsSendLimit(
   if (status === "finalized") {
     throw new FinalizedLoginSessionError(loginSessionId);
   }
-  // Account sessions carry no user_id, so callers pass the resolved user.
-  // The phone number is only the key for genuinely userless flows.
-  const subject = userId ?? current?.user_id ?? phoneNumber;
-
-  const capReached = status === "limit_reached" || status === "contended";
-  if (
-    capReached ||
-    !(await consumeRateLimit(ctx, `mfa-sms:${tenantId}:${subject}`))
-  ) {
-    logMessage(ctx, tenantId, {
-      type: LogTypes.ERROR_SENDING_MFA_SMS,
-      description: "MFA SMS send limit reached",
-      userId: userId ?? current?.user_id,
-    });
-    throw new MfaSmsRateLimitError();
+  if (status === "limit_reached" || status === "contended") {
+    throw limitReached();
   }
 }

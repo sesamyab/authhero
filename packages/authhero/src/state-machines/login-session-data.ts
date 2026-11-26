@@ -32,7 +32,10 @@ export class FinalizedLoginSessionError extends Error {
   }
 }
 
-function isFinalized(session: LoginSession): boolean {
+/** Completed, failed and expired sessions accept no further context updates. */
+export function isFinalizedLoginSession(
+  session: Pick<LoginSession, "state">,
+): boolean {
   return [
     LoginSessionState.COMPLETED,
     LoginSessionState.FAILED,
@@ -62,7 +65,8 @@ export async function updateLoginSessionData(
 ): Promise<boolean> {
   const current = await sessions.get(tenantId, id);
   if (!current) throw new Error(`Login session ${id} not found`);
-  if (isFinalized(current)) throw new FinalizedLoginSessionError(id);
+  if (isFinalizedLoginSession(current))
+    throw new FinalizedLoginSessionError(id);
   const { context } = transitionLoginSession(
     current.state || LoginSessionState.PENDING,
     event,
@@ -128,7 +132,8 @@ export async function reserveLoginSessionCounter(
   for (let attempt = 0; attempt < COUNTER_CAS_ATTEMPTS; attempt++) {
     const current = await sessions.get(tenantId, id);
     if (!current) return { status: "not_found" };
-    if (isFinalized(current)) return { status: "finalized", session: current };
+    if (isFinalizedLoginSession(current))
+      return { status: "finalized", session: current };
 
     const stateData = readLoginSessionData(current.state_data);
     const count = stateData[counter] ?? 0;

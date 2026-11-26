@@ -355,6 +355,36 @@ describe("MFA failed-attempt limits", () => {
       expect(consumed).toEqual([`mfa-sms:tenantId:${USER_ID}`]);
       expect(getSentSms()).toHaveLength(0);
     });
+    it("does not use up the session SMS allowance when the rate limit rejects", async () => {
+      let allow = false;
+      const server = await getTestServer({
+        testTenantLanguage: "en",
+        rateLimit: { consume: async () => ({ allowed: allow }) },
+      });
+      const { env } = server;
+      await env.data.authenticationMethods.create("tenantId", {
+        user_id: USER_ID,
+        type: "phone",
+        phone_number: "+46701234567",
+        confirmed: true,
+      });
+      const session = await createMfaSession(env);
+
+      await post(server, "/mfa/phone-challenge", session.id, {
+        action: "resend",
+      });
+      const stored = await env.data.loginSessions.get("tenantId", session.id);
+      expect(
+        JSON.parse(stored?.state_data ?? "{}").mfa_sms_sent,
+      ).toBeUndefined();
+
+      allow = true;
+      await post(server, "/mfa/phone-challenge", session.id, {
+        action: "resend",
+      });
+      const after = await env.data.loginSessions.get("tenantId", session.id);
+      expect(JSON.parse(after?.state_data ?? "{}").mfa_sms_sent).toBe(1);
+    });
   });
 
   describe("TOTP login enrollment", () => {
