@@ -545,6 +545,8 @@ async function retryInBackground(
       case "delivered":
         return;
       case "use_default_provider":
+        // A resend may have replaced the message while the action ran.
+        if (params.isCurrent && !(await params.isCurrent())) return;
         try {
           await useDefaultProvider(ctx, params);
         } catch (error) {

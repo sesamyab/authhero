@@ -613,6 +613,23 @@ describe("custom provider background retries", () => {
     ).toBe(false);
   });
 
+  it("doesn't hand a replaced message to the default provider", async () => {
+    const t = await setup();
+    await t.bind(
+      "custom-email-provider",
+      `globalThis.__notificationStaleHandoff = (globalThis.__notificationStaleHandoff || 0) + 1;
+       if (globalThis.__notificationStaleHandoff === 1) api.notification.retry();
+       else api.notification.useDefaultProvider();`,
+    );
+    let checks = 0;
+    const { defaultSends } = await deliver(t, {
+      // Current before the retry runs, replaced by the time it hands off.
+      isCurrent: async () => ++checks < 2,
+    });
+    expect(defaultSends).toBe(0);
+    Reflect.deleteProperty(globalThis, "__notificationStaleHandoff");
+  });
+
   it("stops retrying (and logs fn) when the background budget runs out", async () => {
     const t = await setup();
     await t.bind("custom-email-provider", `api.notification.retry("busy");`);
