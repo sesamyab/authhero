@@ -1101,3 +1101,202 @@ describe("SES-919 widget request contract", () => {
     expect(callback.searchParams.get("authhero_iat")).toBeTruthy();
   });
 });
+
+describe("/u2/connect/start — a workspace pick only exists on the control plane", () => {
+  /**
+   * A leaf tenant (`child_tenant`) whose own admins gave a user in that
+   * tenant a global role with `admin:organizations` on the Management API.
+   * On the control plane that role would allow picking any tenant; on the
+   * leaf tenant it must count for nothing.
+   */
+  async function setUpLeafTenant(env: Bindings) {
+    await enableConnectFlow(env);
+    await provisionControlPlane(env);
+    await env.data.tenants.update("child_tenant", {
+      flags: {
+        enable_dynamic_client_registration: true,
+        dcr_require_initial_access_token: true,
+      },
+    });
+    await env.data.tenants.create({
+      id: "other_tenant",
+      friendly_name: "Other Workspace",
+      audience: "urn:authhero:tenant:other_tenant",
+      sender_email: "login@example.com",
+      sender_name: "SenderName",
+      flags: {
+        enable_dynamic_client_registration: true,
+        dcr_require_initial_access_token: true,
+      },
+    });
+    await env.data.users.create("child_tenant", {
+      email: "leaf-admin@example.com",
+      email_verified: true,
+      connection: "email",
+      provider: "email",
+      is_social: false,
+      user_id: "email|userId",
+    });
+    const role = await env.data.roles.create("child_tenant", {
+      name: "Leaf Org Admin",
+      description: "admin:organizations inside a leaf tenant",
+    });
+    await env.data.rolePermissions.assign("child_tenant", role.id, [
+      {
+        role_id: role.id,
+        resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+        permission_name: "admin:organizations",
+      },
+    ]);
+    await env.data.userRoles.create(
+      "child_tenant",
+      "email|userId",
+      role.id,
+      "",
+    );
+    return createUserSession(env, "child_tenant");
+  }
+
+  async function setTargetTenant(
+    env: Bindings,
+    stateId: string,
+    targetTenantId: string,
+  ) {
+    const loginSession = await env.data.loginSessions.get(
+      "child_tenant",
+      stateId,
+    );
+    const data = JSON.parse(loginSession!.state_data!);
+    data.connect.target_tenant_id = targetTenantId;
+    await env.data.loginSessions.update("child_tenant", stateId, {
+      state_data: JSON.stringify(data),
+    });
+  }
+
+  async function tokensOn(env: Bindings, tenantId: string) {
+    const { client_registration_tokens } =
+      await env.data.clientRegistrationTokens!.list(tenantId);
+    return client_registration_tokens;
+  }
+
+  it("redirects the picker GET back to the consent screen", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    const session = await setUpLeafTenant(env);
+    const stateId = await startConnectFlow(oauthApp, env, "child_tenant");
+
+    const response = await u2App.request(
+      `/connect/select-tenant?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "GET",
+        headers: {
+          "tenant-id": "child_tenant",
+          cookie: `child_tenant-auth-token=${session.id}`,
+        },
+      },
+      env,
+    );
+    expect(response.status).toBe(302);
+    const location = response.headers.get("location")!;
+    expect(location).toContain("/connect/start");
+    expect(location).not.toContain("/connect/select-tenant");
+  });
+
+  it("does not store a picked tenant from a picker POST", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    const session = await setUpLeafTenant(env);
+    const stateId = await startConnectFlow(oauthApp, env, "child_tenant");
+
+    const response = await u2App.request(
+      `/connect/select-tenant?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "child_tenant",
+          cookie: `child_tenant-auth-token=${session.id}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "tenant_other_tenant=Other+Workspace",
+      },
+      env,
+    );
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toContain("/connect/start");
+    const updated = await env.data.loginSessions.get("child_tenant", stateId);
+    const stateData = JSON.parse(updated!.state_data!);
+    expect(stateData.connect.target_tenant_id).toBeUndefined();
+  });
+
+  it("never mints on another tenant when the session data names one", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    const session = await setUpLeafTenant(env);
+    const stateId = await startConnectFlow(oauthApp, env, "child_tenant");
+    await setTargetTenant(env, stateId, "other_tenant");
+
+    const response = await u2App.request(
+      `/connect/start?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "child_tenant",
+          cookie: `child_tenant-auth-token=${session.id}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "",
+      },
+      env,
+    );
+    // admin:organizations in the leaf tenant is not create:clients there, so
+    // direct mode refuses, and nothing is minted anywhere.
+    expect(response.status).not.toBe(302);
+    expect(await tokensOn(env, "other_tenant")).toHaveLength(0);
+    expect(await tokensOn(env, "child_tenant")).toHaveLength(0);
+  });
+
+  it("mints on the request tenant, not the named one, for a user who may create clients there", async () => {
+    const { oauthApp, u2App, env } = await getTestServer();
+    const session = await setUpLeafTenant(env);
+    const role = await env.data.roles.create("child_tenant", {
+      name: "Leaf Client Registrar",
+      description: "create:clients inside the leaf tenant",
+    });
+    await env.data.rolePermissions.assign("child_tenant", role.id, [
+      {
+        role_id: role.id,
+        resource_server_identifier: MANAGEMENT_API_AUDIENCE,
+        permission_name: "create:clients",
+      },
+    ]);
+    await env.data.userRoles.create(
+      "child_tenant",
+      "email|userId",
+      role.id,
+      "",
+    );
+    const stateId = await startConnectFlow(oauthApp, env, "child_tenant");
+    await setTargetTenant(env, stateId, "other_tenant");
+
+    const response = await u2App.request(
+      `/connect/start?state=${encodeURIComponent(stateId)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "child_tenant",
+          cookie: `child_tenant-auth-token=${session.id}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "",
+      },
+      env,
+    );
+    expect(response.status).toBe(302);
+    const url = new URL(response.headers.get("location")!);
+    expect(url.searchParams.get("authhero_tenant")).toBeNull();
+    const iat = url.searchParams.get("authhero_iat");
+    expect(iat).toBeTruthy();
+    const hash = await hashRegistrationToken(iat!);
+    expect(
+      await env.data.clientRegistrationTokens!.getByHash("child_tenant", hash),
+    ).toBeTruthy();
+    expect(await tokensOn(env, "other_tenant")).toHaveLength(0);
+  });
+});

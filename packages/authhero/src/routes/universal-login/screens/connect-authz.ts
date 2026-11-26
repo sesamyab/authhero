@@ -27,6 +27,20 @@ import {
 // scope a caller would need to POST /clients directly.
 export const DCR_REGISTER_PERMISSION = "create:clients";
 
+/**
+ * True when `tenantId` is the multi-tenancy control plane. Only there does
+ * the connect flow offer a workspace pick: the roles and organizations it
+ * checks for a pick are the control plane's, so on any other tenant they
+ * would be data that tenant's own admins control.
+ */
+export function isControlPlaneTenant(
+  data: { multiTenancyConfig?: { controlPlaneTenantId?: string } },
+  tenantId: string,
+): boolean {
+  const cpId = data.multiTenancyConfig?.controlPlaneTenantId;
+  return Boolean(cpId) && cpId === tenantId;
+}
+
 async function roleGrantsManagementPermission(
   context: ScreenContext,
   roleId: string,
@@ -177,7 +191,8 @@ export async function userCanRegisterOnOrg(
  *  - the user is a member of the control-plane org whose `name` equals the
  *    target tenant id AND holds `create:clients` on their role for that org.
  *
- * The control plane itself is never a valid DCR target.
+ * Only the control plane may pick a target, and the control plane itself is
+ * never a valid DCR target.
  */
 export async function userCanRegisterOnTenant(
   context: ScreenContext,
@@ -186,6 +201,10 @@ export async function userCanRegisterOnTenant(
 ): Promise<boolean> {
   const { ctx, tenant } = context;
   const controlPlaneTenantId = tenant.id;
+
+  if (!isControlPlaneTenant(ctx.env.data, controlPlaneTenantId)) {
+    return false;
+  }
 
   // DCR targets child tenants only — never the control plane itself.
   if (targetTenantId === controlPlaneTenantId) {
