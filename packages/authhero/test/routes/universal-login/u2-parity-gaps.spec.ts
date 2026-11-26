@@ -523,6 +523,29 @@ describe("u2 signup with a pre-signup code", () => {
     ).toBeFalsy();
   });
 
+  it("completes the signup when storing the username on the session fails", async () => {
+    const server = await setup();
+    const { env, email, state } = server;
+    const update = env.data.loginSessions.update.bind(env.data.loginSessions);
+    env.data.loginSessions.update = async (tenantId, id, session) => {
+      if (session.authParams?.username === email) {
+        throw new Error("Session store unavailable");
+      }
+      return update(tenantId, id, session);
+    };
+
+    const result = await postScreen(server, "signup", state, {
+      email,
+      password,
+      re_password: password,
+    });
+    expect(result.json.redirect).toBeDefined();
+    const { users } = await env.data.users.list("tenantId", {
+      q: `email:${email}`,
+    });
+    expect(users).toHaveLength(1);
+  });
+
   it("keeps old /u/signup links from emails already sent working", async () => {
     const server = await setup();
     const code = await mintCode(server, server.state);
@@ -873,11 +896,16 @@ describe("u2 change email", () => {
   });
 
   it("needs a new code after a linked identity update fails", async () => {
+    let linkedUpdates = 0;
     const server = await setup({
       server: {
         hooks: {
+          // Only the first linked-identity update fails
           onExecutePreUserUpdate: async (event: any, api: any) => {
-            if (event.user_id === "google-oauth2|linked") api.cancel();
+            if (event.user_id === "google-oauth2|linked") {
+              linkedUpdates += 1;
+              if (linkedUpdates === 1) api.cancel();
+            }
           },
         },
       },
@@ -922,7 +950,14 @@ describe("u2 change email", () => {
       { code: fresh },
       cookie,
     );
-    expect(ok.status).not.toBe(500);
+    expect(ok.status).toBe(200);
+    expect(ok.json.screen?.title).toBe("Email changed");
+    expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
+      "partial@example.com",
+    );
+    expect(
+      (await env.data.users.get("tenantId", "google-oauth2|linked"))?.email,
+    ).toBe("partial@example.com");
   });
 
   it("finds another owner beyond the first page of matches", async () => {

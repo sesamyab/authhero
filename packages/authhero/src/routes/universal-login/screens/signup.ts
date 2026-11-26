@@ -895,12 +895,22 @@ export const signupScreenDefinition: ScreenDefinition = {
       // code is checked against the session's username, so writing it before
       // the user exists would let a concurrent or later request use the code
       // for an address it wasn't sent to.
+      // The user exists at this point, so a failed write must not abort the
+      // signup: the login below uses the in-memory session, and a session
+      // left on its previous username is the safe state for the code check.
       loginSession.authParams.username = email;
-      await ctx.env.data.loginSessions.update(
-        client.tenant.id,
-        loginSession.id,
-        { authParams: loginSession.authParams },
-      );
+      try {
+        await ctx.env.data.loginSessions.update(
+          client.tenant.id,
+          loginSession.id,
+          { authParams: loginSession.authParams },
+        );
+      } catch (err) {
+        console.error(
+          "Failed to store the signup username on the session:",
+          err,
+        );
+      }
 
       if (preSignupCode) {
         await ctx.env.data.codes.consume(client.tenant.id, preSignupCode);
