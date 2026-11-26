@@ -630,6 +630,25 @@ describe("custom provider background retries", () => {
     Reflect.deleteProperty(globalThis, "__notificationStaleHandoff");
   });
 
+  it("logs fn when checking whether the message is current fails", async () => {
+    const t = await setup();
+    await t.bind("custom-email-provider", `api.notification.retry("busy");`);
+    const { caught } = await deliver(t, {
+      isCurrent: async () => {
+        throw new Error("database unavailable");
+      },
+    });
+    expect(caught).toBeUndefined();
+    const failed = (await t.logs()).filter(
+      (l) => l.type === LogTypes.FAILED_SENDING_NOTIFICATION,
+    );
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.description).toContain("background retry failed");
+    expect(failed[0]?.details).toMatchObject({
+      reason: "database unavailable",
+    });
+  });
+
   it("stops retrying (and logs fn) when the background budget runs out", async () => {
     const t = await setup();
     await t.bind("custom-email-provider", `api.notification.retry("busy");`);
