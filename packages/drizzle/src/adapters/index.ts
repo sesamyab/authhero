@@ -65,7 +65,15 @@ import { createTenantOperationsAdapter } from "./tenantOperations";
 import { createTenantOperationRowsAdapter } from "./tenantOperationRows";
 import { createTenantOperationEventsAdapter } from "./tenantOperationEvents";
 import { createRolloutsAdapter } from "./rollouts";
-import { hasBatch } from "./atomic";
+import {
+  assertTransactionOpen,
+  bindToScope,
+  hasBatch,
+  isBoundToTransaction,
+  runExclusive,
+  runInChildScope,
+  settleChildren,
+} from "./atomic";
 import type { DrizzleDb } from "./types";
 
 export interface CreateAdaptersOptions {
@@ -167,19 +175,54 @@ export default function createAdapters(
       if (hasBatch(db)) {
         return fn(adapters);
       }
+      // A transaction() called through the adapters of the open transaction
+      // joins it: SQLite can't start a transaction within a transaction. It
+      // runs as a child scope behind a SAVEPOINT, so it is all-or-nothing and
+      // can't overlap a sibling's savepoint. Its callback gets adapters bound
+      // to the child scope, so calls made through them nest under it.
+      // Adapters of a transaction that has already finished must not start a
+      // new, unrelated transaction on their own.
+      if (isBoundToTransaction(db)) {
+        assertTransactionOpen(db);
+        return runInChildScope(db, (childDb) =>
+          fn(createAdapters(childDb, databaseOptions)),
+        );
+      }
       // Sync drivers (better-sqlite3): manual BEGIN/COMMIT/ROLLBACK so we can
       // properly await the async callback before deciding whether to commit
       // or roll back. Drizzle's built-in db.transaction() runs the callback
       // synchronously there, which means async throws don't trigger rollback.
-      await db.run(sql`BEGIN`);
-      try {
-        const result = await fn(adapters);
-        await db.run(sql`COMMIT`);
+      // The connection is shared, so wait for any other open transaction
+      // first, and give the callback adapters bound to this transaction's
+      // root scope so only its own work can join it.
+      return runExclusive(db, async (scope) => {
+        const trxAdapters = createAdapters(
+          bindToScope(db, scope),
+          databaseOptions,
+        );
+        await db.run(sql`BEGIN`);
+        let result: T;
+        try {
+          result = await fn(trxAdapters);
+        } catch (e) {
+          // Nested work the callback started but didn't await is still
+          // running; let it finish inside the transaction before rolling it
+          // all back, so none of it can continue on its own afterwards.
+          await settleChildren(scope);
+          scope.closed = true;
+          await db.run(sql`ROLLBACK`);
+          throw e;
+        }
+        await settleChildren(scope);
+        scope.closed = true;
+        try {
+          await db.run(sql`COMMIT`);
+        } catch (e) {
+          await db.run(sql`ROLLBACK`);
+          throw e;
+        }
         return result;
-      } catch (e) {
-        await db.run(sql`ROLLBACK`);
-        throw e;
-      }
+      });
     },
   } as unknown as DataAdapters;
   return adapters;

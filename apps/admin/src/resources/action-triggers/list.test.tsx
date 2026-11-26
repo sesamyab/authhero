@@ -147,6 +147,43 @@ describe("unified Triggers", () => {
     });
   });
 
+  it("shows which message types a custom provider action delivers", async () => {
+    setup({}, [
+      {
+        id: "h_email",
+        trigger_id: "custom-email-provider",
+        code_id: "act_3",
+        enabled: true,
+        metadata: { message_types: ["verification_code", "reset_email"] },
+      },
+      {
+        id: "h_phone",
+        trigger_id: "custom-phone-provider",
+        code_id: "act_4",
+        enabled: true,
+      },
+    ]);
+    expect(
+      await screen.findByText(
+        "Delivers: Passwordless code or link, Password reset link",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Delivers: All message types")).toBeTruthy();
+    expect(document.getElementById("custom-email-provider")).toBeTruthy();
+    const add = screen.getByRole("link", {
+      name: "Add binding to Custom Phone Provider",
+    });
+    const source = new URL(
+      add.getAttribute("href")!,
+      "http://localhost",
+    ).searchParams.get("source");
+    // Only code actions can bind to the custom provider triggers.
+    expect(JSON.parse(source!)).toEqual({
+      trigger_id: "custom-phone-provider",
+      type: "code",
+    });
+  });
+
   it("updates and removes the original binding rows for any type", async () => {
     const { update, remove } = setup();
     const enable = await screen.findByRole("switch", {

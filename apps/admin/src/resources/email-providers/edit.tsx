@@ -11,6 +11,7 @@ import { SecretInput } from "@/common/SecretInput";
 import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UrlTabs } from "@/components/ui/url-tabs";
 import { RawJsonTab } from "@/common/RawJsonTab";
+import { CustomProviderNotice } from "../hooks/custom-provider-notice";
 
 const PROVIDER_CHOICES = [
   { id: "mailgun", name: "Mailgun" },
@@ -20,6 +21,7 @@ const PROVIDER_CHOICES = [
   { id: "sparkpost", name: "SparkPost" },
   { id: "smtp", name: "SMTP" },
   { id: "azure_cs", name: "Azure Communication Services" },
+  { id: "custom", name: "Custom (action)" },
 ];
 
 function ProviderCredentials() {
@@ -102,6 +104,10 @@ function ProviderFields() {
   if (!provider) return null;
   return (
     <>
+      <CustomProviderNotice
+        triggerId="custom-email-provider"
+        requireAction={provider === "custom"}
+      />
       <BooleanInput source="enabled" defaultValue={true} />
       <TextInput source="default_from_address" label="Default From address" />
       <ProviderCredentials />

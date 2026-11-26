@@ -16,6 +16,7 @@ import { requireClientRegistrationTokens } from "../../auth-api/register/shared"
 import { logMessage } from "../../../helpers/logging";
 import { LogTypes } from "@authhero/adapter-interfaces";
 import {
+  isControlPlaneTenant,
   userCanRegisterOnRequestTenant,
   userCanRegisterOnTenant,
 } from "./connect-authz";
@@ -38,33 +39,19 @@ interface ConnectConsentData {
 }
 
 /**
- * Returns true when the resolved tenant is the multi-tenancy control plane
- * and the consent flow therefore needs an explicit child-tenant pick before
- * the IAT can be minted.
+ * The child tenant picked on the control plane, which `userCanRegisterOnTenant`
+ * authorizes. A pick only counts on the control plane: anywhere else the IAT
+ * is minted on the request tenant itself and `userCanRegisterOnRequestTenant`
+ * applies, whatever the session data says.
  */
-function isControlPlaneTenant(
-  data: { multiTenancyConfig?: { controlPlaneTenantId?: string } },
-  tenantId: string,
-): boolean {
-  const cpId = data.multiTenancyConfig?.controlPlaneTenantId;
-  return Boolean(cpId) && cpId === tenantId;
-}
-
-/**
- * True when the IAT is minted on a child tenant picked on the control plane,
- * which `userCanRegisterOnTenant` authorizes. Otherwise the IAT is minted on
- * the request tenant itself and `userCanRegisterOnRequestTenant` applies.
- */
-function mintsOnPickedTenant(
+function pickedTenantId(
   data: { multiTenancyConfig?: { controlPlaneTenantId?: string } },
   tenantId: string,
   connect: ConnectConsentData,
-): boolean {
-  return Boolean(
-    connect.target_tenant_id &&
-    (isControlPlaneTenant(data, tenantId) ||
-      connect.target_tenant_id !== tenantId),
-  );
+): string | undefined {
+  return isControlPlaneTenant(data, tenantId)
+    ? connect.target_tenant_id
+    : undefined;
 }
 
 function readConnectData(stateDataJson?: string): ConnectConsentData | null {
@@ -161,8 +148,9 @@ export async function connectConsentScreen(
 
   // Direct mode: only users allowed to create clients on this tenant may
   // consent. Others see an error and no confirm button.
+  const picked = pickedTenantId(ctx.env.data, tenant.id, connect);
   const canRegister =
-    mintsOnPickedTenant(ctx.env.data, tenant.id, connect) ||
+    picked !== undefined ||
     (await userCanRegisterOnRequestTenant(context, user.user_id));
 
   const stateParam = encodeURIComponent(state);
@@ -176,7 +164,7 @@ export async function connectConsentScreen(
   // raw identifier as the label.
   let audienceLabel: string | null = null;
   if (connect.audience) {
-    const targetTenantIdForLookup = connect.target_tenant_id ?? tenant.id;
+    const targetTenantIdForLookup = picked ?? tenant.id;
     const { resource_servers } = await ctx.env.data.resourceServers.list(
       targetTenantIdForLookup,
     );
@@ -202,12 +190,9 @@ export async function connectConsentScreen(
   // friendly name so the user understands which workspace they're granting
   // access to. Falls back to the tenant id when no friendly_name is set.
   let targetWorkspaceLabel: string | null = null;
-  if (connect.target_tenant_id && connect.target_tenant_id !== tenant.id) {
-    const targetTenant = await ctx.env.data.tenants.get(
-      connect.target_tenant_id,
-    );
-    targetWorkspaceLabel =
-      targetTenant?.friendly_name || connect.target_tenant_id;
+  if (picked && picked !== tenant.id) {
+    const targetTenant = await ctx.env.data.tenants.get(picked);
+    targetWorkspaceLabel = targetTenant?.friendly_name || picked;
   }
   const workspaceLine = targetWorkspaceLabel
     ? `<div style="font-size:13px;color:#6b7280;margin-top:4px">${m.workspaceLabel()} <span style="color:#111827;font-weight:500">${escapeHtml(targetWorkspaceLabel)}</span></div>`
@@ -334,8 +319,10 @@ async function handleConnectConsentSubmit(
 
   // Resolve the tenant the IAT will be minted on. Direct-to-child requests
   // mint on the resolved request tenant; control-plane requests mint on the
-  // child tenant chosen in the picker step.
-  const targetTenantId = connect.target_tenant_id ?? tenant.id;
+  // child tenant chosen in the picker step. A target in the session data of a
+  // request to any other tenant is ignored.
+  const picked = pickedTenantId(ctx.env.data, tenant.id, connect);
+  const targetTenantId = picked ?? tenant.id;
 
   // For control-plane minting, re-validate that the consenting user is
   // actually authorized to register on the chosen child tenant. This uses the
@@ -347,7 +334,7 @@ async function handleConnectConsentSubmit(
   // On the control plane the target must always be re-validated — including
   // the case where a stale/tampered state set target_tenant_id to the control
   // plane's own id, which userCanRegisterOnTenant rejects.
-  if (mintsOnPickedTenant(ctx.env.data, tenant.id, connect)) {
+  if (picked !== undefined) {
     const allowed = await userCanRegisterOnTenant(
       context,
       user.user_id,

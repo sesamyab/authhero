@@ -1,5 +1,26 @@
 # authhero
 
+## 9.39.0
+
+### Minor Changes
+
+- 3d07a99: Add Auth0's `custom-email-provider` and `custom-phone-provider` action triggers (issue #1797). An action bound to one of them delivers outgoing emails or text messages (one-time codes, magic links, verification, password reset and invitation emails, MFA SMS) from the tenant's own system. It receives Auth0's `event.notification`, and `api.notification.drop(reason)` and `api.notification.retry(reason)` work as in Auth0. Existing Auth0 actions run unchanged, and an email provider named `custom` sends all email through the action.
+
+  Two AuthHero extensions: the hook's `metadata.message_types` limits which message types the action handles (the rest keep using the tenant's normal provider; empty means all, as in Auth0), and `api.notification.useDefaultProvider()` hands a message back to the normal provider. Delivered messages are logged as before; drops and failures log `fn` and retries log `wn`. A failed, dropped or timed-out action fails the send instead of falling back silently. The one-time code and message content are scrubbed from logs, execution records and errors.
+
+- 9c03b50: Universal login v2 no longer depends on `/u` for its routes, continuation flows and widget assets. `getUniversalLoginUrl` now defaults to `u2`, flow redirects (`/continue`, account pages) target `/u2`, `/u2/continue` was added, `/u2/*` is allowed as a self-callback, and the u2 link-rewriting was removed. The widget bundle and `client.js` are served from `/widget/*` and `/widget/client.js`; `/u/widget` stays as an alias for one release. On `/widget/*` the `widgetHandler` sees the same context variables and gets the same CORS headers as on `/u/widget/*`. Without a `widgetHandler`, `/widget/*` redirects to `/u/widget/*`, so deployments that serve the widget as static files under `/u/widget/` need no change; copy the files to `/widget/` as well before `/u` is removed. Templates now strip either prefix in `widgetHandler`.
+
+  Some flows still use `/u` because `/u2` has no screens for them yet, so do not remove `/u` based on this release: the signup verification email link (`/u/signup`), the validate-email fallback link (`/u/validate-email`), the invalid-session redirects (`/u/invalid-session`), and the change-email form hook (`/u/account/change-email`). Self-callbacks and client origins also keep allowing `/u/*` while `/u` exists. These move to `/u2` with the parity work in #1733.
+
+### Patch Changes
+
+- 1ff04a5: `/authorize` and `/passwordless/verify_redirect` now check the response type against the client's `grant_types`, as Auth0 does: a `code` response needs `authorization_code`, and a response returning `token` or `id_token` needs `implicit`. A client without `grant_types` is not restricted. The default application each tenant gets keeps `authorization_code` and `refresh_token`, so it supports the code flow only; add `implicit` to an application that needs token responses from `/authorize`. The connect flow's workspace picker is only offered on the multi-tenancy control plane.
+- Updated dependencies [3d07a99]
+  - @authhero/adapter-interfaces@4.34.0
+  - @authhero/proxy@0.11.21
+  - @authhero/saml@0.6.14
+  - @authhero/widget@0.42.1
+
 ## 9.38.0
 
 ### Minor Changes

@@ -143,6 +143,76 @@ describe("passwordless", async () => {
       expect(redirectUrl.searchParams.get("code")).toBeTruthy();
     });
 
+    it("rejects a response type the client's grant types do not cover, without using up the code", async () => {
+      const { oauthApp, managementApp, env, getSentEmails } =
+        await getTestServer({
+          testTenantLanguage: "en",
+        });
+      const oauthClient = testClient(oauthApp, env);
+      const managementClient = testClient(managementApp, env);
+
+      const token = await getAdminToken();
+      await managementClient.email.providers.$post(
+        {
+          header: { "tenant-id": "tenantId" },
+          json: { name: "mock-email", credentials: { api_key: "apiKey" } },
+        },
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      await env.data.clients.update("tenantId", "clientId", {
+        grant_types: ["authorization_code", "refresh_token"],
+      });
+
+      const startResponse = await oauthClient.passwordless.start.$post(
+        {
+          json: {
+            client_id: "clientId",
+            connection: "email",
+            email: "foo@example.com",
+            send: "code",
+            authParams: {},
+          },
+        },
+        { headers: { "x-real-ip": "1.2.3.4", "user-agent": "Mozilla/5.0" } },
+      );
+      expect(startResponse.status).toBe(200);
+      const code = (await getSentEmails())[0]?.data.code;
+      if (!code) {
+        throw new Error("No code found in email");
+      }
+
+      const query = {
+        redirect_uri: "https://example.com/callback",
+        client_id: "clientId",
+        email: "foo@example.com",
+        verification_code: code,
+        connection: "email",
+        state: "state",
+        scope: "openid",
+        nonce: "nonce",
+      };
+      const implicitResponse =
+        await oauthClient.passwordless.verify_redirect.$get(
+          {
+            query: {
+              ...query,
+              response_type: AuthorizationResponseType.TOKEN_ID_TOKEN,
+            },
+          },
+          { headers: { "x-real-ip": "1.2.3.4" } },
+        );
+      expect(implicitResponse.status).toBe(400);
+
+      const codeResponse = await oauthClient.passwordless.verify_redirect.$get(
+        { query: { ...query, response_type: AuthorizationResponseType.CODE } },
+        { headers: { "x-real-ip": "1.2.3.4" } },
+      );
+      expect(codeResponse.status).toBe(302);
+      const redirectUrl = new URL(codeResponse.headers.get("location")!);
+      expect(redirectUrl.pathname).toBe("/callback");
+      expect(redirectUrl.searchParams.get("code")).toBeTruthy();
+    });
+
     it("should emit exactly one SUCCESS_LOGIN log for OTP code flow", async () => {
       const { oauthApp, managementApp, env, getSentEmails } =
         await getTestServer({

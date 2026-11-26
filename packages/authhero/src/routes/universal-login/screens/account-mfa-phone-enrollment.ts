@@ -312,6 +312,7 @@ export const accountMfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
               loginSession,
               normalizedPhone,
               user.user_id,
+              "otp_enroll",
             );
           } catch (otpErr) {
             // Roll back enrollment

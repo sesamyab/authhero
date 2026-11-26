@@ -5,6 +5,9 @@ import { Bindings, RequestContext, Variables } from "../types";
 import {
   AuthParams,
   CreateServiceTokenFn,
+  CustomEmailProviderMessageType,
+  CustomPhoneProviderMessageType,
+  EmailProvider,
   EmailServiceAdapter,
   EmailTemplateName,
   LogTypes,
@@ -25,6 +28,18 @@ import { getDefaultTemplate } from "./defaults";
 import { MailgunEmailService } from "../email-services/mailgun";
 import { ResendEmailService } from "../email-services/resend";
 import { PostmarkEmailService } from "../email-services/postmark";
+import {
+  CUSTOM_EMAIL_PROVIDER_TRIGGER,
+  CUSTOM_PHONE_PROVIDER_TRIGGER,
+  deliverNotification,
+  htmlToText,
+} from "../hooks/custom-notification-provider";
+
+/**
+ * Email provider name Auth0 tooling sets to hand all email to the action bound
+ * to `custom-email-provider` (`{ "name": "custom", "credentials": {} }`).
+ */
+export const CUSTOM_EMAIL_PROVIDER_NAME = "custom";
 
 function buildCreateServiceToken(
   ctx: RequestContext,
@@ -65,8 +80,25 @@ export type SendEmailParams = {
   template: string;
   data: Record<string, string>;
   from?: string;
+  /**
+   * Auth0 `message_type` for the `custom-email-provider` trigger. Without it
+   * the message goes straight to the provider (unless the provider is named
+   * `custom`, in which case `template` is reported as the type).
+   */
+  message_type?: CustomEmailProviderMessageType;
+  /** Values that must never be logged: the one-time code, tokenized links. */
+  secrets?: string[];
+  /** The recipient user, or a loader, exposed to the action as `event.user`. */
+  user?: User | (() => Promise<User | undefined>);
+  /** `event.notification.locale`. */
+  locale?: string;
 };
 
+/**
+ * Send an email. When an action is bound to `custom-email-provider` for this
+ * message type the action delivers it; otherwise the tenant's provider does,
+ * as before.
+ */
 export async function sendEmail(
   ctx: RequestContext,
   params: SendEmailParams,
@@ -74,7 +106,52 @@ export async function sendEmail(
 ) {
   const tenantId = resolveTenantId(ctx, tenantIdOverride);
   const emailProvider = await ctx.env.data.emailProviders.get(tenantId);
+  const requireAction = emailProvider?.name === CUSTOM_EMAIL_PROVIDER_NAME;
 
+  if (!params.message_type && !requireAction) {
+    return sendWithEmailProvider(ctx, tenantId, emailProvider, params);
+  }
+
+  const messageType = params.message_type ?? params.template;
+  await deliverNotification(ctx, {
+    trigger: CUSTOM_EMAIL_PROVIDER_TRIGGER,
+    tenantId,
+    messageType,
+    recipient: params.to,
+    secrets: params.secrets,
+    user: params.user,
+    requireAction,
+    buildNotification: async () => {
+      const html = params.html ?? "";
+      return {
+        message_type: messageType,
+        to: params.to,
+        from:
+          params.from ||
+          resolveFromAddress({
+            env: ctx.env,
+            provider: emailProvider,
+            tenant: emailProvider?.default_from_address
+              ? null
+              : await ctx.env.data.tenants.get(tenantId),
+          }),
+        subject: params.subject,
+        html,
+        text: params.text ?? htmlToText(html),
+        locale: params.locale ?? "en",
+      };
+    },
+    sendDefault: () =>
+      sendWithEmailProvider(ctx, tenantId, emailProvider, params),
+  });
+}
+
+async function sendWithEmailProvider(
+  ctx: RequestContext,
+  tenantId: string,
+  emailProvider: EmailProvider | null,
+  params: SendEmailParams,
+) {
   if (!emailProvider) {
     throw new HTTPException(500, { message: "Email provider not found" });
   }
@@ -87,10 +164,19 @@ export async function sendEmail(
     throw new HTTPException(500, { message: "Email service not configured" });
   }
 
+  // Fields for the custom-email-provider trigger only, not the provider.
+  const {
+    message_type: _messageType,
+    secrets: _secrets,
+    user: _user,
+    locale: _locale,
+    ...providerParams
+  } = params;
+
   try {
     await emailService.send({
       emailProvider,
-      ...params,
+      ...providerParams,
       from:
         params.from ||
         resolveFromAddress({
@@ -137,9 +223,44 @@ export type SendSmsParams = {
   from?: string;
   text: string;
   code: string;
+  /** Auth0 `message_type` for the `custom-phone-provider` trigger. */
+  message_type?: CustomPhoneProviderMessageType;
+  /** Extra values that must never be logged, e.g. a magic link. */
+  secrets?: string[];
+  locale?: string;
 };
 
+/**
+ * Send a text message. When an action is bound to `custom-phone-provider` for
+ * this message type the action delivers it; otherwise the SMS connection's
+ * provider does, as before.
+ */
 export async function sendSms(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  params: SendSmsParams,
+) {
+  const messageType = params.message_type ?? "otp_verify";
+  await deliverNotification(ctx, {
+    trigger: CUSTOM_PHONE_PROVIDER_TRIGGER,
+    tenantId: resolveTenantId(ctx),
+    messageType,
+    recipient: params.to,
+    secrets: [params.code, ...(params.secrets ?? [])],
+    buildNotification: async () => ({
+      message_type: messageType,
+      recipient: params.to,
+      from: params.from ?? "",
+      as_text: params.text,
+      as_voice: params.text,
+      code: params.code,
+      delivery_method: "text",
+      locale: params.locale ?? "en",
+    }),
+    sendDefault: () => sendWithSmsConnection(ctx, params),
+  });
+}
+
+async function sendWithSmsConnection(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   params: SendSmsParams,
 ) {
@@ -251,6 +372,15 @@ interface SendTemplatedEmailParams {
   code?: string;
   language?: string;
   data: Record<string, string>;
+  /** Auth0 `message_type` reported to the `custom-email-provider` trigger. */
+  messageType: CustomEmailProviderMessageType;
+  /** The recipient user, exposed to the action as `event.user`. */
+  user?: User;
+  /**
+   * Extra values that must never be logged, for secrets that aren't passed
+   * as `code` / `url` (which would also set template variables).
+   */
+  secrets?: string[];
 }
 
 /**
@@ -330,6 +460,13 @@ async function sendTemplatedEmail(
       template: params.legacyTemplate,
       data: params.data,
       from,
+      message_type: params.messageType,
+      // The code and the link carry the secret; keep them out of logs.
+      secrets: [params.code, params.url, ...(params.secrets ?? [])].filter(
+        (v): v is string => typeof v === "string" && v.length > 0,
+      ),
+      user: params.user,
+      locale: params.language,
     },
     tenantId,
   );
@@ -385,6 +522,7 @@ export async function sendResetPassword(
       to,
       templateName: "reset_email",
       legacyTemplate: "auth-password-reset",
+      messageType: "reset_email",
       fallbackSubject: t("reset_password_title", options),
       fallbackHtml: `Click here to reset your password: ${passwordResetUrl}`,
       tenant,
@@ -457,6 +595,7 @@ export async function sendResetPasswordCode(
       to,
       templateName: "reset_email_by_code",
       legacyTemplate: "auth-code",
+      messageType: "reset_email_by_code",
       fallbackSubject: t("reset_password_title", options),
       fallbackHtml: `Your password reset code is: ${code}`,
       tenant,
@@ -556,6 +695,7 @@ export async function sendCode(
       to,
       templateName: "verify_email_by_code",
       legacyTemplate: "auth-code",
+      messageType: "verification_code",
       fallbackSubject: t("code_email_subject", options),
       fallbackHtml: `Your login code is: ${code}`,
       tenant,
@@ -570,6 +710,8 @@ export async function sendCode(
       text: t("sms_code_text", options),
       code,
       from: tenant.friendly_name,
+      message_type: "otp_verify",
+      locale: language,
     });
   }
 
@@ -672,6 +814,7 @@ export async function sendLink(
       to,
       templateName: "verify_email",
       legacyTemplate: "auth-link",
+      messageType: "verification_code",
       fallbackSubject: t("code_email_subject", options),
       fallbackHtml: `Click here to validate your email: ${magicLink.toString()}`,
       tenant,
@@ -688,6 +831,9 @@ export async function sendLink(
       text: `${t("link_sms_login", options)}: ${magicLink.toString()}`,
       code,
       from: tenant.friendly_name,
+      message_type: "otp_verify",
+      secrets: [magicLink.toString()],
+      locale: language,
     });
   } else {
     throw new HTTPException(400, {
@@ -809,6 +955,8 @@ export async function sendValidateEmailAddress(
       to: user.email,
       templateName: "verify_email",
       legacyTemplate: "auth-verify-email",
+      messageType: "verify_email",
+      user,
       fallbackSubject: t("welcome_to_your_account", options),
       fallbackHtml: `Click here to validate your email: ${emailValidationUrl}`,
       tenant,
@@ -886,6 +1034,8 @@ export async function sendEmailVerificationCode(
       to: user.email,
       templateName: "verify_email_by_code",
       legacyTemplate: "auth-code",
+      messageType: "verify_email_by_code",
+      user,
       fallbackSubject: t("verify_email_subject", options),
       fallbackHtml: `Your email verification code is: ${code}`,
       tenant,
@@ -976,6 +1126,10 @@ export async function sendSignupValidateEmailAddress(
     to,
     templateName: "verify_email",
     legacyTemplate: "auth-pre-signup-verification",
+    messageType: "verify_email",
+    // The code is in the link; register it on its own so an action that
+    // extracts and logs it is still scrubbed.
+    secrets: [code],
     fallbackSubject: t("register_password_account", options),
     fallbackHtml: `Click here to register: ${signupUrl}`,
     tenant,
@@ -1064,6 +1218,7 @@ export async function sendInvitation(
       to,
       templateName: "user_invitation",
       legacyTemplate: "auth-invitation",
+      messageType: "organization_invitation",
       fallbackSubject: t("invitation_email_subject", tOpts),
       fallbackHtml: `You've been invited to ${organizationName}. Accept your invitation: ${invitationUrl}`,
       tenant,
@@ -1097,10 +1252,8 @@ export async function sendTestEmail(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   params: SendTestEmailParams,
 ): Promise<void> {
-  const { tenant, logo, buttonColor, options } = await buildEmailContext(
-    ctx,
-    params.language,
-  );
+  const { tenant, logo, buttonColor, options, language } =
+    await buildEmailContext(ctx, params.language);
 
   const provider = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
   const fallbackFrom = resolveFromAddress({
@@ -1203,5 +1356,7 @@ export async function sendTestEmail(
     template: params.templateName,
     data: {},
     from: params.from || fallbackFrom,
+    message_type: "try_provider_configuration_email",
+    locale: language,
   });
 }

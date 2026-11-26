@@ -14,6 +14,7 @@ import {
   pageChoices,
 } from "../hookConstants";
 import { ActionInput } from "../action-input";
+import { NotificationMessageTypesInput } from "../notification-message-types";
 import { TryHookButton } from "../try-hook-button";
 
 interface HookRecord {
@@ -133,6 +134,7 @@ export function DetailsTab() {
       <CardContent className="flex flex-col gap-3">
         <TypeSpecificFields />
         <TriggerField />
+        {hookTypeOf(record) === "code" && <NotificationMessageTypesInput />}
         <BooleanInput source="enabled" label="Enabled" />
         {hookTypeOf(record) === "url" && (
           <BooleanInput source="synchronous" label="Synchronous" />

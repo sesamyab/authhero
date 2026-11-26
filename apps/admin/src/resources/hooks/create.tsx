@@ -20,6 +20,7 @@ import {
 } from "./hookConstants";
 
 import { ActionInput } from "./action-input";
+import { NotificationMessageTypesInput } from "./notification-message-types";
 import { bindingCreatePayload } from "../action-triggers/bindings";
 
 function TypeField() {
@@ -63,7 +64,12 @@ function TypeSpecificFields() {
     );
   }
   if (type === "code") {
-    return <ActionInput />;
+    return (
+      <>
+        <ActionInput />
+        <NotificationMessageTypesInput />
+      </>
+    );
   }
   if (type === "page") {
     return (

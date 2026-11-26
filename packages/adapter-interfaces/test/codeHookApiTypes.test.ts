@@ -135,6 +135,24 @@ const signatureChecks: Record<string, string> = {
     // @ts-expect-error query values must be strings
     api.redirect.sendUserTo("https://example.com", { query: { op: 1 } });
   `,
+  "custom-email-provider": `
+    declare const api: ActionAPI;
+    api.notification.drop("Recipient unsubscribed");
+    api.notification.retry();
+    api.notification.useDefaultProvider();
+    // @ts-expect-error api.cache is not supported yet
+    api.cache.set("key", "value");
+    // @ts-expect-error useDefaultProvider takes no arguments
+    api.notification.useDefaultProvider("mailgun");
+  `,
+  "custom-phone-provider": `
+    declare const api: ActionAPI;
+    api.notification.drop();
+    api.notification.retry("Gateway timeout");
+    api.notification.useDefaultProvider();
+    // @ts-expect-error the reason must be a string
+    api.notification.drop(42);
+  `,
   "pre-user-update": `
     declare const api: ActionAPI;
     api.access.deny();

@@ -15,6 +15,10 @@ import { createClientServiceToken } from "../helpers/service-token";
 import { verifyTOTP, createTOTPKeyURI } from "../utils/totp";
 import { encodeBase32, decodeBase32 } from "@authhero/adapter-interfaces";
 import { enforceMfaSmsSendLimit } from "./mfa-attempts";
+import {
+  CUSTOM_PHONE_PROVIDER_TRIGGER,
+  deliverNotification,
+} from "../hooks/custom-notification-provider";
 
 const MFA_OTP_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -116,6 +120,8 @@ export async function sendMfaOtp(
   loginSession: LoginSession,
   phoneNumber: string,
   userId?: string,
+  /** Auth0 `message_type` for the `custom-phone-provider` trigger. */
+  messageType: "otp_verify" | "otp_enroll" = "otp_verify",
 ): Promise<void> {
   const tenant = client.tenant;
 
@@ -143,27 +149,28 @@ export async function sendMfaOtp(
     expires_at: new Date(Date.now() + MFA_OTP_EXPIRATION_MS).toISOString(),
   });
 
-  // Find SMS provider from the SMS connection or use tenant MFA config
-  const smsConnection = client.connections.find(
-    (c) => c.strategy === Strategy.SMS,
-  );
+  const text = `Your verification code is: ${code}`;
+  const sendWithSmsProvider = async () => {
+    // Find SMS provider from the SMS connection or use tenant MFA config
+    const smsConnection = client.connections.find(
+      (c) => c.strategy === Strategy.SMS,
+    );
 
-  const smsService = ctx.env.data.smsService;
-  if (!smsService) {
-    throw new HTTPException(500, {
-      message: "SMS service not configured",
-    });
-  }
+    const smsService = ctx.env.data.smsService;
+    if (!smsService) {
+      throw new HTTPException(500, {
+        message: "SMS service not configured",
+      });
+    }
 
-  // Use connection options if available, otherwise use tenant MFA config
-  const options = smsConnection?.options || tenant.mfa?.twilio || {};
+    // Use connection options if available, otherwise use tenant MFA config
+    const options = smsConnection?.options || tenant.mfa?.twilio || {};
 
-  try {
     await smsService.send({
       options,
       to: phoneNumber,
       from: tenant.friendly_name,
-      text: `Your verification code is: ${code}`,
+      text,
       template: "mfa-code",
       data: {
         code,
@@ -177,12 +184,46 @@ export async function sendMfaOtp(
         return token.access_token;
       },
     });
+  };
+
+  try {
+    // An action bound to custom-phone-provider delivers the code when there
+    // is one for this message type; otherwise the SMS provider does.
+    await deliverNotification(ctx, {
+      trigger: CUSTOM_PHONE_PROVIDER_TRIGGER,
+      tenantId: tenant.id,
+      messageType,
+      recipient: phoneNumber,
+      secrets: [code],
+      user: userId
+        ? async () =>
+            (await ctx.env.data.users.get(tenant.id, userId)) ?? undefined
+        : undefined,
+      buildNotification: async () => ({
+        message_type: messageType,
+        recipient: phoneNumber,
+        from: tenant.friendly_name || "",
+        as_text: text,
+        as_voice: text,
+        code,
+        delivery_method: "text",
+        locale: loginSession.authParams?.ui_locales?.split(" ")[0] ?? "en",
+      }),
+      sendDefault: sendWithSmsProvider,
+      // A resend replaces the stored code; a background retry of this one
+      // must not deliver a code that no longer verifies.
+      isCurrent: async () =>
+        (await ctx.env.data.codes.get(tenant.id, codeId, "mfa_otp"))?.otp ===
+        code,
+    });
 
     logMessage(ctx, tenant.id, {
       type: LogTypes.MFA_SMS_SENT,
       description: "MFA SMS sent",
     });
   } catch (err) {
+    // The message only: never the code (the custom provider path redacts it
+    // and throws a generic error).
     logMessage(ctx, tenant.id, {
       type: LogTypes.ERROR_SENDING_MFA_SMS,
       description: `Failed to send MFA SMS: ${err instanceof Error ? err.message : String(err)}`,

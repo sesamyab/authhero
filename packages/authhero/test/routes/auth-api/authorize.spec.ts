@@ -555,6 +555,135 @@ describe("authorize", () => {
     });
   });
 
+  describe("grant type validation", () => {
+    async function authorizeWith(
+      grantTypes: string[] | undefined,
+      responseType: AuthorizationResponseType,
+      responseMode?: AuthorizationResponseMode,
+    ) {
+      const { oauthApp, env } = await getTestServer();
+      if (grantTypes) {
+        await env.data.clients.update("tenantId", "clientId", {
+          grant_types: grantTypes,
+        });
+      }
+      const oauthClient = testClient(oauthApp, env);
+      const response = await oauthClient.authorize.$get(
+        {
+          query: {
+            client_id: "clientId",
+            redirect_uri: "https://example.com/callback",
+            state: "state",
+            scope: "openid",
+            nonce: "nonce",
+            response_type: responseType,
+            ...(responseMode ? { response_mode: responseMode } : {}),
+          },
+        },
+        { headers: { origin: "https://example.com" } },
+      );
+      return { response, env };
+    }
+
+    function fragmentParams(location: string) {
+      return new URLSearchParams(new URL(location).hash.slice(1));
+    }
+
+    it("rejects an implicit response for a client limited to client_credentials", async () => {
+      const { response } = await authorizeWith(
+        ["client_credentials"],
+        AuthorizationResponseType.TOKEN,
+      );
+
+      expect(response.status).toEqual(302);
+      const location = response.headers.get("location")!;
+      const url = new URL(location);
+      expect(url.origin + url.pathname).toEqual("https://example.com/callback");
+      const params = fragmentParams(location);
+      expect(params.get("error")).toEqual("unauthorized_client");
+      expect(params.get("error_description")).toEqual(
+        "Grant type 'implicit' not allowed for the client.",
+      );
+      expect(params.get("state")).toEqual("state");
+    });
+
+    it("rejects an id_token response for a code-only client", async () => {
+      const { response } = await authorizeWith(
+        ["authorization_code", "refresh_token"],
+        AuthorizationResponseType.TOKEN_ID_TOKEN,
+      );
+
+      expect(response.status).toEqual(302);
+      const params = fragmentParams(response.headers.get("location")!);
+      expect(params.get("error")).toEqual("unauthorized_client");
+    });
+
+    it("rejects a hybrid response unless both grant types are listed", async () => {
+      const { response } = await authorizeWith(
+        ["authorization_code"],
+        AuthorizationResponseType.CODE_ID_TOKEN,
+      );
+
+      expect(response.status).toEqual(302);
+      const params = fragmentParams(response.headers.get("location")!);
+      expect(params.get("error")).toEqual("unauthorized_client");
+      expect(params.get("error_description")).toContain("'implicit'");
+    });
+
+    it("rejects a code response for a client without authorization_code, in the query", async () => {
+      const { response } = await authorizeWith(
+        ["implicit"],
+        AuthorizationResponseType.CODE,
+      );
+
+      expect(response.status).toEqual(302);
+      const url = new URL(response.headers.get("location")!);
+      expect(url.pathname).toEqual("/callback");
+      expect(url.searchParams.get("error")).toEqual("unauthorized_client");
+      expect(url.searchParams.get("error_description")).toEqual(
+        "Grant type 'authorization_code' not allowed for the client.",
+      );
+    });
+
+    it("returns the error with form_post when that mode was requested", async () => {
+      const { response } = await authorizeWith(
+        ["client_credentials"],
+        AuthorizationResponseType.TOKEN_ID_TOKEN,
+        AuthorizationResponseMode.FORM_POST,
+      );
+
+      expect(response.status).toEqual(200);
+      const body = await response.text();
+      expect(body).toContain("unauthorized_client");
+      expect(body).toContain("https://example.com/callback");
+    });
+
+    it("allows the response types the client's grant types cover", async () => {
+      const { response } = await authorizeWith(
+        ["authorization_code", "implicit"],
+        AuthorizationResponseType.CODE_ID_TOKEN,
+        AuthorizationResponseMode.FRAGMENT,
+      );
+
+      expect(response.status).toEqual(302);
+      const location = response.headers.get("location")!;
+      expect(location).not.toContain("unauthorized_client");
+      expect(location).toContain("/login/identifier");
+    });
+
+    it("does not restrict a client without grant_types", async () => {
+      const { response } = await authorizeWith(
+        undefined,
+        AuthorizationResponseType.TOKEN_ID_TOKEN,
+      );
+
+      expect(response.status).toEqual(302);
+      const location = response.headers.get("location")!;
+      expect(location).not.toContain("unauthorized_client");
+      expect(location).toContain("/login/identifier");
+    });
+  });
+
   describe("resource server validation", () => {
     it("redirects with access_denied when the audience doesn't match a resource server", async () => {
       const { oauthApp, env } = await getTestServer();

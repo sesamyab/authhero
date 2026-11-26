@@ -47,6 +47,12 @@ Both are deliberate refusals. `USER_BLOCKED` means the user record is blocked â€
 
 The client has a non-empty `grant_types` list that does not include the grant you used. Add the grant type to the application, or leave `grant_types` empty to allow all of them.
 
+**`unauthorized_client` from `/authorize`: "Grant type 'â€¦' not allowed for the client."**
+
+`/authorize` checks the `response_type` against the same `grant_types` list. A `code` response needs `authorization_code`. A response that returns `token` or `id_token` (implicit, or hybrid such as `code id_token`) needs `implicit`. The error is sent to the registered `redirect_uri`, in the query for `code` and in the fragment otherwise. A client with an empty `grant_types` list is not restricted.
+
+The default application each tenant gets has `authorization_code` and `refresh_token` only, so it supports the authorization code flow with PKCE and not implicit or hybrid responses. Use the code flow, or add `implicit` to an application that really needs token responses from `/authorize`.
+
 **Wrong tenant, or none** {#wrong-tenant-or-none}
 
 Every request is tenant-scoped, and the tenant is resolved in this order:

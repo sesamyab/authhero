@@ -9,6 +9,8 @@ import generateOTP from "../../utils/otp";
 import { sendCode, sendLink } from "../../emails";
 import { OTP_EXPIRATION_TIME } from "../../constants";
 import { getEnrichedClient } from "../../helpers/client";
+import { missingGrantTypeForResponseType } from "../../helpers/response-type-grants";
+import { HTTPException } from "hono/http-exception";
 import { prefetchClientBundle } from "../../helpers/prefetch-client-bundle";
 import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { passwordlessGrant } from "../../authentication-flows/passwordless";
@@ -233,6 +235,17 @@ const getVerifyRedirect = defineRoute({
     ctx.set("client_id", client.client_id);
     setTenantId(ctx, client.tenant.id);
     ctx.set("connection", "email");
+
+    // Same rule as /authorize, checked before the code is used up.
+    const missingGrantType = missingGrantTypeForResponseType(
+      client.grant_types,
+      response_type,
+    );
+    if (missingGrantType) {
+      throw new HTTPException(400, {
+        message: `Grant type '${missingGrantType}' not allowed for the client.`,
+      });
+    }
 
     const authParams: AuthParams = {
       client_id,

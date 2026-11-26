@@ -80,6 +80,24 @@ export interface ActionExchangeUserOptions {
   updateBehavior?: "replace" | "none";
 }
 
+export interface ActionNotificationAPI {
+  /**
+   * The message failed and must not be retried. It is logged and not sent.
+   * The reason is truncated to 1024 characters.
+   */
+  drop(reason?: string): void;
+  /**
+   * The message failed but can be retried. AuthHero retries it in the
+   * background up to 5 times. The reason is truncated to 1024 characters.
+   */
+  retry(reason?: string): void;
+  /**
+   * AuthHero extension (not in Auth0): send this message with the tenant's
+   * normal email provider or SMS connection instead of this action.
+   */
+  useDefaultProvider(): void;
+}
+
 export interface CodeHookApiByTrigger {
   "validate-registration-username": {
     access: ActionBlockingAccessAPI;
@@ -120,6 +138,14 @@ export interface CodeHookApiByTrigger {
     /** Send the user somewhere else instead of running the operation here. */
     redirect: ActionRedirectAPI;
     access: ActionAccountAccessAPI;
+  };
+  "custom-email-provider": {
+    /** If several of these are called, only the last call counts. */
+    notification: ActionNotificationAPI;
+  };
+  "custom-phone-provider": {
+    /** If several of these are called, only the last call counts. */
+    notification: ActionNotificationAPI;
   };
   "custom-token-exchange": {
     /** Validate the subject token, then call exactly one user selector or reject it. */

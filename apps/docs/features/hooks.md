@@ -395,6 +395,14 @@ exports.onExecutePreAccountAction = async (event, api) => {
 If nothing is bound to the trigger, the account pages behave as before; the only
 cost is one hook lookup when a gated page opens or is submitted.
 
+## Custom email and phone provider Actions
+
+The Auth0 triggers `custom-email-provider` and `custom-phone-provider` let a
+code Action deliver outgoing emails and text messages (one-time codes, magic
+links, verification and reset emails, MFA SMS) instead of the tenant's
+provider. They have their own page:
+[Custom Email and SMS Providers](./custom-email-and-sms-providers.md).
+
 ## Entity Hooks
 
 In addition to user lifecycle hooks, AuthHero provides entity hooks that allow you to execute custom logic when management entities (roles, connections, resource servers, and role permissions) are created, updated, deleted, or modified.
