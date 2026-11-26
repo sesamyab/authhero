@@ -319,6 +319,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               text: "Email Templates",
               link: "/features/email-templates",
             },
+            {
+              text: "Custom Email & SMS Providers",
+              link: "/features/custom-email-and-sms-providers",
+            },
             { text: "Account Linking", link: "/features/account-linking" },
             { text: "Impersonation", link: "/features/impersonation" },
             {

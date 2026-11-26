@@ -18,6 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { RawJsonTab } from "@/common/RawJsonTab";
+import { CustomProviderNotice } from "../hooks/custom-provider-notice";
 
 function FactorRow({ source, label }: { source: string; label: string }) {
   return (
@@ -107,6 +108,7 @@ function SmsProviderTab() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <CustomProviderNotice triggerId="custom-phone-provider" />
         <SelectInput
           source="mfa.sms_provider.provider"
           label="Provider"

@@ -19,6 +19,7 @@ export interface TriggerBinding {
   permission_required?: string;
   override?: "none" | "secrets" | "fields" | null;
   enforce?: boolean | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ActionRecord {

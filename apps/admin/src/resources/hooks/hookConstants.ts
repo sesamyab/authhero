@@ -70,6 +70,8 @@ export const triggerChoices = [
   { id: "pre-user-deletion", name: "Pre User Deletion" },
   { id: "post-user-deletion", name: "Post User Deletion" },
   { id: "pre-account-action", name: "Pre Account Action" },
+  { id: "custom-email-provider", name: "Custom Email Provider" },
+  { id: "custom-phone-provider", name: "Custom Phone Provider" },
 ];
 
 /** Display names shared by hooks and Actions, including Auth0's post-login alias. */
@@ -172,6 +174,8 @@ export const codeHookTriggerChoices = triggerChoices.filter((c) =>
     "pre-user-deletion",
     "post-user-deletion",
     "pre-account-action",
+    "custom-email-provider",
+    "custom-phone-provider",
   ].includes(c.id),
 );
 
@@ -196,8 +200,74 @@ export const triggerHandlerNames: Record<string, string> = {
   "pre-user-deletion": "onExecutePreUserDeletion",
   "post-user-deletion": "onExecutePostUserDeletion",
   "pre-account-action": "onExecutePreAccountAction",
+  "custom-email-provider": "onExecuteCustomEmailProvider",
+  "custom-phone-provider": "onExecuteCustomPhoneProvider",
   "custom-token-exchange": "onExecuteCustomTokenExchange",
 };
+
+const CUSTOM_EMAIL_PROVIDER_TEMPLATE = `/**
+ * Delivers outgoing emails instead of the tenant's email provider.
+ * event.notification: { message_type, to, from, subject, html, text, locale }.
+ *
+ * Do nothing to report the message as delivered. Call
+ * api.notification.retry(reason) for a temporary failure (retried up to 5
+ * times), api.notification.drop(reason) to give up, or
+ * api.notification.useDefaultProvider() (AuthHero only) to send this message
+ * with the tenant's normal email provider.
+ */
+exports.onExecuteCustomEmailProvider = async (event, api) => {
+  const response = await fetch("https://mail.example.com/send", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: \`Bearer \${event.secrets.API_KEY}\`,
+    },
+    body: JSON.stringify({
+      to: event.notification.to,
+      from: event.notification.from,
+      subject: event.notification.subject,
+      html: event.notification.html,
+      text: event.notification.text,
+    }),
+  });
+  if (response.status >= 500) {
+    api.notification.retry(\`Mail API returned \${response.status}\`);
+  } else if (!response.ok) {
+    api.notification.drop(\`Mail API returned \${response.status}\`);
+  }
+};
+`;
+
+const CUSTOM_PHONE_PROVIDER_TEMPLATE = `/**
+ * Delivers outgoing text messages instead of the SMS connection's provider.
+ * event.notification: { message_type ("otp_verify" | "otp_enroll"),
+ * recipient, from, as_text, as_voice, code, delivery_method, locale }.
+ *
+ * Do nothing to report the message as delivered. Call
+ * api.notification.retry(reason) for a temporary failure (retried up to 5
+ * times), api.notification.drop(reason) to give up, or
+ * api.notification.useDefaultProvider() (AuthHero only) to send this message
+ * with the SMS connection's provider.
+ */
+exports.onExecuteCustomPhoneProvider = async (event, api) => {
+  const response = await fetch("https://sms.example.com/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: \`Bearer \${event.secrets.API_KEY}\`,
+    },
+    body: JSON.stringify({
+      to: event.notification.recipient,
+      text: event.notification.as_text,
+    }),
+  });
+  if (response.status >= 500) {
+    api.notification.retry(\`SMS API returned \${response.status}\`);
+  } else if (!response.ok) {
+    api.notification.drop(\`SMS API returned \${response.status}\`);
+  }
+};
+`;
 
 const CUSTOM_TOKEN_EXCHANGE_TEMPLATE = `/**
  * Runs when a client exchanges a subject token at /oauth/token with the
@@ -278,6 +348,12 @@ export function getDefaultCodeTemplate(triggerId?: string): string {
   }
   if (triggerId === "custom-token-exchange") {
     return CUSTOM_TOKEN_EXCHANGE_TEMPLATE;
+  }
+  if (triggerId === "custom-email-provider") {
+    return CUSTOM_EMAIL_PROVIDER_TEMPLATE;
+  }
+  if (triggerId === "custom-phone-provider") {
+    return CUSTOM_PHONE_PROVIDER_TEMPLATE;
   }
   if (triggerId === "pre-account-action") {
     return `/**
