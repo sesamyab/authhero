@@ -185,7 +185,11 @@ export function createUserHooks(
         data,
         tenantId: tenant_id,
         triggerId: "pre-user-registration",
-        externalConnections: createExternalConnectionLookup(data, tenant_id),
+        externalConnections: createExternalConnectionLookup(
+          data,
+          tenant_id,
+          Object.keys(ctx.env.STRATEGIES ?? {}),
+        ),
       });
       for (const hook of preRegCodeHooks) {
         try {
@@ -275,7 +279,9 @@ export function createUserHooks(
 
     // A hook linked the new user to a primary that doesn't exist. Register the
     // user unlinked (or with the caller's own `linked_to`) instead of failing
-    // the registration in `commitUserHook` (issue #1802).
+    // the registration in `commitUserHook` (issue #1802). The hook asked for a
+    // specific primary, so built-in email linking must not pick another one.
+    let hookLinkFellBack = false;
     if (hookLinkedTo !== undefined && user.linked_to === hookLinkedTo) {
       const primary = await data.users.get(tenant_id, hookLinkedTo);
       if (!primary) {
@@ -289,6 +295,7 @@ export function createUserHooks(
             primary_user_id: hookLinkedTo,
           },
         });
+        hookLinkFellBack = true;
         if (callerLinkedTo) {
           user.linked_to = callerLinkedTo;
         } else {
@@ -307,11 +314,9 @@ export function createUserHooks(
     // commit transaction. Per-client `user_linking_mode` overrides the
     // service-level `userLinkingMode`. With "off", linking only happens via
     // the `account-linking` template hook below.
-    const resolveEmailLinkedPrimary = await builtInUserLinkingEnabled(
-      ctx,
-      tenant_id,
-      ctx.var.client_id,
-    );
+    const resolveEmailLinkedPrimary =
+      !hookLinkFellBack &&
+      (await builtInUserLinkingEnabled(ctx, tenant_id, ctx.var.client_id));
 
     // Build the post-user-registration outbox event up front (with a fixed id)
     // so it can be written atomically with the user row inside commitUserHook.

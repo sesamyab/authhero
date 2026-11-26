@@ -78,6 +78,15 @@ async function hookLogs(env: Bindings, ctx?: Ctx) {
   );
 }
 
+async function allUserIds(env: Bindings) {
+  const { users } = await env.data.users.list(tenantId, {
+    page: 0,
+    per_page: 100,
+    include_totals: false,
+  });
+  return users.map((u) => u.user_id).sort();
+}
+
 function reasonsOf(logs: Awaited<ReturnType<typeof hookLogs>>) {
   return logs
     .filter((l) => l.type === LogTypes.FAILED_HOOK)
@@ -159,12 +168,10 @@ describe("api.users.ensure guards", () => {
       const { env, ctx, usersApi } = await setupEnsure();
       await c.setup(env);
 
+      const before = await allUserIds(env);
       await usersApi.api.users.ensure(c.params);
 
-      const { users } = await env.data.users.list(tenantId, {
-        q: "provider:parat",
-      });
-      expect(users.filter((u) => u.connection === "parat")).toHaveLength(0);
+      expect(await allUserIds(env)).toEqual(before);
       expect(usersApi.ensuredUserIds.size).toBe(0);
       expect(reasonsOf(await hookLogs(env, ctx))).toEqual([c.reason]);
     });
@@ -714,5 +721,297 @@ describe("external connections are not login connections", () => {
 
     expect(client.connections.map((c) => c.name)).not.toContain("parat");
     expect(client.connections.length).toBeGreaterThan(0);
+  });
+});
+
+describe("review follow-ups (PR #1805)", () => {
+  it("keeps the external key exactly as given", async () => {
+    const { env, usersApi } = await setupEnsure();
+    await createExternalConnection(env);
+
+    await usersApi.api.users.ensure({ connection: "parat", id: " 42" });
+
+    expect(await env.data.users.get(tenantId, "parat| 42")).toBeTruthy();
+    expect(await env.data.users.get(tenantId, "parat|42")).toBeNull();
+  });
+
+  it("refuses connection names used by injected or tenant login strategies", async () => {
+    const { env } = await getTestServer();
+    const ctx = createMockCtx(env);
+    // A login connection backed by an injected strategy stores its users as
+    // `partner-idp|…`.
+    await env.data.connections.create(tenantId, {
+      id: "partner-login",
+      name: "partner-login",
+      strategy: "partner-idp",
+      options: {},
+    });
+    await createExternalConnection(env, "partner-idp");
+    await createExternalConnection(env, "injected-idp");
+    const usersApi = createActionUsersApi({
+      ctx,
+      data: env.data,
+      tenantId,
+      triggerId: "post-user-login",
+      externalConnections: createExternalConnectionLookup(env.data, tenantId, [
+        "injected-idp",
+      ]),
+    });
+
+    await usersApi.api.users.ensure({ connection: "partner-idp", id: "1" });
+    await usersApi.api.users.ensure({ connection: "injected-idp", id: "1" });
+
+    expect(await env.data.users.get(tenantId, "partner-idp|1")).toBeNull();
+    expect(await env.data.users.get(tenantId, "injected-idp|1")).toBeNull();
+    expect(reasonsOf(await hookLogs(env, ctx))).toEqual([
+      "connection_not_allowed",
+      "connection_not_allowed",
+    ]);
+  });
+
+  it("finds the external connection beyond the first page of connections", async () => {
+    const { env, usersApi } = await setupEnsure();
+    for (let i = 0; i < 110; i++) {
+      await env.data.connections.create(tenantId, {
+        id: `filler-${i}`,
+        name: `filler-${i}`,
+        strategy: Strategy.OIDC,
+        options: {},
+      });
+    }
+    await createExternalConnection(env);
+
+    await usersApi.api.users.ensure({ connection: "parat", id: "214700" });
+
+    expect(await env.data.users.get(tenantId, ANCHOR)).toBeTruthy();
+  });
+
+  it("does not carry email_verified over to a different address", async () => {
+    const { env, usersApi } = await setupEnsure();
+    await createExternalConnection(env);
+
+    await usersApi.api.users.ensure({
+      connection: "parat",
+      id: "214700",
+      profile: { email: "old@example.com", email_verified: true },
+    });
+    await usersApi.api.users.ensure({
+      connection: "parat",
+      id: "214700",
+      profile: { email: "old@example.com", given_name: "Ada" },
+    });
+    expect((await env.data.users.get(tenantId, ANCHOR))?.email_verified).toBe(
+      true,
+    );
+
+    await usersApi.api.users.ensure({
+      connection: "parat",
+      id: "214700",
+      profile: { email: "new@example.com" },
+    });
+    const anchor = await env.data.users.get(tenantId, ANCHOR);
+    expect(anchor?.email).toBe("new@example.com");
+    expect(anchor?.email_verified).toBe(false);
+  });
+
+  it("moves the whole cluster when an earlier setLinkedTo already re-pointed the user", async () => {
+    const { env } = await getTestServer();
+    const ctx = createMockCtx(env);
+    const data = addDataHooks(ctx, env.data);
+    await createExternalConnection(env);
+    const older = await env.data.users.create(tenantId, {
+      user_id: `${USERNAME_PASSWORD_PROVIDER}|older`,
+      email: "member@example.com",
+      email_verified: true,
+      provider: USERNAME_PASSWORD_PROVIDER,
+      connection: Strategy.USERNAME_PASSWORD,
+      created_at: "2020-01-01T00:00:00.000Z",
+      updated_at: "2020-01-01T00:00:00.000Z",
+    });
+    const current = await env.data.users.create(tenantId, {
+      user_id: "email|newer",
+      email: "member@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: Strategy.EMAIL,
+      created_at: "2025-01-01T00:00:00.000Z",
+      updated_at: "2025-01-01T00:00:00.000Z",
+    });
+    const externalConnections = createExternalConnectionLookup(data, tenantId);
+    const usersApi = createActionUsersApi({
+      ctx,
+      data,
+      tenantId,
+      triggerId: "post-user-login",
+      externalConnections,
+    });
+    const linking = createPostLoginUserApi({
+      ctx,
+      data,
+      tenantId,
+      user: current,
+      candidates: [older],
+      ensuredUserIds: usersApi.ensuredUserIds,
+      externalConnections,
+    });
+
+    await linking.api.user.setLinkedTo(older.user_id);
+    await usersApi.api.users.ensure({ connection: "parat", id: "214700" });
+    await linking.api.user.setLinkedTo(ANCHOR);
+
+    expect(linking.getLinkedPrimaryId()).toBe(ANCHOR);
+    expect((await env.data.users.get(tenantId, older.user_id))?.linked_to).toBe(
+      ANCHOR,
+    );
+    expect(
+      (await env.data.users.get(tenantId, current.user_id))?.linked_to,
+    ).toBe(ANCHOR);
+  });
+
+  it("keeps the missing-target fallback unlinked even when built-in email linking would match", async () => {
+    const { env, managementApp } = await getTestServer({
+      codeExecutor: new LocalCodeExecutor(),
+    });
+    await env.data.users.create(tenantId, {
+      user_id: `${USERNAME_PASSWORD_PROVIDER}|existing`,
+      email: "fallback@example.com",
+      email_verified: true,
+      provider: USERNAME_PASSWORD_PROVIDER,
+      connection: Strategy.USERNAME_PASSWORD,
+    });
+    const action = await env.data.actions.create(tenantId, {
+      name: "missing-target",
+      code: `
+exports.onExecutePreUserRegistration = async (event, api) => {
+  api.user.setLinkedTo("parat|missing");
+};
+`,
+    });
+    await env.data.hooks.create(tenantId, {
+      trigger_id: "pre-user-registration",
+      enabled: true,
+      code_id: action.id,
+      synchronous: true,
+    });
+
+    const client = testClient(managementApp, env);
+    const token = await getAdminToken();
+    const response = await client.users.$post(
+      {
+        json: {
+          email: "fallback@example.com",
+          email_verified: true,
+          connection: Strategy.EMAIL,
+        },
+        header: { "tenant-id": tenantId },
+      },
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(201);
+    const created = (await response.json()) as UserResponse;
+    expect(created.user_id.startsWith("email|")).toBe(true);
+    const stored = await env.data.users.get(tenantId, created.user_id);
+    expect(stored?.linked_to).toBeFalsy();
+  });
+
+  it("returns the refreshed anchor when the signing-in primary is the anchor it ensures", async () => {
+    const server = await getTestServer({
+      codeExecutor: new LocalCodeExecutor(),
+    });
+    const env = server.env;
+    await createExternalConnection(env);
+    const anchor = await env.data.users.create(tenantId, {
+      user_id: ANCHOR,
+      provider: "parat",
+      connection: "parat",
+      email_verified: false,
+      name: "Old name",
+    });
+    const action = await env.data.actions.create(tenantId, {
+      name: "refresh-anchor",
+      code: `
+exports.onExecutePostLogin = async (event, api) => {
+  api.users.ensure({ connection: "parat", id: "214700", profile: { name: "New name" } });
+  api.user.setLinkedTo("parat|214700");
+};
+`,
+    });
+    await env.data.hooks.create(tenantId, {
+      trigger_id: "post-user-login",
+      enabled: true,
+      code_id: action.id,
+      synchronous: true,
+    });
+    const loginSession = await env.data.loginSessions.create(tenantId, {
+      csrf_token: "csrf",
+      authParams: {
+        client_id: "clientId",
+        response_type: "code",
+        redirect_uri: "http://localhost/cb",
+        scope: "openid",
+      },
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+    });
+    const client = {
+      id: "clientId",
+      name: "Test",
+      client_id: "clientId",
+      tenant: { id: tenantId },
+      callbacks: ["http://localhost/cb"],
+      allowed_logout_urls: [],
+      web_origins: [],
+      grant_types: ["authorization_code"],
+      connections: [],
+    } as unknown as EnrichedClient;
+
+    const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+    app.post("/run", async (ctx) => {
+      Object.assign(ctx.env, env);
+      ctx.set("tenant_id", tenantId);
+      ctx.set("ip", "1.2.3.4");
+      ctx.set("useragent", "test");
+      ctx.set("client_id", "clientId");
+      const result = await postUserLoginHook(
+        ctx,
+        env.data,
+        tenantId,
+        anchor,
+        loginSession,
+        { client, authParams: loginSession.authParams },
+      );
+      await flushBackgroundPromises(ctx);
+      const user = result as User;
+      return ctx.json({ user_id: user.user_id, name: user.name ?? null });
+    });
+
+    const response = await app.request("/run", { method: "POST" }, env);
+    expect(await response.json()).toEqual({
+      user_id: ANCHOR,
+      name: "New name",
+    });
+  });
+
+  it("treats /authorize?connection=<external> like an unknown connection", async () => {
+    const { oauthApp, env } = await getTestServer();
+    await createExternalConnection(env);
+    const oauthClient = testClient(oauthApp, env);
+
+    const response = await oauthClient.authorize.$get(
+      {
+        query: {
+          client_id: "clientId",
+          redirect_uri: "https://example.com/callback",
+          state: "state",
+          scope: "openid",
+          response_type: "code",
+          connection: "parat",
+        },
+      },
+      { headers: { origin: "https://example.com" } },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toContain("Connection Not Found");
   });
 });

@@ -425,8 +425,10 @@ exports.onExecutePostLogin = async (event, api) => {
 `strategy: "external"` and `options.allow_action_users: true`. It is not a way to
 sign in: it never shows on login screens, `/authorize?connection=` treats it as
 unknown, and it stores no credentials (keep the external system's API secrets in
-the Action's secrets). Names that clash with built-in providers (`email`, `sms`,
-`auth0`, `google-oauth2`…) are refused. Create one through the Management API:
+the Action's secrets). Names that clash with a prefix login identities use are
+refused: built-in providers (`email`, `sms`, `auth0`, `google-oauth2`…),
+strategies injected through `env.STRATEGIES`, and the strategy of any of the
+tenant's login connections. Create one through the Management API:
 
 ```http
 POST /api/v2/connections
@@ -438,7 +440,10 @@ returns nothing. You choose the id, and the call is an upsert:
 
 - If `<connection>|<id>` doesn't exist, it is created with the profile and
   `app_metadata`. Otherwise non-blank profile fields overwrite the stored ones
-  and `app_metadata` is shallow-merged.
+  and `app_metadata` is shallow-merged. A new `email` without
+  `email_verified` is stored as unverified.
+- `id` is used exactly as given (no trimming), so pass the same string to
+  `setLinkedTo`.
 - The write bypasses user hooks: no `pre-user-registration`, no update hooks, no
   automatic email linking and no post-registration webhook. The user is a
   record, not a signup.

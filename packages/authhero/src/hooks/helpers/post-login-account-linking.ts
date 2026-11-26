@@ -163,8 +163,12 @@ export function createPostLoginUserApi(params: {
       });
       linkedPrimaryId = primaryId;
     };
+    // Demote the primary that was classified, not just the logging-in
+    // identity: when an earlier call already put the user under another
+    // primary, that whole cluster moves (the chokepoint repoints its
+    // secondaries, including the logging-in user).
     const demoteCurrent = async () => {
-      await data.users.update(tenantId, currentUser.user_id, {
+      await data.users.update(tenantId, currentPrimary.user_id, {
         linked_to: target.user_id,
       });
       currentUser = { ...currentUser, linked_to: target.user_id };
@@ -178,10 +182,11 @@ export function createPostLoginUserApi(params: {
       // The logging-in user is already under an anchor: pull the target into
       // that cluster rather than moving the user out of it.
       await demoteTarget(currentPrimary.user_id);
-    } else if (compareUsersByAge(currentUser, target) < 0) {
-      // Older account wins. If the logging-in user pre-dates the target,
-      // demote the target rather than turning the older user into a secondary.
-      await demoteTarget(currentUser.user_id);
+    } else if (compareUsersByAge(currentPrimary, target) < 0) {
+      // Older account wins. If the logging-in user's primary pre-dates the
+      // target, demote the target rather than turning the older account into
+      // a secondary.
+      await demoteTarget(currentPrimary.user_id);
     } else {
       await demoteCurrent();
     }

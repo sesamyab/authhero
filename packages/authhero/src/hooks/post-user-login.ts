@@ -712,6 +712,7 @@ export async function postUserLoginHook(
       const externalConnections = createExternalConnectionLookup(
         data,
         tenant_id,
+        Object.keys(ctx.env.STRATEGIES ?? {}),
       );
       const actionUsers = createActionUsersApi({
         ctx,
@@ -775,9 +776,17 @@ export async function postUserLoginHook(
 
       // If an action linked the user, re-fetch the resulting primary so
       // downstream token building sees it — matching `handleTemplateHook`.
+      // Also re-read when an action ensured the logging-in primary itself
+      // (an anchor signing in again), so tokens carry the merged profile.
       const linkedPrimaryId = linkingApi.getLinkedPrimaryId();
-      if (linkedPrimaryId && linkedPrimaryId !== user.user_id) {
-        const primary = await data.users.get(tenant_id, linkedPrimaryId);
+      const refreshId =
+        linkedPrimaryId && linkedPrimaryId !== user.user_id
+          ? linkedPrimaryId
+          : actionUsers.ensuredUserIds.has(user.user_id)
+            ? user.user_id
+            : null;
+      if (refreshId) {
+        const primary = await data.users.get(tenant_id, refreshId);
         if (primary) user = primary;
       }
     }
