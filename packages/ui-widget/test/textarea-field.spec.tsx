@@ -62,3 +62,54 @@ describe("multiline TEXT field", () => {
     expect(el.childNodes).toHaveLength(1);
   });
 });
+
+// The label floats via `.input-field:not(:placeholder-shown) + .input-label`,
+// so it must come right after the field with a placeholder attribute. A label
+// rendered before the field never moved and the typed text ran into it.
+describe("floating labels on textarea and URL fields", () => {
+  const url = {
+    id: "logo_uri",
+    type: "URL",
+    category: "FIELD",
+    label: "Logo URL",
+  } as FormComponent;
+
+  async function render(component: FormComponent, value?: string) {
+    const page = await newSpecPage({
+      components: [AuthheroNode],
+      template: () => (
+        <authhero-node component={component} value={value}></authhero-node>
+      ),
+    });
+    const root = page.root!.shadowRoot!;
+    const field = root.querySelector(".input-field")!;
+    return { field, label: field.nextElementSibling };
+  }
+
+  it("renders the textarea label after the field, inside a textarea container", async () => {
+    const { field, label } = await render(textarea());
+    expect(field.tagName).toBe("TEXTAREA");
+    expect(field.getAttribute("placeholder")).toBe(" ");
+    expect(label?.className).toBe("input-label");
+    expect(field.parentElement?.classList.contains("textarea-container")).toBe(
+      true,
+    );
+  });
+
+  it("floats the textarea label once there is a value", async () => {
+    const { label } = await render(textarea(), "https://a.example");
+    expect(label?.className).toBe("input-label floating");
+  });
+
+  it("renders the URL label after the input", async () => {
+    const { field, label } = await render(url);
+    expect(field.getAttribute("type")).toBe("url");
+    expect(field.getAttribute("placeholder")).toBe(" ");
+    expect(label?.className).toBe("input-label");
+  });
+
+  it("floats the URL label once there is a value", async () => {
+    const { label } = await render(url, "https://a.example/logo.png");
+    expect(label?.className).toBe("input-label floating");
+  });
+});
