@@ -1070,3 +1070,58 @@ describe("review follow-ups, round 2 (PR #1805)", () => {
     ).toBe(root.user_id);
   });
 });
+
+describe("review follow-ups, round 3 (PR #1805)", () => {
+  it("classifies an ensured target by its cluster root, so an external root wins over age", async () => {
+    const { env } = await getTestServer();
+    const ctx = createMockCtx(env);
+    const data = addDataHooks(ctx, env.data);
+    await createExternalConnection(env);
+    // Older than any anchor, so a plain age comparison would make it primary.
+    const current = await env.data.users.create(tenantId, {
+      user_id: "email|old-member",
+      email: "old-member@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: Strategy.EMAIL,
+      created_at: "2020-01-01T00:00:00.000Z",
+      updated_at: "2020-01-01T00:00:00.000Z",
+    });
+    const externalConnections = createExternalConnectionLookup(data, tenantId);
+    const usersApi = createActionUsersApi({
+      ctx,
+      data,
+      tenantId,
+      triggerId: "post-user-login",
+      externalConnections,
+    });
+    await usersApi.api.users.ensure({ connection: "parat", id: "root" });
+    await usersApi.api.users.ensure({ connection: "parat", id: "alias" });
+    // An admin had merged the alias record under the root record.
+    await env.data.users.update(tenantId, "parat|alias", {
+      linked_to: "parat|root",
+    });
+
+    const linking = createPostLoginUserApi({
+      ctx,
+      data,
+      tenantId,
+      user: current,
+      candidates: [],
+      ensuredUserIds: usersApi.ensuredUserIds,
+      externalConnections,
+    });
+    await linking.api.user.setLinkedTo("parat|alias");
+
+    expect(linking.getLinkedPrimaryId()).toBe("parat|root");
+    expect(
+      (await env.data.users.get(tenantId, current.user_id))?.linked_to,
+    ).toBe("parat|root");
+    expect((await env.data.users.get(tenantId, "parat|alias"))?.linked_to).toBe(
+      "parat|root",
+    );
+    expect(
+      (await env.data.users.get(tenantId, "parat|root"))?.linked_to,
+    ).toBeFalsy();
+  });
+});

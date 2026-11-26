@@ -139,9 +139,19 @@ export function createPostLoginUserApi(params: {
     const currentPrimary = currentUser.linked_to
       ? ((await data.users.get(tenantId, currentUser.linked_to)) ?? currentUser)
       : currentUser;
+    // Classify the target by its cluster root too: an ensured target may
+    // itself be a secondary (e.g. linked under an anchor by an admin).
+    const targetPrimary = target.linked_to
+      ? ((await data.users.get(tenantId, target.linked_to)) ?? target)
+      : target;
+    if (targetPrimary.user_id === currentPrimary.user_id) {
+      // Already in the same cluster.
+      linkedPrimaryId = currentPrimary.user_id;
+      return;
+    }
     const [currentIsAnchor, targetIsAnchor] = await Promise.all([
       isAnchor(currentPrimary),
-      isAnchor(target),
+      isAnchor(targetPrimary),
     ]);
 
     if (currentIsAnchor && targetIsAnchor) {
@@ -157,8 +167,9 @@ export function createPostLoginUserApi(params: {
     // decorated adapter set, so the update decorator's chokepoint repoints any
     // accounts already linked to the demoted side and resolves the target to
     // its cluster root, keeping the graph a single hop deep (issue #1250).
+    // Demote the target's root, so the target's whole cluster moves.
     const demoteTarget = async (primaryId: string) => {
-      await data.users.update(tenantId, target.user_id, {
+      await data.users.update(tenantId, targetPrimary.user_id, {
         linked_to: primaryId,
       });
       linkedPrimaryId = primaryId;
@@ -193,7 +204,7 @@ export function createPostLoginUserApi(params: {
       // The logging-in user is already under an anchor: pull the target into
       // that cluster rather than moving the user out of it.
       await demoteTarget(currentPrimary.user_id);
-    } else if (compareUsersByAge(currentPrimary, target) < 0) {
+    } else if (compareUsersByAge(currentPrimary, targetPrimary) < 0) {
       // Older account wins. If the logging-in user's primary pre-dates the
       // target, demote the target rather than turning the older account into
       // a secondary.
