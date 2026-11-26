@@ -188,6 +188,9 @@ export async function findNotificationHook(
   messageType: string,
 ): Promise<CodeHook | undefined> {
   const data = getData(ctx);
+  // Contexts built on a partial adapter (e.g. the control-plane invitation
+  // sender) have no hooks to bind, so nothing can take the message.
+  if (!data.hooks) return undefined;
   const hooks: Hook[] = [];
   for (let page = 0; ; page++) {
     const result = await data.hooks.list(tenantId, {
