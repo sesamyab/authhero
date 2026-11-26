@@ -55,6 +55,15 @@ export const TRIGGER_API_SHAPES: Readonly<
     redirect: ["sendUserTo"],
     access: ["deny"],
   },
+  // Auth0's custom provider triggers. `drop` and `retry` are Auth0's;
+  // `useDefaultProvider` is an AuthHero extension that hands the message back
+  // to the tenant's normal email provider / SMS connection. The last call wins.
+  "custom-email-provider": {
+    notification: ["drop", "retry", "useDefaultProvider"],
+  },
+  "custom-phone-provider": {
+    notification: ["drop", "retry", "useDefaultProvider"],
+  },
   // Not bound through trigger bindings: a Custom Token Exchange profile names
   // the action it runs (issue #1417). Exactly one of the two `authentication`
   // setters must be called for the exchange to succeed.
@@ -81,6 +90,8 @@ export const TRIGGER_FUNCTION_NAMES: Readonly<Record<string, string>> = {
   "post-user-deletion": "onExecutePostUserDeletion",
   "pre-account-action": "onExecutePreAccountAction",
   "custom-token-exchange": "onExecuteCustomTokenExchange",
+  "custom-email-provider": "onExecuteCustomEmailProvider",
+  "custom-phone-provider": "onExecuteCustomPhoneProvider",
 };
 
 /**
