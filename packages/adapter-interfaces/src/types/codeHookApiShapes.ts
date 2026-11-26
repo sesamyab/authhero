@@ -30,6 +30,10 @@ export const TRIGGER_API_SHAPES: Readonly<
     // host-side (candidate allowlist + verified-email gate) — see the
     // post-user-login dispatch.
     user: ["setLinkedTo"],
+    // Create or update users in an `external` connection (issue #1802), e.g.
+    // an anchor for an external record that `user.setLinkedTo` then links
+    // under. Guarded host-side by the connection's `allow_action_users`.
+    users: ["ensure"],
     // Require MFA for this login (issue #1670). Replayed host-side into the
     // login session so the MFA check runs before tokens are issued.
     multifactor: ["enable"],
@@ -41,6 +45,7 @@ export const TRIGGER_API_SHAPES: Readonly<
   },
   "pre-user-registration": {
     user: ["setUserMetadata", "setAppMetadata", "setLinkedTo"],
+    users: ["ensure"],
     access: ["deny"],
     validation: ["error"],
   },

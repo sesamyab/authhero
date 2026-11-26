@@ -20,6 +20,10 @@ import {
 } from "./codehooks";
 import { isTemplateHook, handleTemplateHook } from "./templatehooks";
 import { createTokenAPI } from "./helpers/token-api";
+import {
+  createActionUsersApi,
+  createExternalConnectionLookup,
+} from "./helpers/action-users";
 import { preUserSignupHook } from "./validate-signup";
 import { builtInUserLinkingEnabled } from "../helpers/user-linking";
 import { withNormalizedEmail } from "../utils/email";
@@ -105,6 +109,16 @@ export function createUserHooks(
     const setAppMetadata = (key: string, value: unknown) => {
       setMetadata(user, "app_metadata", key, value);
     };
+    // `linked_to` as the caller passed it (e.g. a Management API create), and
+    // the last target a hook asked for. A hook's target is only checked once
+    // every hook has run, so an action can `users.ensure` its primary and link
+    // to it in the same execution.
+    const callerLinkedTo = user.linked_to;
+    let hookLinkedTo: string | undefined;
+    const setLinkedTo = (primaryUserId: string) => {
+      hookLinkedTo = primaryUserId;
+      user.linked_to = primaryUserId;
+    };
 
     if (ctx.env.hooks?.onExecutePreUserRegistration) {
       try {
@@ -119,9 +133,7 @@ export function createUserHooks(
             user: {
               setUserMetadata,
               setAppMetadata,
-              setLinkedTo: (primaryUserId: string) => {
-                user.linked_to = primaryUserId;
-              },
+              setLinkedTo,
             },
             access: {
               deny: (code: string, reason?: string) => {
@@ -168,6 +180,13 @@ export function createUserHooks(
     // Execute pre-user-registration code hooks.
     {
       const outcomes: HandleCodeHookOutcome[] = [];
+      const actionUsers = createActionUsersApi({
+        ctx,
+        data,
+        tenantId: tenant_id,
+        triggerId: "pre-user-registration",
+        externalConnections: createExternalConnectionLookup(data, tenant_id),
+      });
       for (const hook of preRegCodeHooks) {
         try {
           const outcome = await handleCodeHook(
@@ -180,10 +199,9 @@ export function createUserHooks(
               user: {
                 setUserMetadata,
                 setAppMetadata,
-                setLinkedTo: (primaryUserId: string) => {
-                  user.linked_to = primaryUserId;
-                },
+                setLinkedTo,
               },
+              users: actionUsers.api.users,
               access: {
                 deny: (code: string, reason?: string) => {
                   throw new JSONHTTPException(400, {
@@ -252,6 +270,30 @@ export function createUserHooks(
       );
       if (executionId) {
         ctx.set("action_execution_id", executionId);
+      }
+    }
+
+    // A hook linked the new user to a primary that doesn't exist. Register the
+    // user unlinked (or with the caller's own `linked_to`) instead of failing
+    // the registration in `commitUserHook` (issue #1802).
+    if (hookLinkedTo !== undefined && user.linked_to === hookLinkedTo) {
+      const primary = await data.users.get(tenant_id, hookLinkedTo);
+      if (!primary) {
+        logMessage(ctx, tenant_id, {
+          type: LogTypes.FAILED_HOOK,
+          description: `pre-user-registration hook tried to link ${user.user_id} to non-existent user ${hookLinkedTo}`,
+          userId: user.user_id,
+          details: {
+            trigger_id: "pre-user-registration",
+            reason: "primary_not_found",
+            primary_user_id: hookLinkedTo,
+          },
+        });
+        if (callerLinkedTo) {
+          user.linked_to = callerLinkedTo;
+        } else {
+          delete user.linked_to;
+        }
       }
     }
 

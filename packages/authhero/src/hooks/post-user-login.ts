@@ -31,6 +31,10 @@ import { invokeHooks } from "./webhooks";
 import { createTokenAPI } from "./helpers/token-api";
 import { createPostLoginUserApi } from "./helpers/post-login-account-linking";
 import {
+  createActionUsersApi,
+  createExternalConnectionLookup,
+} from "./helpers/action-users";
+import {
   resolveLinkCandidates,
   toLinkCandidates,
 } from "../helpers/link-candidates";
@@ -703,15 +707,31 @@ export async function postUserLoginHook(
         ? toLinkCandidates(linkCandidates)
         : [];
 
+      // `api.users.ensure` (issue #1802): create or update users in an
+      // `external` connection; setLinkedTo may then link under them.
+      const externalConnections = createExternalConnectionLookup(
+        data,
+        tenant_id,
+      );
+      const actionUsers = createActionUsersApi({
+        ctx,
+        data,
+        tenantId: tenant_id,
+        triggerId: "post-user-login",
+        externalConnections,
+      });
       const linkingApi = createPostLoginUserApi({
         ctx,
         data,
         tenantId: tenant_id,
         user,
         candidates: linkCandidates,
+        ensuredUserIds: actionUsers.ensuredUserIds,
+        externalConnections,
       });
       const codeHookApi = {
         ...linkingApi.api,
+        ...actionUsers.api,
         multifactor: {
           enable: (provider: unknown, options?: unknown) => {
             mfaRequest = mergeMfaRequest(mfaRequest, provider, options);

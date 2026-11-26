@@ -3,6 +3,7 @@ import { DataAdapters, LogTypes, User } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { logMessage } from "../../helpers/logging";
 import { compareUsersByAge } from "../../helpers/users";
+import { ExternalConnectionLookup } from "./action-users";
 
 /**
  * The `user` namespace exposed to `post-user-login` code hooks. `setLinkedTo`
@@ -32,10 +33,16 @@ export type PostLoginUserApi = {
  *  - **Verified-email gate.** When `requireVerifiedEmail` (the default), the
  *    logging-in user must have a verified email, regardless of what the action
  *    asserts.
- *  - **Direction.** Older account wins (`compareUsersByAge`): if the logging-in
- *    user pre-dates the target, the target is demoted instead. Either way the
- *    write goes through the update decorator's `linkUserTo` chokepoint, which
- *    keeps the cluster a single hop deep.
+ *    Users created by `api.users.ensure` in the same execution are also
+ *    allowed (issue #1802); they skip the verified-email gate because the
+ *    action resolved the person against its own system of record.
+ *  - **Direction.** A primary in an `external` connection (an anchor) always
+ *    stays primary. Otherwise the older account wins (`compareUsersByAge`):
+ *    if the logging-in user pre-dates the target, the target is demoted
+ *    instead. Either way the write goes through the update decorator's
+ *    `linkUserTo` chokepoint, which keeps the cluster a single hop deep.
+ *  - **No re-anchoring.** A user already under one anchor is never moved
+ *    under a different one by a login; that is an admin operation.
  *  - **Idempotency.** A no-op when the user is already linked to the target.
  */
 export function createPostLoginUserApi(params: {
@@ -47,78 +54,136 @@ export function createPostLoginUserApi(params: {
   candidates: User[];
   /** @default true */
   requireVerifiedEmail?: boolean;
+  /**
+   * user_ids created or updated by `api.users.ensure` earlier in the same
+   * execution. Read at replay time, so it must be the live set.
+   */
+  ensuredUserIds?: ReadonlySet<string>;
+  /** Tells anchors (users in an `external` connection) apart. */
+  externalConnections?: ExternalConnectionLookup;
 }): {
   api: PostLoginUserApi;
   /** The user id of the primary after linking, or null if nothing linked. */
   getLinkedPrimaryId: () => string | null;
 } {
-  const { ctx, data, tenantId, candidates } = params;
+  const { ctx, data, tenantId, candidates, externalConnections } = params;
   const requireVerifiedEmail = params.requireVerifiedEmail ?? true;
+  const ensuredUserIds = params.ensuredUserIds ?? new Set<string>();
 
   // `currentUser` tracks the logging-in user's `linked_to` across multiple
   // setLinkedTo calls within one execution so repeats resolve to a no-op.
   let currentUser = params.user;
   let linkedPrimaryId: string | null = null;
 
+  const refuse = (reason: string, description: string, target: string) => {
+    logMessage(ctx, tenantId, {
+      type: LogTypes.FAILED_HOOK,
+      description,
+      userId: currentUser.user_id,
+      details: {
+        trigger_id: "post-user-login",
+        reason,
+        primary_user_id: target,
+      },
+    });
+  };
+
+  const isAnchor = async (user: User): Promise<boolean> =>
+    !user.linked_to &&
+    !!externalConnections &&
+    (await externalConnections.isExternalUser(user));
+
   const setLinkedTo = async (primaryUserId: string): Promise<void> => {
-    // Guard: only users pushed into event.link_candidates are linkable.
-    const target = candidates.find((c) => c.user_id === primaryUserId);
+    // Guard: only users pushed into event.link_candidates, or ensured by this
+    // execution, are linkable.
+    const isEnsured = ensuredUserIds.has(primaryUserId);
+    const target = isEnsured
+      ? await data.users.get(tenantId, primaryUserId)
+      : candidates.find((c) => c.user_id === primaryUserId);
     if (!target) {
-      logMessage(ctx, tenantId, {
-        type: LogTypes.FAILED_HOOK,
-        description: `post-user-login action tried to link ${currentUser.user_id} to non-candidate ${primaryUserId}`,
-        userId: currentUser.user_id,
-        details: {
-          trigger_id: "post-user-login",
-          reason: "not_a_link_candidate",
-          primary_user_id: primaryUserId,
-        },
-      });
+      refuse(
+        "not_a_link_candidate",
+        `post-user-login action tried to link ${currentUser.user_id} to non-candidate ${primaryUserId}`,
+        primaryUserId,
+      );
       return;
     }
 
-    // Verified-email gate enforced host-side, never trusting the action.
+    // Idempotent: the user already is, or is already linked to, the target.
     if (
-      requireVerifiedEmail &&
-      (!currentUser.email || !currentUser.email_verified)
+      currentUser.user_id === target.user_id ||
+      currentUser.linked_to === target.user_id
     ) {
-      logMessage(ctx, tenantId, {
-        type: LogTypes.FAILED_HOOK,
-        description: `post-user-login action link refused: ${currentUser.user_id} has no verified email`,
-        userId: currentUser.user_id,
-        details: {
-          trigger_id: "post-user-login",
-          reason: "unverified_email",
-          primary_user_id: primaryUserId,
-        },
-      });
-      return;
-    }
-
-    // Idempotent: already linked to this target.
-    if (currentUser.linked_to === target.user_id) {
       linkedPrimaryId = target.user_id;
       return;
     }
 
-    // Older account wins. If the logging-in user pre-dates the target, demote
-    // the target rather than turning the older user into a secondary.
-    //
-    // Either way this is a plain single-field `linked_to` write: `data` is the
+    // Verified-email gate enforced host-side, never trusting the action.
+    // Ensured targets were resolved by the action against its own records.
+    if (
+      !isEnsured &&
+      requireVerifiedEmail &&
+      (!currentUser.email || !currentUser.email_verified)
+    ) {
+      refuse(
+        "unverified_email",
+        `post-user-login action link refused: ${currentUser.user_id} has no verified email`,
+        primaryUserId,
+      );
+      return;
+    }
+
+    // The primary the logging-in user resolves to right now. Usually the user
+    // itself (post-login runs on the primary), but an earlier setLinkedTo in
+    // this execution may already have moved it.
+    const currentPrimary = currentUser.linked_to
+      ? ((await data.users.get(tenantId, currentUser.linked_to)) ?? currentUser)
+      : currentUser;
+    const [currentIsAnchor, targetIsAnchor] = await Promise.all([
+      isAnchor(currentPrimary),
+      isAnchor(target),
+    ]);
+
+    if (currentIsAnchor && targetIsAnchor) {
+      refuse(
+        "already_anchored",
+        `post-user-login action link refused: ${currentUser.user_id} is already anchored to ${currentPrimary.user_id}`,
+        primaryUserId,
+      );
+      return;
+    }
+
+    // Each branch is a plain single-field `linked_to` write: `data` is the
     // decorated adapter set, so the update decorator's chokepoint repoints any
     // accounts already linked to the demoted side and resolves the target to
     // its cluster root, keeping the graph a single hop deep (issue #1250).
-    if (compareUsersByAge(currentUser, target) < 0) {
+    const demoteTarget = async (primaryId: string) => {
       await data.users.update(tenantId, target.user_id, {
-        linked_to: currentUser.user_id,
+        linked_to: primaryId,
       });
-      linkedPrimaryId = currentUser.user_id;
-    } else {
+      linkedPrimaryId = primaryId;
+    };
+    const demoteCurrent = async () => {
       await data.users.update(tenantId, currentUser.user_id, {
         linked_to: target.user_id,
       });
       currentUser = { ...currentUser, linked_to: target.user_id };
       linkedPrimaryId = target.user_id;
+    };
+
+    if (targetIsAnchor) {
+      // The anchor wins regardless of age.
+      await demoteCurrent();
+    } else if (currentIsAnchor) {
+      // The logging-in user is already under an anchor: pull the target into
+      // that cluster rather than moving the user out of it.
+      await demoteTarget(currentPrimary.user_id);
+    } else if (compareUsersByAge(currentUser, target) < 0) {
+      // Older account wins. If the logging-in user pre-dates the target,
+      // demote the target rather than turning the older user into a secondary.
+      await demoteTarget(currentUser.user_id);
+    } else {
+      await demoteCurrent();
     }
   };
 

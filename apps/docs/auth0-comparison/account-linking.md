@@ -152,6 +152,11 @@ const auth = init({
 });
 ```
 
+To link users under a record from another system (a CRM or membership
+register) from a code Action, create that record's user with
+`api.users.ensure` and link to it with `api.user.setLinkedTo`. See
+[Anchoring users to an external record](../features/hooks.md#anchoring-users-to-an-external-record-api-users-ensure).
+
 ### Use Cases for Manual Linking
 
 1. **Migration from Another System**: Link users based on external IDs
