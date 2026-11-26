@@ -6,7 +6,7 @@ import { getTestServer } from "../helpers/test-server";
 describe("connections show_as_button / is_domain_connection", () => {
   let data: ReturnType<typeof getTestServer>["data"];
   const tenantId = "t1";
-  const TENANT = { id: tenantId, name: "Tenant 1" };
+  const TENANT = { id: tenantId, friendly_name: "Tenant 1" };
   const setup = async () => getTestServer().data;
 
   async function createTenant() {
