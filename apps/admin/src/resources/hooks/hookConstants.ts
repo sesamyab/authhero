@@ -138,9 +138,22 @@ export function getTriggerChoicesForType(type?: string) {
   }
 }
 
-/** Webhook triggers supported by the management API and runtime. */
-export const webhookTriggerChoices = triggerChoices.filter(
-  (c) => !["credentials-exchange", "pre-user-update"].includes(c.id),
+/**
+ * Webhook triggers supported by the management API and runtime. Mirrors
+ * `webHookAllowedTriggers` in adapter-interfaces — an allowlist, so a new
+ * Action-only trigger (`pre-screen`, the custom providers) isn't offered for
+ * webhooks and then refused on save.
+ */
+export const webhookTriggerChoices = triggerChoices.filter((c) =>
+  [
+    "pre-user-registration",
+    "post-user-registration",
+    "post-user-login",
+    "post-user-update",
+    "validate-registration-username",
+    "pre-user-deletion",
+    "post-user-deletion",
+  ].includes(c.id),
 );
 
 export const bindingTypeChoices = [
