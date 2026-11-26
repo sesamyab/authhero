@@ -1,5 +1,14 @@
 # @authhero/saml
 
+## 0.6.15
+
+### Patch Changes
+
+- Updated dependencies [546f80d]
+- Updated dependencies [a94f12c]
+- Updated dependencies [4c3426f]
+  - @authhero/adapter-interfaces@4.35.0
+
 ## 0.6.14
 
 ### Patch Changes

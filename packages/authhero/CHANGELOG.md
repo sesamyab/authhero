@@ -1,5 +1,59 @@
 # authhero
 
+## 9.40.0
+
+### Minor Changes
+
+- 546f80d: Actions can anchor users to a record in an external system (issue #1802). `api.users.ensure({ connection, id, profile, app_metadata })` creates or updates `<connection>|<id>` in a connection with the new non-login `external` strategy and `options.allow_action_users: true`, and `api.user.setLinkedTo` can then link the signing-in user under it. Available in `pre-user-registration` and `post-user-login`. External primaries always stay primary, a user already under one is never moved to another by a login, and `external` connections never appear on login screens or work with `/authorize?connection=`. A `pre-user-registration` `setLinkedTo` to a user that doesn't exist now registers the user unlinked and logs `primary_not_found`, instead of failing the registration.
+- a94f12c: Replace the `pre-account-action` trigger with a generic `pre-screen` trigger (AuthHero extension; Auth0 has no pre-login trigger).
+
+  `pre-screen` runs before every universal-login screen is shown (`event.transaction.phase: "render"`) and when it is submitted (`"submit"`), on all u2 screens and the classic `/u` pages that have the same screen, including the login screens (identifier, password, passwordless code, signup), password reset, MFA, consent and the account pages. Screens are named with Auth0's Universal Login vocabulary (`login-id`, `login-password`, `reset-password-request`, `mfa-otp-challenge`, ...) plus AuthHero-only names for the account, connect and self-service screens. Actions can continue, `api.redirect.sendUserTo(url, { query })` or `api.access.deny(reason)`. A binding picks its screens in `metadata.screens` (empty = all); render fails open unless the binding sets `metadata.fail_closed`, submit always fails closed. The config callback is `onExecutePreScreen`.
+
+  **Removed:** the `pre-account-action` trigger, the `onExecutePreAccountAction` config callback and their types. No tenant used it. The management API now refuses `pre-account-action` with a 400; hooks still stored with it are ignored, and tenant imports and multi-tenancy syncs skip them with a log line. Its operation names live on as `event.operation` in the submit phase.
+
+  Replacing a trigger's bindings (`PATCH /actions/triggers/{id}/bindings`) now keeps the hook `metadata` of actions that stay bound, so screen filters and custom-provider message types survive a reorder.
+
+- 04fc344: The form-hook `account` redirect target now sends users to `/u2/account` instead of `/u/account`. The u2 account hub works mid-login: while the login session awaits a continuation with the `account` scope, it shows the user without needing a session cookie, offers a change-email entry and a Continue button that resumes the login. The hub's other sections and the logout link are only shown to signed-in users. Change-email opened from the hub mid-login returns to the hub when done.
+
+  A continuation (the scope a form hook grants to account, change-email or passkey pages mid-login) now ends when its login session expires, on both `/u2` and `/u`; an expired one sends the user to log in.
+
+- 4c3426f: Universal login v2: close the remaining parity gaps with /u (#1733).
+  - New `/u2/error`, `/u2/invalid-session`, `/u2/account/change-email` and `/u2/account/change-email/verify`.
+  - Callback errors, the `/account` change-email deny, passwordless invalid-session redirects, form-hook `change-email` redirects and `screen_hint=change-email` now go to /u2.
+  - u2 signup redeems the code of pre-signup verification emails, and those emails now link to `/u2/signup`. Links already sent to `/u/signup` keep working.
+  - The code email's plain fallback shows the code instead of a `/u/validate-email` link that could never work.
+  - u2 change-email stores the new address with the code (it can't be swapped at the verify step), codes expire after 30 minutes and are rate limited, and an address being taken is only revealed after its code is entered.
+  - u2 login screens apply the same social button rules as /u: `show_as_button: false` hides a connection, and Google is hidden in in-app browsers. Home-realm-discovery connections stay hidden on the identifier screen, which routes by email domain, and keep their button on the combined (password-first) screen, which does not.
+
+### Patch Changes
+
+- ca127df: Bind login, login email-verification and pre-signup codes to the address they were sent to. Codes now store their recipient and are only accepted for that address; a login session's earlier codes are retired when its username changes. Codes issued before this release carry no recipient and are no longer accepted: login codes have to be requested again, and a signup with an older pre-signup link continues unverified and sends a verification email.
+- cbf9117: u2 change-email: the confirmation after entering the code is now shown without JavaScript too. A successful change redirects to the verify step, which renders the confirmation, instead of returning it from the POST, which the no-JS form post turned into a redirect back to the code form.
+- e269dcd: Apply the tenant's custom font when `branding.font.url` / `theme.fonts.font_url` points at a font file.
+
+  As in Auth0, the URL is normally a font file (`.woff2`, `.woff`, `.ttf`, `.otf`), but the widget and the u2 pages loaded it with `<link rel="stylesheet">`. The browser downloaded it and threw it away, so the font never applied. A font file is now declared with an `@font-face` for the `ulp-font` family, which the widget stylesheet lists first; the page chrome uses the same family. Any other URL (e.g. a Google Fonts CSS URL) is still loaded as a stylesheet, and its href is no longer HTML-escaped twice on the u2, error and token-info pages.
+
+- 4c3426f: Universal login v2 input types match /u (#1733):
+  - TEXT fields accept `input_mode` and `autocomplete` in their config, and PASSWORD fields accept `autocomplete` (`current-password` or `new-password`).
+  - u2 code fields ask for a numeric keypad and `one-time-code` autofill.
+  - Signup, password reset and invitation password fields are marked `new-password`, so password managers offer to generate one.
+  - The identifier field is only an email field when email is all it accepts; with an SMS connection it is a text field labelled for phone or email.
+
+- 2f802fa: Fix the u2 page layout for forms taller than the screen and floating labels on textarea, URL and number fields.
+  - The u2 page, error page and token-info page now start with `<!DOCTYPE html>`. Without it they rendered in quirks mode, where the flex `<body>` was clamped to the viewport: a tall form (such as the self-service app registration) overflowed it, its top could not be scrolled to, there was no margin above or below the card, and the background image only covered the first screen.
+  - Textarea, URL and number fields now use the same floating label as other inputs, so the label moves out of the way instead of sitting on top of the typed text. A textarea's resting label sits on its first line instead of the vertical centre.
+
+- Updated dependencies [546f80d]
+- Updated dependencies [e269dcd]
+- Updated dependencies [a94f12c]
+- Updated dependencies [4c3426f]
+- Updated dependencies [2f802fa]
+- Updated dependencies [d29f356]
+  - @authhero/adapter-interfaces@4.35.0
+  - @authhero/widget@0.43.0
+  - @authhero/proxy@0.11.22
+  - @authhero/saml@0.6.15
+
 ## 9.39.0
 
 ### Minor Changes
