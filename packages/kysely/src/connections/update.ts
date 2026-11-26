@@ -5,6 +5,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { Database } from "../db";
 import { enforceToSql } from "../utils/configInheritance";
+import { boolToInt } from "./transform";
 
 export function update(db: Kysely<Database>) {
   return async (
@@ -19,6 +20,8 @@ export function update(db: Kysely<Database>) {
     const sqlConnection = {
       ...rest,
       is_system: is_system !== undefined ? (is_system ? 1 : 0) : undefined,
+      show_as_button: boolToInt(rest.show_as_button),
+      is_domain_connection: boolToInt(rest.is_domain_connection),
       enforce: enforceToSql(enforce),
       updated_at: new Date().toISOString(),
     };
