@@ -13,6 +13,10 @@ import {
 } from "./sanitization-utils";
 import type { Theme } from "@authhero/adapter-interfaces";
 import { raw } from "hono/html";
+import {
+  CUSTOM_FONT_STACK,
+  renderFontHead,
+} from "@authhero/widget/page-chrome";
 import type { DarkModePreference } from "./u2-widget-page";
 
 export type ErrorPageProps = {
@@ -112,7 +116,7 @@ export function ErrorPage({
           />
           <title>{isError ? `Error - ${statusCode}` : resolvedTitle}</title>
           {faviconUrl && <link rel="icon" href={faviconUrl} />}
-          {fontUrl && <link rel="stylesheet" href={fontUrl} />}
+          {raw(renderFontHead(branding?.font?.url))}
           <style
             dangerouslySetInnerHTML={{
               __html: `
@@ -123,7 +127,7 @@ export function ErrorPage({
                 align-items: center;
                 justify-content: center;
                 background: ${pageBackground};
-                font-family: ${fontUrl ? "'Inter', system-ui, sans-serif" : "system-ui, -apple-system, sans-serif"};
+                font-family: ${fontUrl ? CUSTOM_FONT_STACK : "system-ui, -apple-system, sans-serif"};
                 padding: 20px;
               }
               .error-card {

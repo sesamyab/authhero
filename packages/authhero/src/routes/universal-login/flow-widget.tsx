@@ -10,6 +10,10 @@ import {
   sanitizeCssColor,
   buildThemePageBackground,
 } from "./sanitization-utils";
+import {
+  CUSTOM_FONT_STACK,
+  renderFontHead,
+} from "@authhero/widget/page-chrome";
 const getFormId = defineRoute({
   route: createRoute({
     tags: ["flow-widget"],
@@ -71,7 +75,7 @@ const getFormId = defineRoute({
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in - ${clientName}</title>
   ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ""}
-  ${fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : ""}
+  ${renderFontHead(branding?.font?.url)}
   <style>
     * {
       box-sizing: border-box;
@@ -85,7 +89,7 @@ const getFormId = defineRoute({
       align-items: center;
       justify-content: center;
       background: ${pageBackground || "#f5f5f5"};
-      font-family: ${fontUrl ? "'Inter', system-ui, sans-serif" : "system-ui, -apple-system, sans-serif"};
+      font-family: ${fontUrl ? CUSTOM_FONT_STACK : "system-ui, -apple-system, sans-serif"};
       padding: 20px;
     }
     

@@ -18,6 +18,7 @@ import type { WidgetBranding, WidgetTheme } from "../../utils/branding";
 import { mergeThemeVars, applyCssVars } from "../../utils/branding";
 import { sanitizeHtml } from "../../utils/sanitize-html";
 import { sanitizeForCssToken } from "../../utils/css-token";
+import { resolveFontHead } from "../../page-chrome/font";
 
 /**
  * When a screen's field section is made up entirely of choice buttons
@@ -532,11 +533,13 @@ export class AuthheroWidget {
   }
 
   /**
-   * Load the custom font stylesheet referenced by the theme/branding.
-   * The stylesheet is expected to define the `ulp-font` family (Auth0
-   * convention), which the component CSS already falls back to. @font-face
-   * rules must live in the document (not the shadow DOM) to take effect, so
-   * the <link> is injected into the document head, de-duplicated by href.
+   * Load the custom font referenced by the theme/branding. A font file
+   * (`.woff2` etc., as in Auth0) is registered with an `@font-face` for the
+   * `ulp-font` family, which the component CSS lists first; any other URL is
+   * loaded as a stylesheet expected to define `ulp-font` itself. Font faces
+   * must live in the document (not the shadow DOM) to take effect, so the
+   * element goes into the document head, tagged with the URL. The login page
+   * emits the same element server-side; one that already matches is kept.
    */
   private loadCustomFont() {
     if (typeof document === "undefined") {
@@ -547,24 +550,42 @@ export class AuthheroWidget {
       return;
     }
 
-    // Remove any previously injected font stylesheet so old fonts don't
-    // persist across tenant/theme switches. Match by dataset attribute
-    // rather than interpolating the URL into a selector string.
-    for (const link of Array.from(
-      document.head.querySelectorAll("link[data-authhero-font]"),
+    // Drop the element for any other font so old fonts don't persist across
+    // tenant/theme switches. Compare the dataset attribute rather than
+    // interpolating the URL into a selector string.
+    let alreadyLoaded = false;
+    for (const el of Array.from(
+      document.head.querySelectorAll("[data-authhero-font]"),
     )) {
-      link.remove();
+      if (fontUrl && el.getAttribute("data-authhero-font") === fontUrl) {
+        alreadyLoaded = true;
+      } else {
+        el.remove();
+      }
     }
     this.loadedFontUrl = undefined;
 
-    if (!fontUrl) {
+    const head = resolveFontHead(fontUrl);
+    if (!fontUrl || !head) {
       return;
     }
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = fontUrl;
-    link.setAttribute("data-authhero-font", fontUrl);
-    document.head.appendChild(link);
+    if (!alreadyLoaded) {
+      let el: HTMLElement;
+      if (head.kind === "font-face") {
+        const style = document.createElement("style");
+        style.textContent = head.css;
+        el = style;
+      } else {
+        // `head.href` is HTML-escaped for markup; the DOM property takes the
+        // raw URL (already vetted by `resolveFontHead`).
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = fontUrl;
+        el = link;
+      }
+      el.setAttribute("data-authhero-font", fontUrl);
+      document.head.appendChild(el);
+    }
     this.loadedFontUrl = fontUrl;
   }
 

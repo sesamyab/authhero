@@ -14,6 +14,10 @@ import {
   sanitizeCssColor,
   buildThemePageBackground,
 } from "./sanitization-utils";
+import {
+  CUSTOM_FONT_STACK,
+  renderFontHead,
+} from "@authhero/widget/page-chrome";
 import type { DarkModePreference } from "./u2-widget-page";
 import type { ErrorPageProps } from "./error-page";
 
@@ -188,7 +192,7 @@ export function TokenInfoPage({
           <meta name="robots" content="noindex, nofollow" />
           <title>Signed in</title>
           {faviconUrl && <link rel="icon" href={faviconUrl} />}
-          {fontUrl && <link rel="stylesheet" href={fontUrl} />}
+          {raw(renderFontHead(branding?.font?.url))}
           <style
             dangerouslySetInnerHTML={{
               __html: `
@@ -199,7 +203,7 @@ export function TokenInfoPage({
                 align-items: center;
                 justify-content: center;
                 background: ${pageBackground};
-                font-family: ${fontUrl ? "'Inter', system-ui, sans-serif" : "system-ui, -apple-system, sans-serif"};
+                font-family: ${fontUrl ? CUSTOM_FONT_STACK : "system-ui, -apple-system, sans-serif"};
                 padding: 20px;
                 color: #1a1a1a;
               }

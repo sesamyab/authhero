@@ -55,6 +55,7 @@ import {
   renderMobileFooter,
   buildDarkVars,
   darkContrastRatio,
+  renderFontHead,
 } from "@authhero/widget/page-chrome";
 import type { ColorsDark } from "@authhero/widget/page-chrome";
 import type {
@@ -391,7 +392,7 @@ export function buildHeadEssentials(opts: {
     faviconUrl && faviconUrlDark
       ? `<link rel="icon" href="${faviconUrlDark}" media="(prefers-color-scheme: dark)">`
       : "",
-    fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : "",
+    renderFontHead(opts.branding?.font?.url),
     `<style>${pageCss}</style>`,
     `<script type="module" src="/widget/authhero-widget.esm.js?v=${buildHash}"></script>`,
     `<script>${buildDarkModeRuntimeScript(darkVarsJson)}</script>`,
@@ -568,7 +569,7 @@ export function WidgetPage({
               media="(prefers-color-scheme: dark)"
             />
           )}
-          {fontUrl && <link rel="stylesheet" href={fontUrl} />}
+          {raw(renderFontHead(branding?.font?.url))}
           <style
             dangerouslySetInnerHTML={{
               __html: embed
