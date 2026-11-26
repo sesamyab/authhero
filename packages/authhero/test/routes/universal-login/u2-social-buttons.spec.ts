@@ -105,8 +105,6 @@ describe("social button rules", () => {
   });
 });
 
-// show_as_button is covered by the rule tests above: the kysely adapter the
-// test server uses can't store it on a connection.
 describe("u2 login screens", () => {
   for (const identifierFirst of [true, false]) {
     const screenId = identifierFirst ? "identifier" : "login";
@@ -120,6 +118,13 @@ describe("u2 login screens", () => {
         options: {},
       });
       await env.data.connections.create("tenantId", {
+        id: "hidden",
+        name: "hidden",
+        strategy: Strategy.APPLE,
+        options: {},
+        show_as_button: false,
+      });
+      await env.data.connections.create("tenantId", {
         id: "acme",
         name: "acme",
         strategy: Strategy.OIDC,
@@ -128,6 +133,7 @@ describe("u2 login screens", () => {
       await env.data.clientConnections.updateByClient("tenantId", "clientId", [
         Strategy.USERNAME_PASSWORD,
         "github",
+        "hidden",
         "acme",
       ]);
       await env.data.promptSettings.set("tenantId", {
