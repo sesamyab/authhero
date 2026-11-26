@@ -202,6 +202,35 @@ describe("u2 login email verification (code)", () => {
     ).toBe(false);
   });
 
+  it("rejects a code sent to the user's previous email", async () => {
+    const { u2App, env, state, getSentEmails } = await setup();
+
+    await postScreen(u2App, env, "enter-password", state, {
+      password: PASSWORD,
+    });
+    const code = getSentEmails()[0].data.code;
+
+    await env.data.users.update("tenantId", USER_ID, {
+      email: "changed@example.com",
+    });
+
+    const result = await postScreen(
+      u2App,
+      env,
+      "email-verification-code",
+      state,
+      { code },
+    );
+    expect(result.redirect).toBeUndefined();
+    const user = await env.data.users.get("tenantId", USER_ID);
+    expect(user?.email_verified).toBe(false);
+    // Not burned by the failed attempt
+    expect(
+      (await env.data.codes.get("tenantId", code, "email_verification"))
+        ?.used_at,
+    ).toBeFalsy();
+  });
+
   it("resends a new code", async () => {
     const { u2App, env, state, getSentEmails } = await setup();
 

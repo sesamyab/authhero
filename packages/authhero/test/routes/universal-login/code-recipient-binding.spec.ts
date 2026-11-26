@@ -129,6 +129,24 @@ describe("login codes are bound to their recipient (u2)", () => {
     expect(ok.redirect).toContain("https://example.com/callback");
   });
 
+  it("rejects a code for another address even if it was not retired", async () => {
+    const server = await setup();
+    const state = await startLogin(server);
+
+    await postScreen(server, "identifier", state, { username: OTHER_EMAIL });
+    const code = lastCodeTo(server, OTHER_EMAIL);
+    // Change the username without the identifier step, so nothing retires it
+    await setUsername(server, state, EXISTING_EMAIL);
+
+    const result = await postScreen(server, "email-otp-challenge", state, {
+      code,
+    });
+    expect(result.redirect ?? "").not.toContain("example.com/callback");
+    expect(
+      (await server.env.data.codes.get("tenantId", code, "otp"))?.used_at,
+    ).toBeFalsy();
+  });
+
   it("rejects a code minted without a stored recipient", async () => {
     const server = await setup();
     const state = await startLogin(server, EXISTING_EMAIL);
@@ -178,6 +196,28 @@ describe("login codes are bound to their recipient (/u)", () => {
     expect(ok.headers.get("location")).toContain(
       "https://example.com/callback",
     );
+  });
+
+  it("rejects a code for another address even if it was not retired", async () => {
+    const server = await setup();
+    const universalClient = testClient(server.universalApp, server.env);
+    const state = await startLogin(server);
+
+    await universalClient.login.identifier.$post({
+      query: { state },
+      form: { username: OTHER_EMAIL },
+    });
+    const code = lastCodeTo(server, OTHER_EMAIL);
+    await setUsername(server, state, EXISTING_EMAIL);
+
+    const response = await universalClient.login["email-otp-challenge"].$post({
+      query: { state },
+      form: { code },
+    });
+    expect(response.status).toBe(400);
+    expect(
+      (await server.env.data.codes.get("tenantId", code, "otp"))?.used_at,
+    ).toBeFalsy();
   });
 });
 

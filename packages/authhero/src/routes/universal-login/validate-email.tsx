@@ -13,8 +13,8 @@ import { resolveClientDatabaseConnectionName } from "../../helpers/database-conn
 import EmailValidatedPage from "../../components/EmailValidatedPage";
 import { defineRoute } from "../../utils/define-route";
 import {
+  isCodeRecipient,
   isPreSignupCodeFor,
-  parseCodeState,
 } from "../../helpers/code-recipient";
 const getRoot = defineRoute({
   route: createRoute({
@@ -100,13 +100,13 @@ const getRoot = defineRoute({
       "email_verification",
     );
 
-    // Only a code sent to this user's address proves it: one issued to the
-    // user (not a change-email request, which goes to the new address), or
-    // this session's pre-signup code for the username.
+    // Only a code sent to this user's current address proves it: one issued
+    // to the user for that address, or this session's pre-signup code for the
+    // username.
     const codeProvesAddress =
       !!foundCode &&
       ((foundCode.user_id === user.user_id &&
-        parseCodeState(foundCode).email === undefined &&
+        isCodeRecipient(foundCode, user.email) &&
         !foundCode.used_at &&
         foundCode.expires_at >= new Date().toISOString()) ||
         isPreSignupCodeFor(foundCode, loginSession.id, username));
