@@ -13,12 +13,7 @@ import {
   isCodeRecipient,
 } from "../../../helpers/code-recipient";
 import type { ScreenContext, ScreenFactory, ScreenResult } from "./types";
-import {
-  FinalizedLoginSessionError,
-  readLoginSessionData,
-  updateLoginSessionData,
-} from "../../../state-machines/login-session-data";
-import { LoginSessionEventType } from "../../../state-machines/login-session";
+import { reserveLoginSessionCounter } from "../../../state-machines/login-session-data";
 
 type OtpContext = Context<{ Bindings: Bindings; Variables: Variables }>;
 
@@ -26,9 +21,10 @@ type OtpContext = Context<{ Bindings: Bindings; Variables: Variables }>;
  * Login OTP codes or magic links (identifier step plus resends) delivered per
  * login session. Further requests are accepted but nothing is sent.
  *
- * Best effort: the counter is a read/modify/write on the login session (see
- * updateLoginSessionData), so concurrent requests on one session can each
- * pass the check. The optional per-recipient rate limit is the hard bound.
+ * Reserved atomically (see reserveLoginSessionCounter), so concurrent requests
+ * on one session cannot exceed it on adapters that implement
+ * `updateIfStateDataUnchanged`. The optional per-recipient rate limit bounds
+ * sends across sessions.
  */
 export const LOGIN_OTP_MAX_SENDS = 5;
 
@@ -47,10 +43,6 @@ function isRateLimitDecision(value: unknown): value is RateLimitDecision {
  * when the session is already finalized; callers then skip delivery but
  * respond as usual, so the response does not reveal the limit or whether
  * the address exists. Counted before sending, so failed sends count too.
- *
- * The slot is reserved right after the check, before any other await, to
- * keep the window for concurrent requests on the same session small; it is
- * not atomic (see LOGIN_OTP_MAX_SENDS).
  */
 export async function allowLoginOtpSend(
   ctx: OtpContext,
@@ -60,30 +52,18 @@ export async function allowLoginOtpSend(
     to,
   }: { tenantId: string; loginSessionId: string; to: string },
 ): Promise<boolean> {
-  const current = await ctx.env.data.loginSessions.get(
+  const { status } = await reserveLoginSessionCounter(
+    ctx.env.data.loginSessions,
     tenantId,
     loginSessionId,
+    "login_otp_sent",
+    LOGIN_OTP_MAX_SENDS,
   );
-  if (!current) return false;
-  const sent = readLoginSessionData(current.state_data).login_otp_sent ?? 0;
-  if (sent >= LOGIN_OTP_MAX_SENDS) {
-    console.warn("Login OTP send limit reached for login session");
+  if (status !== "reserved") {
+    if (status === "limit_reached" || status === "contended") {
+      console.warn("Login OTP send limit reached for login session");
+    }
     return false;
-  }
-
-  try {
-    await updateLoginSessionData(
-      ctx.env.data.loginSessions,
-      tenantId,
-      loginSessionId,
-      {
-        type: LoginSessionEventType.UPDATE_CONTEXT,
-        data: { login_otp_sent: sent + 1 },
-      },
-    );
-  } catch (error) {
-    if (error instanceof FinalizedLoginSessionError) return false;
-    throw error;
   }
 
   const rateLimit = ctx.env.data.rateLimit;

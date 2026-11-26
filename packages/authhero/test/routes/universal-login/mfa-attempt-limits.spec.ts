@@ -298,6 +298,34 @@ describe("MFA failed-attempt limits", () => {
       expect(getSentSms()).toHaveLength(MFA_MAX_SMS_SENDS);
     });
 
+    it("holds the SMS cap when resends arrive concurrently", async () => {
+      const server = await getTestServer({ testTenantLanguage: "en" });
+      const { env, getSentSms } = server;
+      await env.data.authenticationMethods.create("tenantId", {
+        user_id: USER_ID,
+        type: "phone",
+        phone_number: "+46701234567",
+        confirmed: true,
+      });
+      const session = await createMfaSession(env);
+
+      const responses = await Promise.all(
+        Array.from({ length: MFA_MAX_SMS_SENDS * 3 }, () =>
+          post(server, "/mfa/phone-challenge", session.id, {
+            action: "resend",
+          }),
+        ),
+      );
+      const limited = (
+        await Promise.all(responses.map((res) => res.text()))
+      ).filter((text) =>
+        text.includes("exceeded the maximum number of phone messages"),
+      );
+
+      expect(getSentSms()).toHaveLength(MFA_MAX_SMS_SENDS);
+      expect(limited).toHaveLength(MFA_MAX_SMS_SENDS * 2);
+    });
+
     it("does not send an SMS when the per-user rate limit denies it", async () => {
       const consumed: string[] = [];
       const server = await getTestServer({
