@@ -13,6 +13,7 @@ import {
 import {
   CUSTOM_FONT_STACK,
   renderFontHead,
+  resolveCustomFontUrl,
 } from "@authhero/widget/page-chrome";
 const getFormId = defineRoute({
   route: createRoute({
@@ -63,7 +64,8 @@ const getFormId = defineRoute({
 
     // Sanitize URLs - favicon_url is already filtered by initJSXRoute for non-custom domains
     const faviconUrl = sanitizeUrl(branding?.favicon_url);
-    const fontUrl = sanitizeUrl(branding?.font?.url);
+    const customFontUrl = resolveCustomFontUrl(theme, branding);
+    const fontUrl = sanitizeUrl(customFontUrl);
 
     // Escape values for HTML context
     const clientName = escapeHtml(client.name || "AuthHero");
@@ -75,7 +77,7 @@ const getFormId = defineRoute({
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in - ${clientName}</title>
   ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ""}
-  ${renderFontHead(branding?.font?.url)}
+  ${renderFontHead(customFontUrl)}
   <style>
     * {
       box-sizing: border-box;

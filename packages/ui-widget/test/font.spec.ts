@@ -2,6 +2,7 @@ import {
   buildFontFaceCss,
   fontFileFormat,
   renderFontHead,
+  resolveCustomFontUrl,
   resolveFontHead,
 } from "../src/page-chrome/font";
 
@@ -57,5 +58,16 @@ describe("custom font URL", () => {
   it("drops unsafe schemes", () => {
     expect(resolveFontHead("javascript:alert(1)//x.woff2")).toBeUndefined();
     expect(renderFontHead("javascript:alert(1)")).toBe("");
+  });
+
+  it("prefers the theme font over the branding font, as the widget does", () => {
+    const theme = { fonts: { font_url: WOFF2 } };
+    const branding = { font: { url: "https://cdn.example.com/other.woff" } };
+    expect(resolveCustomFontUrl(theme, branding)).toBe(WOFF2);
+    expect(resolveCustomFontUrl({ fonts: { font_url: "" } }, branding)).toBe(
+      "https://cdn.example.com/other.woff",
+    );
+    expect(resolveCustomFontUrl(theme, undefined)).toBe(WOFF2);
+    expect(resolveCustomFontUrl(null, {})).toBeUndefined();
   });
 });

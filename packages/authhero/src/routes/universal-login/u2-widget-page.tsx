@@ -56,6 +56,7 @@ import {
   buildDarkVars,
   darkContrastRatio,
   renderFontHead,
+  resolveCustomFontUrl,
 } from "@authhero/widget/page-chrome";
 import type { ColorsDark } from "@authhero/widget/page-chrome";
 import type {
@@ -349,7 +350,8 @@ export function buildHeadEssentials(opts: {
 }): string {
   const faviconUrl = sanitizeUrl(opts.branding?.favicon_url);
   const faviconUrlDark = sanitizeUrl(opts.branding?.favicon_url_dark);
-  const fontUrl = sanitizeUrl(opts.branding?.font?.url);
+  const customFontUrl = resolveCustomFontUrl(opts.theme, opts.branding);
+  const fontUrl = sanitizeUrl(customFontUrl);
   const primaryColor = sanitizeCssColor(opts.branding?.colors?.primary);
   const themePrimary = sanitizeCssColor(opts.theme?.colors?.primary_button);
   const widgetBackground =
@@ -392,7 +394,7 @@ export function buildHeadEssentials(opts: {
     faviconUrl && faviconUrlDark
       ? `<link rel="icon" href="${faviconUrlDark}" media="(prefers-color-scheme: dark)">`
       : "",
-    renderFontHead(opts.branding?.font?.url),
+    renderFontHead(customFontUrl),
     `<style>${pageCss}</style>`,
     `<script type="module" src="/widget/authhero-widget.esm.js?v=${buildHash}"></script>`,
     `<script>${buildDarkModeRuntimeScript(darkVarsJson)}</script>`,
@@ -435,7 +437,8 @@ export function WidgetPage({
   const hasBgImage = dark.hasBgImage;
   const faviconUrl = sanitizeUrl(branding?.favicon_url);
   const faviconUrlDark = sanitizeUrl(branding?.favicon_url_dark);
-  const fontUrl = sanitizeUrl(branding?.font?.url);
+  const customFontUrl = resolveCustomFontUrl(theme, branding);
+  const fontUrl = sanitizeUrl(customFontUrl);
   const widgetBackground =
     sanitizeCssColor(theme?.colors?.widget_background) || "#ffffff";
   // Emitted into the stylesheet by `buildPageCss` below, exactly as on the
@@ -569,7 +572,7 @@ export function WidgetPage({
               media="(prefers-color-scheme: dark)"
             />
           )}
-          {raw(renderFontHead(branding?.font?.url))}
+          {raw(renderFontHead(customFontUrl))}
           <style
             dangerouslySetInnerHTML={{
               __html: embed

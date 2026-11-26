@@ -18,7 +18,7 @@ import type { WidgetBranding, WidgetTheme } from "../../utils/branding";
 import { mergeThemeVars, applyCssVars } from "../../utils/branding";
 import { sanitizeHtml } from "../../utils/sanitize-html";
 import { sanitizeForCssToken } from "../../utils/css-token";
-import { resolveFontHead } from "../../page-chrome/font";
+import { resolveCustomFontUrl, resolveFontHead } from "../../page-chrome/font";
 
 /**
  * When a screen's field section is made up entirely of choice buttons
@@ -545,7 +545,7 @@ export class AuthheroWidget {
     if (typeof document === "undefined") {
       return;
     }
-    const fontUrl = this._theme?.fonts?.font_url || this._branding?.font?.url;
+    const fontUrl = resolveCustomFontUrl(this._theme, this._branding);
     if (fontUrl === this.loadedFontUrl) {
       return;
     }

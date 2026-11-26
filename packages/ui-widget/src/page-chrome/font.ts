@@ -21,6 +21,18 @@ export const CUSTOM_FONT_FAMILY = "ulp-font";
  */
 export const CUSTOM_FONT_STACK = `"${CUSTOM_FONT_FAMILY}", "Inter", system-ui, -apple-system, sans-serif`;
 
+/**
+ * The effective custom-font URL: `theme.fonts.font_url` wins over
+ * `branding.font.url`. The widget and every server-rendered page resolve it
+ * here, so the page chrome and the widget never load different fonts.
+ */
+export function resolveCustomFontUrl(
+  theme: { fonts?: { font_url?: string } } | null | undefined,
+  branding: { font?: { url?: string } } | null | undefined,
+): string | undefined {
+  return theme?.fonts?.font_url || branding?.font?.url || undefined;
+}
+
 const FORMAT_BY_EXTENSION: Record<string, string> = {
   woff2: "woff2",
   woff: "woff",
