@@ -241,7 +241,14 @@ export const mfaPhoneEnrollmentScreenDefinition: ScreenDefinition = {
 
         // Send OTP SMS only after the session is updated
         try {
-          await sendMfaOtp(ctx, client, loginSession, normalizedPhone);
+          await sendMfaOtp(
+            ctx,
+            client,
+            loginSession,
+            normalizedPhone,
+            undefined,
+            "otp_enroll",
+          );
         } catch (otpErr) {
           // Roll back: delete the enrollment since OTP delivery failed
           await ctx.env.data.authenticationMethods.remove(

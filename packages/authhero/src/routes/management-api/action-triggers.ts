@@ -62,6 +62,8 @@ const CODE_HOOK_TRIGGER_IDS = [
   "pre-user-deletion",
   "post-user-deletion",
   "pre-account-action",
+  "custom-email-provider",
+  "custom-phone-provider",
 ] as const satisfies readonly CodeHookTriggerId[];
 
 /**

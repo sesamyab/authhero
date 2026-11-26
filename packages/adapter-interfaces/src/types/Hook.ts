@@ -51,6 +51,12 @@ const codeHookAllowedTriggers = z.enum([
   // self-service account operation (change email, MFA enrollment, delete
   // account, ...) and may redirect the user elsewhere or deny the operation.
   "pre-account-action",
+  // Auth0's custom provider triggers: the bound action delivers outgoing
+  // emails / text messages itself instead of the tenant's provider. AuthHero
+  // extension: the hook's `metadata.message_types` limits which message types
+  // the action handles (empty or missing = all, as in Auth0).
+  "custom-email-provider",
+  "custom-phone-provider",
 ]);
 
 // Page hooks render a built-in universal-login interstitial (e.g. the
