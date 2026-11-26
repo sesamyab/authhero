@@ -506,7 +506,37 @@ async function useDefaultProvider(
   await params.sendDefault();
 }
 
+/**
+ * The background retry loop, guarded: the request already reported the
+ * message as accepted, so any unexpected failure here (a rejected `isCurrent`
+ * read, a database error) must still end in an `fn` log rather than vanish.
+ */
 async function retryInBackground(
+  ctx: RequestContext,
+  params: DeliverNotificationParams,
+  hook: CodeHook,
+  event: CodeHookEventInput,
+  secrets: readonly string[],
+) {
+  try {
+    await runRetries(ctx, params, hook, event, secrets);
+  } catch (error) {
+    const scrub = createNotificationScrubber(secrets);
+    await logNotificationFailure(
+      ctx,
+      params,
+      `${params.trigger} background retry failed`,
+      scrub(error instanceof Error ? error.message : String(error)).slice(
+        0,
+        NOTIFICATION_REASON_MAX_LENGTH,
+      ),
+      LogTypes.FAILED_SENDING_NOTIFICATION,
+      { background: true },
+    );
+  }
+}
+
+async function runRetries(
   ctx: RequestContext,
   params: DeliverNotificationParams,
   hook: CodeHook,
