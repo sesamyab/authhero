@@ -71,6 +71,9 @@ const sqlConnectionSchema = flattenSchema(connectionSchema).extend({
   tenant_id: z.string(),
   // Store booleans as integers in SQL
   is_system: z.number().optional(),
+  // Booleans stored as integers; NULL means unset.
+  show_as_button: z.number().nullish(),
+  is_domain_connection: z.number().nullish(),
   // Config inheritance: boolean stored as integer; NULL reads as false.
   enforce: z.number().nullish(),
   // `options` is persisted as a JSON-encoded string; the in-memory schema

@@ -8,6 +8,7 @@ import {
 import { Database } from "../db";
 import { generateConnectionId } from "../utils/entity-id";
 import { enforceToSql } from "../utils/configInheritance";
+import { boolToInt } from "./transform";
 
 export function create(db: Kysely<Database>) {
   return async (
@@ -37,6 +38,8 @@ export function create(db: Kysely<Database>) {
       .values({
         ...connection,
         is_system: is_system ? 1 : 0,
+        show_as_button: boolToInt(connection.show_as_button),
+        is_domain_connection: boolToInt(connection.is_domain_connection),
         enforce: enforceToSql(enforce),
         // The connection options will have many different properties depending on the strategy
         options: JSON.stringify(connection.options || {}),
