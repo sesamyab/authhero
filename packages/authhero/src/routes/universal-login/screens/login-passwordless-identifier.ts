@@ -23,6 +23,10 @@ import { emailOtpChallengeScreen } from "./email-otp-challenge";
 import { smsOtpChallengeScreen } from "./sms-otp-challenge";
 import { magicLinkSentScreen } from "./magic-link-sent";
 import { createTranslation } from "../../../i18n";
+import {
+  codeRecipientState,
+  invalidateOtherLoginCodes,
+} from "../../../helpers/code-recipient";
 
 /**
  * Create the login passwordless identifier screen
@@ -344,6 +348,13 @@ export const loginPasswordlessIdentifierScreenDefinition: ScreenDefinition = {
         loginSession.id,
         { authParams: loginSession.authParams },
       );
+      await invalidateOtherLoginCodes(
+        ctx,
+        ctx.env.data.codes,
+        client.tenant.id,
+        loginSession.id,
+        normalized,
+      );
 
       // Extract language from ui_locales
       const language = loginSession.authParams?.ui_locales
@@ -376,6 +387,7 @@ export const loginPasswordlessIdentifierScreenDefinition: ScreenDefinition = {
           login_id: loginSession.id,
           expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
           redirect_uri: loginSession.authParams.redirect_uri,
+          state: codeRecipientState(normalized, ctx.get("countryCode")),
         });
 
         try {

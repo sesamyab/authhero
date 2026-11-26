@@ -3,6 +3,7 @@ import { testClient } from "hono/testing";
 import { AuthorizationResponseType } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../helpers/test-server";
 import { isConnectLoginSession } from "../../src/helpers/dcr/connect-state";
+import { codeRecipientState } from "../../src/helpers/code-recipient";
 
 /**
  * Regression coverage for #1006: a cold (no-session) user who enters the DCR
@@ -42,6 +43,7 @@ describe("connect flow login continuation", () => {
       code_type: "otp",
       login_id: loginSession.id,
       expires_at: new Date(Date.now() + 60_000).toISOString(),
+      state: codeRecipientState("connect-user@example.com"),
     });
 
     const response = await universalClient.login["email-otp-challenge"].$post({

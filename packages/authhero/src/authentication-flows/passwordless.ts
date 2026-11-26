@@ -25,6 +25,7 @@ import { RedirectException } from "../errors/redirect-exception";
 import { getEnrichedClient, EnrichedClient } from "../helpers/client";
 import { logMessage } from "../helpers/logging";
 import { GrantFlowUserResult } from "../types/GrantFlowResult";
+import { isCodeRecipient } from "../helpers/code-recipient";
 
 function isRateLimitDecision(value: unknown): value is RateLimitDecision {
   return (
@@ -186,6 +187,20 @@ export async function passwordlessGrantUser(
     logMessage(ctx, client.tenant.id, {
       type: LogTypes.FAILED_EXCHANGE_PASSWORDLESS_OTP_FOR_ACCESS_TOKEN,
       description: "Login session not found or username mismatch",
+      userId: code.user_id,
+    });
+    throw new JSONHTTPException(400, {
+      message: "Code not found or expired",
+      userSafe: true,
+    });
+  }
+
+  // The code was delivered to one address; it only proves that address, even
+  // if the login session's username has changed since it was sent.
+  if (!isCodeRecipient(code, normalized, countryCode)) {
+    logMessage(ctx, client.tenant.id, {
+      type: LogTypes.FAILED_EXCHANGE_PASSWORDLESS_OTP_FOR_ACCESS_TOKEN,
+      description: "Code was not sent to this username",
       userId: code.user_id,
     });
     throw new JSONHTTPException(400, {

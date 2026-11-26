@@ -18,6 +18,7 @@ import { resolvePrimaryUser } from "../helpers/users";
 import { OTP_EXPIRATION_TIME } from "../constants";
 import generateOTP from "../utils/otp";
 import { resolveClientDatabaseConnection } from "../helpers/database-connection-scope";
+import { codeRecipientState, isCodeRecipient } from "../helpers/code-recipient";
 
 export type EmailVerificationMethod = "link" | "code";
 
@@ -177,7 +178,7 @@ export async function sendLoginEmailVerificationCode(
     login_id: loginSession.id,
     user_id: user.user_id,
     expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
-    state: JSON.stringify({
+    state: codeRecipientState(user.email ?? "", undefined, {
       purpose: LOGIN_EMAIL_VERIFICATION_PURPOSE,
       connection,
     }),
@@ -275,13 +276,18 @@ export async function verifyLoginEmailCode(
   if (stored.expires_at < new Date().toISOString()) {
     return fail("Code expired", stored.user_id);
   }
-  if (!(await data.codes.consume(tenantId, code))) {
-    return fail("Code already used", stored.user_id);
-  }
 
   const user = await data.users.get(tenantId, stored.user_id);
   if (!user) {
     return fail("User not found", stored.user_id);
+  }
+  // The code only proves the address it was sent to; the user's email may
+  // have changed since.
+  if (!isCodeRecipient(stored, user.email)) {
+    return fail("Code was not sent to this email", stored.user_id);
+  }
+  if (!(await data.codes.consume(tenantId, code))) {
+    return fail("Code already used", stored.user_id);
   }
 
   await data.users.update(tenantId, user.user_id, { email_verified: true });
