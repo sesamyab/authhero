@@ -1,18 +1,109 @@
 import type { Context } from "hono";
-import type { LoginSession } from "@authhero/adapter-interfaces";
+import type {
+  LoginSession,
+  RateLimitDecision,
+} from "@authhero/adapter-interfaces";
 import type { EnrichedClient } from "../../../helpers/client";
 import type { Bindings, Variables } from "../../../types";
 import generateOTP from "../../../utils/otp";
 import { sendCode, sendLink } from "../../../emails";
 import { OTP_EXPIRATION_TIME } from "../../../constants";
 import type { ScreenContext, ScreenFactory, ScreenResult } from "./types";
+import {
+  FinalizedLoginSessionError,
+  readLoginSessionData,
+  updateLoginSessionData,
+} from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
+
+type OtpContext = Context<{ Bindings: Bindings; Variables: Variables }>;
+
+/**
+ * Login OTP codes or magic links (identifier step plus resends) delivered per
+ * login session. Further requests are accepted but nothing is sent.
+ */
+export const LOGIN_OTP_MAX_SENDS = 5;
+
+function isRateLimitDecision(value: unknown): value is RateLimitDecision {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "allowed" in value &&
+    typeof value.allowed === "boolean"
+  );
+}
+
+/**
+ * Count a login OTP delivery on the login session and consume the optional
+ * per-recipient rate limit. Returns false when either limit is reached, or
+ * when the session is already finalized; callers then skip delivery but
+ * respond as usual, so the response does not reveal the limit or whether
+ * the address exists. Counted before sending, so failed sends count too.
+ */
+export async function allowLoginOtpSend(
+  ctx: OtpContext,
+  {
+    tenantId,
+    loginSessionId,
+    to,
+  }: { tenantId: string; loginSessionId: string; to: string },
+): Promise<boolean> {
+  const current = await ctx.env.data.loginSessions.get(
+    tenantId,
+    loginSessionId,
+  );
+  if (!current) return false;
+  const sent = readLoginSessionData(current.state_data).login_otp_sent ?? 0;
+  if (sent >= LOGIN_OTP_MAX_SENDS) {
+    console.warn("Login OTP send limit reached for login session");
+    return false;
+  }
+
+  const rateLimit = ctx.env.data.rateLimit;
+  if (rateLimit) {
+    let allowed = true;
+    try {
+      const result: unknown = await rateLimit.consume(
+        "brute-force",
+        `login-otp-send:${tenantId}:${to.toLowerCase()}`,
+      );
+      if (isRateLimitDecision(result)) allowed = result.allowed;
+    } catch (error) {
+      // Fail open: a misbehaving rate-limit adapter must not block logins.
+      console.error("Login OTP rate limit consume failed:", error);
+    }
+    if (!allowed) {
+      console.warn("Login OTP send rate limit reached for recipient");
+      return false;
+    }
+  }
+
+  try {
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      loginSessionId,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { login_otp_sent: sent + 1 },
+      },
+    );
+  } catch (error) {
+    if (error instanceof FinalizedLoginSessionError) return false;
+    throw error;
+  }
+  return true;
+}
 
 /**
  * Create a one-time code bound to the login session and deliver it to the
  * user, either as a code or (for magic-link email connections) as a link.
+ *
+ * Subject to the per-session send cap and per-recipient rate limit in
+ * allowLoginOtpSend; returns false, without sending, when a limit is hit.
  */
 export async function sendLoginOtp(
-  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  ctx: OtpContext,
   {
     client,
     loginSession,
@@ -24,7 +115,17 @@ export async function sendLoginOtp(
     to: string;
     magicLink: boolean;
   },
-) {
+): Promise<boolean> {
+  if (
+    !(await allowLoginOtpSend(ctx, {
+      tenantId: client.tenant.id,
+      loginSessionId: loginSession.id,
+      to,
+    }))
+  ) {
+    return false;
+  }
+
   let code_id = generateOTP();
   let existingCode = await ctx.env.data.codes.get(
     client.tenant.id,
@@ -68,6 +169,7 @@ export async function sendLoginOtp(
       language,
     });
   }
+  return true;
 }
 
 /**
@@ -77,12 +179,13 @@ export async function sendLoginOtp(
  * Only re-sends when a login OTP was issued for this session before. The
  * enumeration-safe stub path in the identifier screens shows the challenge
  * without issuing a code, and a resend must not start delivering to an
- * unknown address either.
+ * unknown address either. Repeated resends are capped by allowLoginOtpSend;
+ * past the cap the caller still shows the usual "code sent" message.
  *
  * Returns false when the login session is gone or has no username.
  */
 export async function resendLoginOtp(
-  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  ctx: OtpContext,
   {
     client,
     state,

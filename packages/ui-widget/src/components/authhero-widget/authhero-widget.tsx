@@ -1056,7 +1056,6 @@ export class AuthheroWidget {
 
     const submitData: Record<string, string | string[]> = {
       ...this.formData,
-      ...(overrideData || {}),
     };
 
     // Native fields in prompt partials are direct descendants of this form,
@@ -1094,6 +1093,11 @@ export class AuthheroWidget {
           }
         });
     }
+
+    // Explicit overrides (the clicked button, a resend action, data from a
+    // WebAuthn ceremony) win over anything collected from the form, so e.g. a
+    // hidden input named "action" cannot replace "resend".
+    Object.assign(submitData, overrideData || {});
 
     // Always emit the submit event
     this.formSubmit.emit({

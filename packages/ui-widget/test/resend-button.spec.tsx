@@ -101,6 +101,33 @@ describe("resend button", () => {
     );
   });
 
+  it("keeps action=resend when the form has a hidden input named action", async () => {
+    const page = await render();
+
+    // e.g. added by a tenant's prompt partial or an inline script
+    const form = page.root!.shadowRoot!.querySelector("form")!;
+    const hidden = page.doc.createElement("input");
+    hidden.setAttribute("type", "hidden");
+    hidden.setAttribute("name", "action");
+    hidden.setAttribute("value", "verify");
+    form.appendChild(hidden);
+
+    const fetchSpy = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => "application/json" },
+      json: async () => ({ screen: codeScreen }),
+    });
+    (global as any).fetch = fetchSpy;
+
+    resendButton(page).click();
+    await flush(page);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchSpy.mock.calls[0][1].body).data.action).toBe(
+      "resend",
+    );
+  });
+
   it("renders the server's error when the resend fails", async () => {
     const page = await render();
 

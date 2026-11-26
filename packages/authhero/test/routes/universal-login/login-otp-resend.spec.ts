@@ -3,6 +3,7 @@ import { Strategy } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../../helpers/test-server";
 import { u2Screen } from "../../helpers/u2-screen";
 import en from "../../../locales/en.json";
+import { LOGIN_OTP_MAX_SENDS } from "../../../src/routes/universal-login/screens/login-otp";
 
 const emailOtp = en["email-otp-challenge"]["email-otp-challenge"];
 const smsOtp = en["sms-otp-challenge"]["sms-otp-challenge"];
@@ -158,6 +159,106 @@ describe("login OTP resend", () => {
     const sms = server.getSentSms();
     expect(sms).toHaveLength(1);
     expect(sms[0].to).toBe("+46701234567");
+  });
+});
+
+describe("login OTP send cap", () => {
+  it(`stops sending after ${LOGIN_OTP_MAX_SENDS} resends but keeps the neutral response`, async () => {
+    const server = await getTestServer({ mockEmail: true });
+    const state = await createSession(server.env, "foo@example.com");
+
+    for (let i = 0; i < LOGIN_OTP_MAX_SENDS + 2; i++) {
+      const response = await postScreen(server, "email-otp-challenge", state, {
+        action: "resend",
+      });
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.screen.messages).toEqual([
+        { text: emailOtp.resendSuccess, type: "success" },
+      ]);
+    }
+
+    expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
+  });
+
+  it("counts identifier submits and resends against the same cap", async () => {
+    const server = await getTestServer({ mockEmail: true });
+    await server.env.data.connections.update("tenantId", "email", {
+      options: { authentication_method: "code" },
+    });
+    const state = await createSession(server.env, undefined, {
+      issueCode: false,
+    });
+
+    for (let i = 0; i < LOGIN_OTP_MAX_SENDS; i++) {
+      const response = await postScreen(server, "identifier", state, {
+        username: "foo@example.com",
+      });
+      expect(response.status).toBe(200);
+      expect((await response.json()).screenId).toBe("email-otp-challenge");
+    }
+    expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
+
+    // Both paths still answer as usual past the cap
+    const again = await postScreen(server, "identifier", state, {
+      username: "foo@example.com",
+    });
+    expect((await again.json()).screenId).toBe("email-otp-challenge");
+    const resend = await postScreen(server, "email-otp-challenge", state, {
+      action: "resend",
+    });
+    expect(resend.status).toBe(200);
+    expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
+  });
+
+  it("applies the cap to the passwordless identifier screen", async () => {
+    const server = await getTestServer({ mockEmail: true });
+    await server.env.data.connections.update("tenantId", "email", {
+      options: { authentication_method: "code" },
+    });
+    const state = await createSession(server.env, undefined, {
+      issueCode: false,
+    });
+
+    for (let i = 0; i < LOGIN_OTP_MAX_SENDS + 1; i++) {
+      const response = await postScreen(
+        server,
+        "login-passwordless-identifier",
+        state,
+        { username: "foo@example.com" },
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).screenId).toBe("email-otp-challenge");
+    }
+    expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
+  });
+
+  it("consumes the per-recipient rate limit and skips delivery when it denies", async () => {
+    const consumed: Array<{ scope: string; key: string }> = [];
+    const server = await getTestServer({
+      mockEmail: true,
+      rateLimit: {
+        consume: async (scope: string, key: string) => {
+          consumed.push({ scope, key });
+          return { allowed: false, retryAfterSeconds: 60 };
+        },
+      },
+    });
+    const state = await createSession(server.env, "Foo@Example.com");
+
+    const response = await postScreen(server, "email-otp-challenge", state, {
+      action: "resend",
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).screen.messages).toEqual([
+      { text: emailOtp.resendSuccess, type: "success" },
+    ]);
+    expect(server.getSentEmails()).toHaveLength(0);
+    expect(consumed).toContainEqual({
+      scope: "brute-force",
+      key: "login-otp-send:tenantId:foo@example.com",
+    });
   });
 });
 
