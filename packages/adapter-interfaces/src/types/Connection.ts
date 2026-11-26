@@ -205,6 +205,9 @@ export const connectionOptionsSchema = z.object({
         .optional(),
     })
     .optional(),
+  // `external` connections only: lets actions create and update users in this
+  // connection with `api.users.ensure`. Off by default.
+  allow_action_users: z.boolean().optional(),
   // Controls when root user attributes are updated from external IdP
   set_user_root_attributes: z
     .enum(["on_each_login", "on_first_login", "never_on_login"])

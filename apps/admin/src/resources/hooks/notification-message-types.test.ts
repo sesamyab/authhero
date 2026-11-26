@@ -41,6 +41,6 @@ describe("custom provider message types", () => {
   it("recognises only the custom provider triggers", () => {
     expect(isNotificationTrigger("custom-email-provider")).toBe(true);
     expect(isNotificationTrigger("custom-phone-provider")).toBe(true);
-    expect(isNotificationTrigger("pre-account-action")).toBe(false);
+    expect(isNotificationTrigger("pre-screen")).toBe(false);
   });
 });

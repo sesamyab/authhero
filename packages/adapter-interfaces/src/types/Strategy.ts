@@ -14,6 +14,12 @@ export const Strategy = {
   WAAD: "waad",
   ADFS: "adfs",
   OKTA: "okta",
+  /**
+   * AuthHero extension: a non-login connection that only namespaces users
+   * created by actions (`api.users.ensure`), e.g. anchors for an external
+   * system of record. Never offered on login screens or `/authorize`.
+   */
+  EXTERNAL: "external",
 } as const;
 
 export const StrategyType = {

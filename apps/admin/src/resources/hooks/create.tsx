@@ -21,6 +21,7 @@ import {
 
 import { ActionInput } from "./action-input";
 import { NotificationMessageTypesInput } from "./notification-message-types";
+import { PreScreenBindingInputs } from "./pre-screen-binding";
 import { bindingCreatePayload } from "../action-triggers/bindings";
 
 function TypeField() {
@@ -68,6 +69,7 @@ function TypeSpecificFields() {
       <>
         <ActionInput />
         <NotificationMessageTypesInput />
+        <PreScreenBindingInputs />
       </>
     );
   }

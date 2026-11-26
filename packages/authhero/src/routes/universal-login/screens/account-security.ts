@@ -6,7 +6,7 @@
 
 import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
-import { gateAccountOperation, resolveAccountUser } from "./account-helpers";
+import { resolveAccountUser } from "./account-helpers";
 import { escapeHtml } from "../sanitization-utils";
 import { PASSKEY_TYPES } from "./passkey-utils";
 import { createTranslation } from "../../../i18n";
@@ -257,18 +257,6 @@ async function handleAccountSecuritySubmit(
       };
     }
 
-    // This action also accepts passkey ids, so decide by the enrollment's
-    // type: a passkey must go through the remove-passkey policy.
-    const isPasskey = PASSKEY_TYPES.some((type) => type === enrollment.type);
-    const redirectUrl = await gateAccountOperation(
-      context,
-      isPasskey ? "remove-passkey" : "remove-mfa",
-      {
-        user,
-        details: { enrollment_id: enrollmentId, type: enrollment.type },
-      },
-    );
-    if (redirectUrl) return { redirect: redirectUrl };
     try {
       await ctx.env.data.authenticationMethods.remove(tenant.id, enrollmentId);
 

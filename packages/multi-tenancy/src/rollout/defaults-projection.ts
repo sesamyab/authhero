@@ -10,6 +10,7 @@ import {
   resourceServerInsertSchema,
   hookInsertSchema,
   fetchAll,
+  isRetiredHookTrigger,
 } from "authhero";
 
 /**
@@ -277,6 +278,12 @@ export async function writeControlPlaneDefaults(
   if (project.hooks) {
     for (const hook of data.hooks) {
       if (!isInheritableHook(hook) || !hook.hook_id) continue;
+      if (isRetiredHookTrigger(hook.trigger_id)) {
+        console.warn(
+          `defaults projection: skipping hook ${hook.hook_id} bound to the removed trigger ${hook.trigger_id}`,
+        );
+        continue;
+      }
       await attempt(
         result.hooks,
         `hook ${hook.hook_id}`,

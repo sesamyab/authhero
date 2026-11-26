@@ -193,9 +193,15 @@ describe("u2 account hub mid-login", () => {
     const ok = await postScreen(server, "account-change-email-verify", state, {
       code,
     });
-    expect(ok.status).toBe(200);
-    // Back to the hub, which then offers to continue the login
-    expect(ok.json.screen?.links?.[0]?.href).toBe(
+    // The verify POST redirects to the verify GET, which renders the
+    // confirmation; its continue link goes back to the hub, which then
+    // offers to continue the login.
+    expect(ok.json.redirect).toBe(
+      `/u2/account/change-email/verify?state=${encodeURIComponent(state)}`,
+    );
+    const done = await getScreen(server, "account-change-email-verify", state);
+    expect(done.status).toBe(200);
+    expect(done.json.screen?.links?.[0]?.href).toBe(
       `/u2/account?state=${encodeURIComponent(state)}`,
     );
     expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
