@@ -5,6 +5,7 @@ import {
   clientSchema,
   Connection,
   connectionSchema,
+  Strategy,
   Tenant,
   tenantSchema,
 } from "@authhero/adapter-interfaces";
@@ -102,7 +103,10 @@ function enrichClient(
       `${legacyUniversalLoginUrl}info`,
     ],
     tenant,
-    connections,
+    // `external` connections only namespace users created by actions
+    // (issue #1802). They are never a way to log in, so login screens and
+    // `/authorize?connection=` must not see them even when enabled.
+    connections: connections.filter((c) => c.strategy !== Strategy.EXTERNAL),
   };
 }
 

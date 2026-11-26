@@ -31,6 +31,10 @@ import { invokeHooks } from "./webhooks";
 import { createTokenAPI } from "./helpers/token-api";
 import { createPostLoginUserApi } from "./helpers/post-login-account-linking";
 import {
+  createActionUsersApi,
+  createExternalConnectionLookup,
+} from "./helpers/action-users";
+import {
   resolveLinkCandidates,
   toLinkCandidates,
 } from "../helpers/link-candidates";
@@ -703,15 +707,32 @@ export async function postUserLoginHook(
         ? toLinkCandidates(linkCandidates)
         : [];
 
+      // `api.users.ensure` (issue #1802): create or update users in an
+      // `external` connection; setLinkedTo may then link under them.
+      const externalConnections = createExternalConnectionLookup(
+        data,
+        tenant_id,
+        Object.keys(ctx.env.STRATEGIES ?? {}),
+      );
+      const actionUsers = createActionUsersApi({
+        ctx,
+        data,
+        tenantId: tenant_id,
+        triggerId: "post-user-login",
+        externalConnections,
+      });
       const linkingApi = createPostLoginUserApi({
         ctx,
         data,
         tenantId: tenant_id,
         user,
         candidates: linkCandidates,
+        ensuredUserIds: actionUsers.ensuredUserIds,
+        externalConnections,
       });
       const codeHookApi = {
         ...linkingApi.api,
+        ...actionUsers.api,
         multifactor: {
           enable: (provider: unknown, options?: unknown) => {
             mfaRequest = mergeMfaRequest(mfaRequest, provider, options);
@@ -755,9 +776,17 @@ export async function postUserLoginHook(
 
       // If an action linked the user, re-fetch the resulting primary so
       // downstream token building sees it — matching `handleTemplateHook`.
+      // Also re-read when an action ensured the logging-in primary itself
+      // (an anchor signing in again), so tokens carry the merged profile.
       const linkedPrimaryId = linkingApi.getLinkedPrimaryId();
-      if (linkedPrimaryId && linkedPrimaryId !== user.user_id) {
-        const primary = await data.users.get(tenant_id, linkedPrimaryId);
+      const refreshId =
+        linkedPrimaryId && linkedPrimaryId !== user.user_id
+          ? linkedPrimaryId
+          : actionUsers.ensuredUserIds.has(user.user_id)
+            ? user.user_id
+            : null;
+      if (refreshId) {
+        const primary = await data.users.get(tenant_id, refreshId);
         if (primary) user = primary;
       }
     }

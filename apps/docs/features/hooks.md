@@ -395,6 +395,89 @@ exports.onExecutePreAccountAction = async (event, api) => {
 If nothing is bound to the trigger, the account pages behave as before; the only
 cost is one hook lookup when a gated page opens or is submitted.
 
+## Anchoring users to an external record (`api.users.ensure`)
+
+`api.users.ensure` is an **AuthHero extension**. It lets a code Action create or
+update a user that stands for a record in another system, such as a member in a
+CRM or a membership register, and link every way a person signs in (email, SMS,
+Vipps, Google…) under it. That user is the cluster's primary: tokens carry its
+`user_id` as `sub` and its profile, but nobody ever signs in to it directly.
+
+It works in `pre-user-registration` and `post-user-login`, together with
+`api.user.setLinkedTo`:
+
+```javascript
+exports.onExecutePostLogin = async (event, api) => {
+  const member = await lookupMember(event.user.email, event.secrets);
+  if (!member) return;
+
+  api.users.ensure({
+    connection: "parat", // an `external` connection, see below
+    id: String(member.id), // the user_id becomes "parat|<id>"
+    profile: { email: member.email, given_name: member.firstName },
+    app_metadata: { roles: member.roles },
+  });
+  api.user.setLinkedTo(`parat|${member.id}`);
+};
+```
+
+**The `external` connection.** Users can only be ensured in a connection with
+`strategy: "external"` and `options.allow_action_users: true`. It is not a way to
+sign in: it never shows on login screens, `/authorize?connection=` treats it as
+unknown, and it stores no credentials (keep the external system's API secrets in
+the Action's secrets). Names that clash with a prefix login identities use are
+refused: built-in providers (`email`, `sms`, `auth0`, `google-oauth2`…),
+strategies injected through `env.STRATEGIES`, and the strategy of any of the
+tenant's login connections. Create one through the Management API:
+
+```http
+POST /api/v2/connections
+{ "name": "parat", "strategy": "external", "options": { "allow_action_users": true } }
+```
+
+**What `ensure` does.** Calls are applied after the Action returns, so `ensure`
+returns nothing. You choose the id, and the call is an upsert:
+
+- If `<connection>|<id>` doesn't exist, it is created with the profile and
+  `app_metadata`. Otherwise non-blank profile fields overwrite the stored ones
+  and `app_metadata` is shallow-merged. A new `email` without
+  `email_verified` is stored as unverified.
+- `id` is used exactly as given (no trimming), so pass the same string to
+  `setLinkedTo`.
+- The write bypasses user hooks: no `pre-user-registration`, no update hooks, no
+  automatic email linking and no post-registration webhook. The user is a
+  record, not a signup.
+- Accepted profile fields: `email`, `email_verified`, `phone_number`, `name`,
+  `given_name`, `family_name`, `nickname`, `picture`. Others are ignored.
+- At most 5 calls per execution. A refused call writes nothing and logs a
+  `Failed Hook` (`fh`) entry whose `details.reason` is `connection_not_allowed`,
+  `invalid_id` (empty or containing `|`), `invalid_params` or `too_many_users`.
+
+**How `setLinkedTo` treats these users.**
+
+- In `pre-user-registration`, the new user is created linked to the target. If
+  the target doesn't exist when the hooks finish, the user is registered
+  unlinked and a `Failed Hook` entry with reason `primary_not_found` is logged.
+- In `post-user-login`, a user ensured earlier in the same execution is a valid
+  target, alongside `event.link_candidates`. The verified-email check doesn't
+  apply to it: your Action matched the person against its own records.
+- A primary in an `external` connection always stays primary, whatever the
+  account ages. If the user signing in already has linked identities, they all
+  move under it, and the token for this login is issued for it.
+- A user already under one external primary is never moved to another by a
+  login (reason `already_anchored`). Moving a person between records is an
+  admin operation: use the Management API's unlink and link endpoints.
+
+Automatic email linking doesn't know about external primaries yet. If an
+**older, unlinked** user later verifies the same email address as an external
+primary, the built-in email linking can still link the two in the older user's
+favour. A user the Action has linked is excluded from built-in email linking,
+but users it hasn't linked (including accounts that never sign in through it)
+stay eligible, so an older unlinked account can still demote an external
+primary. If your external primaries must stay stable, turn built-in linking off
+with `userLinkingMode: "off"` (or `user_linking_mode: "off"` on the client) and
+link users explicitly. See #1806 and the follow-ups on #1802.
+
 ## Custom email and phone provider Actions
 
 The Auth0 triggers `custom-email-provider` and `custom-phone-provider` let a
