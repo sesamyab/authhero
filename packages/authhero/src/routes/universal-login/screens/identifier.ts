@@ -47,6 +47,7 @@ import {
   buildWebAuthnConditionalMediationCeremony,
   verifyPasskeyAuthentication,
 } from "./passkey-utils";
+import { invalidateOtherLoginCodes } from "../../../helpers/code-recipient";
 
 /**
  * Build social login buttons from available connections
@@ -543,6 +544,13 @@ export const identifierScreenDefinition: ScreenDefinition = {
               loginSession.id,
               { authParams: loginSession.authParams },
             );
+            await invalidateOtherLoginCodes(
+              ctx,
+              ctx.env.data.codes,
+              client.tenant.id,
+              loginSession.id,
+              normalized,
+            );
             const authResult = await connectionAuth(
               ctx,
               client,
@@ -704,6 +712,13 @@ export const identifierScreenDefinition: ScreenDefinition = {
         client.tenant.id,
         loginSession.id,
         { authParams: loginSession.authParams },
+      );
+      await invalidateOtherLoginCodes(
+        ctx,
+        ctx.env.data.codes,
+        client.tenant.id,
+        loginSession.id,
+        normalized,
       );
 
       // Determine login strategy

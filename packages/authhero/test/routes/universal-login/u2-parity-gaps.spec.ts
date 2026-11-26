@@ -13,6 +13,7 @@ import {
 import { getTestServer } from "../../helpers/test-server";
 import { getRedirectUrl } from "../../../src/hooks/formhooks";
 import { isEmailTakenOutsideAccount } from "../../../src/routes/universal-login/screens/account-change-email";
+import { preSignupCodeState } from "../../../src/helpers/code-recipient";
 
 type TestServer = Awaited<ReturnType<typeof getTestServer>>;
 
@@ -258,12 +259,17 @@ describe("u2 signup with a pre-signup code", () => {
     return { ...server, email, state };
   }
 
-  async function mintCode(server: TestServer, loginId: string) {
+  async function mintCode(
+    server: TestServer & { email: string },
+    loginId: string,
+    recipient: string = server.email,
+  ) {
     const code = await server.env.data.codes.create("tenantId", {
       code_id: "123456",
       code_type: "email_verification",
       login_id: loginId,
       expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      state: preSignupCodeState(recipient),
     });
     return code.code_id;
   }
@@ -352,7 +358,8 @@ describe("u2 signup with a pre-signup code", () => {
     const server = await setup();
     const { env, state } = server;
     const otherState = await startLogin(server, "someone@example.com");
-    const otherCode = await mintCode(server, otherState);
+    // Sent to the address being signed up, but for another login session
+    const otherCode = await mintCode(server, otherState, server.email);
 
     // Code from another login session
     await postScreen(
@@ -379,6 +386,7 @@ describe("u2 signup with a pre-signup code", () => {
       code_type: "email_verification",
       login_id: thirdState,
       expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      state: preSignupCodeState("verified@example.com"),
     });
     await postScreen(
       server,
@@ -405,6 +413,7 @@ describe("u2 signup with a pre-signup code", () => {
         expires_at: new Date(
           Date.now() + (variant === "expired" ? -60_000 : 3600_000),
         ).toISOString(),
+        state: preSignupCodeState(email),
       });
       if (variant === "used") {
         await env.data.codes.consume("tenantId", "222222");

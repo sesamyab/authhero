@@ -45,6 +45,7 @@ import {
 import { loginWithPassword } from "../../../authentication-flows/password";
 import { logMessage } from "../../../helpers/logging";
 import { SignupValidationError } from "../../../errors/signup-validation-error";
+import { isPreSignupCodeFor } from "../../../helpers/code-recipient";
 
 type PrefillValue = string | string[];
 
@@ -624,8 +625,8 @@ export async function signupScreen(
 /**
  * The code from a pre-signup verification email
  * (`sendSignupValidateEmailAddress`, sent by /u/pre-signup), when it proves
- * the address being signed up: minted for this login session and its
- * username, unexpired and unused. Any other code is ignored and the signup
+ * the address being signed up: minted for this login session, sent to the
+ * submitted email, unexpired and unused. Any other code is ignored and the signup
  * continues unverified. The caller consumes it once the user exists, so a
  * failed signup doesn't burn the link.
  */
@@ -644,21 +645,9 @@ async function findPreSignupCode(
     code,
     "email_verification",
   );
-  if (
-    !stored ||
-    stored.login_id !== loginSession.id ||
-    // Pre-signup codes carry no user and no purpose; every other
-    // email_verification code (login verification, change-email) has one.
-    stored.user_id ||
-    stored.state ||
-    stored.used_at ||
-    stored.expires_at < new Date().toISOString() ||
-    loginSession.authParams.username?.toLowerCase() !== email.toLowerCase()
-  ) {
-    return undefined;
-  }
-
-  return code;
+  // Compared with the address the code was sent to, not the session's
+  // username: the identifier step can change that after the code was sent.
+  return isPreSignupCodeFor(stored, loginSession.id, email) ? code : undefined;
 }
 
 export const signupScreenDefinition: ScreenDefinition = {

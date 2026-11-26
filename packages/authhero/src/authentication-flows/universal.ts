@@ -17,6 +17,7 @@ import { stringifyAuth0Client } from "../utils/client-info";
 import type { SessionCookieDiagnostics } from "../utils/cookies";
 import { createLoginSessionWithData } from "../state-machines/login-session-data";
 import { stripSessionTransferToken } from "../utils/session-transfer-token";
+import { codeRecipientState } from "../helpers/code-recipient";
 
 interface UniversalAuthParams {
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>;
@@ -184,6 +185,7 @@ export async function universalAuth({
         Date.now() + UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS * 1000,
       ).toISOString(),
       redirect_uri: authParams.redirect_uri,
+      state: codeRecipientState(login_hint, ctx.get("countryCode")),
     });
     await sendLink(ctx, {
       code: otp,

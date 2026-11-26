@@ -30,6 +30,10 @@ import { HTTPException } from "hono/http-exception";
 import { DefaultUserAgentDetector } from "../../client/user-agent-detector";
 
 import { defineRoute } from "../../utils/define-route";
+import {
+  codeRecipientState,
+  invalidateOtherLoginCodes,
+} from "../../helpers/code-recipient";
 export type SendType = "link" | "code";
 
 /**
@@ -334,6 +338,13 @@ const postRoot = defineRoute({
     await env.data.loginSessions.update(client.tenant.id, loginSession.id, {
       authParams: loginSession.authParams,
     });
+    await invalidateOtherLoginCodes(
+      ctx,
+      env.data.codes,
+      client.tenant.id,
+      loginSession.id,
+      username,
+    );
 
     const loginStrategy = await getLoginStrategy(
       ctx,
@@ -366,6 +377,7 @@ const postRoot = defineRoute({
       login_id: loginSession.id,
       expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
       redirect_uri: loginSession.authParams.redirect_uri,
+      state: codeRecipientState(username, ctx.get("countryCode")),
     });
 
     const connection = client.connections.find(
