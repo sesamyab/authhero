@@ -11,6 +11,7 @@ import { darkModeCssVarRules, isLightColor } from "./colors";
 import type { ColorsDark } from "./colors";
 import { buildThemePageBackground } from "./html";
 import type { BrandingPageBackground, ThemePageBackground } from "./html";
+import { CUSTOM_FONT_STACK } from "./font";
 
 /** Layout values for the page `<body>` — emitted into the stylesheet by
  *  `buildPageCss` on both render paths. */
@@ -53,7 +54,7 @@ export function buildBodyLayout(opts: {
       opts.brandingPageBackground,
     ),
     fontFamily: opts.fontUrl
-      ? "'Inter', system-ui, sans-serif"
+      ? CUSTOM_FONT_STACK
       : "system-ui, -apple-system, sans-serif",
     justifyContent,
     padding,
