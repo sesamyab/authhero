@@ -376,6 +376,11 @@ interface SendTemplatedEmailParams {
   messageType: CustomEmailProviderMessageType;
   /** The recipient user, exposed to the action as `event.user`. */
   user?: User;
+  /**
+   * Extra values that must never be logged, for secrets that aren't passed
+   * as `code` / `url` (which would also set template variables).
+   */
+  secrets?: string[];
 }
 
 /**
@@ -457,7 +462,7 @@ async function sendTemplatedEmail(
       from,
       message_type: params.messageType,
       // The code and the link carry the secret; keep them out of logs.
-      secrets: [params.code, params.url].filter(
+      secrets: [params.code, params.url, ...(params.secrets ?? [])].filter(
         (v): v is string => typeof v === "string" && v.length > 0,
       ),
       user: params.user,
@@ -1120,6 +1125,9 @@ export async function sendSignupValidateEmailAddress(
     templateName: "verify_email",
     legacyTemplate: "auth-pre-signup-verification",
     messageType: "verify_email",
+    // The code is in the link; register it on its own so an action that
+    // extracts and logs it is still scrubbed.
+    secrets: [code],
     fallbackSubject: t("register_password_account", options),
     fallbackHtml: `Click here to register: ${signupUrl}`,
     tenant,
@@ -1242,10 +1250,8 @@ export async function sendTestEmail(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   params: SendTestEmailParams,
 ): Promise<void> {
-  const { tenant, logo, buttonColor, options } = await buildEmailContext(
-    ctx,
-    params.language,
-  );
+  const { tenant, logo, buttonColor, options, language } =
+    await buildEmailContext(ctx, params.language);
 
   const provider = await ctx.env.data.emailProviders.get(ctx.var.tenant_id);
   const fallbackFrom = resolveFromAddress({
@@ -1349,6 +1355,6 @@ export async function sendTestEmail(
     data: {},
     from: params.from || fallbackFrom,
     message_type: "try_provider_configuration_email",
-    locale: params.language,
+    locale: language,
   });
 }

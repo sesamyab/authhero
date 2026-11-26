@@ -210,6 +210,11 @@ export async function sendMfaOtp(
         locale: loginSession.authParams?.ui_locales?.split(" ")[0] ?? "en",
       }),
       sendDefault: sendWithSmsProvider,
+      // A resend replaces the stored code; a background retry of this one
+      // must not deliver a code that no longer verifies.
+      isCurrent: async () =>
+        (await ctx.env.data.codes.get(tenant.id, codeId, "mfa_otp"))?.otp ===
+        code,
     });
 
     logMessage(ctx, tenant.id, {

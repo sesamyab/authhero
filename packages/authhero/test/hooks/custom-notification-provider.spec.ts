@@ -16,6 +16,7 @@ import {
   deliverNotification,
   NotificationDeliveryError,
   createNotificationScrubber,
+  htmlToText,
   redactNotificationSecrets,
 } from "../../src/hooks/custom-notification-provider";
 import { flushBackgroundPromises } from "../../src/helpers/wait-until";
@@ -594,6 +595,59 @@ describe("custom provider background retries", () => {
     Reflect.deleteProperty(globalThis, "__notificationFallbackTest");
   });
 
+  it("stops retrying once the message is no longer current", async () => {
+    const t = await setup();
+    await t.bind("custom-email-provider", `api.notification.retry("busy");`);
+    let checks = 0;
+    await deliver(t, {
+      isCurrent: async () => {
+        checks++;
+        return checks < 2;
+      },
+    });
+    // The first run, one retry, then the second check finds it stale.
+    expect(t.notifications("custom-email-provider")).toHaveLength(2);
+    const logs = await t.logs();
+    expect(
+      logs.some((l) => l.type === LogTypes.FAILED_SENDING_NOTIFICATION),
+    ).toBe(false);
+  });
+
+  it("stops retrying (and logs fn) when the background budget runs out", async () => {
+    const t = await setup();
+    await t.bind("custom-email-provider", `api.notification.retry("busy");`);
+    await deliver(t, { retryBudgetMs: 1000 });
+    expect(t.notifications("custom-email-provider")).toHaveLength(1);
+    const failed = (await t.logs()).filter(
+      (l) => l.type === LogTypes.FAILED_SENDING_NOTIFICATION,
+    );
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.description).toContain("gave up after 0 retries");
+  });
+
+  it("logs fn when a retry hands off to a default provider that fails", async () => {
+    const t = await setup();
+    await t.bind(
+      "custom-email-provider",
+      `globalThis.__notificationHandoffTest = (globalThis.__notificationHandoffTest || 0) + 1;
+       if (globalThis.__notificationHandoffTest === 1) api.notification.retry();
+       else api.notification.useDefaultProvider();`,
+    );
+    const { caught } = await deliver(t, {
+      sendDefault: async () => {
+        throw new Error("smtp refused s3cret-link");
+      },
+    });
+    expect(caught).toBeUndefined();
+    const failed = (await t.logs()).filter(
+      (l) => l.type === LogTypes.FAILED_SENDING_NOTIFICATION,
+    );
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.description).toContain("default provider, which failed");
+    expect(JSON.stringify(failed[0])).not.toContain("s3cret-link");
+    Reflect.deleteProperty(globalThis, "__notificationHandoffTest");
+  });
+
   it("useDefaultProvider() is an error when the tenant has no default provider", async () => {
     const t = await setup();
     await t.bind(
@@ -617,6 +671,16 @@ describe("custom provider background retries", () => {
     );
     expect(scrub("provider returned 503 Service Unavailable")).toBe(
       "provider returned 503 Service Unavailable",
+    );
+  });
+
+  it("keeps links from single- and double-quoted hrefs in the plain text", () => {
+    expect(
+      htmlToText(
+        `<p>Reset: <a href='https://a.example/r?code=1'>here</a> or <a href="https://b.example/v">there</a></p>`,
+      ),
+    ).toBe(
+      "Reset: here (https://a.example/r?code=1) or there (https://b.example/v)",
     );
   });
 

@@ -46,6 +46,14 @@ export const NOTIFICATION_RETRY_DELAYS_MS: readonly number[] = [
   1000, 2000, 3000, 5000, 8000,
 ];
 
+/**
+ * Workers cancels `waitUntil` work 30 seconds after the response. Retries stop
+ * (and log `fn`) once another delay plus a full action timeout would no longer
+ * fit in this budget, so the terminal log is always written inside the window.
+ */
+export const NOTIFICATION_RETRY_BUDGET_MS = 25_000;
+const ACTION_TIMEOUT_MS = 5000;
+
 const REDACTED = "[REDACTED]";
 
 /** `event.notification` for `custom-email-provider`, Auth0's shape. */
@@ -356,6 +364,15 @@ export type DeliverNotificationParams = {
   requireAction?: boolean;
   /** Override the background retry delays (tests). */
   retryDelaysMs?: readonly number[];
+  /** Override the background retry budget (tests). */
+  retryBudgetMs?: number;
+  /**
+   * Whether this message is still worth delivering, checked before each
+   * background retry. A resend that replaced the one-time code makes an older
+   * pending delivery stale: delivering it later would show the user a code
+   * that no longer works.
+   */
+  isCurrent?: () => Promise<boolean>;
 };
 
 function contentSecrets(
@@ -409,6 +426,17 @@ async function buildEvent(
   };
 }
 
+/**
+ * With outbox logging, `logMessage` queues its write on the request and the
+ * outbox middleware drains that queue once. Background retries log after that,
+ * so they wait for their own writes here (the background task is what keeps
+ * the Worker alive).
+ */
+async function awaitQueuedOutboxWrites(ctx: RequestContext) {
+  const pending = ctx.var.outboxEventPromises;
+  if (pending && pending.length > 0) await Promise.allSettled([...pending]);
+}
+
 async function logNotificationFailure(
   ctx: RequestContext,
   params: DeliverNotificationParams,
@@ -417,6 +445,7 @@ async function logNotificationFailure(
   type:
     | typeof LogTypes.FAILED_SENDING_NOTIFICATION
     | typeof LogTypes.WARNING_SENDING_NOTIFICATION,
+  options: { background?: boolean } = {},
 ) {
   const channel =
     params.trigger === CUSTOM_EMAIL_PROVIDER_TRIGGER ? "email" : "sms";
@@ -435,6 +464,7 @@ async function logNotificationFailure(
       },
       waitForCompletion: true,
     });
+    if (options.background) await awaitQueuedOutboxWrites(ctx);
   } catch (error) {
     console.error(`[${params.trigger}] failed to record log entry`, error);
   }
@@ -445,6 +475,7 @@ async function reportTerminal(
   ctx: RequestContext,
   params: DeliverNotificationParams,
   attempt: Extract<NotificationAttempt, { type: "dropped" | "failed" }>,
+  options: { background?: boolean } = {},
 ) {
   await logNotificationFailure(
     ctx,
@@ -454,6 +485,7 @@ async function reportTerminal(
       : `${params.trigger} action failed`,
     attempt.reason,
     LogTypes.FAILED_SENDING_NOTIFICATION,
+    options,
   );
 }
 
@@ -482,8 +514,26 @@ async function retryInBackground(
   secrets: readonly string[],
 ) {
   const delays = params.retryDelaysMs ?? NOTIFICATION_RETRY_DELAYS_MS;
+  const budget = params.retryBudgetMs ?? NOTIFICATION_RETRY_BUDGET_MS;
+  const background = { background: true };
+  const started = Date.now();
+  let retries = 0;
+  const fail = (description: string, reason?: string) =>
+    logNotificationFailure(
+      ctx,
+      params,
+      description,
+      reason,
+      LogTypes.FAILED_SENDING_NOTIFICATION,
+      background,
+    );
+
   for (const delay of delays) {
+    if (Date.now() - started + delay + ACTION_TIMEOUT_MS > budget) break;
     if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+    // A resend replaced this message: delivering it now would be wrong.
+    if (params.isCurrent && !(await params.isCurrent())) return;
+    retries++;
     const attempt = await runNotificationAction(ctx, {
       trigger: params.trigger,
       tenantId: params.tenantId,
@@ -497,13 +547,22 @@ async function retryInBackground(
       case "use_default_provider":
         try {
           await useDefaultProvider(ctx, params);
-        } catch {
-          // useDefaultProvider / the provider path already logged it.
+        } catch (error) {
+          // The request already reported the message as sent, so this is the
+          // only record that it wasn't. Scrub the provider's error message.
+          const scrub = createNotificationScrubber(secrets);
+          await fail(
+            `${params.trigger} action handed the message to the default provider, which failed`,
+            scrub(error instanceof Error ? error.message : String(error)).slice(
+              0,
+              NOTIFICATION_REASON_MAX_LENGTH,
+            ),
+          );
         }
         return;
       case "dropped":
       case "failed":
-        await reportTerminal(ctx, params, attempt);
+        await reportTerminal(ctx, params, attempt, background);
         return;
       case "retry":
         await logNotificationFailure(
@@ -512,16 +571,11 @@ async function retryInBackground(
           `${params.trigger} action asked to retry`,
           attempt.reason,
           LogTypes.WARNING_SENDING_NOTIFICATION,
+          background,
         );
     }
   }
-  await logNotificationFailure(
-    ctx,
-    params,
-    `${params.trigger} action gave up after ${delays.length} retries`,
-    undefined,
-    LogTypes.FAILED_SENDING_NOTIFICATION,
-  );
+  await fail(`${params.trigger} action gave up after ${retries} retries`);
 }
 
 /**
@@ -602,7 +656,7 @@ export function htmlToText(html: string): string {
     .replace(/<(script|style|head|title)[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|h[1-6]|tr|li|table)>/gi, "\n")
-    .replace(/<a\s[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, "$2 ($1)")
+    .replace(/<a\s[^>]*href=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi, "$3 ($2)")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
