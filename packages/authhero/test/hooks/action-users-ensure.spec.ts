@@ -1125,3 +1125,72 @@ describe("review follow-ups, round 3 (PR #1805)", () => {
     ).toBeFalsy();
   });
 });
+
+describe("review follow-ups, round 4 (PR #1805)", () => {
+  it("keeps the real root as the recorded primary when the post-write lookup fails", async () => {
+    const { env } = await getTestServer();
+    const ctx = createMockCtx(env);
+    const decorated = addDataHooks(ctx, env.data);
+    await createExternalConnection(env);
+    const current = await env.data.users.create(tenantId, {
+      user_id: "email|old-member",
+      email: "old-member@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: Strategy.EMAIL,
+      created_at: "2020-01-01T00:00:00.000Z",
+      updated_at: "2020-01-01T00:00:00.000Z",
+    });
+    const externalConnections = createExternalConnectionLookup(
+      decorated,
+      tenantId,
+    );
+    const usersApi = createActionUsersApi({
+      ctx,
+      data: decorated,
+      tenantId,
+      triggerId: "post-user-login",
+      externalConnections,
+    });
+    await usersApi.api.users.ensure({ connection: "parat", id: "root" });
+    await usersApi.api.users.ensure({ connection: "parat", id: "alias" });
+    await env.data.users.update(tenantId, "parat|alias", {
+      linked_to: "parat|root",
+    });
+
+    // Every read after the link write fails.
+    let linkWritten = false;
+    const data = {
+      ...decorated,
+      users: {
+        ...decorated.users,
+        update: async (...args: Parameters<typeof decorated.users.update>) => {
+          const result = await decorated.users.update(...args);
+          linkWritten = true;
+          return result;
+        },
+        get: async (...args: Parameters<typeof decorated.users.get>) => {
+          if (linkWritten) throw new Error("read failed");
+          return decorated.users.get(...args);
+        },
+      },
+    };
+    const linking = createPostLoginUserApi({
+      ctx,
+      data,
+      tenantId,
+      user: current,
+      candidates: [],
+      ensuredUserIds: usersApi.ensuredUserIds,
+      externalConnections,
+    });
+
+    await expect(linking.api.user.setLinkedTo("parat|alias")).rejects.toThrow(
+      "read failed",
+    );
+    expect(linking.getLinkedPrimaryId()).toBe("parat|root");
+    expect(
+      (await env.data.users.get(tenantId, current.user_id))?.linked_to,
+    ).toBe("parat|root");
+  });
+});
