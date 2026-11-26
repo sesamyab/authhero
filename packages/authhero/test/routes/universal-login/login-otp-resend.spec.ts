@@ -295,6 +295,56 @@ describe("login OTP send cap", () => {
       key: "login-otp-send:tenantId:foo@example.com",
     });
   });
+
+  it("does not use up the session allowance when the rate limit rejects", async () => {
+    let allow = false;
+    const server = await getTestServer({
+      mockEmail: true,
+      rateLimit: { consume: async () => ({ allowed: allow }) },
+    });
+    const state = await createSession(server.env, "foo@example.com");
+
+    // Rejected by the recipient limit: nothing sent, nothing counted
+    for (let i = 0; i < LOGIN_OTP_MAX_SENDS; i++) {
+      await postScreen(server, "email-otp-challenge", state, {
+        action: "resend",
+      });
+    }
+    expect(server.getSentEmails()).toHaveLength(0);
+    const session = await server.env.data.loginSessions.get("tenantId", state);
+    expect(session?.state_data ?? "").not.toContain("login_otp_sent");
+
+    // Once the limit resets the session still has its full allowance
+    allow = true;
+    for (let i = 0; i < LOGIN_OTP_MAX_SENDS + 1; i++) {
+      await postScreen(server, "email-otp-challenge", state, {
+        action: "resend",
+      });
+    }
+    expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
+  });
+
+  it("does not consume the recipient rate limit once the session is at its cap", async () => {
+    let consumed = 0;
+    const server = await getTestServer({
+      mockEmail: true,
+      rateLimit: {
+        consume: async () => {
+          consumed++;
+          return { allowed: true };
+        },
+      },
+    });
+    const state = await createSession(server.env, "foo@example.com");
+
+    for (let i = 0; i < LOGIN_OTP_MAX_SENDS + 3; i++) {
+      await postScreen(server, "email-otp-challenge", state, {
+        action: "resend",
+      });
+    }
+    expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
+    expect(consumed).toBe(LOGIN_OTP_MAX_SENDS);
+  });
 });
 
 describe("magic-link-sent screen", () => {
