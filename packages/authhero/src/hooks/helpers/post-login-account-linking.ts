@@ -171,6 +171,9 @@ export function createPostLoginUserApi(params: {
       await data.users.update(tenantId, currentPrimary.user_id, {
         linked_to: target.user_id,
       });
+      // The link is committed: record it before anything else can throw.
+      currentUser = { ...currentUser, linked_to: target.user_id };
+      linkedPrimaryId = target.user_id;
       // The chokepoint links onto the target's cluster root, which differs
       // from the target when it is itself a secondary. Record the root, so the
       // token and later calls in this execution see the real primary.
