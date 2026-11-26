@@ -7,6 +7,7 @@ import { EMAIL_VERIFICATION_EXPIRATION_TIME } from "../../constants";
 import generateOTP from "../../utils/otp";
 import { sendSignupValidateEmailAddress } from "../../emails";
 import { defineRoute } from "../../utils/define-route";
+import { preSignupCodeState } from "../../helpers/code-recipient";
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["login"],
@@ -85,6 +86,7 @@ const postRoot = defineRoute({
       expires_at: new Date(
         Date.now() + EMAIL_VERIFICATION_EXPIRATION_TIME,
       ).toISOString(),
+      state: preSignupCodeState(username),
     });
 
     await sendSignupValidateEmailAddress(

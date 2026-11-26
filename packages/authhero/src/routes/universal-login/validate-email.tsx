@@ -12,6 +12,10 @@ import {
 import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import EmailValidatedPage from "../../components/EmailValidatedPage";
 import { defineRoute } from "../../utils/define-route";
+import {
+  isCodeRecipient,
+  isPreSignupCodeFor,
+} from "../../helpers/code-recipient";
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["login"],
@@ -96,7 +100,22 @@ const getRoot = defineRoute({
       "email_verification",
     );
 
-    if (!foundCode) {
+    // Only a code sent to this user's current address proves it: one issued
+    // to the user for that address, or this session's pre-signup code for the
+    // username.
+    const codeProvesAddress =
+      !!foundCode &&
+      ((foundCode.user_id === user.user_id &&
+        isCodeRecipient(foundCode, user.email) &&
+        !foundCode.used_at &&
+        foundCode.expires_at >= new Date().toISOString()) ||
+        isPreSignupCodeFor(foundCode, loginSession.id, username));
+
+    if (
+      !foundCode ||
+      !codeProvesAddress ||
+      !(await env.data.codes.consume(client.tenant.id, code))
+    ) {
       logMessage(ctx, client.tenant.id, {
         type: LogTypes.FAILED_VERIFICATION_EMAIL,
         description: "Code not found or expired",

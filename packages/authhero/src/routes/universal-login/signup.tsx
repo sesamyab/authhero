@@ -27,6 +27,7 @@ import { AuthError } from "../../types/AuthError";
 import { createFrontChannelAuthResponse } from "../../authentication-flows/common";
 import { defineRoute } from "../../utils/define-route";
 import { logMessage } from "../../helpers/logging";
+import { isPreSignupCodeFor } from "../../helpers/code-recipient";
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["login"],
@@ -217,11 +218,14 @@ const postRoot = defineRoute({
           )
         : undefined;
 
-      const emailVerificationSession = emailVerificationCode?.login_id
-        ? await env.data.loginSessions.get(
-            client.tenant.id,
-            emailVerificationCode.login_id,
-          )
+      // Only a pre-signup code sent to the address being signed up verifies
+      // it; the session's username may have changed since it was sent.
+      const preSignupCode = isPreSignupCodeFor(
+        emailVerificationCode,
+        loginSession.id,
+        loginSession.authParams.username,
+      )
+        ? emailVerificationCode
         : undefined;
 
       // Deliberately unscoped until #1704 makes the unique index per
@@ -247,9 +251,7 @@ const postRoot = defineRoute({
         );
       }
 
-      const email_verified =
-        emailVerificationSession?.authParams.username ===
-        loginSession.authParams.username;
+      const email_verified = preSignupCode !== undefined;
 
       const provider = await resolveUsernamePasswordProvider(
         ctx.env,
@@ -277,6 +279,15 @@ const postRoot = defineRoute({
         algorithm: "bcrypt",
         is_current: true,
       });
+
+      if (preSignupCode) {
+        try {
+          await env.data.codes.consume(client.tenant.id, preSignupCode.code_id);
+        } catch (error) {
+          // The account exists already; a code left unused only expires.
+          console.error("Failed to consume pre-signup code:", error);
+        }
+      }
 
       logMessage(ctx, client.tenant.id, {
         type: LogTypes.SUCCESS_SIGNUP,

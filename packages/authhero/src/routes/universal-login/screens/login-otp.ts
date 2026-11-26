@@ -8,6 +8,7 @@ import type { Bindings, Variables } from "../../../types";
 import generateOTP from "../../../utils/otp";
 import { sendCode, sendLink } from "../../../emails";
 import { OTP_EXPIRATION_TIME } from "../../../constants";
+import { codeRecipientState } from "../../../helpers/code-recipient";
 import type { ScreenContext, ScreenFactory, ScreenResult } from "./types";
 import {
   FinalizedLoginSessionError,
@@ -96,8 +97,8 @@ export async function allowLoginOtpSend(
 }
 
 /**
- * Create a one-time code bound to the login session and deliver it to the
- * user, either as a code or (for magic-link email connections) as a link.
+ * Create a one-time code bound to the login session and to `to`, and deliver
+ * it to the user, either as a code or (for magic-link email connections) as a link.
  *
  * Subject to the per-session send cap and per-recipient rate limit in
  * allowLoginOtpSend; returns false, without sending, when a limit is hit.
@@ -148,6 +149,7 @@ export async function sendLoginOtp(
     login_id: loginSession.id,
     expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
     redirect_uri: loginSession.authParams.redirect_uri,
+    state: codeRecipientState(to, ctx.get("countryCode")),
   });
 
   // Extract language from ui_locales
