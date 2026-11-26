@@ -270,7 +270,8 @@ export async function importTenant(
             console.warn(
               `tenant import: skipping hook bound to the removed trigger ${String(clean.trigger_id)}`,
             );
-            break;
+            // Skip the row, not just the switch: it isn't counted as imported.
+            continue;
           }
           await data.hooks.create(
             tenant_id,

@@ -425,9 +425,10 @@ others are AuthHero-only:
 | `try-connection-result` | `status` | — | — | — | Result of testing a connection |
 
 `impersonate`, `device-*`, `connect-*`, `self-service-app`, `invalid-session`
-and `try-connection-result` fire like every other screen. When a submission
-answers with a different screen directly (the identifier step answering with
-the password, code or link-sent screen), that screen's `render` fires too.
+and `try-connection-result` fire like every other screen. Whatever screen a
+submission answers with directly fires `render` too: the next step (the
+identifier step answering with the password, code or link-sent screen) or the
+same screen again with an error or success message.
 
 ### Event and API
 
@@ -438,8 +439,11 @@ the password, code or link-sent screen), that screen's `render` fires too.
   `acr_values`, `login_hint` (the identifier entered so far) and `screen_hint`.
 - **`event.user`** when known: the signed-in user on account screens, the user
   the entered identifier (email, phone number or username) belongs to on login,
-  signup and password-reset screens (in the submit phase the identifier just
-  submitted), the authenticated user on MFA, consent and passkey screens.
+  signup and password-reset screens (in the submit phase of `login-id`,
+  `login`, `login-passwordless-identifier`, `signup` and
+  `reset-password-request`, the identifier just submitted), the authenticated
+  user on MFA, consent and passkey screens. On other screens a submitted form
+  can't choose `event.user`.
   Undefined otherwise. `event.connection` is the user's primary identity.
 - **`event.operation`** (submit phase only): what the submission does, with
   operation-specific `event.details`. See the table above.

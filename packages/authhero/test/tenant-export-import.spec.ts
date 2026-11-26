@@ -216,6 +216,30 @@ describe("tenant export/import round-trip", () => {
     }
   });
 
+  it("skips hooks bound to a removed trigger without counting them", async () => {
+    const dst = await freshAdapters();
+
+    const result = await importTenant(
+      dst,
+      "dst",
+      [
+        {
+          entity: "hooks",
+          data: {
+            hook_id: "old-hook",
+            trigger_id: "pre-account-action",
+            code_id: "action-1",
+            enabled: true,
+          },
+        },
+      ],
+      { includePasswordHashes: false },
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.counts.hooks).toBeUndefined();
+  });
+
   it("omits password hashes when includePasswordHashes is false", async () => {
     const src = await freshAdapters();
     await seed(src, "src");

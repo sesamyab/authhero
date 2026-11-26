@@ -58,6 +58,10 @@ export function PreScreenBindingInputs() {
       />
       <BooleanInput
         source="metadata.fail_closed"
+        // Show what the runtime does: only `true` / "true" fail closed.
+        format={(value: unknown) =>
+          isPreScreenHookFailClosed({ fail_closed: value })
+        }
         label="Block the screen if the action fails while rendering"
         helperText="Submissions are always blocked when the action fails. Off: a failure before showing the screen is logged and the screen is shown."
       />

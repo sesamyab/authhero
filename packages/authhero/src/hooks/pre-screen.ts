@@ -445,14 +445,23 @@ export async function runPreScreen(
     }
   }
 
-  const executionId = await persistActionExecution(
-    data,
-    tenantId,
-    PRE_SCREEN_TRIGGER,
-    outcomes,
-    { logCapture: ctx.env.actionExecutionLogs },
-  );
-  if (executionId) ctx.set("action_execution_id", executionId);
+  // Storing the execution record must not change the decision: a fail-open
+  // render would otherwise become a 500.
+  try {
+    const executionId = await persistActionExecution(
+      data,
+      tenantId,
+      PRE_SCREEN_TRIGGER,
+      outcomes,
+      { logCapture: ctx.env.actionExecutionLogs },
+    );
+    if (executionId) ctx.set("action_execution_id", executionId);
+  } catch (error) {
+    console.error(
+      `pre-screen: failed to store the action execution for ${label}`,
+      error,
+    );
+  }
 
   if (decision.type === "deny") {
     await logMessage(ctx, tenantId, {
@@ -526,9 +535,10 @@ export async function findUserByIdentifier(
 }
 
 /**
- * The user of a login-flow screen: the identifier just submitted, then the
- * user the transaction already authenticated (MFA, consent, passkey
- * enrollment), then the identifier entered earlier in the flow.
+ * The user of a login-flow screen: the identifier just submitted (pass it
+ * only for screens where the user enters one), then the user the transaction
+ * already authenticated (MFA, consent, passkey enrollment), then the
+ * identifier entered earlier in the flow.
  */
 export async function findLoginScreenUser(
   ctx: Ctx,

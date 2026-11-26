@@ -33,6 +33,11 @@ interface ScreenGate {
   name: string;
   /** Where the user comes from. */
   user: "login" | "account";
+  /**
+   * The user types an identifier here, so a submitted `username` / `email`
+   * names the user. Elsewhere the form can't choose `event.user`.
+   */
+  identifierEntry?: boolean;
   /** The operation a submission performs, if any. */
   describeSubmit?: DescribeSubmit;
 }
@@ -59,9 +64,12 @@ const describeAccountSecuritySubmit: DescribeSubmit = async (
   if (stringField(data, "action") !== "remove_enrollment" || !enrollmentId) {
     return undefined;
   }
-  const enrollment = await ctx.env.data.authenticationMethods
-    .get(tenantId, enrollmentId)
-    .catch(() => null);
+  // A failed lookup throws, so the submit fails closed rather than passing a
+  // passkey removal off as `remove-mfa`. `null` means it doesn't exist.
+  const enrollment = await ctx.env.data.authenticationMethods.get(
+    tenantId,
+    enrollmentId,
+  );
   const isPasskey =
     !!enrollment && PASSKEY_TYPES.some((type) => type === enrollment.type);
   return {
@@ -117,12 +125,13 @@ const describeAccountLinkedSubmit: DescribeSubmit = async (
  * the id of the u2 screen they correspond to.
  */
 const SCREEN_GATES: Record<string, ScreenGate> = {
-  identifier: { name: "login-id", user: "login" },
-  login: { name: "login", user: "login" },
+  identifier: { name: "login-id", user: "login", identifierEntry: true },
+  login: { name: "login", user: "login", identifierEntry: true },
   "enter-password": { name: "login-password", user: "login" },
   "login-passwordless-identifier": {
     name: "login-passwordless-identifier",
     user: "login",
+    identifierEntry: true,
   },
   "email-otp-challenge": {
     name: "login-passwordless-email-code",
@@ -138,10 +147,11 @@ const SCREEN_GATES: Record<string, ScreenGate> = {
     user: "login",
   },
   impersonate: { name: "impersonate", user: "login" },
-  signup: { name: "signup", user: "login" },
+  signup: { name: "signup", user: "login", identifierEntry: true },
   "forgot-password": {
     name: "reset-password-request",
     user: "login",
+    identifierEntry: true,
     describeSubmit: operation("reset-password"),
   },
   "reset-password-code": { name: "reset-password-code", user: "login" },
@@ -268,7 +278,9 @@ function gateParams(
             ctx,
             tenantId,
             await loginSession(),
-            submittedIdentifier(await data()),
+            gate.identifierEntry
+              ? submittedIdentifier(await data())
+              : undefined,
           ),
     submission: describe
       ? async () => {
@@ -283,16 +295,20 @@ function screenParams(
   context: ScreenContext,
   gate: ScreenGate,
   phase: "render" | "submit",
-  data?: Record<string, unknown>,
+  options: {
+    data?: Record<string, unknown>;
+    /** Read the login session from storage: a handler may have updated it. */
+    reloadLoginSession?: boolean;
+  } = {},
 ) {
   const { ctx, tenant, state } = context;
   return gateParams(ctx, gate, {
     tenantId: tenant.id,
     phase,
-    data: async () => data,
+    data: async () => options.data,
     client: async () => context.client,
     loginSession: async () =>
-      ctx.var.loginSession?.id === state
+      !options.reloadLoginSession && ctx.var.loginSession?.id === state
         ? ctx.var.loginSession
         : ((await ctx.env.data.loginSessions.get(tenant.id, state)) ??
           undefined),
@@ -301,9 +317,9 @@ function screenParams(
 
 /**
  * Fire `pre-screen` for a u2 screen: `render` before its GET factory runs and
- * `submit` before its POST handler. When a POST answers with a different
- * screen (identifier → email code), that screen's `render` fires too, since
- * it is shown without a GET of its own.
+ * `submit` before its POST handler. The screen a POST answers with (the next
+ * step, e.g. identifier → email code, or the same screen again) fires
+ * `render` too, since it is shown without a GET of its own.
  */
 export function withPreScreen(
   screenId: string,
@@ -327,7 +343,7 @@ export function withPreScreen(
             post: async (context, data) => {
               const submitted = await runPreScreen(
                 context.ctx,
-                screenParams(context, gate, "submit", data),
+                screenParams(context, gate, "submit", { data }),
               );
               if (submitted.type === "deny") {
                 throw new ScreenDeniedError(submitted.reason);
@@ -336,17 +352,19 @@ export function withPreScreen(
                 return { redirect: submitted.url };
               }
 
+              // Whatever screen the POST answers with is shown without a GET
+              // of its own (the next step, or this screen again with an error
+              // or a success message), so its render check runs here.
               const result = await post(context, data);
-              if (!("screen" in result) || "error" in result) return result;
-              const nextId = result.screen.screen.name;
-              const nextGate =
-                nextId && nextId !== screenId
-                  ? SCREEN_GATES[nextId]
-                  : undefined;
-              if (!nextGate) return result;
+              if (!("screen" in result)) return result;
+              const shownId = result.screen.screen.name || screenId;
+              const shownGate = SCREEN_GATES[shownId];
+              if (!shownGate) return result;
               const rendered = await runPreScreen(
                 context.ctx,
-                screenParams(context, nextGate, "render"),
+                screenParams(context, shownGate, "render", {
+                  reloadLoginSession: true,
+                }),
               );
               if (rendered.type === "deny") {
                 throw new ScreenDeniedError(rendered.reason);

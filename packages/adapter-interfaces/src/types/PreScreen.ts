@@ -345,9 +345,12 @@ export function findUnknownPreScreenScreens(
   const value = metadata?.[PRE_SCREEN_SCREENS_METADATA_KEY];
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) return [String(value)];
+  // Non-string entries are unknown, not coerced: the runtime ignores them, so
+  // e.g. `[["login-id"]]` would otherwise pass here and then match every
+  // screen.
   return value
-    .map((v) => (typeof v === "string" ? v : String(v)))
-    .filter((name) => !getPreScreenScreen(name));
+    .filter((v) => typeof v !== "string" || !getPreScreenScreen(v))
+    .map((v) => (typeof v === "string" ? v : JSON.stringify(v)));
 }
 
 /**

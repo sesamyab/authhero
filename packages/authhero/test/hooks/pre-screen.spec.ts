@@ -411,10 +411,11 @@ describe("pre-screen trigger", () => {
       action: "rename_passkey",
       passkey_id: "x",
     });
-    expect(events.map((e) => e.operation)).toEqual([
-      "enroll-passkey",
-      undefined,
-    ]);
+    expect(
+      events
+        .filter((e) => e.transaction.phase === "submit")
+        .map((e) => e.operation),
+    ).toEqual(["enroll-passkey", undefined]);
   });
 
   it("fails open on render and closed on submit when an action throws", async () => {
@@ -563,6 +564,70 @@ describe("pre-screen trigger", () => {
     expect(
       events.map((e) => `${e.transaction.phase}:${e.screen.name}`),
     ).toEqual(["submit:login-id", "render:magic-link-sent"]);
+  });
+
+  it("fires render for the same screen a POST shows again", async () => {
+    const { events, hooks } = recorder((event, api) => {
+      if (event.transaction.phase === "render") api.access.deny("Not here");
+    });
+    const { postScreen } = await setup({ hooks });
+
+    // Renaming answers with the passkeys screen and a success message.
+    const response = await postScreen("account-passkeys", {
+      action: "rename_passkey",
+      passkey_id: "x",
+    });
+
+    expect(response.status).toBe(403);
+    expect(
+      events.map((e) => `${e.transaction.phase}:${e.screen.name}`),
+    ).toEqual(["submit:account-passkeys", "render:account-passkeys"]);
+  });
+
+  it("doesn't let a submitted identifier choose the user on MFA screens", async () => {
+    const { events, hooks } = recorder();
+    const { postScreen, env, state } = await setup({
+      withSession: false,
+      hooks,
+    });
+    await env.data.users.create(TENANT, {
+      user_id: "email|other",
+      email: "other@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: "email",
+      is_social: false,
+    });
+    await env.data.loginSessions.update(TENANT, state, { user_id: USER_ID });
+
+    await postScreen("mfa-totp-challenge", {
+      code: "123456",
+      email: "other@example.com",
+      username: "other@example.com",
+    });
+
+    expect(events[0]).toMatchObject({
+      screen: { name: "mfa-otp-challenge" },
+      transaction: { phase: "submit" },
+      user: { user_id: USER_ID },
+    });
+  });
+
+  it("shows the screen when storing the execution record fails", async () => {
+    const { get, bind } = await setup({
+      wrapDataAdapter: (data) => ({
+        ...data,
+        actionExecutions: {
+          ...data.actionExecutions,
+          create: async () => {
+            throw new Error("storage down");
+          },
+        },
+      }),
+    });
+    await bind(`throw new Error("boom");`);
+
+    expect((await get("/account/profile")).status).toBe(200);
   });
 
   it("knows the user on password reset from the submitted email", async () => {
@@ -776,6 +841,48 @@ describe("pre-screen in the management API", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
       message: "Unknown screens in metadata.screens: logn-password",
+    });
+  });
+
+  it("rejects non-string screen entries instead of running on every screen", async () => {
+    const { request, env } = await management();
+    const action = await env.data.actions.create(TENANT, {
+      name: "screens",
+      code: "exports.onExecutePreScreen = async () => {};",
+    });
+
+    const response = await request("/hooks", "POST", {
+      code_id: action.id,
+      trigger_id: "pre-screen",
+      metadata: { screens: [["account-profile"]] },
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      message: 'Unknown screens in metadata.screens: ["account-profile"]',
+    });
+  });
+
+  it("checks the stored screens when a PATCH moves a hook onto pre-screen", async () => {
+    const { request, env } = await management();
+    const action = await env.data.actions.create(TENANT, {
+      name: "move",
+      code: "exports.onExecutePreScreen = async () => {};",
+    });
+    const hook = await env.data.hooks.create(TENANT, {
+      code_id: action.id,
+      trigger_id: "post-user-login",
+      enabled: true,
+      metadata: { screens: ["logn-id"] },
+    });
+
+    const response = await request(`/hooks/${hook.hook_id}`, "PATCH", {
+      trigger_id: "pre-screen",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      message: "Unknown screens in metadata.screens: logn-id",
     });
   });
 

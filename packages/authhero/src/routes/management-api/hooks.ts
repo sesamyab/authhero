@@ -249,10 +249,15 @@ const patchByHook_id = defineRoute({
       }
     }
 
-    if (hook.metadata) {
+    // Check the trigger and metadata the row ends up with. An unchanged
+    // trigger without new metadata is left alone, so a row with a stale
+    // screen name can still be edited (e.g. disabled).
+    const triggerChanged =
+      hook.trigger_id !== undefined && hook.trigger_id !== existing?.trigger_id;
+    if (hook.metadata || triggerChanged) {
       assertPreScreenMetadata(
         hook.trigger_id ?? existing?.trigger_id,
-        hook.metadata,
+        hook.metadata ?? existing?.metadata,
       );
     }
 
