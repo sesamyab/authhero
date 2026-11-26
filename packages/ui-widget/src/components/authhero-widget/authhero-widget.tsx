@@ -2385,11 +2385,11 @@ export class AuthheroWidget {
                           value?: string;
                         }>,
                       ) => this.handleButtonClick(e.detail)}
-                      disabled={
-                        this.loading ||
-                        (component.type === "NEXT_BUTTON" &&
-                          component.config?.skip_validation !== true &&
-                          requiredFieldsMissing)
+                      disabled={this.loading}
+                      incomplete={
+                        component.type === "NEXT_BUTTON" &&
+                        component.config?.skip_validation !== true &&
+                        requiredFieldsMissing
                       }
                     />
                   ))}
@@ -2421,11 +2421,11 @@ export class AuthheroWidget {
                           value?: string;
                         }>,
                       ) => this.handleButtonClick(e.detail)}
-                      disabled={
-                        this.loading ||
-                        (component.type === "NEXT_BUTTON" &&
-                          component.config?.skip_validation !== true &&
-                          requiredFieldsMissing)
+                      disabled={this.loading}
+                      incomplete={
+                        component.type === "NEXT_BUTTON" &&
+                        component.config?.skip_validation !== true &&
+                        requiredFieldsMissing
                       }
                     />
                   ))}
