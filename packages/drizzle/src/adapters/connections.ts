@@ -26,15 +26,31 @@ function sqlToConnection(row: any): Connection {
     options,
     metadata,
     self_service,
+    show_as_button,
+    is_domain_connection,
     ...rest
   } = row;
   return removeNullProperties({
     ...rest,
+    show_as_button: intToBool(show_as_button),
+    is_domain_connection: intToBool(is_domain_connection),
     options: parseJsonIfString(options, {}),
     metadata: parseJsonIfString(metadata),
     self_service: parseJsonIfString(self_service),
     is_system: is_system ? true : undefined,
   });
+}
+
+/** Integer column (0/1/NULL) → boolean; NULL stays unset. */
+function intToBool(value: unknown): boolean | undefined {
+  if (value === null || value === undefined) return undefined;
+  return Boolean(value);
+}
+
+/** Boolean → integer column; `undefined` leaves the column untouched/NULL. */
+function boolToInt(value: boolean | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  return value ? 1 : 0;
 }
 
 /** `null` clears the column; an object is stored as JSON. */
@@ -57,6 +73,8 @@ export function createConnectionsAdapter(db: DrizzleDb) {
         metadata: params.metadata ? JSON.stringify(params.metadata) : undefined,
         self_service: selfServiceToSql(params.self_service),
         is_system: params.is_system ? 1 : 0,
+        show_as_button: boolToInt(params.show_as_button),
+        is_domain_connection: boolToInt(params.is_domain_connection),
         created_at: now,
         updated_at: now,
       };
@@ -123,6 +141,12 @@ export function createConnectionsAdapter(db: DrizzleDb) {
       if (params.scope !== undefined) updateData.scope = params.scope;
       if (params.override !== undefined) updateData.override = params.override;
       if (params.enforce !== undefined) updateData.enforce = params.enforce;
+      if (params.show_as_button !== undefined)
+        updateData.show_as_button = boolToInt(params.show_as_button);
+      if (params.is_domain_connection !== undefined)
+        updateData.is_domain_connection = boolToInt(
+          params.is_domain_connection,
+        );
 
       await db
         .update(connections)
