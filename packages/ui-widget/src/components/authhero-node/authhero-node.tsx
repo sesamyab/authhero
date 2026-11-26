@@ -927,6 +927,8 @@ export class AuthheroNode {
             required={component.required}
             disabled={this.disabled}
             maxLength={max_length}
+            autoComplete={autocomplete}
+            inputMode={input_mode}
             value={effectiveValue ?? ""}
             ref={(el) => {
               if (el) el.textContent = effectiveValue ?? "";

@@ -69,6 +69,20 @@ describe("social button rules", () => {
     ).toBe(true);
   });
 
+  it("can keep HRD connections for screens without email-domain routing", () => {
+    const connections = [
+      connection("acme", Strategy.OIDC, {
+        options: { domain_aliases: ["acme.com"] },
+      }),
+      connection("hidden", Strategy.GITHUB, { show_as_button: false }),
+    ];
+    expect(
+      getButtonConnections(connections, SAFARI, {
+        hideHrdConnections: false,
+      }).map((c) => c.name),
+    ).toEqual(["acme"]);
+  });
+
   it("hides Google in in-app browsers only", () => {
     const connections = [
       connection("google-oauth2", Strategy.GOOGLE_OAUTH2),
@@ -151,7 +165,11 @@ describe("u2 login screens", () => {
         };
       };
       const social = screen.components.find((c) => c.type === "SOCIAL");
-      expect(social?.config?.providers).toEqual(["github"]);
+      // The combined screen's submit doesn't route by email domain, so HRD
+      // connections keep their button there
+      expect(social?.config?.providers).toEqual(
+        identifierFirst ? ["github"] : ["github", "acme"],
+      );
     });
   }
 });

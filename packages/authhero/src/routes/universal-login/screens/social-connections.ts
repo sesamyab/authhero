@@ -5,7 +5,8 @@
  * - Email, SMS and database connections are form inputs, not buttons.
  * - `show_as_button: false` always hides a connection.
  * - Connections with `domain_aliases` are reached by home realm discovery
- *   (email-domain routing) and hidden unless `show_as_button: true`.
+ *   (email-domain routing) and hidden unless `show_as_button: true`, on
+ *   screens that do that routing (the identifier screen).
  * - Strategies that refuse embedded browsers (Google) are hidden in in-app
  *   browsers, where the provider would reject the sign-in.
  *
@@ -32,10 +33,11 @@ export function isFormConnection(connection: Connection): boolean {
 
 export function isShownAsButton(
   connection: Connection,
-  options: { embeddedBrowser: boolean },
+  options: { embeddedBrowser: boolean; hideHrdConnections?: boolean },
 ): boolean {
   if (connection.show_as_button === false) return false;
   if (
+    options.hideHrdConnections !== false &&
     connection.options?.domain_aliases?.length &&
     connection.show_as_button !== true
   ) {
@@ -54,9 +56,22 @@ export function isShownAsButton(
 export function getButtonConnections(
   connections: Connection[],
   userAgent: string | undefined,
+  options: {
+    /**
+     * Hide HRD connections (default). Only screens whose submit routes the
+     * identifier by email domain may hide them; elsewhere the button is the
+     * connection's only way in.
+     */
+    hideHrdConnections?: boolean;
+  } = {},
 ): Connection[] {
   const embeddedBrowser = detectEmbeddedBrowser(userAgent) !== undefined;
   return connections.filter(
-    (c) => !isFormConnection(c) && isShownAsButton(c, { embeddedBrowser }),
+    (c) =>
+      !isFormConnection(c) &&
+      isShownAsButton(c, {
+        embeddedBrowser,
+        hideHrdConnections: options.hideHrdConnections,
+      }),
   );
 }

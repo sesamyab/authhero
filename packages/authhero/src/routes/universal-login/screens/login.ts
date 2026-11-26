@@ -74,11 +74,14 @@ function buildSocialButtons(
   const passwordlessConnections = socialConnections.filter(
     (c) => c.strategy === Strategy.EMAIL || c.strategy === Strategy.SMS,
   );
-  // Same rules as the identifier screen (and /u): show_as_button,
-  // HRD-only connections, providers that refuse in-app browsers.
+  // Same rules as the identifier screen (and /u): show_as_button and
+  // providers that refuse in-app browsers. HRD connections stay visible: this
+  // screen's submit goes straight to password login without email-domain
+  // routing, so the button is their only way in.
   const nonPasswordlessConnections = getButtonConnections(
     socialConnections,
     context.ctx.req.header("user-agent"),
+    { hideHrdConnections: false },
   );
 
   if (

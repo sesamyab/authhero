@@ -33,6 +33,32 @@ describe("input hints", () => {
     expect(el.getAttribute("autocomplete")).toBe("one-time-code");
   });
 
+  it("passes input_mode and autocomplete through on a multiline field", async () => {
+    const page = await newSpecPage({
+      components: [AuthheroNode],
+      template: () => (
+        <authhero-node
+          component={
+            {
+              id: "notes",
+              type: "TEXT",
+              category: "FIELD",
+              config: {
+                multiline: true,
+                input_mode: "url",
+                autocomplete: "off",
+              },
+            } as FormComponent
+          }
+        ></authhero-node>
+      ),
+    });
+    await page.waitForChanges();
+    const el = page.root!.shadowRoot!.querySelector("textarea")!;
+    expect(el.getAttribute("inputmode")).toBe("url");
+    expect(el.getAttribute("autocomplete")).toBe("off");
+  });
+
   it("defaults a password field to current-password", async () => {
     const el = await input({
       id: "password",

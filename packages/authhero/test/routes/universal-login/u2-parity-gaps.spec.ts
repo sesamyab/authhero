@@ -523,6 +523,30 @@ describe("u2 signup with a pre-signup code", () => {
     ).toBeFalsy();
   });
 
+  it("completes the signup when consuming the pre-signup code fails", async () => {
+    const server = await setup();
+    const { env, email, state } = server;
+    const code = await mintCode(server, state);
+    env.data.codes.consume = async () => {
+      throw new Error("Code store unavailable");
+    };
+
+    const result = await postScreen(
+      server,
+      "signup",
+      state,
+      { email, password, re_password: password },
+      {},
+      `&code=${code}`,
+    );
+    expect(result.json.redirect).toBeDefined();
+    const { users } = await env.data.users.list("tenantId", {
+      q: `email:${email}`,
+    });
+    expect(users).toHaveLength(1);
+    expect(users[0]!.email_verified).toBe(true);
+  });
+
   it("completes the signup when storing the username on the session fails", async () => {
     const server = await setup();
     const { env, email, state } = server;

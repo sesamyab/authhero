@@ -915,7 +915,14 @@ export const signupScreenDefinition: ScreenDefinition = {
       }
 
       if (preSignupCode) {
-        await ctx.env.data.codes.consume(client.tenant.id, preSignupCode);
+        // The user exists, so a failure here must not abort the signup. An
+        // unconsumed code can't verify anything else: the session now holds
+        // this address, which already has an account.
+        try {
+          await ctx.env.data.codes.consume(client.tenant.id, preSignupCode);
+        } catch (err) {
+          console.error("Failed to consume the pre-signup code:", err);
+        }
       }
 
       logMessage(ctx, client.tenant.id, {
