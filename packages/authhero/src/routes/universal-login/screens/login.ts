@@ -1,4 +1,5 @@
 import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { getButtonConnections } from "./social-connections";
 import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Login screen - combined identifier + password screen (Identifier + Password flow)
@@ -73,9 +74,19 @@ function buildSocialButtons(
   const passwordlessConnections = socialConnections.filter(
     (c) => c.strategy === Strategy.EMAIL || c.strategy === Strategy.SMS,
   );
-  const nonPasswordlessConnections = socialConnections.filter(
-    (c) => c.strategy !== Strategy.EMAIL && c.strategy !== Strategy.SMS,
+  // Same rules as the identifier screen (and /u): show_as_button,
+  // HRD-only connections, providers that refuse in-app browsers.
+  const nonPasswordlessConnections = getButtonConnections(
+    socialConnections,
+    context.ctx.req.header("user-agent"),
   );
+
+  if (
+    nonPasswordlessConnections.length === 0 &&
+    passwordlessConnections.length === 0
+  ) {
+    return [];
+  }
 
   // Create provider details with icon URLs and display names
   const providerDetails = nonPasswordlessConnections.map((conn) => {

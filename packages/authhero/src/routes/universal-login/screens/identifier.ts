@@ -1,4 +1,5 @@
 import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { getButtonConnections } from "./social-connections";
 import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Identifier screen - the first screen in the login flow
@@ -57,22 +58,12 @@ function buildSocialButtons(
 ): FormNodeComponent[] {
   const { connections } = context;
 
-  const socialConnections = connections.filter((c) => {
-    if (
-      c.strategy === Strategy.EMAIL ||
-      c.strategy === Strategy.SMS ||
-      isDatabaseConnectionStrategy(c.strategy)
-    ) {
-      return false;
-    }
-    // HRD-only by default: connections with domain_aliases are routed via
-    // email-domain matching and hidden from the button row unless the
-    // tenant explicitly opts in with show_as_button.
-    if (c.options?.domain_aliases?.length && c.show_as_button !== true) {
-      return false;
-    }
-    return true;
-  });
+  // Same rules as /u: show_as_button, HRD-only connections, providers that
+  // refuse in-app browsers.
+  const socialConnections = getButtonConnections(
+    connections,
+    context.ctx.req.header("user-agent"),
+  );
 
   if (socialConnections.length === 0) {
     return [];
