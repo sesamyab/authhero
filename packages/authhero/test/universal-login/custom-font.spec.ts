@@ -15,6 +15,10 @@ const WOFF2 = "https://assets.example.com/fonts/Brand-Regular.woff2";
 const GOOGLE_CSS =
   "https://fonts.googleapis.com/css2?family=Inter&display=swap";
 
+// The `body` rule's font stack, not the `@font-face` declaration, which also
+// names "ulp-font" and would match even if the page fell back to system fonts.
+const BODY_USES_CUSTOM_FONT = /\bbody\s*\{[^}]*font-family:\s*"ulp-font"/;
+
 async function toHtml(rendered: unknown): Promise<string> {
   if (typeof rendered === "string") return rendered;
   const out: unknown = String(rendered);
@@ -55,7 +59,7 @@ describe("custom font on u2 pages", () => {
       `@font-face { font-family: "ulp-font"; src: url("${WOFF2}") format("woff2");`,
     );
     expect(html).not.toMatch(/<link[^>]*rel="stylesheet"[^>]*\.woff2/);
-    expect(html).toMatch(/font-family:\s*"ulp-font"/);
+    expect(html).toMatch(BODY_USES_CUSTOM_FONT);
   });
 
   it("keeps a stylesheet URL as a link, with the query escaped once", async () => {
@@ -83,7 +87,7 @@ describe("custom font on u2 pages", () => {
   it("uses the theme font when no branding font is set", async () => {
     const html = await renderPage(WOFF2, "theme");
     expect(html).toContain(`src: url("${WOFF2}") format("woff2")`);
-    expect(html).toMatch(/font-family:\s*"ulp-font"/);
+    expect(html).toMatch(BODY_USES_CUSTOM_FONT);
   });
 
   it("uses the theme font on the error page", async () => {
@@ -95,6 +99,6 @@ describe("custom font on u2 pages", () => {
       }),
     );
     expect(html).toContain(`src: url("${WOFF2}") format("woff2")`);
-    expect(html).toMatch(/font-family:\s*"ulp-font"/);
+    expect(html).toMatch(BODY_USES_CUSTOM_FONT);
   });
 });
