@@ -425,7 +425,12 @@ export async function accountChangeEmailVerifyScreen(
         category: "FIELD",
         visible: true,
         label: m.codeLabel(),
-        config: { placeholder: m.codeLabel(), max_length: 6 },
+        config: {
+          placeholder: m.codeLabel(),
+          max_length: 6,
+          input_mode: "numeric",
+          autocomplete: "one-time-code",
+        },
         required: true,
         order: 0,
         messages: errors?.code

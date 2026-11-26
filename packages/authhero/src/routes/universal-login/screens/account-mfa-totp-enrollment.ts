@@ -97,6 +97,8 @@ async function accountMfaTotpEnrollmentScreen(
       config: {
         placeholder: m.codePlaceholder(),
         max_length: 6,
+        input_mode: "numeric",
+        autocomplete: "one-time-code",
       },
       required: true,
       order: 2,

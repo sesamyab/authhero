@@ -101,6 +101,7 @@ export async function acceptInvitationScreen(
       visible: true,
       label: m.passwordPlaceholder(),
       config: {
+        autocomplete: "new-password",
         placeholder: m.passwordPlaceholder(),
         show_toggle: true,
       },
@@ -118,6 +119,7 @@ export async function acceptInvitationScreen(
       visible: true,
       label: m.confirmPasswordPlaceholder(),
       config: {
+        autocomplete: "new-password",
         placeholder: m.confirmPasswordPlaceholder(),
         show_toggle: true,
       },

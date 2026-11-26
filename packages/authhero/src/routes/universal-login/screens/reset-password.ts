@@ -238,6 +238,7 @@ export async function resetPasswordScreen(
       visible: true,
       label: m.passwordLabel(),
       config: {
+        autocomplete: "new-password",
         placeholder: m.passwordPlaceholder(),
         show_toggle: true,
       },
@@ -256,6 +257,7 @@ export async function resetPasswordScreen(
       visible: true,
       label: m.confirmPasswordLabel(),
       config: {
+        autocomplete: "new-password",
         placeholder: m.confirmPasswordPlaceholder(),
       },
       required: true,

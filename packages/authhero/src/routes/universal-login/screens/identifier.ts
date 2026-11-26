@@ -168,13 +168,33 @@ export async function identifierScreen(
   const requiresUsername = identifierConfig.usernameIdentifierActive;
   const requiresEmail = identifierConfig.emailIdentifierActive;
 
+  // With an SMS connection the same input takes a phone number, so (as on
+  // /u) it is only an email field when email is all it accepts.
+  const acceptsPhone = context.connections.some(
+    (c) => c.strategy === Strategy.SMS,
+  );
+  const acceptsNonPhone = context.connections.some(
+    (c) =>
+      c.strategy === Strategy.EMAIL || isDatabaseConnectionStrategy(c.strategy),
+  );
+
   // Determine the appropriate label/placeholder based on connection config
   const identifierLabel =
-    requiresUsername && requiresEmail
-      ? m.usernameOrEmailPlaceholder()
-      : requiresUsername
-        ? m.usernamePlaceholder()
-        : m.emailPlaceholder();
+    acceptsPhone && !acceptsNonPhone
+      ? m.phonePlaceholder()
+      : acceptsPhone
+        ? requiresUsername && requiresEmail
+          ? m.phoneOrUsernameOrEmailPlaceholder()
+          : requiresUsername
+            ? m.phoneOrUsernamePlaceholder()
+            : m.phoneOrEmailPlaceholder()
+        : requiresUsername && requiresEmail
+          ? m.usernameOrEmailPlaceholder()
+          : requiresUsername
+            ? m.usernamePlaceholder()
+            : m.emailPlaceholder();
+  const identifierType: "EMAIL" | "TEXT" =
+    !acceptsPhone && !requiresUsername ? "EMAIL" : "TEXT";
 
   const components: FormNodeComponent[] = [
     // Social login buttons (if any)
@@ -202,7 +222,7 @@ export async function identifierScreen(
       // Email/username input
       {
         id: "username",
-        type: requiresUsername ? "TEXT" : "EMAIL",
+        type: identifierType,
         category: "FIELD",
         visible: true,
         label: identifierLabel,
