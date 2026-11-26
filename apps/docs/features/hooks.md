@@ -328,72 +328,181 @@ though tenant management APIs hide them. Fleet propagation still requires
 synced descendants, the scheduled rollout driver and, for separate workers,
 the configured sync transport. See [fleet rollouts](../customization/multi-tenancy/tenant-operations.md#fleet-rollouts-of-synced-config).
 
-## Account operation Action (`pre-account-action`)
+## Screen Action (`pre-screen`)
 
-`pre-account-action` is an **AuthHero extension**: Auth0 has no equivalent
-trigger. It runs when a user **starts** a self-service account operation, before
-any form, code or write, and again when the change is submitted, and lets you
-send the user somewhere else or stop the operation. Because of the second check,
-an Action can run more than once for one operation, so keep it free of side
-effects. Only code Actions and the config callback can bind to it; URL, form and
-page hooks can't. The typical use is a tenant whose users' identities are owned by
-another system, for example users who sign in through
-[custom token exchange](./custom-token-exchange.md): changing their email,
-enrolling MFA or deleting their account should happen at that identity provider,
-not in AuthHero.
+`pre-screen` is an **AuthHero extension**: Auth0 has no pre-login trigger
+(its first login trigger, post-login, runs only after authentication). It runs
+before a universal-login screen is shown (`event.transaction.phase` is
+`"render"`) and again when the screen is submitted (`"submit"`), on the `/u2`
+screens and on the classic `/u` pages that have the same screen. An Action can
+send the user somewhere else or stop the screen. Only code Actions and the
+`onExecutePreScreen` config callback can bind to it; URL, form and page hooks
+can't.
 
-The trigger is keyed on the operation, not on a screen, so the same Action covers
-every entry point (the `/u` and `/u2` account pages, `/account?screen_hint=...`).
-`event.operation` is one of:
+Typical uses:
 
-| Operation         | Fires when the user...                                     |
-| ----------------- | ---------------------------------------------------------- |
-| `change-email`    | opens or submits change email (`/u/account/change-email`, or `/account?screen_hint=change-email`) |
-| `update-profile`  | opens or submits the profile page (`/u2/account/profile`) |
-| `reset-password`  | opens or submits the password reset request page          |
-| `enroll-mfa`      | opens or submits TOTP or SMS enrollment (`details.factor`) |
-| `remove-mfa`      | removes an MFA factor (`details.enrollment_id`, `details.type`) |
-| `enroll-passkey`  | starts or completes adding a passkey                       |
-| `remove-passkey`  | removes a passkey, from the passkeys or the security page (`details.enrollment_id`) |
-| `unlink-identity` | unlinks an identity (`details.provider`, `details.user_id`) |
-| `delete-account`  | opens or submits the delete-account page                   |
+- Send users of a partner domain to their own identity provider right after
+  they enter their email on `login-id` (submit phase, `event.user` is known).
+- Send users whose identity lives elsewhere (for example users who sign in
+  through [custom token exchange](./custom-token-exchange.md)) to that system
+  instead of the account pages, or stop them from changing their email or
+  deleting their account here.
+- Block signup or password reset for a client or organization.
 
 ```javascript
-exports.onExecutePreAccountAction = async (event, api) => {
-  if (event.connection?.name === "acme-idp") {
-    api.redirect.sendUserTo("https://idp.acme.com/profile", {
-      query: { op: event.operation },
+exports.onExecutePreScreen = async (event, api) => {
+  if (
+    event.screen.name === "login-id" &&
+    event.transaction.phase === "submit" &&
+    event.user?.email?.endsWith("@partner.example")
+  ) {
+    api.redirect.sendUserTo("https://sso.partner.example/login", {
+      query: { login_hint: event.user.email },
     });
+  }
+  if (event.operation === "delete-account") {
+    api.access.deny("Contact support to close your account.");
   }
 };
 ```
 
-- **API:** `api.redirect.sendUserTo(url, { query })` sends the user to `url`
-  (http or https; relative URLs resolve against the current request). Unlike
-  post-login redirects, no `state` is appended: the user is leaving and isn't
-  expected to come back to this transaction. `api.access.deny(reason)` stops the
-  operation and shows `reason` on the error page. Doing nothing lets the
-  operation continue.
-- **Event:** `operation`, `user`, `connection` (`{ id, name, strategy }` of the
-  user's primary identity), `client`, `tenant.id`, `request`, `details` and the
-  Action's `secrets`.
-- **`reset-password`** starts before sign-in. `event.user` is the user matching
-  the identifier entered so far, or undefined when there is none. If your Action
-  only redirects some users, the visible difference can reveal whether an
-  account exists, so prefer rules that don't depend on the user here.
-- **Ordering:** the configured `onExecutePreAccountAction` callback runs first,
-  then bound Actions in descending priority. The first one that redirects or
-  denies decides, and later ones don't run.
-- **Failures fail closed:** an Action that throws, times out or redirects to an
-  invalid URL denies the operation with a generic message. The config callback
-  gets the same five-second limit as code Actions; calls it makes after that
-  are ignored.
-- **Not an enforcement point:** this trigger controls the interactive entry
-  points only. To guarantee that a change is never accepted (including through
-  the Management API), also deny it in `pre-user-update` or `pre-user-deletion`.
+### Choosing screens
 
-If nothing is bound to the trigger, the account pages behave as before; the only
-cost is one hook lookup when a gated page opens or is submitted.
+A binding chooses the screens it runs for in its hook `metadata.screens`
+(the **Screens** picker on the binding in the admin UI). Empty or missing means
+every screen, like `message_types` on the custom provider triggers. When nothing
+is bound for a screen, nothing runs: the trigger reads the tenant's hook list,
+which is served from the client bundle cache, and returns. The management API
+rejects unknown screen names with a 400.
+
+Screens use Auth0's Universal Login names (the prompt and screen names of
+Advanced Customizations for Universal Login) where Auth0 has the screen. The
+others are AuthHero-only:
+
+| Screen (`event.screen.name`) | Prompt (`event.prompt.name`) | Auth0 name | Classic `/u` page | Submit `event.operation` | Description |
+| --- | --- | --- | --- | --- | --- |
+| `login-id` | `login-id` | ✅ | `/u/login/identifier` | — | Identifier step of identifier-first login |
+| `login` | `login` | ✅ | — | — | Combined identifier and password login |
+| `login-password` | `login-password` | ✅ | `/u/enter-password` | — | Password step after the identifier |
+| `login-passwordless-identifier` | `login-passwordless` | — | — | — | Identifier step of a passwordless-only login |
+| `login-passwordless-email-code` | `login-passwordless` | ✅ | `/u/login/email-otp-challenge` | — | Enter the code sent by email |
+| `login-passwordless-sms-otp` | `login-passwordless` | ✅ | `/u/login/sms-otp-challenge` | — | Enter the code sent by text message |
+| `magic-link-sent` | `login-passwordless` | — | — | — | Sign-in link sent by email |
+| `passkey-challenge` | `passkeys` | — | — | — | Sign in with a passkey |
+| `email-verification-code` | `email-verification` | — | — | — | Verify the email address with a code during login |
+| `email-verification-link-sent` | `email-verification` | — | — | — | Verification link sent during login |
+| `impersonate` | `impersonate` | — | `/u/impersonate` | — | Choose a user to impersonate |
+| `signup` | `signup` | ✅ | `/u/signup` | — | Sign-up form |
+| `reset-password-request` | `reset-password` | ✅ | `/u/forgot-password` | `reset-password` | Ask for a password reset |
+| `reset-password-code` | `reset-password` | — | — | — | Enter the password reset code |
+| `reset-password` | `reset-password` | ✅ | `/u/reset-password` | `reset-password` | Choose a new password |
+| `mfa-login-options` | `mfa` | ✅ | — | — | Choose an MFA method |
+| `mfa-otp-challenge` | `mfa-otp` | ✅ | — | — | Enter an authenticator app code |
+| `mfa-otp-enrollment-qr` | `mfa-otp` | ✅ | — | — | Enroll an authenticator app |
+| `mfa-phone-challenge` | `mfa-phone` | ✅ | — | — | Enter a code sent to the phone |
+| `mfa-phone-enrollment` | `mfa-phone` | ✅ | — | — | Enroll a phone number |
+| `passkey-enrollment` | `passkeys` | ✅ | — | — | Create a passkey |
+| `passkey-enrollment-nudge` | `passkeys` | — | — | — | Offer to create a passkey after login |
+| `consent` | `consent` | ✅ | — | — | Consent to the requested scopes |
+| `device-code-activation` | `device-flow` | ✅ | — | — | Enter the device code |
+| `device-code-confirmation` | `device-flow` | ✅ | — | — | Confirm the device |
+| `device-code-activation-allowed` | `device-flow` | ✅ | — | — | Device activated |
+| `accept-invitation` | `invitation` | ✅ | — | — | Accept an organization invitation |
+| `account` | `account` | — | `/u/account` | `unlink-identity` on classic `/u/account` | Account overview |
+| `account-profile` | `account` | — | — | `update-profile` | Edit profile |
+| `account-change-email` | `account` | — | `/u/account/change-email` | `change-email` | Change email address |
+| `account-change-email-verify` | `account` | — | `/u/account/change-email-verify` | — | Verify the new email address |
+| `account-security` | `account` | — | — | `remove-mfa` or `remove-passkey` (`details.enrollment_id`, `details.type`) | MFA factors (remove a factor) |
+| `account-mfa-totp-enrollment` | `account` | — | — | `enroll-mfa` (`details.factor: "totp"`) | Enroll an authenticator app from the account page |
+| `account-mfa-phone-enrollment` | `account` | — | — | `enroll-mfa` (`details.factor: "phone"`) | Enroll a phone from the account page |
+| `account-linked` | `account` | — | — | `unlink-identity` (`details.provider`, `details.user_id`) | Linked identities (unlink an identity) |
+| `account-passkeys` | `account` | — | — | `enroll-passkey` (start and completion), `remove-passkey` (`details.enrollment_id`) | Passkeys (add or remove a passkey) |
+| `account-delete` | `account` | — | — | `delete-account` | Delete the account |
+| `connect-consent` | `connect` | — | — | — | Approve connecting an application |
+| `connect-tenant-select` | `connect` | — | — | — | Choose the tenant to connect |
+| `self-service-app` | `self-service` | — | — | — | Self-service application setup |
+| `invalid-session` | `status` | — | `/u/invalid-session` | — | Login session expired or invalid |
+| `try-connection-result` | `status` | — | — | — | Result of testing a connection |
+
+`impersonate`, `device-*`, `connect-*`, `self-service-app`, `invalid-session`
+and `try-connection-result` fire like every other screen. Whatever screen a
+submission answers with directly fires `render` too: the next step (the
+identifier step answering with the password, code or link-sent screen) or the
+same screen again with an error or success message.
+
+### Event and API
+
+- **`event.screen.name`, `event.prompt.name`**: from the table above.
+- **`event.transaction`**: `phase`, and the authorization request: `client_id`,
+  `redirect_uri`, `requested_scopes`, `response_type`, `response_mode`, `state`
+  (the application's), `audience`, `prompt`, `ui_locales`, `locale`,
+  `acr_values`, `login_hint` (the identifier entered so far) and `screen_hint`.
+- **`event.user`** when known: the signed-in user on account screens, the user
+  the entered identifier (email, phone number or username) belongs to on login,
+  signup and password-reset screens (in the submit phase of `login-id`,
+  `login`, `login-passwordless-identifier`, `signup` and
+  `reset-password-request`, the identifier just submitted), the authenticated
+  user on MFA, consent and passkey screens. On other screens a submitted form
+  can't choose `event.user`.
+  Undefined otherwise. `event.connection` is the user's primary identity.
+- **`event.operation`** (submit phase only): what the submission does, with
+  operation-specific `event.details`. See the table above.
+- **`event.client`**, **`event.organization`** (`id`, `name`, `display_name`,
+  `metadata` when the request names an organization), **`event.tenant.id`**,
+  **`event.request`** and the Action's `secrets`.
+- **`api.redirect.sendUserTo(url, { query })`** sends the user to `url` (http or
+  https; relative URLs resolve against the current request). Only the URL and
+  query the Action passes are used, nothing from the request, so the trigger
+  can't be turned into an open redirect. No `state` is appended: the login
+  session stays as it was and can be resumed with its URL until it expires; a
+  submission that was redirected never reached the screen.
+- **`api.access.deny(reason)`** stops the screen or submission and shows
+  `reason` on the error page (or as the JSON error of the screen API).
+- Doing nothing lets the screen continue.
+
+### Ordering and failures
+
+- The `onExecutePreScreen` config callback runs first, then bound Actions in
+  descending priority. The first one that redirects or denies decides, and
+  later ones don't run.
+- **Submit fails closed**: an Action that throws, times out or redirects to an
+  invalid URL denies the submission with a generic message, so a direct POST
+  can't skip a denial.
+- **Render fails open**: the failure is logged (`fh`) and the screen is shown.
+  Set `metadata.fail_closed: true` on a binding (**Block the screen if the
+  action fails while rendering** in the admin UI) to deny instead.
+- Executions are recorded like other Actions; denials are logged as `fh`
+  (`pre-screen denied render of account-delete`). The config callback gets the
+  same five-second limit as code Actions; calls it makes after that are ignored.
+- An Action can run twice for one step (render and submit), so keep it free of
+  side effects.
+- **Enumeration:** on login, signup and password-reset screens `event.user`
+  reflects whether an account exists. If an Action only redirects or denies
+  some users, the visible difference reveals that, so prefer rules that don't
+  depend on the user there.
+- **Not an enforcement point:** the trigger controls the interactive screens
+  only. To guarantee a change is never accepted (including through the
+  Management API), also deny it in `pre-user-update` or `pre-user-deletion`.
+
+### Replaces `pre-account-action`
+
+`pre-screen` replaces the `pre-account-action` trigger, which was removed.
+Its operations are `event.operation` in the submit phase; to keep its behaviour,
+select the account screens, `reset-password-request` and `reset-password`, and
+check `event.operation`. The management API refuses `pre-account-action` with a
+400; hooks still stored with it are ignored, and tenant imports and multi-tenancy
+syncs skip them with a log line.
+
+### Open follow-ups
+
+- **Account-page direct links**: deep links into a single account screen
+  (`/account?screen_hint=...` only covers change email today).
+- **Form and flow bindings**: forms and flows can't bind to `pre-screen` yet;
+  only code Actions and the config callback can.
+- **State opt-in for custom redirect URLs**: a binding option to append the
+  transaction `state` to the redirect so a custom page can send the user back
+  into the same login.
+- **Field prefill**: an API to prefill fields of the screen.
 
 ## Anchoring users to an external record (`api.users.ensure`)
 
@@ -1396,31 +1505,39 @@ Cleanup after user deletion.
 }
 ```
 
-### Account Hooks
+### Screen Hooks
 
-#### `onExecutePreAccountAction`
+#### `onExecutePreScreen`
 
-Runs when a user starts a self-service account operation. AuthHero extension;
-see [Account operation Action](#account-operation-action-pre-account-action) for
-the operations and behaviour.
+Runs before a universal-login screen is shown and when it is submitted.
+AuthHero extension; see [Screen Action](#screen-action-pre-screen) for the
+screens and behaviour.
 
-**When it runs**: When the user opens an account operation, before any form,
-code or write, and again when the change is submitted
+**When it runs**: Before every universal-login screen is shown (`render`) and
+when it is submitted (`submit`)
 
-**Synchronous**: Yes - can redirect the user or stop the operation
+**Synchronous**: Yes - can redirect the user or stop the screen
 
 **Event Payload**:
 
 ```typescript
 {
   ctx: Context,
-  operation: AccountActionOperation, // "change-email" | "update-profile" | ...
-  user?: User,               // Undefined only for reset-password without a match
+  screen: { name: string },  // "login-id" | "login-password" | "account-profile" | ...
+  prompt: { name: string },  // "login-id" | "reset-password" | "mfa-otp" | "account" | ...
+  transaction: {
+    phase: "render" | "submit",
+    client_id?: string, redirect_uri?: string, requested_scopes: string[],
+    state?: string, login_hint?: string, screen_hint?: string, // ...
+  },
+  operation?: PreScreenOperation, // submit only: "change-email" | "remove-mfa" | ...
+  details?: Record<string, string>, // e.g. { factor: "totp" }
+  user?: User,               // when known
   connection?: { id?: string, name: string, strategy?: string },
   client?: EnrichedClient,
+  organization?: { id: string, name: string, display_name?: string },
   tenant: { id: string },
   request: HookRequest,
-  details?: Record<string, string> // e.g. { factor: "totp" }
 }
 ```
 

@@ -61,7 +61,7 @@ const CODE_HOOK_TRIGGER_IDS = [
   "post-user-update",
   "pre-user-deletion",
   "post-user-deletion",
-  "pre-account-action",
+  "pre-screen",
   "custom-email-provider",
   "custom-phone-provider",
 ] as const satisfies readonly CodeHookTriggerId[];
@@ -320,6 +320,20 @@ const patchByTriggerIdBindings = defineRoute({
     // exactly (same hook_id, enabled, synchronous, metadata...).
     const removedHooks: Extract<Hook, { code_id: string }>[] = [];
     const createdHookIds: string[] = [];
+    // Binding options live in the hook's metadata (e.g. `screens` on
+    // `pre-screen`, `message_types` on the custom provider triggers). Auth0's
+    // binding body can't carry them, so an action that stays bound keeps the
+    // options it had instead of silently falling back to the defaults.
+    const previousMetadata = new Map<string, Record<string, unknown>>();
+    for (const hook of existingHooks.hooks) {
+      if (
+        "code_id" in hook &&
+        hook.metadata &&
+        !previousMetadata.has(hook.code_id)
+      ) {
+        previousMetadata.set(hook.code_id, hook.metadata);
+      }
+    }
 
     const resultBindings: z.infer<typeof bindingResponseSchema>[] = [];
     const newBindings: BindingState[] = [];
@@ -357,6 +371,9 @@ const patchByTriggerIdBindings = defineRoute({
           enabled: true,
           synchronous: true,
           priority: resolved.length - i,
+          ...(previousMetadata.has(actionId)
+            ? { metadata: previousMetadata.get(actionId) }
+            : {}),
         });
         createdHookIds.push(hook.hook_id);
 

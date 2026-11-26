@@ -7,7 +7,7 @@
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { RedirectException } from "../../errors/redirect-exception";
-import { AccountActionDeniedError } from "../../hooks/pre-account-action";
+import { ScreenDeniedError } from "../../hooks/pre-screen";
 import { ErrorPage } from "./error-page";
 import { resolveErrorPageBranding } from "./branded-error-response";
 import type { Bindings, Variables } from "../../types";
@@ -81,7 +81,7 @@ export function createUniversalLoginErrorHandler() {
     const status =
       err instanceof HTTPException
         ? err.status
-        : err instanceof AccountActionDeniedError
+        : err instanceof ScreenDeniedError
           ? err.status
           : 500;
 
@@ -92,7 +92,7 @@ export function createUniversalLoginErrorHandler() {
       const errMessage =
         err instanceof HTTPException
           ? err.message
-          : err instanceof AccountActionDeniedError
+          : err instanceof ScreenDeniedError
             ? err.reason
             : "Internal server error";
       if (status >= 500) {
@@ -108,10 +108,10 @@ export function createUniversalLoginErrorHandler() {
       console.error(`[u2] ${c.req.method} ${c.req.path} ${status}:`, err);
     }
 
-    // A pre-account-action denial carries tenant-authored text meant for the
+    // A pre-screen denial carries tenant-authored text meant for the
     // user; everything else is mapped to a friendly message.
     const message =
-      err instanceof AccountActionDeniedError
+      err instanceof ScreenDeniedError
         ? err.reason
         : status === 500
           ? "An unexpected error occurred. Please try again later."

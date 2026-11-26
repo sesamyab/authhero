@@ -15,6 +15,7 @@ import {
 } from "../hookConstants";
 import { ActionInput } from "../action-input";
 import { NotificationMessageTypesInput } from "../notification-message-types";
+import { PreScreenBindingInputs } from "../pre-screen-binding";
 import { TryHookButton } from "../try-hook-button";
 
 interface HookRecord {
@@ -135,6 +136,7 @@ export function DetailsTab() {
         <TypeSpecificFields />
         <TriggerField />
         {hookTypeOf(record) === "code" && <NotificationMessageTypesInput />}
+        {hookTypeOf(record) === "code" && <PreScreenBindingInputs />}
         <BooleanInput source="enabled" label="Enabled" />
         {hookTypeOf(record) === "url" && (
           <BooleanInput source="synchronous" label="Synchronous" />

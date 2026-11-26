@@ -6,6 +6,7 @@ import {
   fetchAll,
   hookCodeInsertSchema,
   hookInsertSchema,
+  isRetiredHookTrigger,
   isSyncedRowId,
   resourceServerInsertSchema,
 } from "authhero";
@@ -509,6 +510,12 @@ export async function detachTenantRows(
       const codeId = (row as { code_id?: string }).code_id;
       if (isPlatform(row)) {
         skipPlatform("hook", key);
+        continue;
+      }
+      if (isRetiredHookTrigger(row.trigger_id)) {
+        console.warn(
+          `detach: skipping hook ${key} bound to the removed trigger ${row.trigger_id}`,
+        );
         continue;
       }
       if (

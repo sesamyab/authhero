@@ -3,6 +3,8 @@ import {
   AuthorizationResponseType,
   DataAdapters,
   LinkCandidate,
+  PreScreenOperation,
+  PreScreenPhase,
   RolePermissionInsert,
   User,
 } from "@authhero/adapter-interfaces";
@@ -330,56 +332,85 @@ export type OnExecutePostUserDeletion = (
 ) => Promise<void>;
 
 /**
- * Self-service account operations that fire the `pre-account-action` trigger
- * (an AuthHero extension; Auth0 has no equivalent). The trigger runs once when
- * the user starts the operation, before any form, code or write.
+ * The authorization request a universal-login screen belongs to, plus the
+ * phase the `pre-screen` trigger runs in. The login session id is not
+ * included: it is the key to the transaction, not a request parameter.
  */
-export type AccountActionOperation =
-  | "change-email"
-  | "update-profile"
-  | "reset-password"
-  | "enroll-mfa"
-  | "remove-mfa"
-  | "enroll-passkey"
-  | "remove-passkey"
-  | "unlink-identity"
-  | "delete-account";
+export type PreScreenTransaction = {
+  /** `render` before the screen is shown, `submit` when it is submitted. */
+  phase: PreScreenPhase;
+  locale: string;
+  client_id?: string;
+  redirect_uri?: string;
+  requested_scopes: string[];
+  response_type?: AuthorizationResponseType;
+  response_mode?: AuthorizationResponseMode;
+  /** The application's `state` parameter. */
+  state?: string;
+  audience?: string;
+  prompt?: string;
+  ui_locales?: string;
+  acr_values?: string;
+  /** The identifier entered or passed as `login_hint` so far. */
+  login_hint?: string;
+  /** `screen_hint` from the authorization request. */
+  screen_hint?: string;
+};
 
-export type PreAccountActionEvent = {
+/**
+ * Event of the `pre-screen` trigger (an AuthHero extension; Auth0 has no
+ * pre-login trigger). Fires before a universal-login screen is shown and when
+ * it is submitted.
+ */
+export type PreScreenEvent = {
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>;
-  operation: AccountActionOperation;
+  screen: { name: string };
+  prompt: { name: string };
+  transaction: PreScreenTransaction;
   /**
-   * The signed-in user. Undefined only for `reset-password` when the
-   * identifier entered so far doesn't match a user (or none was entered).
+   * Submit phase only: the operation the submission performs, e.g.
+   * `remove-mfa` for the remove button on `account-security`.
+   */
+  operation?: PreScreenOperation;
+  /** Operation-specific detail, e.g. `{ factor: "totp" }` for `enroll-mfa`. */
+  details?: Record<string, string>;
+  /**
+   * The user when known: the signed-in user on account screens, the user the
+   * identifier entered so far matches on login and password-reset screens,
+   * the authenticated user on MFA and consent screens.
    */
   user?: User;
   /** Connection of the user's primary identity. */
   connection?: { id?: string; name: string; strategy?: string };
   client?: EnrichedClient;
+  organization?: {
+    id: string;
+    name: string;
+    display_name?: string;
+    metadata?: Record<string, unknown>;
+  };
   tenant: { id: string };
   request: HookRequest;
-  /** Operation-specific detail, e.g. `{ factor: "totp" }` for `enroll-mfa`. */
-  details?: Record<string, string>;
 };
 
-export type OnExecutePreAccountActionAPI = {
+export type OnExecutePreScreenAPI = {
   redirect: {
-    /** Send the user to `url` instead of running the operation here. */
+    /** Send the user to `url` instead of showing or submitting the screen. */
     sendUserTo: (
       url: string,
       options?: { query?: Record<string, string> },
     ) => void;
   };
   access: {
-    /** Stop the operation and show `reason` to the user. */
+    /** Stop the screen and show `reason` to the user. */
     deny: (reason?: string) => void;
   };
   token: TokenAPI;
 };
 
-export type OnExecutePreAccountAction = (
-  event: PreAccountActionEvent,
-  api: OnExecutePreAccountActionAPI,
+export type OnExecutePreScreen = (
+  event: PreScreenEvent,
+  api: OnExecutePreScreenAPI,
 ) => Promise<void>;
 
 export type OnExecuteValidateRegistrationUsernameAPI = {
@@ -433,8 +464,11 @@ export type Hooks = {
   onExecutePreUserDeletion?: OnExecutePreUserDeletion;
   onExecutePostUserDeletion?: OnExecutePostUserDeletion;
   onExecuteValidateRegistrationUsername?: OnExecuteValidateRegistrationUsername;
-  /** Called when a user starts a self-service account operation (AuthHero extension) */
-  onExecutePreAccountAction?: OnExecutePreAccountAction;
+  /**
+   * Called before a universal-login screen is shown and when it is submitted
+   * (AuthHero extension, the `pre-screen` trigger)
+   */
+  onExecutePreScreen?: OnExecutePreScreen;
   /** Called when /userinfo endpoint is accessed to add custom claims */
   onFetchUserInfo?: OnFetchUserInfo;
 };

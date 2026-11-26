@@ -30,7 +30,7 @@ Auth0 uses "Actions" (JavaScript snippets that run in Auth0's cloud). AuthHero u
 - **URL hooks** — HTTP webhooks configured via the Management API
 - **Form hooks** — Custom forms rendered during the auth flow
 
-AuthHero also supports hooks that Auth0 doesn't offer, such as `onExecutePreUserDeletion`, `onExecutePostUserDeletion` and `onExecutePreAccountAction` (the `pre-account-action` trigger, which can redirect or deny self-service account operations such as changing email).
+AuthHero also supports hooks that Auth0 doesn't offer, such as `onExecutePreUserDeletion`, `onExecutePostUserDeletion` and `onExecutePreScreen` (the `pre-screen` trigger, which runs before universal-login screens are shown and when they are submitted, including the login screens, and can redirect or deny; Auth0 has no pre-login trigger).
 
 See [Auth0 Comparison — Hooks](/auth0-comparison/hooks) for a detailed mapping.
 

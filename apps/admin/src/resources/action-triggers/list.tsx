@@ -31,6 +31,10 @@ import {
   describeMessageTypes,
   isNotificationTrigger,
 } from "../hooks/notification-message-types";
+import {
+  describePreScreenBinding,
+  isPreScreenTrigger,
+} from "../hooks/pre-screen-binding";
 
 interface TriggerSectionProps {
   triggerId: string;
@@ -224,6 +228,12 @@ function TriggerSection({
                                     triggerId,
                                     hook.metadata,
                                   )}
+                                </span>
+                              )}
+                              {isPreScreenTrigger(triggerId) && (
+                                <span>
+                                  Screens:{" "}
+                                  {describePreScreenBinding(hook.metadata)}
                                 </span>
                               )}
                               {hook.code_id &&
