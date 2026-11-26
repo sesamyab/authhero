@@ -4,7 +4,8 @@
  * instead of the user having a session cookie.
  */
 import { describe, it, expect } from "vitest";
-import { LoginSessionState } from "@authhero/adapter-interfaces";
+import { LoginSession, LoginSessionState } from "@authhero/adapter-interfaces";
+import { hasValidContinuationScope } from "../../../src/authentication-flows/common";
 import { getTestServer } from "../../helpers/test-server";
 import { getRedirectUrl } from "../../../src/hooks/formhooks";
 
@@ -220,6 +221,26 @@ describe("u2 account hub mid-login", () => {
     expect(profile.headers.get("location")).toContain("/u2/login");
   });
 
+  it("does not accept an expired continuation", async () => {
+    const server = await setup({ continuation: true });
+    await server.env.data.loginSessions.update("tenantId", server.state, {
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    });
+    for (const path of ["/account", "/account/change-email"]) {
+      const response = await server.u2App.request(
+        `${path}?state=${encodeURIComponent(server.state)}`,
+        {},
+        server.env,
+      );
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toContain("/u2/login");
+    }
+    const post = await postScreen(server, "account", server.state, {});
+    // Continue doesn't resume the login either: the user is sent to log in.
+    expect(post.status).toBe(302);
+    expect(post.location).toContain("/u2/login");
+  });
+
   it("does not accept a continuation scoped to change-email only", async () => {
     const server = await setup({ continuation: true });
     await server.env.data.loginSessions.update("tenantId", server.state, {
@@ -278,5 +299,38 @@ describe("u2 account hub signed in", () => {
     expect(result.json.redirect).toBe(
       `/u2/account?state=${encodeURIComponent(server.state)}`,
     );
+  });
+});
+
+describe("hasValidContinuationScope", () => {
+  const base = {
+    state: LoginSessionState.AWAITING_CONTINUATION,
+    state_data: JSON.stringify({ continuationScope: ["account"] }),
+  };
+
+  it("accepts an unexpired continuation with the scope", () => {
+    expect(
+      hasValidContinuationScope(
+        {
+          ...base,
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        } as LoginSession,
+        "account",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects an expired or unparseable expiry", () => {
+    for (const expires_at of [
+      new Date(Date.now() - 1000).toISOString(),
+      "not a date",
+    ]) {
+      expect(
+        hasValidContinuationScope(
+          { ...base, expires_at } as LoginSession,
+          "account",
+        ),
+      ).toBe(false);
+    }
   });
 });
