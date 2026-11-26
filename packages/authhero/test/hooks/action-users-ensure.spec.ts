@@ -1015,3 +1015,58 @@ exports.onExecutePostLogin = async (event, api) => {
     expect(await response.text()).toContain("Connection Not Found");
   });
 });
+
+describe("review follow-ups, round 2 (PR #1805)", () => {
+  it("records the cluster root when the ensured target is itself a secondary", async () => {
+    const { env } = await getTestServer();
+    const ctx = createMockCtx(env);
+    const data = addDataHooks(ctx, env.data);
+    await createExternalConnection(env);
+    const root = await env.data.users.create(tenantId, {
+      user_id: `${USERNAME_PASSWORD_PROVIDER}|root`,
+      email: "root@example.com",
+      email_verified: true,
+      provider: USERNAME_PASSWORD_PROVIDER,
+      connection: Strategy.USERNAME_PASSWORD,
+      created_at: "2020-01-01T00:00:00.000Z",
+      updated_at: "2020-01-01T00:00:00.000Z",
+    });
+    // Newer than the anchor, so the age rule demotes the signing-in user.
+    const current = await env.data.users.create(tenantId, {
+      user_id: "email|newest",
+      email: "newest@example.com",
+      email_verified: true,
+      provider: "email",
+      connection: Strategy.EMAIL,
+      created_at: "2099-01-01T00:00:00.000Z",
+      updated_at: "2099-01-01T00:00:00.000Z",
+    });
+    const externalConnections = createExternalConnectionLookup(data, tenantId);
+    const usersApi = createActionUsersApi({
+      ctx,
+      data,
+      tenantId,
+      triggerId: "post-user-login",
+      externalConnections,
+    });
+    await usersApi.api.users.ensure({ connection: "parat", id: "214700" });
+    // An admin had put the anchor under another account.
+    await env.data.users.update(tenantId, ANCHOR, { linked_to: root.user_id });
+
+    const linking = createPostLoginUserApi({
+      ctx,
+      data,
+      tenantId,
+      user: current,
+      candidates: [],
+      ensuredUserIds: usersApi.ensuredUserIds,
+      externalConnections,
+    });
+    await linking.api.user.setLinkedTo(ANCHOR);
+
+    expect(linking.getLinkedPrimaryId()).toBe(root.user_id);
+    expect(
+      (await env.data.users.get(tenantId, current.user_id))?.linked_to,
+    ).toBe(root.user_id);
+  });
+});

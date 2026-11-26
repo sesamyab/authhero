@@ -471,7 +471,12 @@ returns nothing. You choose the id, and the call is an upsert:
 Automatic email linking doesn't know about external primaries yet. If an
 **older, unlinked** user later verifies the same email address as an external
 primary, the built-in email linking can still link the two in the older user's
-favour. Linking everyone through the Action, as above, avoids this.
+favour. A user the Action has linked is excluded from built-in email linking,
+but users it hasn't linked (including accounts that never sign in through it)
+stay eligible, so an older unlinked account can still demote an external
+primary. If your external primaries must stay stable, turn built-in linking off
+with `userLinkingMode: "off"` (or `user_linking_mode: "off"` on the client) and
+link users explicitly. See #1806 and the follow-ups on #1802.
 
 ## Custom email and phone provider Actions
 

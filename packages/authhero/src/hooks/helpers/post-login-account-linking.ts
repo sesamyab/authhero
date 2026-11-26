@@ -2,7 +2,7 @@ import { Context } from "hono";
 import { DataAdapters, LogTypes, User } from "@authhero/adapter-interfaces";
 import { Bindings, Variables } from "../../types";
 import { logMessage } from "../../helpers/logging";
-import { compareUsersByAge } from "../../helpers/users";
+import { compareUsersByAge, resolveClusterRootId } from "../../helpers/users";
 import { ExternalConnectionLookup } from "./action-users";
 
 /**
@@ -171,8 +171,16 @@ export function createPostLoginUserApi(params: {
       await data.users.update(tenantId, currentPrimary.user_id, {
         linked_to: target.user_id,
       });
-      currentUser = { ...currentUser, linked_to: target.user_id };
-      linkedPrimaryId = target.user_id;
+      // The chokepoint links onto the target's cluster root, which differs
+      // from the target when it is itself a secondary. Record the root, so the
+      // token and later calls in this execution see the real primary.
+      const rootId = await resolveClusterRootId(
+        data.users,
+        tenantId,
+        target.user_id,
+      );
+      currentUser = { ...currentUser, linked_to: rootId };
+      linkedPrimaryId = rootId;
     };
 
     if (targetIsAnchor) {
