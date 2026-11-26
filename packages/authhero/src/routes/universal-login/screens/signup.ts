@@ -832,7 +832,6 @@ export const signupScreenDefinition: ScreenDefinition = {
         email,
       );
       const emailVerifiedByCode = preSignupCode !== undefined;
-      const previousUsername = loginSession.authParams.username;
 
       const provider = await resolveUsernamePasswordProvider(
         ctx.env,
@@ -846,14 +845,6 @@ export const signupScreenDefinition: ScreenDefinition = {
       let newUser: User;
 
       try {
-        // Update the login session with the username
-        loginSession.authParams.username = email;
-        await ctx.env.data.loginSessions.update(
-          client.tenant.id,
-          loginSession.id,
-          { authParams: loginSession.authParams },
-        );
-
         const signupBody = Object.fromEntries(
           Object.entries(data).filter(([key]) => key.startsWith("ulp-")),
         );
@@ -878,18 +869,6 @@ export const signupScreenDefinition: ScreenDefinition = {
           ...applyPartialMappings(partialFields, data),
         });
       } catch (err: any) {
-        // Put the session's username back: a pre-signup code is checked
-        // against it, so a failed attempt with another address must not
-        // leave the code bound to that address.
-        if (previousUsername !== email) {
-          loginSession.authParams.username = previousUsername;
-          await ctx.env.data.loginSessions.update(
-            client.tenant.id,
-            loginSession.id,
-            { authParams: loginSession.authParams },
-          );
-        }
-
         if (err instanceof SignupValidationError) {
           return {
             error: err.message,
@@ -911,6 +890,17 @@ export const signupScreenDefinition: ScreenDefinition = {
           }),
         };
       }
+
+      // Only now does the session take the submitted address. A pre-signup
+      // code is checked against the session's username, so writing it before
+      // the user exists would let a concurrent or later request use the code
+      // for an address it wasn't sent to.
+      loginSession.authParams.username = email;
+      await ctx.env.data.loginSessions.update(
+        client.tenant.id,
+        loginSession.id,
+        { authParams: loginSession.authParams },
+      );
 
       if (preSignupCode) {
         await ctx.env.data.codes.consume(client.tenant.id, preSignupCode);

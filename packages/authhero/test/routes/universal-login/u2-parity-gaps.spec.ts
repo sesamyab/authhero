@@ -12,6 +12,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../../helpers/test-server";
 import { getRedirectUrl } from "../../../src/hooks/formhooks";
+import { isEmailTakenOutsideAccount } from "../../../src/routes/universal-login/screens/account-change-email";
 
 type TestServer = Awaited<ReturnType<typeof getTestServer>>;
 
@@ -99,7 +100,8 @@ async function postScreen(
   return {
     status: response.status,
     location: response.headers.get("location"),
-    json: text ? JSON.parse(text) : {},
+    // Unhandled errors render the HTML error page
+    json: text && !text.startsWith("<") ? JSON.parse(text) : {},
   };
 }
 
@@ -171,6 +173,41 @@ describe("/u2/invalid-session", () => {
     expect(response.status).toBe(200);
     const { screen } = (await response.json()) as ScreenJson;
     expect(screen?.links ?? []).toHaveLength(0);
+  });
+
+  it("only offers a passwordless redirect_uri that is a client callback", async () => {
+    const server = await getTestServer();
+    for (const [redirectUri, expectLink] of [
+      ["https://example.com/callback", true],
+      ["https://attacker.example.net/", false],
+    ] as const) {
+      const response = await server.oauthApp.request(
+        `/passwordless/verify_redirect?${new URLSearchParams({
+          scope: "openid",
+          response_type: "code",
+          redirect_uri: redirectUri,
+          state: "client-state",
+          nonce: "nonce",
+          verification_code: "000000",
+          connection: "email",
+          client_id: "clientId",
+          email: USER_EMAIL,
+        })}`,
+        { headers: { "tenant-id": "tenantId" } },
+        server.env,
+      );
+      const state = new URL(response.headers.get("location")!).searchParams.get(
+        "state",
+      )!;
+      const screen = await getScreen(server, "invalid-session", state);
+      const { screen: json } = (await screen.json()) as ScreenJson;
+      const back = json?.links?.find((l) => l.id === "back");
+      if (expectLink) {
+        expect(back?.href).toContain(redirectUri);
+      } else {
+        expect(back).toBeUndefined();
+      }
+    }
   });
 
   it("is where an unusable passwordless link lands", async () => {
@@ -438,6 +475,54 @@ describe("u2 signup with a pre-signup code", () => {
     ).toBeFalsy();
   });
 
+  it("does not let a concurrent signup use the code for another address", async () => {
+    let releaseFirst!: () => void;
+    let firstEntered!: () => void;
+    const gate = new Promise<void>((resolve) => (releaseFirst = resolve));
+    const entered = new Promise<void>((resolve) => (firstEntered = resolve));
+    let calls = 0;
+    const server = await setup({
+      hooks: {
+        onExecutePreUserRegistration: async () => {
+          calls += 1;
+          if (calls === 1) {
+            firstEntered();
+            await gate;
+          }
+        },
+      },
+    });
+    const { env, state } = server;
+    const code = await mintCode(server, state);
+    const other = "concurrent@example.com";
+    const submit = () =>
+      postScreen(
+        server,
+        "signup",
+        state,
+        { email: other, password, re_password: password },
+        {},
+        `&code=${code}`,
+      );
+
+    // The first request waits inside user creation while the second runs
+    const first = submit();
+    await entered;
+    await submit();
+    releaseFirst();
+    await first;
+
+    const { users } = await env.data.users.list("tenantId", {
+      q: `email:${other}`,
+    });
+    expect(users.length).toBeGreaterThan(0);
+    expect(users.every((u) => !u.email_verified)).toBe(true);
+    expect(
+      (await env.data.codes.get("tenantId", code, "email_verification"))
+        ?.used_at,
+    ).toBeFalsy();
+  });
+
   it("keeps old /u/signup links from emails already sent working", async () => {
     const server = await setup();
     const code = await mintCode(server, server.state);
@@ -452,9 +537,16 @@ describe("u2 signup with a pre-signup code", () => {
 
 describe("u2 change email", () => {
   async function setup(
-    options: { continuation?: boolean; screenHint?: boolean } = {},
+    options: {
+      continuation?: boolean;
+      screenHint?: boolean;
+      server?: Parameters<typeof getTestServer>[0];
+    } = {},
   ) {
-    const server = await getTestServer({ mockEmail: true });
+    const server = await getTestServer({
+      mockEmail: true,
+      ...options.server,
+    });
     const { env } = server;
     const loginSession = await env.data.loginSessions.create("tenantId", {
       expires_at: new Date(Date.now() + 3600_000).toISOString(),
@@ -760,6 +852,122 @@ describe("u2 change email", () => {
     expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
       "linked@example.com",
     );
+  });
+
+  it("applies a code only once when it is submitted twice at the same time", async () => {
+    const server = await setup();
+    const { code } = await requestCode(server, "twice@example.com");
+    const submit = () =>
+      postScreen(
+        server,
+        "account-change-email-verify",
+        server.state,
+        { code },
+        cookie,
+      );
+    const results = await Promise.all([submit(), submit()]);
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    expect((await server.env.data.users.get("tenantId", USER_ID))?.email).toBe(
+      "twice@example.com",
+    );
+  });
+
+  it("needs a new code after a linked identity update fails", async () => {
+    const server = await setup({
+      server: {
+        hooks: {
+          onExecutePreUserUpdate: async (event: any, api: any) => {
+            if (event.user_id === "google-oauth2|linked") api.cancel();
+          },
+        },
+      },
+    });
+    const { env, state } = server;
+    await env.data.users.create("tenantId", {
+      user_id: "google-oauth2|linked",
+      email: USER_EMAIL,
+      email_verified: true,
+      connection: "google-oauth2",
+      provider: "google-oauth2",
+      is_social: true,
+      linked_to: USER_ID,
+    });
+
+    const { code } = await requestCode(server, "partial@example.com");
+    const failed = await postScreen(
+      server,
+      "account-change-email-verify",
+      state,
+      { code },
+      cookie,
+    );
+    expect(failed.status).not.toBe(200);
+
+    // The code was claimed before the writes, so it can't be replayed
+    const retry = await postScreen(
+      server,
+      "account-change-email-verify",
+      state,
+      { code },
+      cookie,
+    );
+    expect(retry.status).toBe(400);
+
+    // A fresh code completes the change
+    const { code: fresh } = await requestCode(server, "partial@example.com");
+    const ok = await postScreen(
+      server,
+      "account-change-email-verify",
+      state,
+      { code: fresh },
+      cookie,
+    );
+    expect(ok.status).not.toBe(500);
+  });
+
+  it("finds another owner beyond the first page of matches", async () => {
+    const server = await setup();
+    const { env } = server;
+    const email = "crowded@example.com";
+    // The user's own linked identities fill the first page
+    for (const provider of ["p1", "p2", "p3"]) {
+      await env.data.users.create("tenantId", {
+        user_id: `${provider}|linked`,
+        email,
+        email_verified: true,
+        connection: provider,
+        provider,
+        is_social: true,
+        linked_to: USER_ID,
+      });
+    }
+    expect(
+      await isEmailTakenOutsideAccount(
+        env.data.users,
+        "tenantId",
+        email,
+        USER_ID,
+        2,
+      ),
+    ).toBe(false);
+
+    await env.data.users.create("tenantId", {
+      user_id: "p4|other",
+      email,
+      email_verified: true,
+      connection: "p4",
+      provider: "p4",
+      is_social: true,
+    });
+    expect(
+      await isEmailTakenOutsideAccount(
+        env.data.users,
+        "tenantId",
+        email,
+        USER_ID,
+        2,
+      ),
+    ).toBe(true);
   });
 
   it("is where form hooks send change-email", () => {
