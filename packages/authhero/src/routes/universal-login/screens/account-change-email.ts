@@ -510,21 +510,35 @@ async function handleChangeEmailVerifySubmit(
   }
   const email = meta.email;
 
-  // Two rows are enough: only one of them can be the current user.
+  // Only the address currently awaiting confirmation can be applied: codes
+  // from earlier requests in this session (for other addresses) are void.
+  const pending = readLoginSessionData(
+    loginSession.state_data,
+  ).pending_email_change;
+  if (pending?.email !== email) {
+    return fail(m.invalidCode(), "Change email code is for another address");
+  }
+
+  // The address is taken when a user outside this account has it. The
+  // user's own linked identities don't count; they are updated below.
   const existingUsers = await ctx.env.data.users.list(tenant.id, {
     page: 0,
-    per_page: 2,
+    per_page: 100,
     include_totals: false,
     q: `email:${escapeLuceneValue(email)}`,
   });
-  if (existingUsers.users.some((u) => u.user_id !== user.user_id)) {
+  const takenByOther = existingUsers.users.some(
+    (u) => u.user_id !== user.user_id && u.linked_to !== user.user_id,
+  );
+  if (takenByOther) {
     return fail(m.emailTaken(), "Change email address already taken");
   }
 
-  if (!(await ctx.env.data.codes.consume(tenant.id, code))) {
-    return fail(m.invalidCode(), "Change email code already used");
-  }
-
+  // The writes go through the hooked user adapter (update hooks, outbox
+  // events), which commits each update in its own transaction, so they can't
+  // share one. Instead they run before the code is consumed: a failure
+  // leaves the code usable for a retry, and since the code is bound to one
+  // address, a concurrent second redemption writes the same values.
   await ctx.env.data.users.update(tenant.id, user.user_id, {
     email,
     email_verified: true,
@@ -543,6 +557,8 @@ async function handleChangeEmailVerifySubmit(
       email_verified: true,
     });
   }
+
+  await ctx.env.data.codes.consume(tenant.id, code);
 
   await updateLoginSessionData(
     ctx.env.data.loginSessions,

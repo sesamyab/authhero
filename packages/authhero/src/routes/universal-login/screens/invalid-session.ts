@@ -9,6 +9,7 @@
 import type { UiScreen } from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
 import { createTranslation } from "../../../i18n";
+import { safeLinkHref } from "../sanitization-utils";
 
 /**
  * Where "Go back" sends the user: the client's redirect_uri with an
@@ -36,7 +37,9 @@ async function getBackUrl(context: ScreenContext): Promise<string | undefined> {
   redirectUrl.searchParams.set("error", "invalid_session");
   // Same value /u sends, so clients that read it keep working.
   redirectUrl.searchParams.set("error_description", authParams.username || "");
-  return redirectUrl.href;
+  // redirect_uri isn't checked against the client's callbacks on every path
+  // that lands here, so only http(s) URLs may become a link.
+  return safeLinkHref(redirectUrl.href);
 }
 
 export async function invalidSessionScreen(

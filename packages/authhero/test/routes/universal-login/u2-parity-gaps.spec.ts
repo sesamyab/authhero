@@ -153,6 +153,26 @@ describe("/u2/invalid-session", () => {
     expect(back.searchParams.get("state")).toBe("client-state");
   });
 
+  it("offers no back link for a non-http redirect_uri", async () => {
+    const server = await getTestServer();
+    const state = await startLogin(server, USER_EMAIL);
+    const loginSession = await server.env.data.loginSessions.get(
+      "tenantId",
+      state,
+    );
+    await server.env.data.loginSessions.update("tenantId", state, {
+      authParams: {
+        ...loginSession!.authParams,
+        redirect_uri: "javascript:alert(1)//",
+      },
+    });
+
+    const response = await getScreen(server, "invalid-session", state);
+    expect(response.status).toBe(200);
+    const { screen } = (await response.json()) as ScreenJson;
+    expect(screen?.links ?? []).toHaveLength(0);
+  });
+
   it("is where an unusable passwordless link lands", async () => {
     const server = await getTestServer();
     const response = await server.oauthApp.request(
@@ -189,8 +209,8 @@ describe("/u2/invalid-session", () => {
 });
 
 describe("u2 signup with a pre-signup code", () => {
-  async function setup() {
-    const server = await getTestServer({ mockEmail: true });
+  async function setup(options: Parameters<typeof getTestServer>[0] = {}) {
+    const server = await getTestServer({ mockEmail: true, ...options });
     const { env } = server;
     await env.data.clientConnections.updateByClient("tenantId", "clientId", [
       Strategy.USERNAME_PASSWORD,
@@ -335,6 +355,87 @@ describe("u2 signup with a pre-signup code", () => {
       q: "email:different@example.com",
     });
     expect(different[0]!.email_verified).toBe(false);
+  });
+
+  it("ignores an expired or already used code", async () => {
+    for (const variant of ["expired", "used"] as const) {
+      const server = await setup();
+      const { env, email, state } = server;
+      await env.data.codes.create("tenantId", {
+        code_id: "222222",
+        code_type: "email_verification",
+        login_id: state,
+        expires_at: new Date(
+          Date.now() + (variant === "expired" ? -60_000 : 3600_000),
+        ).toISOString(),
+      });
+      if (variant === "used") {
+        await env.data.codes.consume("tenantId", "222222");
+      }
+
+      const result = await postScreen(
+        server,
+        "signup",
+        state,
+        { email, password, re_password: password },
+        {},
+        "&code=222222",
+      );
+      expect(result.json.redirect).toBeDefined();
+      const { users } = await env.data.users.list("tenantId", {
+        q: `email:${email}`,
+      });
+      expect(users[0]!.email_verified).toBe(false);
+    }
+  });
+
+  it("does not move the code to another address after a failed signup", async () => {
+    let attempts = 0;
+    const server = await setup({
+      hooks: {
+        onExecutePreUserRegistration: async (_event: any, api: any) => {
+          attempts += 1;
+          if (attempts === 1) api.access.deny("blocked");
+        },
+      },
+    });
+    const { env, email, state } = server;
+    const code = await mintCode(server, state);
+    const other = "someone-else@example.com";
+
+    // First attempt with another address fails in the registration hook
+    const failed = await postScreen(
+      server,
+      "signup",
+      state,
+      { email: other, password, re_password: password },
+      {},
+      `&code=${code}`,
+    );
+    expect(failed.status).toBe(400);
+    expect(
+      (await env.data.loginSessions.get("tenantId", state))?.authParams
+        .username,
+    ).toBe(email);
+
+    // The retry succeeds, but the code still only proves the original address
+    await postScreen(
+      server,
+      "signup",
+      state,
+      { email: other, password, re_password: password },
+      {},
+      `&code=${code}`,
+    );
+    const { users } = await env.data.users.list("tenantId", {
+      q: `email:${other}`,
+    });
+    expect(users).toHaveLength(1);
+    expect(users[0]!.email_verified).toBe(false);
+    expect(
+      (await env.data.codes.get("tenantId", code, "email_verification"))
+        ?.used_at,
+    ).toBeFalsy();
   });
 
   it("keeps old /u/signup links from emails already sent working", async () => {
@@ -596,6 +697,68 @@ describe("u2 change email", () => {
     );
     expect(ok.json.screen?.links?.[0]?.href).toBe(
       "https://example.com/callback",
+    );
+  });
+
+  it("rejects the code of an earlier request for another address", async () => {
+    const server = await setup();
+    const { env, state } = server;
+    const { code: firstCode } = await requestCode(server, "first@example.com");
+    const { code: secondCode } = await requestCode(
+      server,
+      "second@example.com",
+    );
+
+    const stale = await postScreen(
+      server,
+      "account-change-email-verify",
+      state,
+      { code: firstCode },
+      cookie,
+    );
+    expect(stale.status).toBe(400);
+    expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
+      USER_EMAIL,
+    );
+
+    const ok = await postScreen(
+      server,
+      "account-change-email-verify",
+      state,
+      { code: secondCode },
+      cookie,
+    );
+    expect(ok.status).toBe(200);
+    expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
+      "second@example.com",
+    );
+  });
+
+  it("allows an address that one of the user's linked identities has", async () => {
+    const server = await setup();
+    const { env, state } = server;
+    await env.data.users.create("tenantId", {
+      // A linked social identity, as account linking creates
+      user_id: "google-oauth2|linked",
+      email: "linked@example.com",
+      email_verified: true,
+      connection: "google-oauth2",
+      provider: "google-oauth2",
+      is_social: true,
+      linked_to: USER_ID,
+    });
+
+    const { code } = await requestCode(server, "linked@example.com");
+    const ok = await postScreen(
+      server,
+      "account-change-email-verify",
+      state,
+      { code },
+      cookie,
+    );
+    expect(ok.status).toBe(200);
+    expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
+      "linked@example.com",
     );
   });
 
