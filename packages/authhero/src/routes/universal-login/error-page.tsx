@@ -12,6 +12,7 @@ import {
   buildThemePageBackground,
 } from "./sanitization-utils";
 import type { Theme } from "@authhero/adapter-interfaces";
+import { raw } from "hono/html";
 import type { DarkModePreference } from "./u2-widget-page";
 
 export type ErrorPageProps = {
@@ -95,17 +96,26 @@ export function ErrorPage({
         ? "ah-light-mode"
         : undefined;
 
+  // Without a doctype the page renders in quirks mode, where the flex
+  // <body> is clamped to the viewport: a form taller than the screen
+  // overflows it (top cut off, no margin) and the cover background is
+  // sized to one screen only.
   return (
-    <html lang={lang} class={htmlClass}>
-      <head>
-        <meta charSet="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>{isError ? `Error - ${statusCode}` : resolvedTitle}</title>
-        {faviconUrl && <link rel="icon" href={faviconUrl} />}
-        {fontUrl && <link rel="stylesheet" href={fontUrl} />}
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
+    <>
+      {raw("<!DOCTYPE html>")}
+      <html lang={lang} class={htmlClass}>
+        <head>
+          <meta charSet="UTF-8" />
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+          />
+          <title>{isError ? `Error - ${statusCode}` : resolvedTitle}</title>
+          {faviconUrl && <link rel="icon" href={faviconUrl} />}
+          {fontUrl && <link rel="stylesheet" href={fontUrl} />}
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
               * { box-sizing: border-box; margin: 0; padding: 0; }
               body {
                 min-height: 100vh;
@@ -186,61 +196,62 @@ export function ErrorPage({
                   : ""
               }
             `,
-          }}
-        />
-      </head>
-      <body>
-        <div class="error-card">
-          {logoUrl && (
-            <div class="error-logo">
-              <img src={logoUrl} alt="Logo" />
+            }}
+          />
+        </head>
+        <body>
+          <div class="error-card">
+            {logoUrl && (
+              <div class="error-logo">
+                <img src={logoUrl} alt="Logo" />
+              </div>
+            )}
+            <div class="error-icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={iconColor}
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                {isSuccess ? (
+                  <polyline points="8 12.5 11 15.5 16 9.5" />
+                ) : isInfo ? (
+                  <>
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </>
+                ) : (
+                  <>
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </>
+                )}
+              </svg>
             </div>
-          )}
-          <div class="error-icon">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={iconColor}
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              {isSuccess ? (
-                <polyline points="8 12.5 11 15.5 16 9.5" />
-              ) : isInfo ? (
-                <>
-                  <line x1="12" y1="16" x2="12" y2="12" />
-                  <line x1="12" y1="8" x2="12.01" y2="8" />
-                </>
-              ) : (
-                <>
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </>
-              )}
-            </svg>
+            <div class="error-title">{resolvedTitle}</div>
+            <div class="error-message">{message}</div>
+            {action && actionHref && (
+              <a class="error-action" href={actionHref}>
+                {action.label}
+              </a>
+            )}
           </div>
-          <div class="error-title">{resolvedTitle}</div>
-          <div class="error-message">{message}</div>
-          {action && actionHref && (
-            <a class="error-action" href={actionHref}>
-              {action.label}
-            </a>
+          {extraScript && (
+            <script dangerouslySetInnerHTML={{ __html: extraScript }} />
           )}
-        </div>
-        {extraScript && (
-          <script dangerouslySetInnerHTML={{ __html: extraScript }} />
-        )}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem('ah-dark-mode');if(p!==null&&!document.cookie.match(/ah-dark-mode=/)){var v=p==='1'?'dark':'light';document.cookie='ah-dark-mode='+v+';path=/;max-age=31536000;SameSite=Lax';localStorage.removeItem('ah-dark-mode')}}catch(e){}})()`,
-          }}
-        />
-      </body>
-    </html>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){try{var p=localStorage.getItem('ah-dark-mode');if(p!==null&&!document.cookie.match(/ah-dark-mode=/)){var v=p==='1'?'dark':'light';document.cookie='ah-dark-mode='+v+';path=/;max-age=31536000;SameSite=Lax';localStorage.removeItem('ah-dark-mode')}}catch(e){}})()`,
+            }}
+          />
+        </body>
+      </html>
+    </>
   );
 }

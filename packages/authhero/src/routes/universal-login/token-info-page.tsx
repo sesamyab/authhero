@@ -7,6 +7,7 @@
  */
 
 import type { Theme, TokenResponse, User } from "@authhero/adapter-interfaces";
+import { raw } from "hono/html";
 import { decodeBase64UrlString } from "@authhero/adapter-interfaces";
 import {
   sanitizeUrl,
@@ -170,18 +171,27 @@ export function TokenInfoPage({
     { key: "expires_in", value: `${tokens.expires_in}s` },
   ];
 
+  // Without a doctype the page renders in quirks mode, where the flex
+  // <body> is clamped to the viewport: a form taller than the screen
+  // overflows it (top cut off, no margin) and the cover background is
+  // sized to one screen only.
   return (
-    <html lang="en" class={htmlClass}>
-      <head>
-        <meta charSet="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta name="robots" content="noindex, nofollow" />
-        <title>Signed in</title>
-        {faviconUrl && <link rel="icon" href={faviconUrl} />}
-        {fontUrl && <link rel="stylesheet" href={fontUrl} />}
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
+    <>
+      {raw("<!DOCTYPE html>")}
+      <html lang="en" class={htmlClass}>
+        <head>
+          <meta charSet="UTF-8" />
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+          />
+          <meta name="robots" content="noindex, nofollow" />
+          <title>Signed in</title>
+          {faviconUrl && <link rel="icon" href={faviconUrl} />}
+          {fontUrl && <link rel="stylesheet" href={fontUrl} />}
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
               * { box-sizing: border-box; margin: 0; padding: 0; }
               body {
                 min-height: 100vh;
@@ -288,86 +298,87 @@ export function TokenInfoPage({
                 html:not(.ah-light-mode) body { background: #111827 !important; }
               }
             `,
-          }}
-        />
-      </head>
-      <body>
-        <div class="info-card">
-          {logoUrl && (
-            <div class="info-logo">
-              <img src={logoUrl} alt="Logo" />
-            </div>
-          )}
-          <div class="info-icon">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={primaryColor}
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M8 12.5l2.5 2.5L16 9.5" />
-            </svg>
-          </div>
-          <div class="info-title">Signed in</div>
-          <div class="info-message">
-            You have signed in successfully. The authorization code was
-            exchanged for tokens.
-          </div>
-
-          <div class="info-actions">
-            {tokenButtons.map(({ label, token }) => (
-              <button
-                type="button"
-                class="copy-button"
-                data-copy-token={token}
-                aria-label={`Copy ${label.toLowerCase()} to clipboard`}
+            }}
+          />
+        </head>
+        <body>
+          <div class="info-card">
+            {logoUrl && (
+              <div class="info-logo">
+                <img src={logoUrl} alt="Logo" />
+              </div>
+            )}
+            <div class="info-icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={primaryColor}
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
-                Copy {label.toLowerCase()}
-              </button>
-            ))}
-          </div>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 12.5l2.5 2.5L16 9.5" />
+              </svg>
+            </div>
+            <div class="info-title">Signed in</div>
+            <div class="info-message">
+              You have signed in successfully. The authorization code was
+              exchanged for tokens.
+            </div>
 
-          <div class="info-section-title">User</div>
-          <div class="claims-grid">
-            {claims.map(({ key, value }) => (
-              <>
-                <div class="claim-key">{key}</div>
-                <div class="claim-value">{value}</div>
-              </>
-            ))}
-          </div>
+            <div class="info-actions">
+              {tokenButtons.map(({ label, token }) => (
+                <button
+                  type="button"
+                  class="copy-button"
+                  data-copy-token={token}
+                  aria-label={`Copy ${label.toLowerCase()} to clipboard`}
+                >
+                  Copy {label.toLowerCase()}
+                </button>
+              ))}
+            </div>
 
-          <div class="info-section-title">Token</div>
-          <div class="claims-grid">
-            {details.map(({ key, value }) => (
-              <>
-                <div class="claim-key">{key}</div>
-                <div class="claim-value">{value}</div>
-              </>
-            ))}
-          </div>
+            <div class="info-section-title">User</div>
+            <div class="claims-grid">
+              {claims.map(({ key, value }) => (
+                <>
+                  <div class="claim-key">{key}</div>
+                  <div class="claim-value">{value}</div>
+                </>
+              ))}
+            </div>
 
-          <details class="raw-tokens">
-            <summary>Show raw tokens</summary>
-            {tokenButtons.map(({ label, token }) => (
-              <>
-                <div class="raw-label">{label}</div>
-                <pre>{token}</pre>
-              </>
-            ))}
-          </details>
-        </div>
-        <script dangerouslySetInnerHTML={{ __html: COPY_SCRIPT }} />
-        <script
-          dangerouslySetInnerHTML={{ __html: DARK_MODE_MIGRATION_SCRIPT }}
-        />
-      </body>
-    </html>
+            <div class="info-section-title">Token</div>
+            <div class="claims-grid">
+              {details.map(({ key, value }) => (
+                <>
+                  <div class="claim-key">{key}</div>
+                  <div class="claim-value">{value}</div>
+                </>
+              ))}
+            </div>
+
+            <details class="raw-tokens">
+              <summary>Show raw tokens</summary>
+              {tokenButtons.map(({ label, token }) => (
+                <>
+                  <div class="raw-label">{label}</div>
+                  <pre>{token}</pre>
+                </>
+              ))}
+            </details>
+          </div>
+          <script dangerouslySetInnerHTML={{ __html: COPY_SCRIPT }} />
+          <script
+            dangerouslySetInnerHTML={{ __html: DARK_MODE_MIGRATION_SCRIPT }}
+          />
+        </body>
+      </html>
+    </>
   );
 }

@@ -32,6 +32,7 @@
  * `logoPosition` is the prop-level shortcut for the most common override.
  */
 
+import { raw } from "hono/html";
 import {
   sanitizeUrl,
   sanitizeCssColor,
@@ -537,74 +538,85 @@ export function WidgetPage({
   const embeddedWarning = embeddedBrowser ? bannerT : undefined;
   const showPrivateProbe = !!bannerT && !embeddedBrowser;
 
+  // Without a doctype the page renders in quirks mode, where the flex
+  // <body> is clamped to the viewport: a form taller than the screen
+  // overflows it (top cut off, no margin) and the cover background is
+  // sized to one screen only.
   return (
-    <html
-      lang={language || "en"}
-      class={htmlClass}
-      data-mode={htmlDataMode}
-      data-bg={hasBgImage ? "image" : "none"}
-      data-logo-position={resolvedLogoPosition}
-      data-embed={embed ? "true" : undefined}
-    >
-      <head>
-        <meta charSet="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Sign in - {clientName}</title>
-        {faviconUrl && <link rel="icon" href={faviconUrl} />}
-        {faviconUrl && faviconUrlDark && (
-          <link
-            rel="icon"
-            href={faviconUrlDark}
-            media="(prefers-color-scheme: dark)"
+    <>
+      {raw("<!DOCTYPE html>")}
+      <html
+        lang={language || "en"}
+        class={htmlClass}
+        data-mode={htmlDataMode}
+        data-bg={hasBgImage ? "image" : "none"}
+        data-logo-position={resolvedLogoPosition}
+        data-embed={embed ? "true" : undefined}
+      >
+        <head>
+          <meta charSet="UTF-8" />
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
           />
-        )}
-        {fontUrl && <link rel="stylesheet" href={fontUrl} />}
-        <style
-          dangerouslySetInnerHTML={{
-            __html: embed
-              ? pageCss + EMBED_PAGE_CSS
-              : embeddedBrowser || showPrivateProbe
-                ? pageCss + EMBEDDED_BROWSER_CSS
-                : pageCss,
-          }}
-        />
-        <script
-          type="module"
-          src={`/widget/authhero-widget.esm.js?v=${buildHash}`}
-        />
-      </head>
-      <body>
-        {hasBgImage && !embed && <div class="ah-bg-tint" aria-hidden="true" />}
+          <title>Sign in - {clientName}</title>
+          {faviconUrl && <link rel="icon" href={faviconUrl} />}
+          {faviconUrl && faviconUrlDark && (
+            <link
+              rel="icon"
+              href={faviconUrlDark}
+              media="(prefers-color-scheme: dark)"
+            />
+          )}
+          {fontUrl && <link rel="stylesheet" href={fontUrl} />}
+          <style
+            dangerouslySetInnerHTML={{
+              __html: embed
+                ? pageCss + EMBED_PAGE_CSS
+                : embeddedBrowser || showPrivateProbe
+                  ? pageCss + EMBEDDED_BROWSER_CSS
+                  : pageCss,
+            }}
+          />
+          <script
+            type="module"
+            src={`/widget/authhero-widget.esm.js?v=${buildHash}`}
+          />
+        </head>
+        <body>
+          {hasBgImage && !embed && (
+            <div class="ah-bg-tint" aria-hidden="true" />
+          )}
 
-        {embeddedWarning && (
-          <div class="ah-embedded-warning" role="alert">
-            <strong>{embeddedWarning.embeddedBrowserTitle()}</strong>
-            <p>
-              {embeddedWarning.embeddedBrowserText({
-                browserName: embeddedBrowser?.name || "the app",
-              })}
-            </p>
-          </div>
-        )}
-
-        {showPrivateProbe && bannerT && (
-          <>
-            {/* Revealed by the shared client bundle (detectincognitojs), which
-                removes `hidden` from #incognito-warning-container. */}
-            <div
-              id="incognito-warning-container"
-              class="ah-embedded-warning ah-private-warning hidden"
-              role="alert"
-            >
-              <strong>{bannerT.privateBrowsingTitle()}</strong>
-              <p>{bannerT.privateBrowsingText()}</p>
+          {embeddedWarning && (
+            <div class="ah-embedded-warning" role="alert">
+              <strong>{embeddedWarning.embeddedBrowserTitle()}</strong>
+              <p>
+                {embeddedWarning.embeddedBrowserText({
+                  browserName: embeddedBrowser?.name || "the app",
+                })}
+              </p>
             </div>
-            <script type="module" src={`/widget/client.js?v=${buildHash}`} />
-          </>
-        )}
+          )}
 
-        {customBodyHtml ? (
-          /* Custom-template path: tenant-controlled body markup. The
+          {showPrivateProbe && bannerT && (
+            <>
+              {/* Revealed by the shared client bundle (detectincognitojs), which
+                removes `hidden` from #incognito-warning-container. */}
+              <div
+                id="incognito-warning-container"
+                class="ah-embedded-warning ah-private-warning hidden"
+                role="alert"
+              >
+                <strong>{bannerT.privateBrowsingTitle()}</strong>
+                <p>{bannerT.privateBrowsingText()}</p>
+              </div>
+              <script type="module" src={`/widget/client.js?v=${buildHash}`} />
+            </>
+          )}
+
+          {customBodyHtml ? (
+            /* Custom-template path: tenant-controlled body markup. The
              expanded fragment already contains the widget mount + selected
              chips. The shell still wraps it for the page CSS, runtime, and
              bg tint.
@@ -615,52 +627,53 @@ export function WidgetPage({
              flex item, which collapses the widget container's
              `width: clamp(320px, 100%, 400px)` to its 320px floor and pins it
              off-centre on narrow (mobile) viewports. */
-          <div
-            style={{ display: "contents" }}
-            dangerouslySetInnerHTML={{ __html: customBodyHtml }}
-          />
-        ) : (
-          <>
-            {/* Widget container — the widget's own shadow DOM renders the
-                logo in its header for the default "widget" position. */}
-            <div
-              class="widget-container"
-              data-authhero-widget-container
-              data-screen={screenId}
-              style={widgetContainerStyle}
-              dangerouslySetInnerHTML={{ __html: widgetHtml }}
-            />
-
-            {/* Corner chips + the phone footer. The logo chip is hidden by
-                CSS when data-logo-position="widget" (the default), and the
-                chips and footer swap at the mobile breakpoint. */}
             <div
               style={{ display: "contents" }}
-              dangerouslySetInnerHTML={{ __html: chromeHtml }}
+              dangerouslySetInnerHTML={{ __html: customBodyHtml }}
             />
-          </>
-        )}
+          ) : (
+            <>
+              {/* Widget container — the widget's own shadow DOM renders the
+                logo in its header for the default "widget" position. */}
+              <div
+                class="widget-container"
+                data-authhero-widget-container
+                data-screen={screenId}
+                style={widgetContainerStyle}
+                dangerouslySetInnerHTML={{ __html: widgetHtml }}
+              />
 
-        {extraScript && (
-          <script dangerouslySetInnerHTML={{ __html: extraScript }} />
-        )}
+              {/* Corner chips + the phone footer. The logo chip is hidden by
+                CSS when data-logo-position="widget" (the default), and the
+                chips and footer swap at the mobile breakpoint. */}
+              <div
+                style={{ display: "contents" }}
+                dangerouslySetInnerHTML={{ __html: chromeHtml }}
+              />
+            </>
+          )}
 
-        {embed && (
-          <script
-            dangerouslySetInnerHTML={{ __html: buildEmbedPageScript(embed) }}
-          />
-        )}
+          {extraScript && (
+            <script dangerouslySetInnerHTML={{ __html: extraScript }} />
+          )}
 
-        {/* Dark-mode runtime — applies dark CSS vars to the widget's
+          {embed && (
+            <script
+              dangerouslySetInnerHTML={{ __html: buildEmbedPageScript(embed) }}
+            />
+          )}
+
+          {/* Dark-mode runtime — applies dark CSS vars to the widget's
             shadow DOM since CSS variables don't pierce shadow boundaries
             via inheritance for dynamically-created custom properties. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: buildDarkModeRuntimeScript(darkVarsJson),
-          }}
-        />
-      </body>
-    </html>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: buildDarkModeRuntimeScript(darkVarsJson),
+            }}
+          />
+        </body>
+      </html>
+    </>
   );
 }
 

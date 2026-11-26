@@ -693,23 +693,6 @@ export class AuthheroNode {
   }
 
   /**
-   * Render a label for a field (non-floating version for checkboxes etc).
-   */
-  private renderLabel(
-    text: string | undefined,
-    inputId: string,
-    required?: boolean,
-  ) {
-    if (!text) return null;
-    return (
-      <label class="input-label" part="label" htmlFor={inputId}>
-        {text}
-        {required && <span class="required">*</span>}
-      </label>
-    );
-  }
-
-  /**
    * Get the input field class string.
    * Uses string instead of object to avoid hydration mismatch.
    */
@@ -922,30 +905,37 @@ export class AuthheroNode {
     if (multiline) {
       return (
         <div class="input-wrapper" part="input-wrapper">
-          {this.renderLabel(component.label, inputId, component.required)}
-          {/* Never render the value as a child text node: SSR prefixes vdom
-              text nodes with a <!--t.N--> hydration comment, and inside a
-              textarea that comment is shown as literal text. Setting
-              `textContent` in the ref (not a vdom child, so no marker) puts
-              the value into the SSR markup as the textarea's default value;
-              `value` keeps the live value in sync on the client. */}
-          <textarea
-            id={inputId}
-            class={this.getInputFieldClass(errors.length > 0)}
-            part="input textarea"
-            name={component.id}
-            placeholder=" "
-            required={component.required}
-            disabled={this.disabled}
-            maxLength={max_length}
-            autoComplete={autocomplete}
-            inputMode={input_mode}
-            value={effectiveValue ?? ""}
-            ref={(el) => {
-              if (el) el.textContent = effectiveValue ?? "";
-            }}
-            onInput={this.handleInput}
-          />
+          <div class="input-container textarea-container">
+            {/* Never render the value as a child text node: SSR prefixes vdom
+                text nodes with a <!--t.N--> hydration comment, and inside a
+                textarea that comment is shown as literal text. Setting
+                `textContent` in the ref (not a vdom child, so no marker) puts
+                the value into the SSR markup as the textarea's default value;
+                `value` keeps the live value in sync on the client. */}
+            <textarea
+              id={inputId}
+              class={this.getInputFieldClass(errors.length > 0)}
+              part="input textarea"
+              name={component.id}
+              placeholder=" "
+              required={component.required}
+              disabled={this.disabled}
+              maxLength={max_length}
+              autoComplete={autocomplete}
+              inputMode={input_mode}
+              value={effectiveValue ?? ""}
+              ref={(el) => {
+                if (el) el.textContent = effectiveValue ?? "";
+              }}
+              onInput={this.handleInput}
+            />
+            {this.renderFloatingLabel(
+              component.label,
+              inputId,
+              component.required,
+              hasValue,
+            )}
+          </div>
           {this.renderErrors()}
           {errors.length === 0 && this.renderHint(component.hint)}
         </div>
@@ -1224,26 +1214,34 @@ export class AuthheroNode {
     const errors = this.getErrors();
     const { placeholder, min, max, step } = component.config ?? {};
     const effectiveValue = this.getEffectiveValue();
+    const hasValue = !!(effectiveValue && effectiveValue.length > 0);
 
     return (
       <div class="input-wrapper" part="input-wrapper">
-        {this.renderLabel(component.label, inputId, component.required)}
-        <input
-          id={inputId}
-          class={this.getInputFieldClass(errors.length > 0)}
-          part="input"
-          type="number"
-          name={component.id}
-          value={effectiveValue ?? ""}
-          placeholder={placeholder}
-          required={component.required}
-          disabled={this.disabled}
-          min={min}
-          max={max}
-          step={step}
-          onInput={this.handleInput}
-          onKeyDown={this.handleKeyDown}
-        />
+        <div class="input-container">
+          <input
+            id={inputId}
+            class={this.getInputFieldClass(errors.length > 0)}
+            part="input"
+            type="number"
+            name={component.id}
+            value={effectiveValue ?? ""}
+            placeholder={placeholder || " "}
+            required={component.required}
+            disabled={this.disabled}
+            min={min}
+            max={max}
+            step={step}
+            onInput={this.handleInput}
+            onKeyDown={this.handleKeyDown}
+          />
+          {this.renderFloatingLabel(
+            component.label,
+            inputId,
+            component.required,
+            hasValue,
+          )}
+        </div>
         {this.renderErrors()}
         {errors.length === 0 && this.renderHint(component.hint)}
       </div>
@@ -1330,23 +1328,31 @@ export class AuthheroNode {
     const inputId = `input-${component.id}`;
     const errors = this.getErrors();
     const effectiveValue = this.getEffectiveValue();
+    const hasValue = !!(effectiveValue && effectiveValue.length > 0);
 
     return (
       <div class="input-wrapper" part="input-wrapper">
-        {this.renderLabel(component.label, inputId, component.required)}
-        <input
-          id={inputId}
-          class={this.getInputFieldClass(errors.length > 0)}
-          part="input"
-          type="url"
-          name={component.id}
-          value={effectiveValue ?? ""}
-          placeholder={component.config?.placeholder}
-          required={component.required}
-          disabled={this.disabled}
-          onInput={this.handleInput}
-          onKeyDown={this.handleKeyDown}
-        />
+        <div class="input-container">
+          <input
+            id={inputId}
+            class={this.getInputFieldClass(errors.length > 0)}
+            part="input"
+            type="url"
+            name={component.id}
+            value={effectiveValue ?? ""}
+            placeholder={component.config?.placeholder || " "}
+            required={component.required}
+            disabled={this.disabled}
+            onInput={this.handleInput}
+            onKeyDown={this.handleKeyDown}
+          />
+          {this.renderFloatingLabel(
+            component.label,
+            inputId,
+            component.required,
+            hasValue,
+          )}
+        </div>
         {this.renderErrors()}
         {errors.length === 0 && this.renderHint(component.hint)}
       </div>
