@@ -1,15 +1,135 @@
 /**
  * Account screen - main hub for account management
  *
+ * Signed in (session cookie) it links to every account sub-screen. Mid-login,
+ * when a form hook redirects here, the login session carries the `account`
+ * continuation scope instead: the hub then shows the user, a change-email
+ * entry (the only sub-screen that accepts that scope) and a button that
+ * continues the login, matching what /u/account offered mid-login.
+ *
  * Corresponds to: /u2/account
  */
 
-import type { UiScreen, FormNodeComponent } from "@authhero/adapter-interfaces";
+import type {
+  FormNodeComponent,
+  UiScreen,
+  User,
+} from "@authhero/adapter-interfaces";
 import type { ScreenContext, ScreenResult, ScreenDefinition } from "./types";
-import { resolveAccountUser } from "./account-helpers";
+import {
+  getContinuationReturnUrl,
+  resolveAccountUserOrContinuation,
+} from "./account-helpers";
 import { escapeHtml } from "../sanitization-utils";
 import { PASSKEY_TYPES } from "./passkey-utils";
 import { createTranslation } from "../../../i18n";
+
+const CONTINUATION_SCOPE = "account";
+
+function userInfoHtml(user: User): string {
+  return `
+          <div style="display:flex;flex-direction:column;gap:16px;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:12px">
+              ${
+                user.picture
+                  ? `<img src="${escapeHtml(user.picture)}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover" />`
+                  : `<div style="width:48px;height:48px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:20px;color:#6b7280">${escapeHtml((user.name || user.email || "?")[0]!.toUpperCase())}</div>`
+              }
+              <div>
+                <div style="font-weight:600;font-size:16px">${escapeHtml(user.name || user.given_name || user.nickname || "")}</div>
+                <div style="color:#6b7280;font-size:14px">${escapeHtml(user.email || "")}</div>
+              </div>
+            </div>
+          </div>
+`;
+}
+
+function accountTranslation(context: ScreenContext) {
+  return createTranslation(
+    "common",
+    "account",
+    context.language || "en",
+    context.customText,
+  ).m;
+}
+
+/**
+ * The hub mid-login: the user, a change-email entry and a button that
+ * continues the login. The other sub-screens need a signed-in session, and
+ * logging out would abandon the login, so neither is offered.
+ */
+function continuationAccountScreen(
+  context: ScreenContext,
+  user: User,
+): ScreenResult {
+  const { branding, state, routePrefix = "/u2", messages } = context;
+  const m = accountTranslation(context);
+  const stateParam = encodeURIComponent(state);
+  const changeEmailHref = `${routePrefix}/account/change-email?state=${stateParam}`;
+
+  const components: FormNodeComponent[] = [
+    {
+      id: "user-info",
+      type: "RICH_TEXT",
+      category: "BLOCK",
+      visible: true,
+      config: { content: userInfoHtml(user) },
+      order: 0,
+    },
+    {
+      id: "nav-links",
+      type: "RICH_TEXT",
+      category: "BLOCK",
+      visible: true,
+      config: {
+        content: `<div style="display:flex;flex-direction:column;gap:8px">
+          <a href="${escapeHtml(changeEmailHref)}" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border:1px solid #e5e7eb;border-radius:8px;text-decoration:none;color:inherit;transition:background 0.15s">
+            <div style="font-weight:500;font-size:14px">${escapeHtml(m.changeEmailLabel())}</div>
+            <div style="color:#9ca3af;font-size:18px">&#8250;</div>
+          </a>
+        </div>`,
+      },
+      order: 1,
+    },
+    {
+      id: "continue",
+      type: "NEXT_BUTTON",
+      category: "BLOCK",
+      visible: true,
+      config: { text: m.continueText() },
+      order: 2,
+    },
+  ];
+
+  const screen: UiScreen = {
+    name: "account",
+    action: `${routePrefix}/account?state=${stateParam}`,
+    method: "POST",
+    title: m.title(),
+    description: m.description(),
+    components,
+    messages,
+  };
+
+  return { screen, branding };
+}
+
+/**
+ * The hub's only form is the mid-login Continue button: send the user back
+ * into the login flow. A signed-in user posting here just sees the hub again.
+ */
+async function handleAccountSubmit(
+  context: ScreenContext,
+): Promise<{ redirect: string }> {
+  const { state, routePrefix = "/u2" } = context;
+  const accountUrl = `${routePrefix}/account?state=${encodeURIComponent(state)}`;
+  const { loginSession, continuationScope } =
+    await resolveAccountUserOrContinuation(context, [CONTINUATION_SCOPE]);
+  if (continuationScope) {
+    return { redirect: getContinuationReturnUrl(loginSession) || accountUrl };
+  }
+  return { redirect: accountUrl };
+}
 
 /**
  * Create the account hub screen
@@ -27,13 +147,13 @@ export async function accountScreen(
     messages,
   } = context;
 
-  const { user } = await resolveAccountUser(context);
-  const { m } = createTranslation(
-    "common",
-    "account",
-    context.language || "en",
-    context.customText,
-  );
+  const { user, loginSession, continuationScope } =
+    await resolveAccountUserOrContinuation(context, [CONTINUATION_SCOPE]);
+  const m = accountTranslation(context);
+
+  if (continuationScope) {
+    return continuationAccountScreen(context, user);
+  }
 
   // Fetch enrollments and separate MFA from passkeys
   let mfaCount = 0;
@@ -72,7 +192,6 @@ export async function accountScreen(
   const stateParam = encodeURIComponent(state);
 
   // Build logout URL
-  const loginSession = await ctx.env.data.loginSessions.get(tenant.id, state);
   const returnTo =
     loginSession?.authParams?.redirect_uri || loginSession?.authorization_url;
   const logoutParams = new URLSearchParams({
@@ -151,21 +270,7 @@ export async function accountScreen(
       category: "BLOCK",
       visible: true,
       config: {
-        content: `
-          <div style="display:flex;flex-direction:column;gap:16px;margin-bottom:8px">
-            <div style="display:flex;align-items:center;gap:12px">
-              ${
-                user.picture
-                  ? `<img src="${escapeHtml(user.picture)}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover" />`
-                  : `<div style="width:48px;height:48px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:20px;color:#6b7280">${escapeHtml((user.name || user.email || "?")[0]!.toUpperCase())}</div>`
-              }
-              <div>
-                <div style="font-weight:600;font-size:16px">${escapeHtml(user.name || user.given_name || user.nickname || "")}</div>
-                <div style="color:#6b7280;font-size:14px">${escapeHtml(user.email || "")}</div>
-              </div>
-            </div>
-          </div>
-        `,
+        content: userInfoHtml(user),
       },
       order: 0,
     },
@@ -232,5 +337,6 @@ export const accountScreenDefinition: ScreenDefinition = {
   description: "Main account management hub",
   handler: {
     get: accountScreen,
+    post: handleAccountSubmit,
   },
 };

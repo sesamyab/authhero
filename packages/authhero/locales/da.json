@@ -42,7 +42,9 @@
       "linkedAccountsCount": "${count} tilknyttede konti",
       "deleteAccountLabel": "Slet konto",
       "deleteAccountDetail": "Slet din konto og dine data permanent",
-      "logoutText": "Log ud"
+      "logoutText": "Log ud",
+      "changeEmailLabel": "Ændre e-mailadresse",
+      "continueText": "Fortsæt"
     },
     "account-profile": {
       "title": "Rediger profil",

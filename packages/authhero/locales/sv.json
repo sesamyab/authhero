@@ -42,7 +42,9 @@
       "linkedAccountsCount": "${count} länkade konton",
       "deleteAccountLabel": "Radera konto",
       "deleteAccountDetail": "Radera ditt konto och dina data permanent",
-      "logoutText": "Logga ut"
+      "logoutText": "Logga ut",
+      "changeEmailLabel": "Byt e-postadress",
+      "continueText": "Fortsätt"
     },
     "account-profile": {
       "title": "Redigera profil",

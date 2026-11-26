@@ -360,7 +360,7 @@ describe("forms - FLOW node with REDIRECT after STEP", () => {
   });
 
   it("should execute FLOW redirect to account page after STEP", async () => {
-    const { universalApp, oauthApp, managementApp, getSentEmails, env } =
+    const { universalApp, u2App, oauthApp, managementApp, getSentEmails, env } =
       await getTestServer({
         mockEmail: true,
         testTenantLanguage: "en",
@@ -503,7 +503,7 @@ describe("forms - FLOW node with REDIRECT after STEP", () => {
     const postLocation = formStepPost.headers.get("location");
 
     // Should redirect to the account page (from the FLOW redirect action)
-    expect(postLocation).toBe(`/u/account?state=${state}`);
+    expect(postLocation).toBe(`/u2/account?state=${state}`);
 
     // Verify that the login session is properly set to awaiting_continuation state
     // This ensures the user can access the account page and return to the auth flow
@@ -520,9 +520,9 @@ describe("forms - FLOW node with REDIRECT after STEP", () => {
     );
 
     // Follow the redirect without an auth cookie: the scoped continuation
-    // must let the classic account page render for the login-session user.
-    const accountPage = await universalApp.request(
-      postLocation!.replace(/^\/u/, ""),
+    // must let the u2 account hub render for the login-session user.
+    const accountPage = await u2App.request(
+      postLocation!.replace(/^\/u2/, ""),
       { method: "GET", headers: { "tenant-id": "tenantId" } },
       env,
     );

@@ -42,7 +42,9 @@
       "linkedAccountsCount": "${count} linked accounts",
       "deleteAccountLabel": "Delete Account",
       "deleteAccountDetail": "Permanently delete your account and data",
-      "logoutText": "Log Out"
+      "logoutText": "Log Out",
+      "changeEmailLabel": "Change email address",
+      "continueText": "Continue"
     },
     "account-profile": {
       "title": "Edit Profile",

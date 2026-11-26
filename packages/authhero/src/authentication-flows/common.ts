@@ -1512,13 +1512,21 @@ function getContinuationScope(loginSession: LoginSession): string[] | null {
 }
 
 /**
- * Check if a login session allows access to a given scope during continuation
+ * Check if a login session allows access to a given scope during continuation.
+ * The scope stands in for a signed-in session, so it ends when the login
+ * session expires: adapters return expired rows and nothing else on the
+ * continuation paths checks `expires_at`.
  */
 export function hasValidContinuationScope(
   loginSession: LoginSession,
   requiredScope: string,
 ): boolean {
   if (loginSession.state !== LoginSessionState.AWAITING_CONTINUATION) {
+    return false;
+  }
+
+  // An unparseable expiry counts as expired.
+  if (!(Date.parse(loginSession.expires_at) > Date.now())) {
     return false;
   }
 
