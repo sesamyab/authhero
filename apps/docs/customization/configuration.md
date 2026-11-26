@@ -205,9 +205,10 @@ const config: AuthHeroConfig = {
     onExecutePostLogin: async (event, api) => {
       // Perform actions after successful login
     },
-    onExecutePreAccountAction: async (event, api) => {
-      // Redirect (api.redirect.sendUserTo) or deny (api.access.deny) a
-      // self-service account operation such as event.operation === "change-email"
+    onExecutePreScreen: async (event, api) => {
+      // Before a universal-login screen is shown or submitted: redirect
+      // (api.redirect.sendUserTo) or deny (api.access.deny), e.g. when
+      // event.screen.name === "login-id" && event.transaction.phase === "submit"
     },
   },
 };

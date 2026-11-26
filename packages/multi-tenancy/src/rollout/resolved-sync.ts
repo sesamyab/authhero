@@ -17,6 +17,7 @@ import {
   hookCodeInsertSchema,
   hookInsertSchema,
   fetchAll,
+  isRetiredHookTrigger,
   isSyncedRowId,
   promptSettingSchema,
   resourceServerInsertSchema,
@@ -572,6 +573,12 @@ export async function applyResolvedConfigBlock(
   }
 
   for (const row of block.hooks) {
+    if (isRetiredHookTrigger(row.trigger_id)) {
+      console.warn(
+        `resolved sync: skipping hook ${row.hook_id} bound to the removed trigger ${row.trigger_id}`,
+      );
+      continue;
+    }
     const key = keyOf("hook", row);
     const rowId = await id("hook", key);
     await attempt("hook", key, async () => {

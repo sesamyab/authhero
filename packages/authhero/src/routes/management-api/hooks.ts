@@ -1,14 +1,17 @@
 import { Bindings, Variables } from "../../types";
 import {
   notFound,
+  managementError,
   managementValidationHook,
 } from "../../errors/management-api-error";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   allowedTriggersForHook,
+  findUnknownPreScreenScreens,
   hookInsertSchema,
   hookSchema,
   LogTypes,
+  PRE_SCREEN_TRIGGER_ID,
 } from "@authhero/adapter-interfaces";
 import { logMessage } from "../../helpers/logging";
 import { querySchema } from "../../types/auth0/Query";
@@ -19,6 +22,25 @@ import { invokeWebHook } from "../../hooks/webhooks";
 
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId, withTotals, withNext, listResponse } from "./helpers";
+
+/**
+ * `metadata.screens` on a `pre-screen` hook must name known screens: a typo
+ * would otherwise stop the binding from ever running, silently.
+ */
+function assertPreScreenMetadata(
+  triggerId: string | undefined,
+  metadata: Record<string, unknown> | undefined,
+) {
+  if (triggerId !== PRE_SCREEN_TRIGGER_ID) return;
+  const unknown = findUnknownPreScreenScreens(metadata);
+  if (unknown.length > 0) {
+    throw managementError(
+      400,
+      `Unknown screens in metadata.screens: ${unknown.join(", ")}`,
+    );
+  }
+}
+
 const hooksWithTotalsSchema = withTotals({
   hooks: z.array(hookSchema),
 });
@@ -119,6 +141,7 @@ const postRoot = defineRoute({
   handler: async (ctx) => {
     const tenantId = requireTenantId(ctx);
     const hook = ctx.req.valid("json");
+    assertPreScreenMetadata(hook.trigger_id, hook.metadata);
 
     const hookData = {
       ...hook,
@@ -224,6 +247,13 @@ const patchByHook_id = defineRoute({
           message: `Trigger "${hook.trigger_id}" is not supported by this hook type. Supported triggers: ${allowedTriggers.join(", ")}`,
         });
       }
+    }
+
+    if (hook.metadata) {
+      assertPreScreenMetadata(
+        hook.trigger_id ?? existing?.trigger_id,
+        hook.metadata,
+      );
     }
 
     await ctx.env.data.hooks.update(tenantId, hook_id, hook);

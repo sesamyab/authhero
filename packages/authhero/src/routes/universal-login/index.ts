@@ -40,6 +40,7 @@ import { continueRoutes } from "./continue";
 import { errorRoutes } from "./error";
 import { createUniversalLoginErrorHandler } from "./error-handler";
 import { frameAncestorsMiddleware } from "./embed";
+import { preScreenMiddleware } from "./pre-screen-gates";
 
 export default function create(config: AuthHeroConfig) {
   // Built once here rather than per request: the archive destinations validate
@@ -164,6 +165,27 @@ export default function create(config: AuthHeroConfig) {
     })
     .use(clientInfoMiddleware)
     .use(tenantMiddleware);
+
+  // The `pre-screen` trigger on the classic pages that have a u2 screen. The
+  // account page's only submission (unlink) is gated in its handler, after
+  // the CSRF check.
+  const classicScreens: Array<[string, string, { submit?: boolean }]> = [
+    ["/account", "account", { submit: false }],
+    ["/account/change-email", "account-change-email", {}],
+    ["/account/change-email-verify", "account-change-email-verify", {}],
+    ["/login/identifier", "identifier", {}],
+    ["/login/email-otp-challenge", "email-otp-challenge", {}],
+    ["/login/sms-otp-challenge", "sms-otp-challenge", {}],
+    ["/enter-password", "enter-password", {}],
+    ["/invalid-session", "invalid-session", {}],
+    ["/reset-password", "reset-password", {}],
+    ["/forgot-password", "forgot-password", {}],
+    ["/signup", "signup", {}],
+    ["/impersonate", "impersonate", {}],
+  ];
+  for (const [path, screenId, options] of classicScreens) {
+    app.use(path, preScreenMiddleware(screenId, options));
+  }
 
   const universalApp = app
     .route("/info", infoRoutes)

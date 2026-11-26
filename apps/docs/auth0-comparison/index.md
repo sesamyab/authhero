@@ -110,7 +110,7 @@ const auth = init({
 - ✅ `onExecutePostUserDeletion` - **AuthHero-only**: Cleanup after deletion
 - ✅ `onExecutePostLogin` - Post-authentication customization
 - ✅ `onExecuteCredentialsExchange` - Modify tokens before issuance
-- ✅ `onExecutePreAccountAction` - **AuthHero-only**: Redirect or deny self-service account operations (change email, MFA enrollment, delete account, ...). See [Hooks guide](../features/hooks.md#account-operation-action-pre-account-action)
+- ✅ `onExecutePreScreen` - **AuthHero-only**: Redirect or deny before a universal-login screen is shown or submitted (login, signup, password reset, MFA, consent, account pages). Auth0 has no pre-login trigger. See [Hooks guide](../features/hooks.md#screen-action-pre-screen)
 - ✅ `custom-email-provider` / `custom-phone-provider` - Auth0-compatible Actions that deliver emails and text messages from your own system, plus AuthHero's per-message-type selection and `api.notification.useDefaultProvider()`. See [Custom Email and SMS Providers](../features/custom-email-and-sms-providers.md)
 
 #### User Deletion Hooks

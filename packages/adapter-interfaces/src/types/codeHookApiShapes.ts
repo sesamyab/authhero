@@ -54,9 +54,9 @@ export const TRIGGER_API_SHAPES: Readonly<
   "post-user-update": {},
   "pre-user-deletion": { access: ["deny"] },
   "post-user-deletion": {},
-  // AuthHero extension: runs when a user starts a self-service account
-  // operation. The first action that redirects or denies decides the outcome.
-  "pre-account-action": {
+  // AuthHero extension: runs before a universal-login screen is shown and when
+  // it is submitted. The first action that redirects or denies decides.
+  "pre-screen": {
     redirect: ["sendUserTo"],
     access: ["deny"],
   },
@@ -93,7 +93,7 @@ export const TRIGGER_FUNCTION_NAMES: Readonly<Record<string, string>> = {
   "post-user-update": "onExecutePostUserUpdate",
   "pre-user-deletion": "onExecutePreUserDeletion",
   "post-user-deletion": "onExecutePostUserDeletion",
-  "pre-account-action": "onExecutePreAccountAction",
+  "pre-screen": "onExecutePreScreen",
   "custom-token-exchange": "onExecuteCustomTokenExchange",
   "custom-email-provider": "onExecuteCustomEmailProvider",
   "custom-phone-provider": "onExecuteCustomPhoneProvider",

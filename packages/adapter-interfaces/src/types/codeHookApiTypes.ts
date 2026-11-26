@@ -71,8 +71,8 @@ export interface ActionRedirectAPI {
   sendUserTo(url: string, options?: { query?: Record<string, string> }): void;
 }
 
-export interface ActionAccountAccessAPI {
-  /** Stop the account operation and show the reason to the user. */
+export interface ActionScreenAccessAPI {
+  /** Stop the screen (or its submission) and show the reason to the user. */
   deny(reason?: string): void;
 }
 
@@ -167,10 +167,10 @@ export interface CodeHookApiByTrigger {
     access: ActionBlockingAccessAPI;
   };
   "post-user-deletion": {};
-  "pre-account-action": {
-    /** Send the user somewhere else instead of running the operation here. */
+  "pre-screen": {
+    /** Send the user somewhere else instead of showing or submitting the screen. */
     redirect: ActionRedirectAPI;
-    access: ActionAccountAccessAPI;
+    access: ActionScreenAccessAPI;
   };
   "custom-email-provider": {
     /** If several of these are called, only the last call counts. */

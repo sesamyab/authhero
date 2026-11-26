@@ -126,7 +126,7 @@ const signatureChecks: Record<string, string> = {
     // @ts-expect-error credentials exchange needs an error code
     api.access.deny();
   `,
-  "pre-account-action": `
+  "pre-screen": `
     declare const api: ActionAPI;
     api.redirect.sendUserTo("https://idp.example.com/profile");
     api.redirect.sendUserTo("https://idp.example.com", { query: { op: "x" } });

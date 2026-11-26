@@ -47,10 +47,11 @@ const codeHookAllowedTriggers = z.enum([
   "post-user-update",
   "pre-user-deletion",
   "post-user-deletion",
-  // AuthHero extension (no Auth0 equivalent): runs when a user starts a
-  // self-service account operation (change email, MFA enrollment, delete
-  // account, ...) and may redirect the user elsewhere or deny the operation.
-  "pre-account-action",
+  // AuthHero extension (Auth0 has no pre-login trigger): runs before a
+  // universal-login screen is shown and when it is submitted, and may redirect
+  // the user elsewhere or deny. `metadata.screens` limits which screens a
+  // binding runs for; see `PreScreen.ts`.
+  "pre-screen",
   // Auth0's custom provider triggers: the bound action delivers outgoing
   // emails / text messages itself instead of the tenant's provider. AuthHero
   // extension: the hook's `metadata.message_types` limits which message types

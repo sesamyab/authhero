@@ -6,7 +6,7 @@ import MessagePage from "../../components/MessagePage";
 import i18next from "i18next";
 import { nanoid } from "nanoid";
 import { defineRoute } from "../../utils/define-route";
-import { enforcePreAccountAction } from "../../hooks/pre-account-action";
+import { enforcePreScreen } from "../../hooks/pre-screen";
 const getRoot = defineRoute({
   route: createRoute({
     tags: ["login"],
@@ -157,12 +157,15 @@ const postRoot = defineRoute({
       body.csrf_token &&
       body.csrf_token === loginSession.csrf_token
     ) {
-      await enforcePreAccountAction(ctx, {
+      const details = { provider: body.provider, user_id: body.user_id };
+      await enforcePreScreen(ctx, {
         tenantId: client.tenant.id,
-        operation: "unlink-identity",
-        user,
-        client,
-        details: { provider: body.provider, user_id: body.user_id },
+        screen: "account",
+        phase: "submit",
+        client: async () => client,
+        loginSession: async () => loginSession,
+        user: async () => user,
+        submission: async () => ({ operation: "unlink-identity", details }),
       });
     }
 

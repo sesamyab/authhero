@@ -3,11 +3,8 @@
  */
 
 import type { ScreenDefinition, ScreenContext, ScreenResult } from "./types";
-import type { AccountActionOperation } from "../../../types/Hooks";
-import type { User } from "@authhero/adapter-interfaces";
-import { gatedPost, gatedScreen } from "./account-helpers";
-import { getPrimaryUserByEmail } from "../../../helpers/users";
 import { withPromptPartials } from "./login-partials";
+import { withPreScreen } from "../pre-screen-gates";
 import { identifierScreenDefinition } from "./identifier";
 import { loginScreenDefinition } from "./login";
 import { emailOtpChallengeScreenDefinition } from "./email-otp-challenge";
@@ -28,7 +25,6 @@ import { accountProfileScreenDefinition } from "./account-profile";
 import {
   accountChangeEmailScreenDefinition,
   accountChangeEmailVerifyScreenDefinition,
-  resolveChangeEmailUser,
 } from "./account-change-email";
 import { invalidSessionScreenDefinition } from "./invalid-session";
 import { accountSecurityScreenDefinition } from "./account-security";
@@ -58,61 +54,6 @@ import {
 } from "./email-verification";
 
 /**
- * Fire the `pre-account-action` trigger when the user opens a screen that
- * starts an account operation, and again when they submit it, so a direct
- * POST can't skip a denial. Operations that are a button on a shared screen
- * (removing an MFA factor or passkey, unlinking an identity) are gated in that
- * screen's POST handler instead.
- */
-function withAccountActionGate(
-  definition: ScreenDefinition,
-  operation: AccountActionOperation,
-  options: {
-    details?: Record<string, string>;
-    getUser?: (context: ScreenContext) => Promise<User | undefined>;
-    postUser?: (
-      context: ScreenContext,
-      data: Record<string, unknown>,
-    ) => Promise<User | undefined>;
-  } = {},
-): ScreenDefinition {
-  const { post } = definition.handler;
-  return {
-    ...definition,
-    handler: {
-      get: gatedScreen(operation, definition.handler.get, {
-        details: options.details,
-        user: options.getUser,
-      }),
-      ...(post
-        ? {
-            post: gatedPost(operation, post, {
-              details: options.details,
-              user: options.postUser,
-            }),
-          }
-        : {}),
-    },
-  };
-}
-
-/**
- * Password reset starts before sign-in, so the user comes from an email
- * address (the identifier entered so far, or the submitted form) rather than
- * the session.
- */
-async function userByEmail(context: ScreenContext, email: unknown) {
-  if (typeof email !== "string") return undefined;
-  const normalized = email.toLowerCase().trim();
-  if (!normalized) return undefined;
-  return getPrimaryUserByEmail({
-    userAdapter: context.ctx.env.data.users,
-    tenant_id: context.tenant.id,
-    email: normalized,
-  });
-}
-
-/**
  * Registry of all built-in screens
  */
 export const screenRegistry: Map<string, ScreenDefinition> = new Map([
@@ -122,13 +63,7 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["sms-otp-challenge", smsOtpChallengeScreenDefinition],
   ["enter-password", enterPasswordScreenDefinition],
   ["signup", signupScreenDefinition],
-  [
-    "forgot-password",
-    withAccountActionGate(forgotPasswordScreenDefinition, "reset-password", {
-      getUser: (context) => userByEmail(context, context.prefill?.username),
-      postUser: (context, data) => userByEmail(context, data.email),
-    }),
-  ],
+  ["forgot-password", forgotPasswordScreenDefinition],
   ["reset-password", resetPasswordScreenDefinition],
   ["impersonate", impersonateScreenDefinition],
   [
@@ -141,42 +76,14 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["mfa-totp-challenge", mfaTotpChallengeScreenDefinition],
   ["mfa-login-options", mfaLoginOptionsScreenDefinition],
   ["account", accountScreenDefinition],
-  [
-    "account-profile",
-    withAccountActionGate(accountProfileScreenDefinition, "update-profile"),
-  ],
-  [
-    "account-change-email",
-    // Mid-login (form hook) the user comes from the continuation scope, not
-    // a session cookie, so the gate must resolve it the same way.
-    withAccountActionGate(accountChangeEmailScreenDefinition, "change-email", {
-      getUser: async (context) => (await resolveChangeEmailUser(context)).user,
-      postUser: async (context) => (await resolveChangeEmailUser(context)).user,
-    }),
-  ],
+  ["account-profile", accountProfileScreenDefinition],
+  ["account-change-email", accountChangeEmailScreenDefinition],
   ["account-change-email-verify", accountChangeEmailVerifyScreenDefinition],
   ["account-security", accountSecurityScreenDefinition],
-  [
-    "account-mfa-totp-enrollment",
-    withAccountActionGate(
-      accountMfaTotpEnrollmentScreenDefinition,
-      "enroll-mfa",
-      { details: { factor: "totp" } },
-    ),
-  ],
-  [
-    "account-mfa-phone-enrollment",
-    withAccountActionGate(
-      accountMfaPhoneEnrollmentScreenDefinition,
-      "enroll-mfa",
-      { details: { factor: "phone" } },
-    ),
-  ],
+  ["account-mfa-totp-enrollment", accountMfaTotpEnrollmentScreenDefinition],
+  ["account-mfa-phone-enrollment", accountMfaPhoneEnrollmentScreenDefinition],
   ["account-linked", accountLinkedScreenDefinition],
-  [
-    "account-delete",
-    withAccountActionGate(accountDeleteScreenDefinition, "delete-account"),
-  ],
+  ["account-delete", accountDeleteScreenDefinition],
   ["account-passkeys", accountPasskeysScreenDefinition],
   ["passkey-enrollment-nudge", passkeyEnrollmentNudgeScreenDefinition],
   ["passkey-enrollment", passkeyEnrollmentScreenDefinition],
@@ -196,12 +103,17 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["invalid-session", invalidSessionScreenDefinition],
 ]);
 
-// Attach tenant prompt partials to the sign-in form screens that don't read
-// them themselves (see `screen-prompt-map.ts`). Every definition is wrapped,
-// since a POST on one screen can return another (identifier → email code);
-// screens without a partials target pass through untouched.
+// Fire the `pre-screen` trigger on every screen (render on GET, submit on
+// POST; see `pre-screen-gates.ts`), then attach tenant prompt partials to the
+// sign-in form screens that don't read them themselves (see
+// `screen-prompt-map.ts`). Every definition is wrapped, since a POST on one
+// screen can return another (identifier → email code); screens without a
+// partials target pass through untouched.
 for (const [screenId, definition] of screenRegistry) {
-  screenRegistry.set(screenId, withPromptPartials(screenId, definition));
+  screenRegistry.set(
+    screenId,
+    withPromptPartials(screenId, withPreScreen(screenId, definition)),
+  );
 }
 
 /**
