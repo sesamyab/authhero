@@ -254,12 +254,13 @@ input[type="date"].input-field+.input-label {
   box-sizing: border-box;
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.btn:not(:disabled):active {
+.btn:not(:disabled):not([aria-disabled="true"]):active {
   transform: scale(0.98);
 }
 
@@ -276,7 +277,7 @@ input[type="date"].input-field+.input-label {
   margin-top: 12px;
 }
 
-.btn-primary:not(:disabled):hover {
+.btn-primary:not(:disabled):not([aria-disabled="true"]):hover {
   background-color: var(
     --ah-color-primary-hover,
     color-mix(in srgb, var(--ah-color-primary, #635dff) 85%, black)
@@ -291,7 +292,7 @@ input[type="date"].input-field+.input-label {
     var(--ah-btn-secondary-border, var(--ah-color-border, #c9cace));
 }
 
-.btn-secondary:not(:disabled):hover {
+.btn-secondary:not(:disabled):not([aria-disabled="true"]):hover {
   background-color: var(--ah-color-bg-hover, #f5f5f5);
   border-color: var(--ah-color-border-hover, #65676e);
 }
