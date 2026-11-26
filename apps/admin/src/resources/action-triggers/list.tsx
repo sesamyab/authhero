@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   RecordContextProvider,
   useCreatePath,
@@ -8,7 +8,7 @@ import {
   useRefresh,
   useUpdate,
 } from "ra-core";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +27,10 @@ import {
   type ActionRecord,
   type TriggerBinding,
 } from "./bindings";
+import {
+  describeMessageTypes,
+  isNotificationTrigger,
+} from "../hooks/notification-message-types";
 
 interface TriggerSectionProps {
   triggerId: string;
@@ -143,9 +147,19 @@ function TriggerSection({
   );
 
   return (
-    <Card>
+    <Card id={triggerId} className="scroll-mt-4">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-        <CardTitle>{triggerName}</CardTitle>
+        <div className="flex flex-col gap-1">
+          <CardTitle>{triggerName}</CardTitle>
+          {isNotificationTrigger(triggerId) && (
+            <p className="text-sm text-muted-foreground">
+              {triggerId === "custom-email-provider"
+                ? "The bound action delivers outgoing emails instead of the email provider."
+                : "The bound action delivers outgoing text messages instead of the SMS connection."}{" "}
+              With no action bound, messages go out as before.
+            </p>
+          )}
+        </div>
         {types.length > 0 && (
           <Button variant="outline" size="sm" asChild>
             <Link
@@ -202,6 +216,15 @@ function TriggerSection({
                               </RecordContextProvider>
                               {hook.permission_required && (
                                 <span>Requires {hook.permission_required}</span>
+                              )}
+                              {isNotificationTrigger(triggerId) && (
+                                <span>
+                                  Delivers:{" "}
+                                  {describeMessageTypes(
+                                    triggerId,
+                                    hook.metadata,
+                                  )}
+                                </span>
                               )}
                               {hook.code_id &&
                                 actions.some(
@@ -307,6 +330,15 @@ export function ActionTriggersList() {
     sort: { field: "name", order: "ASC" },
   });
   const refresh = useRefresh();
+  const { hash } = useLocation();
+  const loaded = !hooks.isPending && !actions.isPending && !forms.isPending;
+  // Links from the email provider / MFA pages point at one trigger's card.
+  useEffect(() => {
+    if (!loaded || !hash) return;
+    document
+      .getElementById(decodeURIComponent(hash.slice(1)))
+      ?.scrollIntoView({ block: "start" });
+  }, [loaded, hash]);
   const triggers = useMemo(() => {
     const knownIds = new Set(triggerChoices.map((trigger) => trigger.id));
     const additional = [

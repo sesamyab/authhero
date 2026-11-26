@@ -339,8 +339,12 @@ AuthHero supports the following programmatic hooks that can be configured when i
 | Post User Deletion     | ✅ `post-user-deletion`                | ✅ `onExecutePostUserDeletion`     |
 | Credentials Exchange   | ❌ Not Available                       | ✅ `onExecuteCredentialsExchange`  |
 | Pre Account Action¹    | ❌ Not Available (code Actions only)   | ✅ `onExecutePreAccountAction`     |
+| Custom Email Provider² | ❌ Not Available (code Actions only)   | ❌ Not Available                   |
+| Custom Phone Provider² | ❌ Not Available (code Actions only)   | ❌ Not Available                   |
 
 ¹ AuthHero extension with no Auth0 equivalent: runs when a user starts a self-service account operation and can redirect or deny. URL, form and page hooks can't bind to it; use a code Action bound to `pre-account-action` or the config callback. See the [Hooks guide](../features/hooks.md#account-operation-action-pre-account-action).
+
+² Auth0's `custom-email-provider` and `custom-phone-provider` triggers: a code Action delivers outgoing emails or text messages instead of the tenant's provider. Auth0 Actions run unchanged; AuthHero adds per-message-type selection and `api.notification.useDefaultProvider()`. See [Custom Email and SMS Providers](../features/custom-email-and-sms-providers.md).
 
 ```
 
