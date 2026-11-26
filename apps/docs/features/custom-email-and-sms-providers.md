@@ -122,7 +122,9 @@ if you call several, the last call wins (as in Auth0):
 - **`api.notification.retry(reason)`**: delivery failed but may work later.
   A `wn` (Warning Sending Notification) log is written, the flow continues as if
   the message was sent, and AuthHero runs the Action again in the background up
-  to 5 times (after 1, 2, 3, 5 and 8 seconds). If every retry fails, an `fn` log
+  to 5 times (after 1, 2, 3, 5 and 8 seconds). Retries stop early if they would
+  run past the request's background window, and an MFA code retry stops as soon
+  as a resend replaces the code. If the message is never delivered, an `fn` log
   is written. The user can still use "resend".
 - **`api.notification.useDefaultProvider()`** *(AuthHero extension)*: send this
   message with the tenant's normal email provider or SMS connection instead.
