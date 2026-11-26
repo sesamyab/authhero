@@ -24,6 +24,7 @@ import { RedirectException } from "../../../errors/redirect-exception";
 import { escapeHtml } from "../sanitization-utils";
 import { fetchAll } from "../../../utils/fetchAll";
 import {
+  isControlPlaneTenant,
   userHasGlobalOrgAdmin,
   userHasAccessAllOrganizations,
   userCanRegisterOnOrg,
@@ -168,6 +169,15 @@ export async function connectTenantSelectScreen(
 ): Promise<ScreenResult> {
   const { ctx, tenant, branding, state, messages } = context;
   const routePrefix = CONNECT_ROUTE_PREFIX;
+
+  // The workspace pick only exists on the control plane. Elsewhere the
+  // consent mints on the request tenant itself.
+  if (!isControlPlaneTenant(ctx.env.data, tenant.id)) {
+    throw new RedirectException(
+      `${routePrefix}/connect/start?state=${encodeURIComponent(state)}`,
+    );
+  }
+
   const { m } = createTranslation(
     "consent",
     "connect-tenant-select",
@@ -269,6 +279,13 @@ async function handleConnectTenantSelectSubmit(
 > {
   const { ctx, tenant, state } = context;
   const routePrefix = CONNECT_ROUTE_PREFIX;
+
+  if (!isControlPlaneTenant(ctx.env.data, tenant.id)) {
+    return {
+      redirect: `${routePrefix}/connect/start?state=${encodeURIComponent(state)}`,
+    };
+  }
+
   const { m } = createTranslation(
     "consent",
     "connect-tenant-select",

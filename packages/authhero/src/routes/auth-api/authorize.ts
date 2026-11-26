@@ -2,6 +2,7 @@ import { verifyRequestOrigin } from "../../utils/request-origin";
 import { HTTPException } from "hono/http-exception";
 import { readOperatorConstraints } from "../../helpers/dcr/presets";
 import { readIatConstraints } from "../../helpers/dcr/client-registration";
+import { missingGrantTypeForResponseType } from "../../helpers/response-type-grants";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   AuthParams,
@@ -702,6 +703,49 @@ const getRoot = defineRoute({
         const redirectUrl = new URL(sanitizedRedirectUri);
         for (const [k, v] of Object.entries(errorParams)) {
           redirectUrl.searchParams.set(k, v);
+        }
+        return ctx.redirect(redirectUrl.toString());
+      }
+      throw new HTTPException(400, { message: errorDescription });
+    }
+
+    // RFC 6749 §4.1.2.1 / §4.2.2.1: the client must be registered for the
+    // grant its response type uses. Same rule as the token endpoint: only
+    // enforced when the client lists `grant_types`.
+    const missingGrantType = missingGrantTypeForResponseType(
+      client.grant_types,
+      response_type,
+    );
+    if (missingGrantType) {
+      const errorDescription = `Grant type '${missingGrantType}' not allowed for the client.`;
+      if (sanitizedRedirectUri) {
+        const errorParams: Record<string, string> = {
+          error: "unauthorized_client",
+          error_description: errorDescription,
+        };
+        if (state) errorParams.state = state;
+
+        if (response_mode === AuthorizationResponseMode.FORM_POST) {
+          return formPostResponse(
+            sanitizedRedirectUri,
+            errorParams,
+            new Headers(),
+          );
+        }
+        const redirectUrl = new URL(sanitizedRedirectUri);
+        const params = new URLSearchParams(errorParams);
+        // Error responses travel in the channel the response would have:
+        // the fragment for anything but a pure code response.
+        if (
+          response_mode === AuthorizationResponseMode.FRAGMENT ||
+          (response_mode !== AuthorizationResponseMode.QUERY &&
+            response_type !== AuthorizationResponseType.CODE)
+        ) {
+          redirectUrl.hash = params.toString();
+        } else {
+          for (const [k, v] of params) {
+            redirectUrl.searchParams.set(k, v);
+          }
         }
         return ctx.redirect(redirectUrl.toString());
       }
