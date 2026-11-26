@@ -1095,9 +1095,13 @@ export class AuthheroWidget {
     }
 
     // Explicit overrides (the clicked button, a resend action, data from a
-    // WebAuthn ceremony) win over anything collected from the form, so e.g. a
-    // hidden input named "action" cannot replace "resend".
-    Object.assign(submitData, overrideData || {});
+    // WebAuthn ceremony) win over hidden inputs, so e.g. a hidden input named
+    // "action" cannot replace "resend". Native ulp-* values collected above
+    // are kept: form.submit() passes the same controls flattened to their
+    // last value, which would drop the rest of a repeated name.
+    for (const [key, value] of Object.entries(overrideData || {})) {
+      if (!nativeNames.has(key)) submitData[key] = value;
+    }
 
     // Always emit the submit event
     this.formSubmit.emit({
