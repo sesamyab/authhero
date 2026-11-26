@@ -18,6 +18,7 @@ import {
   actionInsertSchema,
   actionVersionInsertSchema,
   hookInsertSchema,
+  isRetiredHookTrigger,
   hookCodeInsertSchema,
   flowInsertSchema,
   formInsertSchema,
@@ -265,6 +266,13 @@ export async function importTenant(
           );
           break;
         case "hooks":
+          if (isRetiredHookTrigger(clean.trigger_id)) {
+            console.warn(
+              `tenant import: skipping hook bound to the removed trigger ${String(clean.trigger_id)}`,
+            );
+            // Skip the row, not just the switch: it isn't counted as imported.
+            continue;
+          }
           await data.hooks.create(
             tenant_id,
             hookInsertSchema.parse(clean),

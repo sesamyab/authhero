@@ -30,6 +30,10 @@ export const TRIGGER_API_SHAPES: Readonly<
     // host-side (candidate allowlist + verified-email gate) — see the
     // post-user-login dispatch.
     user: ["setLinkedTo"],
+    // Create or update users in an `external` connection (issue #1802), e.g.
+    // an anchor for an external record that `user.setLinkedTo` then links
+    // under. Guarded host-side by the connection's `allow_action_users`.
+    users: ["ensure"],
     // Require MFA for this login (issue #1670). Replayed host-side into the
     // login session so the MFA check runs before tokens are issued.
     multifactor: ["enable"],
@@ -41,6 +45,7 @@ export const TRIGGER_API_SHAPES: Readonly<
   },
   "pre-user-registration": {
     user: ["setUserMetadata", "setAppMetadata", "setLinkedTo"],
+    users: ["ensure"],
     access: ["deny"],
     validation: ["error"],
   },
@@ -49,9 +54,9 @@ export const TRIGGER_API_SHAPES: Readonly<
   "post-user-update": {},
   "pre-user-deletion": { access: ["deny"] },
   "post-user-deletion": {},
-  // AuthHero extension: runs when a user starts a self-service account
-  // operation. The first action that redirects or denies decides the outcome.
-  "pre-account-action": {
+  // AuthHero extension: runs before a universal-login screen is shown and when
+  // it is submitted. The first action that redirects or denies decides.
+  "pre-screen": {
     redirect: ["sendUserTo"],
     access: ["deny"],
   },
@@ -88,7 +93,7 @@ export const TRIGGER_FUNCTION_NAMES: Readonly<Record<string, string>> = {
   "post-user-update": "onExecutePostUserUpdate",
   "pre-user-deletion": "onExecutePreUserDeletion",
   "post-user-deletion": "onExecutePostUserDeletion",
-  "pre-account-action": "onExecutePreAccountAction",
+  "pre-screen": "onExecutePreScreen",
   "custom-token-exchange": "onExecuteCustomTokenExchange",
   "custom-email-provider": "onExecuteCustomEmailProvider",
   "custom-phone-provider": "onExecuteCustomPhoneProvider",

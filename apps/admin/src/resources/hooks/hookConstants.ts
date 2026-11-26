@@ -69,7 +69,7 @@ export const triggerChoices = [
   { id: "post-user-update", name: "Post User Update" },
   { id: "pre-user-deletion", name: "Pre User Deletion" },
   { id: "post-user-deletion", name: "Post User Deletion" },
-  { id: "pre-account-action", name: "Pre Account Action" },
+  { id: "pre-screen", name: "Pre Screen" },
   { id: "custom-email-provider", name: "Custom Email Provider" },
   { id: "custom-phone-provider", name: "Custom Phone Provider" },
 ];
@@ -138,9 +138,22 @@ export function getTriggerChoicesForType(type?: string) {
   }
 }
 
-/** Webhook triggers supported by the management API and runtime. */
-export const webhookTriggerChoices = triggerChoices.filter(
-  (c) => !["credentials-exchange", "pre-user-update"].includes(c.id),
+/**
+ * Webhook triggers supported by the management API and runtime. Mirrors
+ * `webHookAllowedTriggers` in adapter-interfaces — an allowlist, so a new
+ * Action-only trigger (`pre-screen`, the custom providers) isn't offered for
+ * webhooks and then refused on save.
+ */
+export const webhookTriggerChoices = triggerChoices.filter((c) =>
+  [
+    "pre-user-registration",
+    "post-user-registration",
+    "post-user-login",
+    "post-user-update",
+    "validate-registration-username",
+    "pre-user-deletion",
+    "post-user-deletion",
+  ].includes(c.id),
 );
 
 export const bindingTypeChoices = [
@@ -173,7 +186,7 @@ export const codeHookTriggerChoices = triggerChoices.filter((c) =>
     "post-user-update",
     "pre-user-deletion",
     "post-user-deletion",
-    "pre-account-action",
+    "pre-screen",
     "custom-email-provider",
     "custom-phone-provider",
   ].includes(c.id),
@@ -199,7 +212,7 @@ export const triggerHandlerNames: Record<string, string> = {
   "post-user-update": "onExecutePostUserUpdate",
   "pre-user-deletion": "onExecutePreUserDeletion",
   "post-user-deletion": "onExecutePostUserDeletion",
-  "pre-account-action": "onExecutePreAccountAction",
+  "pre-screen": "onExecutePreScreen",
   "custom-email-provider": "onExecuteCustomEmailProvider",
   "custom-phone-provider": "onExecuteCustomPhoneProvider",
   "custom-token-exchange": "onExecuteCustomTokenExchange",
@@ -355,20 +368,24 @@ export function getDefaultCodeTemplate(triggerId?: string): string {
   if (triggerId === "custom-phone-provider") {
     return CUSTOM_PHONE_PROVIDER_TEMPLATE;
   }
-  if (triggerId === "pre-account-action") {
+  if (triggerId === "pre-screen") {
     return `/**
- * Runs when a user starts a self-service account operation, before any form
- * or code is shown. event.operation is one of: change-email, update-profile,
- * reset-password, enroll-mfa, remove-mfa, enroll-passkey, remove-passkey,
- * unlink-identity, delete-account.
+ * Runs before a universal-login screen is shown (event.transaction.phase
+ * "render") and when it is submitted ("submit"). event.screen.name and
+ * event.prompt.name use Auth0's Universal Login names (login-id,
+ * login-password, signup, reset-password-request, mfa-otp-challenge,
+ * consent, ...) plus AuthHero's account-* screens. On submit,
+ * event.operation names what the submission does (change-email,
+ * remove-mfa, unlink-identity, ...). event.user is set when known.
  *
- * Call api.redirect.sendUserTo(url) to send the user elsewhere (for example
- * the identity provider that owns their profile), or api.access.deny(reason)
- * to stop the operation. Do nothing to let it continue.
+ * Call api.redirect.sendUserTo(url) to send the user elsewhere, or
+ * api.access.deny(reason) to stop. Do nothing to continue. Pick the screens
+ * this action runs for on its binding.
  */
-exports.onExecutePreAccountAction = async (event, api) => {
-  // if (event.connection?.name === "my-external-idp") {
-  //   api.redirect.sendUserTo("https://idp.example.com/profile");
+exports.onExecutePreScreen = async (event, api) => {
+  // if (event.screen.name === "login-id" && event.transaction.phase === "submit"
+  //     && event.user?.email?.endsWith("@partner.example")) {
+  //   api.redirect.sendUserTo("https://sso.partner.example/login");
   // }
 };
 `;

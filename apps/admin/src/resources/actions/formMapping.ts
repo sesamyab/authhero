@@ -35,7 +35,7 @@ export const ACTION_TRIGGER_IDS = [
   "post-user-update",
   "pre-user-deletion",
   "post-user-deletion",
-  "pre-account-action",
+  "pre-screen",
   "custom-email-provider",
   "custom-phone-provider",
   // Not bindable: a token exchange profile references the action by id.

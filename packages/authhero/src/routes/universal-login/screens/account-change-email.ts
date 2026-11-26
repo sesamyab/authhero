@@ -341,7 +341,7 @@ async function handleChangeEmailSubmit(
       loginSession.id,
       {
         type: LoginSessionEventType.UPDATE_CONTEXT,
-        data: { pending_email_change: { email } },
+        data: { pending_email_change: { email }, email_change_done: undefined },
       },
     );
 
@@ -397,13 +397,22 @@ export async function accountChangeEmailVerifyScreen(
   context: ScreenContext,
 ): Promise<ScreenResult> {
   const { branding, state, errors, messages, routePrefix = "/u2" } = context;
-  const { loginSession } = await resolveChangeEmailUser(context);
+  const { loginSession, isContinuation } =
+    await resolveChangeEmailUser(context);
 
-  const pending = readLoginSessionData(
-    loginSession.state_data,
-  ).pending_email_change;
+  const stateData = readLoginSessionData(loginSession.state_data);
+  const pending = stateData.pending_email_change;
+  if (!pending?.email && stateData.email_change_done?.email) {
+    // The change went through: show its confirmation. Read on GET so it is
+    // shown after the redirect that follows the verify POST.
+    return changeEmailDoneScreen(
+      context,
+      stateData.email_change_done.email,
+      getContinueUrl(context, loginSession, isContinuation),
+    );
+  }
   if (!pending?.email) {
-    // Nothing requested yet (or already done): start over.
+    // Nothing requested yet: start over.
     throw new RedirectException(
       `${routePrefix}/account/change-email?state=${encodeURIComponent(state)}`,
     );
@@ -486,10 +495,21 @@ async function handleChangeEmailVerifySubmit(
   context: ScreenContext,
   data: Record<string, unknown>,
 ): Promise<PostResult> {
-  const { ctx, tenant } = context;
-  const { user, loginSession, isContinuation } =
-    await resolveChangeEmailUser(context);
+  const { ctx, tenant, routePrefix = "/u2", state } = context;
+  const { user, loginSession } = await resolveChangeEmailUser(context);
   const m = verifyTranslation(context);
+  const verifyUrl = `${routePrefix}/account/change-email/verify?state=${encodeURIComponent(state)}`;
+
+  // Only the address currently awaiting confirmation can be applied: codes
+  // from earlier requests in this session (for other addresses) are void.
+  // With nothing pending (already done, or never started) the GET decides
+  // what to show.
+  const pending = readLoginSessionData(
+    loginSession.state_data,
+  ).pending_email_change;
+  if (!pending?.email) {
+    return { redirect: verifyUrl };
+  }
 
   const withError = async (text: string) => ({
     error: text,
@@ -557,12 +577,7 @@ async function handleChangeEmailVerifySubmit(
   }
   const email = meta.email;
 
-  // Only the address currently awaiting confirmation can be applied: codes
-  // from earlier requests in this session (for other addresses) are void.
-  const pending = readLoginSessionData(
-    loginSession.state_data,
-  ).pending_email_change;
-  if (pending?.email !== email) {
+  if (pending.email !== email) {
     return fail(m.invalidCode(), "Change email code is for another address");
   }
 
@@ -612,7 +627,7 @@ async function handleChangeEmailVerifySubmit(
     loginSession.id,
     {
       type: LoginSessionEventType.UPDATE_CONTEXT,
-      data: { pending_email_change: undefined },
+      data: { pending_email_change: undefined, email_change_done: { email } },
     },
   );
 
@@ -622,13 +637,10 @@ async function handleChangeEmailVerifySubmit(
     userId: user.user_id,
   });
 
-  return {
-    screen: changeEmailDoneScreen(
-      context,
-      email,
-      getContinueUrl(context, loginSession, isContinuation),
-    ),
-  };
+  // Redirect rather than render: a no-JS form post to the screen API turns a
+  // rendered result into a redirect back to the form, which would lose the
+  // confirmation. The verify GET renders it from `email_change_done`.
+  return { redirect: verifyUrl };
 }
 
 export const accountChangeEmailVerifyScreenDefinition: ScreenDefinition = {

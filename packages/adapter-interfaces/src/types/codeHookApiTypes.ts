@@ -35,13 +35,44 @@ export interface ActionRegistrationUserAPI extends ActionLinkAPI {
   setAppMetadata(key: string, value: unknown): void;
 }
 
+export interface ActionEnsureUserProfile {
+  email?: string;
+  email_verified?: boolean;
+  phone_number?: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  nickname?: string;
+  picture?: string;
+}
+
+export interface ActionEnsureUserParams {
+  /** Name of an `external` connection with `allow_action_users` enabled. */
+  connection: string;
+  /** The key in the external system. The user_id becomes `<connection>|<id>`. */
+  id: string;
+  /** Blank fields are ignored; present fields overwrite on an existing user. */
+  profile?: ActionEnsureUserProfile;
+  /** Shallow-merged into the user's app_metadata. Must be JSON serializable. */
+  app_metadata?: Record<string, unknown>;
+}
+
+export interface ActionUsersAPI {
+  /**
+   * Creates the user `<connection>|<id>` if missing, otherwise merges the
+   * profile and app_metadata into it. Returns nothing: link to it with
+   * `api.user.setLinkedTo("<connection>|<id>")`.
+   */
+  ensure(params: ActionEnsureUserParams): void;
+}
+
 export interface ActionRedirectAPI {
   /** Query values are appended to the URL; they must be strings. */
   sendUserTo(url: string, options?: { query?: Record<string, string> }): void;
 }
 
-export interface ActionAccountAccessAPI {
-  /** Stop the account operation and show the reason to the user. */
+export interface ActionScreenAccessAPI {
+  /** Stop the screen (or its submission) and show the reason to the user. */
   deny(reason?: string): void;
 }
 
@@ -111,6 +142,7 @@ export interface CodeHookApiByTrigger {
     };
     redirect: ActionRedirectAPI;
     user: ActionLinkAPI;
+    users: ActionUsersAPI;
     multifactor: ActionMultifactorAPI;
   };
   "credentials-exchange": {
@@ -120,6 +152,7 @@ export interface CodeHookApiByTrigger {
   };
   "pre-user-registration": {
     user: ActionRegistrationUserAPI;
+    users: ActionUsersAPI;
     access: ActionAccessAPI;
     validation: {
       error(code: string, message: string): void;
@@ -134,10 +167,10 @@ export interface CodeHookApiByTrigger {
     access: ActionBlockingAccessAPI;
   };
   "post-user-deletion": {};
-  "pre-account-action": {
-    /** Send the user somewhere else instead of running the operation here. */
+  "pre-screen": {
+    /** Send the user somewhere else instead of showing or submitting the screen. */
     redirect: ActionRedirectAPI;
-    access: ActionAccountAccessAPI;
+    access: ActionScreenAccessAPI;
   };
   "custom-email-provider": {
     /** If several of these are called, only the last call counts. */

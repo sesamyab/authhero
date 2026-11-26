@@ -4,6 +4,7 @@ import { getTestServer } from "../../helpers/test-server";
 import { u2Screen } from "../../helpers/u2-screen";
 import en from "../../../locales/en.json";
 import { LOGIN_OTP_MAX_SENDS } from "../../../src/routes/universal-login/screens/login-otp";
+import { codeRecipientState } from "../../../src/helpers/code-recipient";
 
 const emailOtp = en["email-otp-challenge"]["email-otp-challenge"];
 const smsOtp = en["sms-otp-challenge"]["sms-otp-challenge"];
@@ -14,7 +15,10 @@ type TestServer = Awaited<ReturnType<typeof getTestServer>>;
 async function createSession(
   env: TestServer["env"],
   username: string | undefined,
-  { issueCode = true }: { issueCode?: boolean } = {},
+  {
+    issueCode = true,
+    codeRecipient = username,
+  }: { issueCode?: boolean; codeRecipient?: string } = {},
 ) {
   const session = await env.data.loginSessions.create("tenantId", {
     expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
@@ -32,6 +36,7 @@ async function createSession(
       code_type: "otp",
       login_id: session.id,
       expires_at: new Date(Date.now() + 600 * 1000).toISOString(),
+      ...(codeRecipient ? { state: codeRecipientState(codeRecipient) } : {}),
     });
   }
   return session.id;
@@ -113,6 +118,36 @@ describe("login OTP resend", () => {
       { text: emailOtp.resendSuccess, type: "success" },
     ]);
     expect(server.getSentEmails()).toHaveLength(0);
+  });
+
+  it("sends nothing when the only code was issued to another address", async () => {
+    const server = await getTestServer({ mockEmail: true });
+    const state = await createSession(server.env, "unknown@example.com", {
+      codeRecipient: "foo@example.com",
+    });
+
+    const response = await postScreen(server, "email-otp-challenge", state, {
+      action: "resend",
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).screen.messages).toEqual([
+      { text: emailOtp.resendSuccess, type: "success" },
+    ]);
+    expect(server.getSentEmails()).toHaveLength(0);
+  });
+
+  it("binds the resent code to the recipient", async () => {
+    const server = await getTestServer({ mockEmail: true });
+    const state = await createSession(server.env, "foo@example.com");
+
+    await postScreen(server, "email-otp-challenge", state, {
+      action: "resend",
+    });
+
+    const sentCode = server.getSentEmails()[0].data.code;
+    const stored = await server.env.data.codes.get("tenantId", sentCode, "otp");
+    expect(JSON.parse(stored!.state!).recipient).toBe("foo@example.com");
   });
 
   it("reports an expired session when the session has no username", async () => {

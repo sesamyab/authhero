@@ -45,6 +45,12 @@ export interface LoginSessionData {
   pending_email_verification?: unknown;
   /** u2 change-email: the address a code was sent to, shown on the verify step */
   pending_email_change?: { email: string };
+  /**
+   * u2 change-email: the address the last change set. The verify step shows
+   * the confirmation from it on GET, so it survives a no-JS form post, which
+   * redirects instead of rendering the POST result.
+   */
+  email_change_done?: { email: string };
   // Hooks and continuation
   hookId?: string;
   form_values?: Record<string, unknown>;

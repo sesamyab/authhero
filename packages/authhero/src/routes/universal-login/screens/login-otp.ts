@@ -8,7 +8,10 @@ import type { Bindings, Variables } from "../../../types";
 import generateOTP from "../../../utils/otp";
 import { sendCode, sendLink } from "../../../emails";
 import { OTP_EXPIRATION_TIME } from "../../../constants";
-import { codeRecipientState } from "../../../helpers/code-recipient";
+import {
+  codeRecipientState,
+  isCodeRecipient,
+} from "../../../helpers/code-recipient";
 import type { ScreenContext, ScreenFactory, ScreenResult } from "./types";
 import {
   FinalizedLoginSessionError,
@@ -178,10 +181,11 @@ export async function sendLoginOtp(
  * Re-send the login OTP (code or magic link) for the login session behind
  * `state`, to the username the identifier step stored on it.
  *
- * Only re-sends when a login OTP was issued for this session before. The
- * enumeration-safe stub path in the identifier screens shows the challenge
- * without issuing a code, and a resend must not start delivering to an
- * unknown address either. Repeated resends are capped by allowLoginOtpSend;
+ * Only re-sends when a login OTP was issued for this session to the same
+ * recipient before. The enumeration-safe stub path in the identifier screens
+ * shows the challenge without issuing a code, and a resend must not start
+ * delivering to an unknown address either, nor to a new address the session
+ * switched to after a code went to an earlier one. Repeated resends are capped by allowLoginOtpSend;
  * past the cap the caller still shows the usual "code sent" message.
  *
  * Returns false when the login session is gone or has no username.
@@ -209,8 +213,12 @@ export async function resendLoginOtp(
     q: `login_id:${loginSession.id}`,
     per_page: 100,
   });
+  const countryCode = ctx.get("countryCode");
   const issued = codes.some(
-    (code) => code.login_id === loginSession.id && code.code_type === "otp",
+    (code) =>
+      code.login_id === loginSession.id &&
+      code.code_type === "otp" &&
+      isCodeRecipient(code, to, countryCode),
   );
   if (!issued) return true;
 
