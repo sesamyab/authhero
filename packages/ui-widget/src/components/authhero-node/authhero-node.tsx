@@ -55,6 +55,16 @@ export class AuthheroNode {
   @Prop() disabled = false;
 
   /**
+   * The primary action is waiting on required fields. Rendered as
+   * `aria-disabled` rather than `disabled`: the widget re-checks its live
+   * form state on click, but the DOM only catches up on Stencil's next
+   * render. A native `disabled` attribute still present from the previous
+   * render would make the browser swallow a click that lands in that gap —
+   * the user's first click after filling the last field would do nothing.
+   */
+  @Prop() incomplete = false;
+
+  /**
    * BCP-47 locale used for locale-dependent field layout (currently the
    * segment order of DATE fields). Resolved server-side so SSR and hydration
    * agree; falls back to day-month-year when absent.
@@ -837,6 +847,7 @@ export class AuthheroNode {
         value={secondary ? "true" : undefined}
         formNoValidate={component.config.skip_validation}
         disabled={this.disabled}
+        aria-disabled={!this.disabled && this.incomplete ? "true" : undefined}
         onClick={(e) => this.handleButtonClick(e, "submit", "next")}
       >
         {component.config.text ?? "Continue"}

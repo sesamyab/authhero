@@ -54,9 +54,18 @@ function continueButton(page: SpecPage) {
   throw new Error("No primary action button rendered");
 }
 
-/** mock-doc does not implement the `disabled` IDL property on buttons. */
+/**
+ * Whether the button is shown as unavailable. Missing required fields render
+ * `aria-disabled` (the click still reaches the widget's gate); only `loading`
+ * sets the native attribute. mock-doc does not implement the `disabled` IDL
+ * property on buttons, so read attributes.
+ */
 function isContinueDisabled(page: SpecPage) {
-  return continueButton(page).hasAttribute("disabled");
+  const button = continueButton(page);
+  return (
+    button.hasAttribute("disabled") ||
+    button.getAttribute("aria-disabled") === "true"
+  );
 }
 
 /** The first input rendered by the node for the given component id. */
@@ -367,5 +376,69 @@ describe("skip_validation buttons", () => {
       .map((n) => n.shadowRoot?.querySelector(".divider-text")?.textContent)
       .find(Boolean);
     expect(dividerText).toBe("or");
+  });
+});
+
+/**
+ * Clicks the way a browser does: a button carrying the `disabled` attribute
+ * swallows the click (it gets `pointerdown`, never `click`). mock-doc would
+ * dispatch the click regardless, so model the browser here.
+ */
+function browserClick(button: HTMLButtonElement) {
+  if (button.hasAttribute("disabled")) return;
+  button.click();
+}
+
+describe("first click after filling the last required field", () => {
+  // Mirrors /u2/signup: email prefilled from the login session, both
+  // passwords typed by the user.
+  const signup = screenWith([
+    {
+      id: "email",
+      type: "EMAIL",
+      label: "Email",
+      required: true,
+      config: { default_value: "new@example.com" },
+    },
+    { id: "password", type: "PASSWORD", label: "Password", required: true },
+    {
+      id: "re_password",
+      type: "PASSWORD",
+      label: "Confirm password",
+      required: true,
+    },
+    { id: "submit", type: "NEXT_BUTTON", config: { text: "Register" } },
+  ] as UiScreen["components"]);
+
+  it("submits even when the click lands before the re-render", async () => {
+    const { page, submitted } = await render(signup);
+
+    await typeInto(page, "password", "Passw0rd!");
+    // The last keystroke updates formData, but Stencil flushes the re-render
+    // on a later frame (much later in a throttled or busy tab). A click in
+    // that window must still submit.
+    const last = fieldInput(page, "re_password");
+    last.value = "Passw0rd!";
+    last.dispatchEvent(new Event("input"));
+    browserClick(continueButton(page));
+    await page.waitForChanges();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatchObject({
+      email: "new@example.com",
+      password: "Passw0rd!",
+      re_password: "Passw0rd!",
+    });
+  });
+
+  it("still ignores a click while a required field is empty", async () => {
+    const { page, submitted } = await render(signup);
+
+    await typeInto(page, "password", "Passw0rd!");
+    browserClick(continueButton(page));
+    await page.waitForChanges();
+
+    expect(submitted).toHaveLength(0);
+    expect(isContinueDisabled(page)).toBe(true);
   });
 });
