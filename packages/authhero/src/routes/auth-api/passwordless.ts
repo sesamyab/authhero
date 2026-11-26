@@ -25,6 +25,7 @@ import { setTenantId } from "../../helpers/set-tenant-id";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
 import { JSONHTTPException } from "../../errors/json-http-exception";
+import { codeRecipientState } from "../../helpers/code-recipient";
 
 /**
  * The message of a passwordless failure that may be shown to the user
@@ -130,6 +131,7 @@ const postStart = defineRoute({
       login_id: loginSession.id,
       expires_at: new Date(Date.now() + OTP_EXPIRATION_TIME).toISOString(),
       redirect_uri: authParams.redirect_uri,
+      state: codeRecipientState(username, ctx.get("countryCode")),
     });
 
     // Extract language from ui_locales
