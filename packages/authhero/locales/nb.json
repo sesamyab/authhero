@@ -54,7 +54,8 @@
       "pictureLabel": "URL til profilbilde",
       "buttonText": "Lagre endringer",
       "backToAccountText": "Tilbake til kontoen",
-      "updateFailed": "Kunne ikke oppdatere profilen"
+      "updateFailed": "Kunne ikke oppdatere profilen",
+      "changeEmailText": "Endre e-postadresse"
     },
     "account-delete": {
       "title": "Slett konto",
@@ -159,6 +160,35 @@
       "invalidCodeText": "Ugyldig kode. Prøv igjen.",
       "verificationFailedText": "Bekreftelsen mislyktes. Prøv igjen.",
       "tooManyFailuresText": "For mange mislykkede forsøk. Gå tilbake til kontoen din og prøv igjen senere."
+    },
+    "invalid-session": {
+      "title": "Ugyldig lenke",
+      "description": "Lenken er ikke lenger gyldig. Sørg for å åpne påloggingslenken i samme nettleser som du startet påloggingen med. Du kan klikke på lenken nedenfor for å starte en ny pålogging.",
+      "backText": "Gå tilbake"
+    },
+    "account-change-email": {
+      "title": "Endre e-postadresse",
+      "description": "En engangskode vil bli sendt til din nye e-postadresse, skriv inn koden i neste steg.",
+      "currentEmailLabel": "Nåværende e-postadresse",
+      "emailLabel": "Ny e-postadresse",
+      "invalidEmail": "Ugyldig e-postadresse",
+      "buttonText": "Send kode",
+      "sendFailed": "Kunne ikke sende koden. Prøv igjen.",
+      "backToAccountText": "Tilbake til kontoen"
+    },
+    "account-change-email-verify": {
+      "title": "Bekreft din nye e-postadresse",
+      "description": "Vi har sendt en kode til ${email}. Skriv den inn for å bekrefte den nye e-postadressen.",
+      "codeLabel": "Bekreftelseskode",
+      "buttonText": "Bekreft",
+      "noCode": "Skriv inn bekreftelseskoden",
+      "invalidCode": "Koden er ugyldig eller utløpt",
+      "tooManyAttempts": "For mange forsøk. Prøv igjen senere.",
+      "emailTaken": "Denne e-postadressen kan ikke brukes. Prøv en annen.",
+      "successTitle": "E-postadressen er endret",
+      "successDescription": "E-postadressen din er nå ${email}.",
+      "continueText": "Fortsett",
+      "backText": "Endre e-postadresse"
     }
   },
   "consent": {

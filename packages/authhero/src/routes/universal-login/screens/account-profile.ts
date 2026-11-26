@@ -129,6 +129,11 @@ export async function accountProfileScreen(
     components,
     links: [
       {
+        id: "change-email",
+        text: m.changeEmailText(),
+        href: `${routePrefix}/account/change-email?state=${stateParam}`,
+      },
+      {
         id: "back-to-account",
         text: m.backToAccountText(),
         href: `${routePrefix}/account?state=${stateParam}`,

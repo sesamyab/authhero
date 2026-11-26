@@ -124,6 +124,16 @@ describe("Email Functions", () => {
       expect(email.data.vendorName).toBe("Test Tenant");
     });
 
+    it("falls back to the code itself rather than a /u/validate-email link", async () => {
+      const code = "123456";
+
+      await sendCode(ctx, { to: "user@example.com", code });
+
+      const email = testServer.getSentEmails()[0];
+      expect(email.html).toContain(code);
+      expect(email.html).not.toContain("validate-email");
+    });
+
     it("should send code email with custom language", async () => {
       const code = "123456";
 
@@ -360,6 +370,8 @@ describe("Email Functions", () => {
       expect(email.template).toBe("auth-pre-signup-verification");
       expect(email.data.signupUrl).toContain(code);
       expect(email.data.signupUrl).toContain(state);
+      // u2 signup redeems the code (#1733)
+      expect(new URL(email.data.signupUrl).pathname).toBe("/u2/signup");
     });
 
     it("should send signup validation email with custom language", async () => {

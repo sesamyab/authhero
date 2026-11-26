@@ -25,6 +25,12 @@ import { mfaTotpChallengeScreenDefinition } from "./mfa-totp-challenge";
 import { mfaLoginOptionsScreenDefinition } from "./mfa-login-options";
 import { accountScreenDefinition } from "./account";
 import { accountProfileScreenDefinition } from "./account-profile";
+import {
+  accountChangeEmailScreenDefinition,
+  accountChangeEmailVerifyScreenDefinition,
+  resolveChangeEmailUser,
+} from "./account-change-email";
+import { invalidSessionScreenDefinition } from "./invalid-session";
 import { accountSecurityScreenDefinition } from "./account-security";
 import { accountMfaTotpEnrollmentScreenDefinition } from "./account-mfa-totp-enrollment";
 import { accountMfaPhoneEnrollmentScreenDefinition } from "./account-mfa-phone-enrollment";
@@ -139,6 +145,16 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
     "account-profile",
     withAccountActionGate(accountProfileScreenDefinition, "update-profile"),
   ],
+  [
+    "account-change-email",
+    // Mid-login (form hook) the user comes from the continuation scope, not
+    // a session cookie, so the gate must resolve it the same way.
+    withAccountActionGate(accountChangeEmailScreenDefinition, "change-email", {
+      getUser: async (context) => (await resolveChangeEmailUser(context)).user,
+      postUser: async (context) => (await resolveChangeEmailUser(context)).user,
+    }),
+  ],
+  ["account-change-email-verify", accountChangeEmailVerifyScreenDefinition],
   ["account-security", accountSecurityScreenDefinition],
   [
     "account-mfa-totp-enrollment",
@@ -177,6 +193,7 @@ export const screenRegistry: Map<string, ScreenDefinition> = new Map([
   ["accept-invitation", acceptInvitationScreenDefinition],
   ["email-verification-code", emailVerificationCodeScreenDefinition],
   ["email-verification-link-sent", emailVerificationLinkSentScreenDefinition],
+  ["invalid-session", invalidSessionScreenDefinition],
 ]);
 
 // Attach tenant prompt partials to the sign-in form screens that don't read

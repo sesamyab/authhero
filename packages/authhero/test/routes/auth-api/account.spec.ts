@@ -202,7 +202,7 @@ describe("account", () => {
     expect(location).toContain("/u2/login/identifier?state=");
   });
 
-  it("should redirect to /u2/account/profile with screen_hint when provided", async () => {
+  it("should redirect to /u2/account/change-email with screen_hint when provided", async () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
 
@@ -257,7 +257,7 @@ describe("account", () => {
 
     expect(response.status).toEqual(302);
     const location = response.headers.get("location");
-    expect(location).toContain("/u2/account/profile?state=");
+    expect(location).toContain("/u2/account/change-email?state=");
   });
 
   it("should default to 'account' screen_hint when not provided", async () => {

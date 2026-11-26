@@ -188,13 +188,13 @@ const getRoot = defineRoute({
           return ctx.redirect(decision.url);
         }
         if (decision.type === "deny") {
-          const errorUrl = new URL("/u/error", ctx.req.url);
+          const errorUrl = new URL("/u2/error", ctx.req.url);
           errorUrl.searchParams.set("error", "access_denied");
           errorUrl.searchParams.set("error_description", decision.reason);
           return ctx.redirect(errorUrl.toString());
         }
 
-        const changeEmailUrl = new URL("/u2/account/profile", ctx.req.url);
+        const changeEmailUrl = new URL("/u2/account/change-email", ctx.req.url);
         changeEmailUrl.searchParams.set("state", loginSession.id);
         return ctx.redirect(changeEmailUrl.toString());
       }

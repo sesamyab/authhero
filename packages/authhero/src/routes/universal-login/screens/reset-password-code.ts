@@ -75,6 +75,8 @@ export async function resetPasswordCodeScreen(
       config: {
         placeholder: m.codePlaceholder(),
         max_length: 6,
+        input_mode: "numeric",
+        autocomplete: "one-time-code",
       },
       required: true,
       order: 1,
@@ -90,6 +92,7 @@ export async function resetPasswordCodeScreen(
       visible: true,
       label: m.passwordLabel(),
       config: {
+        autocomplete: "new-password",
         placeholder: m.passwordPlaceholder(),
         show_toggle: true,
       },
@@ -108,6 +111,7 @@ export async function resetPasswordCodeScreen(
       visible: true,
       label: m.confirmPasswordLabel(),
       config: {
+        autocomplete: "new-password",
         placeholder: m.confirmPasswordPlaceholder(),
       },
       required: true,

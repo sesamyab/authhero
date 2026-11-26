@@ -169,6 +169,24 @@ export interface ScreenDefinition {
 }
 
 /**
+ * Screens whose emailed links carry a `code` query parameter (password reset
+ * links, pre-signup verification links). The code is passed to the screen as
+ * `data.code` and kept on the form action so the POST still sees it.
+ */
+const SCREENS_WITH_URL_CODE = new Set(["reset-password", "signup"]);
+
+export function screenUsesUrlCode(screenId: string): boolean {
+  return SCREENS_WITH_URL_CODE.has(screenId);
+}
+
+/** `&code=…` for the form action of a screen that carries a URL code. */
+export function urlCodeSuffix(screenId: string, code: string | undefined) {
+  return screenUsesUrlCode(screenId) && code
+    ? `&code=${encodeURIComponent(code)}`
+    : "";
+}
+
+/**
  * Get the correct login path based on the tenant's identifier_first setting.
  * Returns "/u2/login" for password-first or "/u2/login/identifier" for identifier-first.
  */

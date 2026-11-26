@@ -1,4 +1,5 @@
 import { updateLoginSessionData } from "../../../state-machines/login-session-data";
+import { getButtonConnections } from "./social-connections";
 import { LoginSessionEventType } from "../../../state-machines/login-session";
 /**
  * Identifier screen - the first screen in the login flow
@@ -57,22 +58,12 @@ function buildSocialButtons(
 ): FormNodeComponent[] {
   const { connections } = context;
 
-  const socialConnections = connections.filter((c) => {
-    if (
-      c.strategy === Strategy.EMAIL ||
-      c.strategy === Strategy.SMS ||
-      isDatabaseConnectionStrategy(c.strategy)
-    ) {
-      return false;
-    }
-    // HRD-only by default: connections with domain_aliases are routed via
-    // email-domain matching and hidden from the button row unless the
-    // tenant explicitly opts in with show_as_button.
-    if (c.options?.domain_aliases?.length && c.show_as_button !== true) {
-      return false;
-    }
-    return true;
-  });
+  // Same rules as /u: show_as_button, HRD-only connections, providers that
+  // refuse in-app browsers.
+  const socialConnections = getButtonConnections(
+    connections,
+    context.ctx.req.header("user-agent"),
+  );
 
   if (socialConnections.length === 0) {
     return [];
@@ -177,13 +168,33 @@ export async function identifierScreen(
   const requiresUsername = identifierConfig.usernameIdentifierActive;
   const requiresEmail = identifierConfig.emailIdentifierActive;
 
+  // With an SMS connection the same input takes a phone number, so (as on
+  // /u) it is only an email field when email is all it accepts.
+  const acceptsPhone = context.connections.some(
+    (c) => c.strategy === Strategy.SMS,
+  );
+  const acceptsNonPhone = context.connections.some(
+    (c) =>
+      c.strategy === Strategy.EMAIL || isDatabaseConnectionStrategy(c.strategy),
+  );
+
   // Determine the appropriate label/placeholder based on connection config
   const identifierLabel =
-    requiresUsername && requiresEmail
-      ? m.usernameOrEmailPlaceholder()
-      : requiresUsername
-        ? m.usernamePlaceholder()
-        : m.emailPlaceholder();
+    acceptsPhone && !acceptsNonPhone
+      ? m.phonePlaceholder()
+      : acceptsPhone
+        ? requiresUsername && requiresEmail
+          ? m.phoneOrUsernameOrEmailPlaceholder()
+          : requiresUsername
+            ? m.phoneOrUsernamePlaceholder()
+            : m.phoneOrEmailPlaceholder()
+        : requiresUsername && requiresEmail
+          ? m.usernameOrEmailPlaceholder()
+          : requiresUsername
+            ? m.usernamePlaceholder()
+            : m.emailPlaceholder();
+  const identifierType: "EMAIL" | "TEXT" =
+    !acceptsPhone && !requiresUsername ? "EMAIL" : "TEXT";
 
   const components: FormNodeComponent[] = [
     // Social login buttons (if any)
@@ -211,7 +222,7 @@ export async function identifierScreen(
       // Email/username input
       {
         id: "username",
-        type: requiresUsername ? "TEXT" : "EMAIL",
+        type: identifierType,
         category: "FIELD",
         visible: true,
         label: identifierLabel,

@@ -495,8 +495,9 @@ export function getRedirectUrl(
 ): string {
   switch (target) {
     case "change-email":
-      return `/u/account/change-email?state=${encodeURIComponent(state)}`;
+      return `/u2/account/change-email?state=${encodeURIComponent(state)}`;
     case "account":
+      // Stays on /u: the u2 account hub has no mid-login (continuation) mode.
       return `/u/account?state=${encodeURIComponent(state)}`;
     case "custom":
       if (!customUrl) {

@@ -697,7 +697,7 @@ export async function sendCode(
       legacyTemplate: "auth-code",
       messageType: "verification_code",
       fallbackSubject: t("code_email_subject", options),
-      fallbackHtml: `Click here to validate your email: ${getUniversalLoginUrl(ctx.env, undefined, "u")}validate-email`,
+      fallbackHtml: `Your login code is: ${code}`,
       tenant,
       branding: { logo, primary_color: buttonColor },
       code,
@@ -1094,7 +1094,9 @@ export async function sendSignupValidateEmailAddress(
     lng: language || "en",
   };
 
-  const signupUrl = `${getUniversalLoginUrl(ctx.env, undefined, "u")}signup?state=${state}&code=${code}`;
+  // u2 signup redeems the code; links already sent to /u/signup keep working
+  // there while /u exists.
+  const signupUrl = `${getUniversalLoginUrl(ctx.env)}signup?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`;
 
   const data: Record<string, string> = {
     tenantId: tenant.id,

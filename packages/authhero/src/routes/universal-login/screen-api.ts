@@ -31,6 +31,7 @@ import type {
   ScreenBranding,
   ScreenResult,
 } from "./screens/types";
+import { screenUsesUrlCode, urlCodeSuffix } from "./screens/types";
 import type { CustomText } from "@authhero/adapter-interfaces";
 import {
   createFrontChannelAuthResponse,
@@ -331,7 +332,7 @@ async function buildScreenContext(
   if (notice) {
     data.notice = notice;
   }
-  if (screenId === "reset-password") {
+  if (screenUsesUrlCode(screenId)) {
     data.code = ctx.req.query("code");
   }
   const username = loginSession?.authParams?.username;
@@ -688,7 +689,7 @@ screenApiRoutes.openapi(
       // Use relative URLs - browser will resolve against current origin
       const screen = {
         ...builtInResult.screen,
-        action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}${screenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
+        action: `/u2/screen/${screenId}?state=${encodeURIComponent(state)}${urlCodeSuffix(screenId, ctx.req.query("code"))}`,
       };
       return ctx.json({
         screen,
@@ -823,6 +824,8 @@ screenApiRoutes.openapi(
         "reset-password-code": "reset-password/code",
         "email-verification-code": "login/email-verification",
         "email-verification-link-sent": "login/email-verification-sent",
+        "account-change-email": "account/change-email",
+        "account-change-email-verify": "account/change-email/verify",
       };
       const navigatePrefix = loginScreenIds.includes(nextScreenId)
         ? "/u2/login"
@@ -846,7 +849,7 @@ screenApiRoutes.openapi(
           screen: {
             ...renderedScreen,
             // Widget will POST JSON here when JS is enabled
-            action: `/u2/screen/${nextScreenId}?state=${encodeURIComponent(state)}${nextScreenId === "reset-password" && ctx.req.query("code") ? `&code=${encodeURIComponent(ctx.req.query("code")!)}` : ""}`,
+            action: `/u2/screen/${nextScreenId}?state=${encodeURIComponent(state)}${urlCodeSuffix(nextScreenId, ctx.req.query("code"))}`,
           },
           branding: screenData.branding,
           screenId: nextScreenId,

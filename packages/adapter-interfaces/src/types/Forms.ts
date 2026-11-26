@@ -351,6 +351,9 @@ const passwordField = fieldComponentBase.extend({
       show_toggle: z.boolean().optional(),
       forgot_password_link: z.string().optional(),
       default_value: z.string().optional(),
+      // "new-password" where a password is chosen (signup, reset) so password
+      // managers offer to generate one; defaults to "current-password".
+      autocomplete: z.enum(["current-password", "new-password"]).optional(),
     })
     .optional(),
 });
@@ -412,6 +415,12 @@ const textField = fieldComponentBase.extend({
       multiline: z.boolean().optional(),
       max_length: z.number().optional(),
       default_value: z.string().optional(),
+      // HTML autocomplete token, e.g. "one-time-code" for emailed/SMS codes.
+      autocomplete: z.string().optional(),
+      // Virtual keyboard hint, e.g. "numeric" for digit-only codes.
+      input_mode: z
+        .enum(["text", "numeric", "decimal", "tel", "email", "url", "search"])
+        .optional(),
       // "Last used" hint when the previous login came in through this input
       // (the username variant of the identifier field).
       last_used: z.boolean().optional(),

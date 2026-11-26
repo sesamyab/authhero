@@ -197,7 +197,7 @@ export async function passwordlessGrantUser(
   if (enforceIpCheck && loginSession.ip && ip) {
     if (!isIpMatch(loginSession.ip, ip)) {
       throw new RedirectException(
-        `${getUniversalLoginUrl(ctx.env, ctx.var.custom_domain, "u")}invalid-session?state=${loginSession.id}`,
+        `${getUniversalLoginUrl(ctx.env, ctx.var.custom_domain)}invalid-session?state=${encodeURIComponent(loginSession.id)}`,
       );
     }
   }

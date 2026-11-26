@@ -173,7 +173,7 @@ describe("login session from another tenant than the request", () => {
       onA.headers.get("location") ?? "",
       "http://localhost:3000",
     );
-    expect(location.pathname).toBe("/u/error");
+    expect(location.pathname).toBe("/u2/error");
     expect(await env.data.users.get("tenantB", "mock-strategy|foo")).toBe(null);
     const session = await env.data.loginSessions.get("tenantB", sessionId);
     expect(session?.state).toBe("pending");

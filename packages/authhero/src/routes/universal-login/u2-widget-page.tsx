@@ -80,7 +80,7 @@ import {
   templateIsFullDocument,
 } from "./universal-login-template";
 import { buildEmbedPageScript, type EmbedLoginContext } from "./embed";
-import { DefaultUserAgentDetector } from "../../client/user-agent-detector";
+import { detectEmbeddedBrowser } from "../../utils/embedded-browser";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -195,18 +195,7 @@ const EMBEDDED_BROWSER_CSS = `
     @media (prefers-color-scheme: dark) { html:not(.ah-light-mode) .ah-embedded-warning { background: #431407; color: #ffedd5; border-bottom-color: #7c2d12; } }
 `;
 
-/** Detects in-app browsers from the request's User-Agent. */
-export function detectEmbeddedBrowser(
-  userAgent: string | undefined,
-): { name?: string } | undefined {
-  const info = new DefaultUserAgentDetector().parse(userAgent || "");
-  // The shared detector flags Samsung Internet, but it is a standalone browser
-  // with normal session handling. Only apps hosting a WebView should warn.
-  if (!info.isEmbedded || info.browser?.name === "Samsung Internet") {
-    return undefined;
-  }
-  return { name: info.browser?.name };
-}
+export { detectEmbeddedBrowser } from "../../utils/embedded-browser";
 
 /**
  * Overrides for the embedded (iframe) layout. Appended after the shared page

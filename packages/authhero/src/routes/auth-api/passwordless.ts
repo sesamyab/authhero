@@ -16,10 +16,38 @@ import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { passwordlessGrant } from "../../authentication-flows/passwordless";
 import { nanoid } from "nanoid";
 import { stringifyAuth0Client } from "../../utils/client-info";
-import { getUniversalLoginUrl } from "../../variables";
+import {
+  getSelfCallbackWildcards,
+  getUniversalLoginUrl,
+} from "../../variables";
+import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
+import { JSONHTTPException } from "../../errors/json-http-exception";
+
+/**
+ * The message of a passwordless failure that may be shown to the user
+ * (`userSafe` errors such as an expired code). The invalid-session screen
+ * displays the `error` it is given, so anything else stays generic.
+ */
+function getUserSafeMessage(err: unknown): string | undefined {
+  if (!(err instanceof JSONHTTPException)) return undefined;
+  try {
+    const body: unknown = JSON.parse(err.message);
+    if (
+      body &&
+      typeof body === "object" &&
+      (body as { userSafe?: unknown }).userSafe === true &&
+      typeof (body as { message?: unknown }).message === "string"
+    ) {
+      return (body as { message: string }).message;
+    }
+  } catch {
+    // Not a JSON body
+  }
+  return undefined;
+}
 const postStart = defineRoute({
   route: createRoute({
     tags: ["passwordless"],
@@ -249,10 +277,7 @@ const getVerifyRedirect = defineRoute({
         return ctx.json(result);
       }
     } catch (err: unknown) {
-      const error = err as Error;
-      if ("message" in error && typeof error.message === "string") {
-        errorMessage = error.message;
-      }
+      errorMessage = getUserSafeMessage(err) ?? errorMessage;
     }
 
     // Create a new login session with the error message
@@ -263,9 +288,27 @@ const getVerifyRedirect = defineRoute({
     // Convert structured auth0_client back to string for storage
     const auth0Client = stringifyAuth0Client(auth0_client);
 
+    // The invalid-session screen offers redirect_uri as its way back, so only
+    // keep it when it is one of the client's callbacks (the /authorize rule).
+    const validCallbacks = [...(client.callbacks || [])];
+    if (ctx.var.host) {
+      validCallbacks.push(
+        ...getSelfCallbackWildcards(ctx.env, ctx.var.custom_domain),
+      );
+    }
+    const allowedRedirectUri =
+      authParams.redirect_uri &&
+      isValidRedirectUrl(authParams.redirect_uri, validCallbacks, {
+        allowPathWildcards: true,
+        allowSubDomainWildcards: true,
+      })
+        ? authParams.redirect_uri
+        : undefined;
+
     const loginSession = await env.data.loginSessions.create(client.tenant.id, {
       authParams: {
         ...authParams,
+        redirect_uri: allowedRedirectUri,
         username: email,
         audience: authParams.audience ?? client.tenant.default_audience,
       },
@@ -277,7 +320,7 @@ const getVerifyRedirect = defineRoute({
     });
 
     return ctx.redirect(
-      `${getUniversalLoginUrl(ctx.env, ctx.var.custom_domain, "u")}invalid-session?state=${loginSession.id}&error=${encodeURIComponent(errorMessage)}`,
+      `${getUniversalLoginUrl(ctx.env, ctx.var.custom_domain)}invalid-session?state=${encodeURIComponent(loginSession.id)}&error=${encodeURIComponent(errorMessage)}`,
       302,
     );
   },
