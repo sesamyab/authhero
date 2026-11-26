@@ -657,6 +657,34 @@ describe("u2 change email", () => {
     return { result, code: sent?.data.code as string, sent };
   }
 
+  /**
+   * Submit a code and follow the redirect: a successful change redirects to
+   * the verify step, whose GET shows the confirmation.
+   */
+  async function verifyCode(
+    server: TestServer & { state: string },
+    code: string,
+    headers: Record<string, string> = cookie,
+  ) {
+    const post = await postScreen(
+      server,
+      "account-change-email-verify",
+      server.state,
+      { code },
+      headers,
+    );
+    const verifyUrl = `/u2/account/change-email/verify?state=${encodeURIComponent(server.state)}`;
+    if (post.json.redirect !== verifyUrl) return { post, screen: undefined };
+    const response = await getScreen(
+      server,
+      "account-change-email-verify",
+      server.state,
+      headers,
+    );
+    const { screen } = (await response.json()) as ScreenJson;
+    return { post, screen };
+  }
+
   it("changes the email after the code sent to the new address is entered", async () => {
     const server = await setup();
     const { env, state } = server;
@@ -700,16 +728,9 @@ describe("u2 change email", () => {
       USER_EMAIL,
     );
 
-    const ok = await postScreen(
-      server,
-      "account-change-email-verify",
-      state,
-      { code },
-      cookie,
-    );
-    expect(ok.status).toBe(200);
-    expect(ok.json.screen?.title).toBe("Email changed");
-    expect(ok.json.screen?.links?.[0]?.href).toBe(
+    const ok = await verifyCode(server, code);
+    expect(ok.screen?.title).toBe("Email changed");
+    expect(ok.screen?.links?.[0]?.href).toBe(
       `/u2/account?state=${encodeURIComponent(state)}`,
     );
 
@@ -717,17 +738,52 @@ describe("u2 change email", () => {
     expect(user?.email).toBe("new@example.com");
     expect(user?.email_verified).toBe(true);
 
-    // The code can't be used twice: with nothing pending the user is sent
-    // back to step 1
-    const again = await postScreen(
-      server,
-      "account-change-email-verify",
-      state,
-      { code },
-      cookie,
+    // The code can't be used twice: with nothing pending the verify step
+    // just shows the confirmation again, and nothing changes
+    const again = await verifyCode(server, code);
+    expect(again.screen?.title).toBe("Email changed");
+    expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
+      "new@example.com",
     );
-    expect(again.status).toBe(302);
-    expect(again.location).toContain("/u2/account/change-email?state=");
+  });
+
+  it("shows the confirmation after a no-JavaScript form post", async () => {
+    const server = await setup();
+    const { env, state } = server;
+    const { code } = await requestCode(server, "nojs@example.com");
+    const verifyPage = `https://example.com/u2/account/change-email/verify?state=${encodeURIComponent(state)}`;
+
+    // Without JavaScript the rendered form posts urlencoded to the screen API
+    const post = await server.u2App.request(
+      `/screen/account-change-email-verify?state=${encodeURIComponent(state)}`,
+      {
+        method: "POST",
+        headers: {
+          "tenant-id": "tenantId",
+          cookie: SESSION_COOKIE,
+          "content-type": "application/x-www-form-urlencoded",
+          referer: verifyPage,
+        },
+        body: new URLSearchParams({ code }).toString(),
+      },
+      env,
+    );
+    expect(post.status).toBe(302);
+    expect(post.headers.get("location")).toBe(
+      `/u2/account/change-email/verify?state=${encodeURIComponent(state)}`,
+    );
+
+    // The page the browser lands on shows the confirmation
+    const page = await server.u2App.request(
+      `/account/change-email/verify?state=${encodeURIComponent(state)}`,
+      { headers: { "tenant-id": "tenantId", cookie: SESSION_COOKIE } },
+      env,
+    );
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("Email changed");
+    expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
+      "nojs@example.com",
+    );
   });
 
   it("only reveals that an address is taken once its code is entered", async () => {
@@ -808,17 +864,8 @@ describe("u2 change email", () => {
     expect(html.status).toBe(200);
 
     const { code } = await requestCode(server, "mid-login@example.com", {});
-    const ok = await postScreen(
-      server,
-      "account-change-email-verify",
-      state,
-      { code },
-      {},
-    );
-    expect(ok.status).toBe(200);
-    expect(ok.json.screen?.links?.[0]?.href).toBe(
-      `/u2/continue?state=${state}`,
-    );
+    const ok = await verifyCode(server, code, {});
+    expect(ok.screen?.links?.[0]?.href).toBe(`/u2/continue?state=${state}`);
     expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
       "mid-login@example.com",
     );
@@ -827,16 +874,8 @@ describe("u2 change email", () => {
   it("returns to the application after screen_hint=change-email", async () => {
     const server = await setup({ screenHint: true });
     const { code } = await requestCode(server, "hint@example.com");
-    const ok = await postScreen(
-      server,
-      "account-change-email-verify",
-      server.state,
-      { code },
-      cookie,
-    );
-    expect(ok.json.screen?.links?.[0]?.href).toBe(
-      "https://example.com/callback",
-    );
+    const ok = await verifyCode(server, code);
+    expect(ok.screen?.links?.[0]?.href).toBe("https://example.com/callback");
   });
 
   it("rejects the code of an earlier request for another address", async () => {
@@ -967,15 +1006,8 @@ describe("u2 change email", () => {
 
     // A fresh code completes the change
     const { code: fresh } = await requestCode(server, "partial@example.com");
-    const ok = await postScreen(
-      server,
-      "account-change-email-verify",
-      state,
-      { code: fresh },
-      cookie,
-    );
-    expect(ok.status).toBe(200);
-    expect(ok.json.screen?.title).toBe("Email changed");
+    const ok = await verifyCode(server, fresh);
+    expect(ok.screen?.title).toBe("Email changed");
     expect((await env.data.users.get("tenantId", USER_ID))?.email).toBe(
       "partial@example.com",
     );
