@@ -8,6 +8,7 @@ import {
   LoginSessionState,
   Strategy,
 } from "@authhero/adapter-interfaces";
+import { codeRecipientState } from "../../../src/helpers/code-recipient";
 
 type ScreenJson = {
   redirect?: string;
@@ -407,10 +408,15 @@ describe("u2 login email verification requires a validated password", () => {
       login_id: state,
       user_id: userId,
       expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      state: JSON.stringify({
-        purpose: "login_email_verification",
-        connection: Strategy.USERNAME_PASSWORD,
-      }),
+      // Sent to the user's own address, so only the check under test fails
+      state: codeRecipientState(
+        userId === OTHER_USER_ID ? OTHER_EMAIL : EMAIL,
+        undefined,
+        {
+          purpose: "login_email_verification",
+          connection: Strategy.USERNAME_PASSWORD,
+        },
+      ),
     });
   }
 
