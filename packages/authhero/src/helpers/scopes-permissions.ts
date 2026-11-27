@@ -7,6 +7,7 @@ import {
 import { Bindings, Variables } from "../types";
 import { JSONHTTPException } from "../errors/json-http-exception";
 import { MANAGEMENT_API_AUDIENCE } from "../middlewares/authentication";
+import { isManagementApiAudience } from "./management-audience";
 
 // Base interface with common properties
 interface BaseScopesAndPermissionsParams {
@@ -628,7 +629,18 @@ export async function calculateScopesAndPermissions(
   const definedScopes = (resourceServer.scopes || []).map(
     (scope) => scope.value,
   );
-  const rbacEnabled = resourceServer.options?.enforce_policies === true;
+  // The Management API accepts a scope from the `scope` claim as well as from
+  // `permissions`. For its audiences the `scope` claim may therefore only
+  // carry what the user holds, whatever the resource server's own settings
+  // say: user permissions always apply, and a requested scope the resource
+  // server does not define is kept only when the user holds it too.
+  const managementAudience = await isManagementApiAudience(
+    ctx,
+    tenantId,
+    audience,
+  );
+  const rbacEnabled =
+    resourceServer.options?.enforce_policies === true || managementAudience;
   const tokenDialect = resourceServer.options?.token_dialect || "access_token";
 
   const tokenLifetimeFields = {
@@ -744,12 +756,15 @@ export async function calculateScopesAndPermissions(
   // API doesn't restrict them, matching Auth0's behavior. Tenants that opt
   // into `restrict_undefined_scopes` get them dropped here too, so the
   // posture stays consistent across RBAC-on and RBAC-off.
+  // A Management API audience is the exception either way: there an undefined
+  // scope is an authorization like any other, so the user has to hold it.
   const undefinedScopes = restrictUndefinedScopes
     ? []
     : requestedScopes.filter(
         (scope) =>
           !definedScopes.includes(scope) &&
-          !DEFAULT_OIDC_SCOPES.includes(scope),
+          !DEFAULT_OIDC_SCOPES.includes(scope) &&
+          (!managementAudience || allUserPermissions.has(scope)),
       );
 
   // If token_dialect is access_token_authz, return permissions directly plus default OIDC scopes and undefined scopes
