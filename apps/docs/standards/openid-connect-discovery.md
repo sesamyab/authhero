@@ -27,9 +27,9 @@ OpenID Connect Discovery lets clients dynamically learn an OP's endpoints and ca
 - **PKCE** — `code_challenge_methods_supported`: `S256`, `plain`.
 - **Supported claims** — published in `claims_supported`.
 
-## Not advertised
+## Conditionally advertised
 
-Endpoints for functionality AuthHero doesn't implement — notably `device_authorization_endpoint` (RFC 8628 device flow) — are omitted from the discovery document rather than advertised speculatively. See the [Standards overview](/standards/) for the full implementation status of each spec.
+Endpoints are only advertised when the deployment can serve them. `device_authorization_endpoint` and the `urn:ietf:params:oauth:grant-type:device_code` grant type ([RFC 8628 device flow](/features/device-authorization)) appear when the data adapter provides device-code storage, which the Kysely, Drizzle and DynamoDB adapters do. A custom adapter without the optional `deviceCodes` adapter leaves them out. See the [Standards overview](/standards/) for the full implementation status of each spec.
 
 ## Related AuthHero documentation
 

@@ -3,6 +3,7 @@ import { withMermaid } from "vitepress-plugin-mermaid";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import bookParts from "../book/chapters.json";
 
 /**
  * The weekly changelog, read from the filesystem rather than listed by hand.
@@ -32,6 +33,23 @@ function changelogSidebar() {
       .replace(/^['"]|['"]$/g, "");
     return { text: title ?? slug, link: `/changelog/${slug}` };
   });
+}
+
+/**
+ * The book's chapters, grouped into parts. `book/chapters.json` is the one list:
+ * the sidebar here, the contents on the book's cover page and the PDF build all
+ * read it. Chapters are numbered straight through, across parts.
+ */
+function bookSidebar() {
+  let n = 0;
+  return bookParts.map((part) => ({
+    text: part.part,
+    collapsed: false,
+    items: part.chapters.map((chapter) => ({
+      text: `${++n}. ${chapter.title}`,
+      link: `/book/${chapter.slug}`,
+    })),
+  }));
 }
 
 const DOCS_ORIGIN = "https://docs.authhero.net";
@@ -184,6 +202,7 @@ gtag('config', 'G-DNZWG3PF2L');`,
       nav: [
         { text: "Overview", link: "/" },
         { text: "Getting Started", link: "/getting-started" },
+        { text: "Book", link: "/book/", activeMatch: "^/book/" },
         { text: "Architecture", link: "/architecture/" },
         { text: "Standards", link: "/standards/" },
         { text: "API Reference", link: "/api/overview" },
@@ -198,6 +217,11 @@ gtag('config', 'G-DNZWG3PF2L');`,
             { text: "Installation", link: "/getting-started" },
             { text: "Your First Login", link: "/first-login" },
           ],
+        },
+        {
+          text: "The AuthHero Book",
+          collapsed: true,
+          items: [{ text: "About the book", link: "/book/" }, ...bookSidebar()],
         },
         {
           text: "Architecture",
