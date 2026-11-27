@@ -195,4 +195,54 @@ describe("prompt partials", () => {
         originalFormData;
     }
   });
+  it("keeps repeated ulp-* values when a script calls form.submit()", async () => {
+    const submitted: Array<Record<string, string | string[]>> = [];
+    const page = await newSpecPage({
+      components: [AuthheroWidget, AuthheroNode],
+      template: () => (
+        <authhero-widget
+          screen={{
+            ...screen,
+            partials: {
+              "form-content-start":
+                '<input name="ulp-topics" value="news"><input name="ulp-topics" value="offers">',
+            },
+          }}
+          onFormSubmit={(
+            event: CustomEvent<{ data: Record<string, string | string[]> }>,
+          ) => submitted.push(event.detail.data)}
+        ></authhero-widget>
+      ),
+    });
+    await page.waitForChanges();
+
+    const form = page.root!.shadowRoot!.querySelector("form")!;
+    const originalFormData = global.FormData;
+    (global as unknown as { FormData: typeof FormData }).FormData = class {
+      constructor(private readonly source: HTMLFormElement) {}
+
+      forEach(callback: (value: string, key: string) => void) {
+        this.source
+          .querySelectorAll<HTMLInputElement>("input[name]")
+          .forEach((input) => callback(input.value, input.name));
+      }
+    } as unknown as typeof FormData;
+
+    try {
+      form.reportValidity = jest.fn(() => true);
+      // Installed by the widget before a WebAuthn ceremony, whose script then
+      // calls form.submit() (e.g. passkey autofill on the login screens).
+      (
+        page.rootInstance as unknown as { overrideFormSubmit: () => void }
+      ).overrideFormSubmit();
+      form.submit();
+      await page.waitForChanges();
+
+      expect(submitted).toHaveLength(1);
+      expect(submitted[0]["ulp-topics"]).toEqual(["news", "offers"]);
+    } finally {
+      (global as unknown as { FormData: typeof FormData }).FormData =
+        originalFormData;
+    }
+  });
 });

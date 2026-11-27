@@ -271,6 +271,8 @@
       "noCode": "Vennligst skriv inn bekreftelseskoden",
       "pageTitle": "Skriv inn kode | ${clientName}",
       "resendText": "Send kode på nytt",
+      "resendSuccess": "En ny kode er sendt til e-posten din",
+      "resendFailed": "Kunne ikke sende koden på nytt. Prøv igjen.",
       "sessionExpired": "Økten din har utløpt. Vennligst prøv igjen.",
       "title": "Sjekk e-posten din",
       "unexpectedError": "En uventet feil oppstod",
@@ -498,6 +500,8 @@
       "defaultDescription": "Klikk på lenken i e-posten for å logge inn",
       "description": "Vi sendte en lenke til ${username}. Klikk på den for å logge inn.",
       "resendText": "Send lenke på nytt",
+      "resendSuccess": "En ny lenke er sendt til e-posten din",
+      "resendFailed": "Kunne ikke sende e-posten på nytt. Prøv igjen.",
       "spamText": "Fikk du ikke e-posten? Sjekk søppelpostmappen.",
       "title": "Sjekk e-posten din"
     }
@@ -834,6 +838,8 @@
       "noCode": "Vennligst skriv inn bekreftelseskoden",
       "pageTitle": "Skriv inn kode | ${clientName}",
       "resendText": "Send kode på nytt",
+      "resendSuccess": "Vi sendte en ny kode til telefonen din",
+      "resendFailed": "Kunne ikke sende koden på nytt. Prøv igjen.",
       "sessionExpired": "Økten din har utløpt. Vennligst prøv igjen.",
       "title": "Sjekk telefonen din",
       "unexpectedError": "En uventet feil oppstod",

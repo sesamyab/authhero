@@ -271,6 +271,8 @@
       "noCode": "Indtast venligst bekræftelseskoden",
       "pageTitle": "Indtast kode | ${clientName}",
       "resendText": "Send koden igen",
+      "resendSuccess": "En ny kode er sendt til din e-mail",
+      "resendFailed": "Koden kunne ikke sendes igen. Prøv igen.",
       "sessionExpired": "Din session er udløbet. Prøv venligst igen.",
       "title": "Tjek din e-mail",
       "unexpectedError": "Der opstod en uventet fejl",
@@ -498,6 +500,8 @@
       "defaultDescription": "Klik på linket i din e-mail for at logge ind",
       "description": "Vi sendte et link til ${username}. Klik på det for at logge ind.",
       "resendText": "Send link igen",
+      "resendSuccess": "Et nyt link er sendt til din e-mail",
+      "resendFailed": "E-mailen kunne ikke sendes igen. Prøv igen.",
       "spamText": "Har du ikke modtaget e-mailen? Tjek din spam-mappe.",
       "title": "Tjek din e-mail"
     }
@@ -834,6 +838,8 @@
       "noCode": "Indtast venligst bekræftelseskoden",
       "pageTitle": "Indtast kode | ${clientName}",
       "resendText": "Send koden igen",
+      "resendSuccess": "Vi sendte en ny kode til din telefon",
+      "resendFailed": "Koden kunne ikke sendes igen. Prøv igen.",
       "sessionExpired": "Din session er udløbet. Prøv venligst igen.",
       "title": "Tjek din telefon",
       "unexpectedError": "Der opstod en uventet fejl",

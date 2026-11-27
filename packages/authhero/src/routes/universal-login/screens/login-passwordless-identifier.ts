@@ -22,6 +22,7 @@ import { OTP_EXPIRATION_TIME } from "../../../constants";
 import { emailOtpChallengeScreen } from "./email-otp-challenge";
 import { smsOtpChallengeScreen } from "./sms-otp-challenge";
 import { magicLinkSentScreen } from "./magic-link-sent";
+import { allowLoginOtpSend } from "./login-otp";
 import { createTranslation } from "../../../i18n";
 import {
   codeRecipientState,
@@ -364,7 +365,16 @@ export const loginPasswordlessIdentifierScreenDefinition: ScreenDefinition = {
       // Generate OTP. Skipped in the enumeration-safe stub path so we don't
       // deliver an email/SMS to an unknown address — the challenge screen
       // still renders, but submitted codes will fail to verify.
-      if (!silentSignupStub) {
+      // Past the per-session send cap (or the per-recipient rate limit) the
+      // flow continues to the challenge screen as usual, but nothing is sent.
+      const sendAllowed =
+        !silentSignupStub &&
+        (await allowLoginOtpSend(ctx, {
+          tenantId: client.tenant.id,
+          loginSessionId: loginSession.id,
+          to: normalized,
+        }));
+      if (sendAllowed) {
         let code_id = generateOTP();
         let existingCode = await ctx.env.data.codes.get(
           client.tenant.id,

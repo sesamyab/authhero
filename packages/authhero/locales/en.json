@@ -271,6 +271,8 @@
       "noCode": "Please enter the verification code",
       "pageTitle": "Enter Code | ${clientName}",
       "resendText": "Resend code",
+      "resendSuccess": "A new code has been sent to your email",
+      "resendFailed": "Failed to resend the code. Please try again.",
       "sessionExpired": "Your session has expired. Please try again.",
       "title": "Check your email",
       "unexpectedError": "An unexpected error occurred",
@@ -498,6 +500,8 @@
       "defaultDescription": "Click the link in your email to sign in",
       "description": "We sent a link to ${username}. Click it to sign in.",
       "resendText": "Resend link",
+      "resendSuccess": "A new link has been sent to your email",
+      "resendFailed": "Failed to resend the email. Please try again.",
       "spamText": "Didn't receive the email? Check your spam folder.",
       "title": "Check your email"
     }
@@ -834,6 +838,8 @@
       "noCode": "Please enter the verification code",
       "pageTitle": "Enter Code | ${clientName}",
       "resendText": "Resend code",
+      "resendSuccess": "We sent a new code to your phone",
+      "resendFailed": "Failed to resend the code. Please try again.",
       "sessionExpired": "Your session has expired. Please try again.",
       "title": "Check your phone",
       "unexpectedError": "An unexpected error occurred",

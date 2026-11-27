@@ -1,18 +1,159 @@
 import type { Context } from "hono";
-import type { LoginSession } from "@authhero/adapter-interfaces";
+import { LoginSessionState } from "@authhero/adapter-interfaces";
+import type {
+  LoginSession,
+  RateLimitDecision,
+} from "@authhero/adapter-interfaces";
 import type { EnrichedClient } from "../../../helpers/client";
 import type { Bindings, Variables } from "../../../types";
 import generateOTP from "../../../utils/otp";
 import { sendCode, sendLink } from "../../../emails";
 import { OTP_EXPIRATION_TIME } from "../../../constants";
-import { codeRecipientState } from "../../../helpers/code-recipient";
+import {
+  codeRecipientState,
+  isCodeRecipient,
+} from "../../../helpers/code-recipient";
+import type { ScreenContext, ScreenFactory, ScreenResult } from "./types";
+import {
+  FinalizedLoginSessionError,
+  readLoginSessionData,
+  updateLoginSessionData,
+} from "../../../state-machines/login-session-data";
+import { LoginSessionEventType } from "../../../state-machines/login-session";
+
+type OtpContext = Context<{ Bindings: Bindings; Variables: Variables }>;
+
+/**
+ * Login OTP codes or magic links (identifier step plus resends) delivered per
+ * login session. Further requests are accepted but nothing is sent.
+ *
+ * Best effort: the counter is a read/modify/write on the login session (see
+ * updateLoginSessionData), so concurrent requests on one session can each
+ * pass the check. The optional per-recipient rate limit adds a bound across
+ * sessions, but it is not configured by default and fails open on adapter
+ * errors, so neither is a hard guarantee.
+ */
+export const LOGIN_OTP_MAX_SENDS = 5;
+
+function isRateLimitDecision(value: unknown): value is RateLimitDecision {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "allowed" in value &&
+    typeof value.allowed === "boolean"
+  );
+}
+
+const FINALIZED_LOGIN_SESSION_STATES: string[] = [
+  LoginSessionState.COMPLETED,
+  LoginSessionState.FAILED,
+  LoginSessionState.EXPIRED,
+];
+
+/**
+ * login_otp_sent on the stored session, or undefined when the session is
+ * gone, finalized or past its expiry: no code may be sent for it, and the
+ * recipient's rate limit must not be consumed on its behalf.
+ */
+async function readLoginOtpSent(
+  ctx: OtpContext,
+  tenantId: string,
+  loginSessionId: string,
+): Promise<number | undefined> {
+  const current = await ctx.env.data.loginSessions.get(
+    tenantId,
+    loginSessionId,
+  );
+  if (
+    !current ||
+    FINALIZED_LOGIN_SESSION_STATES.includes(current.state ?? "") ||
+    current.expires_at < new Date().toISOString()
+  ) {
+    return undefined;
+  }
+  return readLoginSessionData(current.state_data).login_otp_sent ?? 0;
+}
+
+/**
+ * Count a login OTP delivery on the login session and consume the optional
+ * per-recipient rate limit. Returns false when either limit is reached, or
+ * when the session is already finalized; callers then skip delivery but
+ * respond as usual, so the response does not reveal the limit or whether
+ * the address exists. Counted before sending, so failed sends count too.
+ *
+ * Order: check the session cap without writing, then the recipient rate
+ * limit, then reserve the slot. A request the rate limit rejects does not use
+ * up the session's allowance, and a session already at its cap does not
+ * consume the recipient's rate limit. The reservation re-reads the counter
+ * right before writing to keep the window for concurrent requests small; it
+ * is not atomic (see LOGIN_OTP_MAX_SENDS).
+ */
+export async function allowLoginOtpSend(
+  ctx: OtpContext,
+  {
+    tenantId,
+    loginSessionId,
+    to,
+  }: { tenantId: string; loginSessionId: string; to: string },
+): Promise<boolean> {
+  const before = await readLoginOtpSent(ctx, tenantId, loginSessionId);
+  if (before === undefined) return false;
+  if (before >= LOGIN_OTP_MAX_SENDS) {
+    console.warn("Login OTP send limit reached for login session");
+    return false;
+  }
+
+  const rateLimit = ctx.env.data.rateLimit;
+  if (rateLimit) {
+    let allowed = true;
+    try {
+      const result: unknown = await rateLimit.consume(
+        "brute-force",
+        `login-otp-send:${tenantId}:${to.toLowerCase()}`,
+      );
+      if (isRateLimitDecision(result)) allowed = result.allowed;
+    } catch (error) {
+      // Fail open: a misbehaving rate-limit adapter must not block logins.
+      console.error("Login OTP rate limit consume failed:", error);
+    }
+    if (!allowed) {
+      console.warn("Login OTP send rate limit reached for recipient");
+      return false;
+    }
+  }
+
+  const sent = await readLoginOtpSent(ctx, tenantId, loginSessionId);
+  if (sent === undefined) return false;
+  if (sent >= LOGIN_OTP_MAX_SENDS) {
+    console.warn("Login OTP send limit reached for login session");
+    return false;
+  }
+  try {
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      loginSessionId,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { login_otp_sent: sent + 1 },
+      },
+    );
+  } catch (error) {
+    if (error instanceof FinalizedLoginSessionError) return false;
+    throw error;
+  }
+  return true;
+}
 
 /**
  * Create a one-time code bound to the login session and to `to`, and deliver
  * it to the user, either as a code or (for magic-link email connections) as a link.
+ *
+ * Subject to the per-session send cap and per-recipient rate limit in
+ * allowLoginOtpSend; returns false, without sending, when a limit is hit.
  */
 export async function sendLoginOtp(
-  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  ctx: OtpContext,
   {
     client,
     loginSession,
@@ -24,7 +165,17 @@ export async function sendLoginOtp(
     to: string;
     magicLink: boolean;
   },
-) {
+): Promise<boolean> {
+  if (
+    !(await allowLoginOtpSend(ctx, {
+      tenantId: client.tenant.id,
+      loginSessionId: loginSession.id,
+      to,
+    }))
+  ) {
+    return false;
+  }
+
   let code_id = generateOTP();
   let existingCode = await ctx.env.data.codes.get(
     client.tenant.id,
@@ -69,4 +220,125 @@ export async function sendLoginOtp(
       language,
     });
   }
+  return true;
+}
+
+/**
+ * Re-send the login OTP (code or magic link) for the login session behind
+ * `state`, to the username the identifier step stored on it.
+ *
+ * Only re-sends when a login OTP was issued for this session to the same
+ * recipient before. The enumeration-safe stub path in the identifier screens
+ * shows the challenge without issuing a code, and a resend must not start
+ * delivering to an unknown address either, nor to a new address the session
+ * switched to after a code went to an earlier one. Repeated resends are capped by allowLoginOtpSend;
+ * past the cap the caller still shows the usual "code sent" message.
+ *
+ * Returns false when the login session is gone or has no username.
+ */
+export async function resendLoginOtp(
+  ctx: OtpContext,
+  {
+    client,
+    state,
+    magicLink,
+  }: {
+    client: EnrichedClient;
+    state: string;
+    magicLink: boolean;
+  },
+): Promise<boolean> {
+  const loginSession = await ctx.env.data.loginSessions.get(
+    client.tenant.id,
+    state,
+  );
+  const to = loginSession?.authParams?.username;
+  if (!loginSession || !to) return false;
+
+  const { codes } = await ctx.env.data.codes.list(client.tenant.id, {
+    q: `login_id:${loginSession.id}`,
+    per_page: 100,
+  });
+  const countryCode = ctx.get("countryCode");
+  const issued = codes.some(
+    (code) =>
+      code.login_id === loginSession.id &&
+      code.code_type === "otp" &&
+      isCodeRecipient(code, to, countryCode),
+  );
+  if (!issued) return true;
+
+  await sendLoginOtp(ctx, { client, loginSession, to, magicLink });
+  return true;
+}
+
+/**
+ * POST handler body for the RESEND_BUTTON on the login OTP screens
+ * (email-otp-challenge, sms-otp-challenge, magic-link-sent): re-send and
+ * re-render the screen with a success or error message. A delivery error is
+ * shown as such, except in enumeration-safe mode
+ * (client.hide_sign_up_disabled_error), where it gets the usual success
+ * message like every other resend.
+ */
+export async function loginOtpResendResult(
+  context: ScreenContext,
+  {
+    render,
+    magicLink,
+    successText,
+    failedText,
+    expiredText,
+  }: {
+    render: ScreenFactory;
+    magicLink: boolean;
+    successText: string;
+    failedText: string;
+    expiredText: string;
+  },
+): Promise<{ screen: ScreenResult } | { error: string; screen: ScreenResult }> {
+  let sent: boolean;
+  try {
+    sent = await resendLoginOtp(context.ctx, {
+      client: context.client,
+      state: context.state,
+      magicLink,
+    });
+  } catch (err) {
+    const safeErr =
+      err instanceof Error
+        ? { name: err.name, message: err.message }
+        : { name: "UnknownError" };
+    console.error("Failed to resend login code:", safeErr);
+    // In enumeration-safe mode the stub path answers "code sent" without
+    // sending anything, so a delivery error must look the same: otherwise it
+    // would reveal that a code was issued, i.e. that the account exists.
+    if (context.client.hide_sign_up_disabled_error !== true) {
+      return {
+        error: failedText,
+        screen: await render({
+          ...context,
+          messages: [{ text: failedText, type: "error" }],
+        }),
+      };
+    }
+    sent = true;
+  }
+
+  if (!sent) {
+    return {
+      error: expiredText,
+      screen: await render({
+        ...context,
+        messages: [{ text: expiredText, type: "error" }],
+      }),
+    };
+  }
+
+  return {
+    screen: await render({
+      ...context,
+      errors: undefined,
+      messages: [{ text: successText, type: "success" }],
+    }),
+  };
 }

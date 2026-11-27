@@ -19,6 +19,7 @@ import { HTTPException } from "hono/http-exception";
 import { JSONHTTPException } from "../../../errors/json-http-exception";
 import { getPrimaryUsernamePasswordUser } from "../../../utils/username-password-provider";
 import { enterPasswordScreen } from "./enter-password";
+import { loginOtpResendResult } from "./login-otp";
 
 /**
  * Whether the user can switch from the email code to their password. Only
@@ -229,6 +230,16 @@ export const emailOtpChallengeScreenDefinition: ScreenDefinition = {
         locale,
         context.customText,
       );
+
+      if (data.action === "resend") {
+        return loginOtpResendResult(context, {
+          render: emailOtpChallengeScreen,
+          magicLink: false,
+          successText: m.resendSuccess(),
+          failedText: m.resendFailed(),
+          expiredText: m.sessionExpired(),
+        });
+      }
 
       // Validate code is provided
       if (!code) {

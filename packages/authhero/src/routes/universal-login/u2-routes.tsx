@@ -9,6 +9,7 @@ import { createLoginSessionWithData } from "../../state-machines/login-session-d
  * - GET /u2/login/identifier - Identifier screen (first screen of login flow)
  * - GET /u2/login/email-otp-challenge - Email OTP code verification
  * - GET /u2/login/sms-otp-challenge - SMS OTP code verification
+ * - GET /u2/login/magic-link-sent - Check your email for the magic link
  * - GET /u2/enter-password - Password authentication
  * - GET /u2/signup - New user registration
  * - GET /u2/reset-password/request - Password reset request
@@ -622,6 +623,7 @@ const SCREEN_GET_PATHS = {
   "login/identifier": "identifier",
   "login/email-otp-challenge": "email-otp-challenge",
   "login/sms-otp-challenge": "sms-otp-challenge",
+  "login/magic-link-sent": "magic-link-sent",
   "login/login-passwordless-identifier": "login-passwordless-identifier",
   "login/email-verification": "email-verification-code",
   "login/email-verification-sent": "email-verification-link-sent",
@@ -667,6 +669,7 @@ const SCREEN_POST_PATHS = {
   "login/identifier": "identifier",
   "login/email-otp-challenge": "email-otp-challenge",
   "login/sms-otp-challenge": "sms-otp-challenge",
+  "login/magic-link-sent": "magic-link-sent",
   "login/login-passwordless-identifier": "login-passwordless-identifier",
   "login/email-verification": "email-verification-code",
   "login/email-verification-sent": "email-verification-link-sent",

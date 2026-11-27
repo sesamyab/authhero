@@ -271,6 +271,8 @@
       "noCode": "Zadejte prosím ověřovací kód",
       "pageTitle": "Zadejte kód | ${clientName}",
       "resendText": "Opětovné odeslání kódu",
+      "resendSuccess": "Na váš e-mail byl odeslán nový kód",
+      "resendFailed": "Kód se nepodařilo znovu odeslat. Zkuste to prosím znovu.",
       "sessionExpired": "Platnost vaší relace vypršela. Zkuste to prosím znovu.",
       "title": "Zkontrolujte svůj e-mail",
       "unexpectedError": "Došlo k neočekávané chybě",
@@ -498,6 +500,8 @@
       "defaultDescription": "Klikněte na odkaz ve svém e-mailu pro přihlášení",
       "description": "Odeslali jsme odkaz na ${username}. Kliknutím na něj se přihlásíte.",
       "resendText": "Odeslat odkaz znovu",
+      "resendSuccess": "Na váš e-mail byl odeslán nový odkaz",
+      "resendFailed": "E-mail se nepodařilo znovu odeslat. Zkuste to prosím znovu.",
       "spamText": "Nedostali jste e-mail? Zkontrolujte složku nevyžádané pošty.",
       "title": "Zkontrolujte svůj e-mail"
     }
@@ -834,6 +838,8 @@
       "noCode": "Zadejte prosím ověřovací kód",
       "pageTitle": "Zadejte kód | ${clientName}",
       "resendText": "Opětovné odeslání kódu",
+      "resendSuccess": "Odeslali jsme nový kód na váš telefon",
+      "resendFailed": "Kód se nepodařilo znovu odeslat. Zkuste to prosím znovu.",
       "sessionExpired": "Platnost vaší relace vypršela. Zkuste to prosím znovu.",
       "title": "Zkontrolujte svůj telefon",
       "unexpectedError": "Došlo k neočekávané chybě",

@@ -40,6 +40,8 @@ export interface LoginSessionData {
   // MFA brute-force limits (see authentication-flows/mfa-attempts.ts)
   mfa_failed_attempts?: number;
   mfa_sms_sent?: number;
+  /** Login OTP codes/links sent (identifier step plus resends), see screens/login-otp.ts */
+  login_otp_sent?: number;
   pending_email_verification?: unknown;
   /** u2 change-email: the address a code was sent to, shown on the verify step */
   pending_email_change?: { email: string };
