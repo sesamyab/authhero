@@ -29,6 +29,7 @@ AuthHero is built on open identity standards. This section tracks every spec Aut
 | [RFC 9728 — Protected Resource Metadata](/standards/rfc-9728) | Partial |
 | [RFC 9101 — JWT-Secured Authorization Request (JAR)](/standards/rfc-9101) | Full |
 | [RFC 8693 — OAuth 2.0 Token Exchange](/standards/rfc-8693) | Partial |
+| [RFC 8628 — Device Authorization Grant](/features/device-authorization) | Full |
 
 ## Tokens & keys
 
@@ -57,9 +58,3 @@ AuthHero is built on open identity standards. This section tracks every spec Aut
 ## Conformance testing
 
 AuthHero is verified against the [OpenID Foundation conformance suite](https://gitlab.com/openid/conformance-suite) via an automated Playwright-driven runner. See [Conformance Testing](/standards/conformance) for which test plans are exercised, how to run the suite locally, and how to interpret failures.
-
-## Notes on unimplemented standards
-
-- **RFC 8628 — Device Authorization Grant** — not implemented; `device_authorization_endpoint` is not advertised in [`/.well-known/openid-configuration`](/standards/openid-connect-discovery).
-
-These will be documented as dedicated pages once implemented.
