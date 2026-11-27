@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { LoginSessionState } from "@authhero/adapter-interfaces";
 import type {
   LoginSession,
   RateLimitDecision,
@@ -43,7 +44,17 @@ function isRateLimitDecision(value: unknown): value is RateLimitDecision {
   );
 }
 
-/** login_otp_sent on the stored session, or undefined when it is gone. */
+const FINALIZED_LOGIN_SESSION_STATES: string[] = [
+  LoginSessionState.COMPLETED,
+  LoginSessionState.FAILED,
+  LoginSessionState.EXPIRED,
+];
+
+/**
+ * login_otp_sent on the stored session, or undefined when the session is
+ * gone, finalized or past its expiry: no code may be sent for it, and the
+ * recipient's rate limit must not be consumed on its behalf.
+ */
 async function readLoginOtpSent(
   ctx: OtpContext,
   tenantId: string,
@@ -53,7 +64,13 @@ async function readLoginOtpSent(
     tenantId,
     loginSessionId,
   );
-  if (!current) return undefined;
+  if (
+    !current ||
+    FINALIZED_LOGIN_SESSION_STATES.includes(current.state ?? "") ||
+    current.expires_at < new Date().toISOString()
+  ) {
+    return undefined;
+  }
   return readLoginSessionData(current.state_data).login_otp_sent ?? 0;
 }
 
