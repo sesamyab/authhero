@@ -54,10 +54,10 @@ const adapters = createAdapters(docClient, {
 });
 
 // Use with AuthHero
-import { Authhero } from "authhero";
+import { init } from "authhero";
 
-const auth = new Authhero({
-  data: adapters,
+const { app } = init({
+  dataAdapter: adapters,
   // ... other config
 });
 ```
@@ -68,6 +68,7 @@ const auth = new Authhero({
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import createAdapters from "@authhero/aws-adapter";
+import { init } from "authhero";
 
 export default {
   async fetch(request: Request, env: Env) {
@@ -86,12 +87,12 @@ export default {
       tableName: env.DYNAMODB_TABLE_NAME,
     });
     
-    const auth = new Authhero({
-      data: adapters,
+    const { app } = init({
+      dataAdapter: adapters,
       // ... other config
     });
-    
-    return auth.handleRequest(request);
+
+    return app.fetch(request, env);
   },
 };
 ```

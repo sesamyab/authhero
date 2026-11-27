@@ -162,11 +162,13 @@ const app = init({
 # SAML_SIGN_URL = "https://signing-service.com/sign"
 
 import { init } from 'authhero';
-import { createCloudflareAdapter } from '@authhero/cloudflare';
+import { drizzle } from 'drizzle-orm/d1';
+import createAdapters from '@authhero/drizzle';
+import * as schema from '@authhero/drizzle/schema/sqlite';
 
 export default {
   async fetch(request: Request, env: Env) {
-    const dataAdapter = createCloudflareAdapter(env);
+    const dataAdapter = createAdapters(drizzle(env.AUTH_DB, { schema }));
 
     // Automatically uses HttpSamlSigner
     const { app } = init({ dataAdapter });
@@ -201,6 +203,7 @@ If you were importing SAML utilities directly, update imports:
 
 ### Before
 
+<!-- docs-imports-ignore -->
 ```typescript
 import { createSamlResponse } from "authhero";
 ```
@@ -220,7 +223,7 @@ SAML types are now exported from both packages:
 import type { SamlSigner } from "authhero";
 
 // Or from SAML package directly
-import type { SamlSigner, SAMLRequest, SAMLResponseJSON } from "@authhero/saml";
+import type { SamlSigner, SAMLResponseJSON } from "@authhero/saml";
 ```
 
 ## Testing

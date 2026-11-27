@@ -12,7 +12,7 @@ This document describes how to configure the AuthHero package for your applicati
 When initializing the AuthHero instance, you can provide a configuration object with the following options:
 
 ```typescript
-import { init, AuthHeroConfig } from "@authhero/authhero";
+import { init, AuthHeroConfig } from "authhero";
 
 const config: AuthHeroConfig = {
   dataAdapter: adapter, // Required
@@ -37,10 +37,10 @@ The database adapter to use. AuthHero supports multiple adapters:
 - [Cloudflare Adapter](/customization/cloudflare-adapter/)
 
 ```typescript
-import { createKyselyAdapter } from "@authhero/kysely";
+import createAdapters from "@authhero/drizzle";
 
 const config: AuthHeroConfig = {
-  dataAdapter: createKyselyAdapter(db),
+  dataAdapter: createAdapters(db),
 };
 ```
 
@@ -489,12 +489,12 @@ Each field is optional and falls back to the tenant's value. A value set on the 
 Here's a complete example showing all configuration options:
 
 ```typescript
-import { init, AuthHeroConfig } from "@authhero/authhero";
-import { createKyselyAdapter } from "@authhero/kysely";
+import { init, AuthHeroConfig } from "authhero";
+import createAdapters from "@authhero/drizzle";
 
 const config: AuthHeroConfig = {
   // Required: Database adapter
-  dataAdapter: createKyselyAdapter(db),
+  dataAdapter: createAdapters(db),
 
   // Optional: CORS configuration
   allowedOrigins: ["https://app.example.com", "https://example.com"],

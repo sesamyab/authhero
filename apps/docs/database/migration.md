@@ -28,52 +28,47 @@ The migration process follows these phases:
 5. **Switchover**: Make new database primary
 6. **Cleanup**: Remove old database once stable
 
-## Example: PostgreSQL to MySQL Migration
+## Example: MySQL (Kysely) to SQLite (Drizzle) Migration
 
-This example shows migrating from PostgreSQL (with Kysely) to MySQL (with Drizzle).
+This example shows migrating from MySQL on PlanetScale (with the Kysely adapter) to SQLite (with the Drizzle adapter). The same steps apply to any pair of adapters.
 
 ### Phase 1: Setup Both Adapters
 
-First, install and configure both adapters:
+First, install both adapters:
 
 ```bash
-pnpm add @authhero/kysely @authhero/drizzle
+pnpm add @authhero/kysely-adapter kysely kysely-planetscale @authhero/drizzle drizzle-orm better-sqlite3
 ```
 
 Create connections to both databases:
 
 ```typescript
 // src/database.ts
-import { Kysely, PostgresDialect } from "kysely";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
-import { createKyselyAdapter } from "@authhero/kysely";
-import { createDrizzleAdapter } from "@authhero/drizzle";
+import { Kysely } from "kysely";
+import { PlanetScaleDialect } from "kysely-planetscale";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import createKyselyAdapters, {
+  type Database as KyselyDatabase,
+} from "@authhero/kysely-adapter";
+import createDrizzleAdapters from "@authhero/drizzle";
+import * as schema from "@authhero/drizzle/schema/sqlite";
 
-// Old database: PostgreSQL with Kysely
-const postgresDb = new Kysely({
-  dialect: new PostgresDialect({
-    host: process.env.POSTGRES_HOST,
-    database: process.env.POSTGRES_DB,
-    user: process.env.POSTGRES_USER,
-    password: process.env.POSTGRES_PASSWORD,
-  }),
+// Old database: MySQL on PlanetScale with Kysely
+const mysqlDb = new Kysely<KyselyDatabase>({
+  dialect: new PlanetScaleDialect({ url: process.env.DATABASE_URL }),
 });
 
-// New database: MySQL with Drizzle
-const mysqlConnection = await mysql.createPool({
-  host: process.env.MYSQL_HOST,
-  database: process.env.MYSQL_DB,
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-});
-
-const mysqlDb = drizzle(mysqlConnection);
+// New database: SQLite with Drizzle (apply the shipped migrations first —
+// see the Drizzle adapter page)
+const sqliteDb = drizzle(new Database("db.sqlite"), { schema });
 
 // Create adapters
-export const postgresAdapter = createKyselyAdapter(postgresDb);
-export const mysqlAdapter = createDrizzleAdapter(mysqlDb);
+export const mysqlAdapter = createKyselyAdapters(mysqlDb);
+export const sqliteAdapter = createDrizzleAdapters(sqliteDb);
 ```
+
+On Cloudflare Workers the new side is D1 instead: `drizzle(env.AUTH_DB, { schema })` with `drizzle` from `drizzle-orm/d1`. `kysely-planetscale` talks to PlanetScale over HTTP, so the old side works in a Worker unchanged.
 
 ### Phase 2: Configure Dual-Write
 
@@ -82,7 +77,7 @@ Use the passthrough adapter to write to both databases:
 ```typescript
 // src/adapters.ts
 import { createPassthroughAdapter } from "@authhero/adapter-interfaces";
-import { postgresAdapter, mysqlAdapter } from "./database";
+import { mysqlAdapter, sqliteAdapter } from "./database";
 
 // Track sync errors for monitoring
 const syncErrors = new Map<string, number>();
@@ -92,7 +87,7 @@ function handleSyncError(entity: string) {
     const key = `${entity}.${method}`;
     syncErrors.set(key, (syncErrors.get(key) || 0) + 1);
 
-    console.error(`MySQL sync failed for ${key}:`, {
+    console.error(`SQLite sync failed for ${key}:`, {
       error: error.message,
       args: args.slice(0, 2), // Log first 2 args (usually tenantId, id)
     });
@@ -104,46 +99,51 @@ function handleSyncError(entity: string) {
 
 // Create dual-write adapters for each entity
 export const dataAdapter = {
+  // Start from the old adapters, so every entity not listed below keeps
+  // reading and writing the old database. This must come first: a spread
+  // placed after the entries below would override them.
+  ...mysqlAdapter,
+
   // For entities being migrated, use passthrough
   users: createPassthroughAdapter({
-    primary: postgresAdapter.users,
+    primary: mysqlAdapter.users,
     secondaries: [
       {
-        adapter: mysqlAdapter.users,
-        blocking: true, // Wait to ensure MySQL write succeeds
+        adapter: sqliteAdapter.users,
+        blocking: true, // Wait to ensure SQLite write succeeds
         onError: handleSyncError("users"),
       },
     ],
   }),
 
   tenants: createPassthroughAdapter({
-    primary: postgresAdapter.tenants,
+    primary: mysqlAdapter.tenants,
     secondaries: [
       {
-        adapter: mysqlAdapter.tenants,
+        adapter: sqliteAdapter.tenants,
         blocking: true,
         onError: handleSyncError("tenants"),
       },
     ],
   }),
 
-  applications: createPassthroughAdapter({
-    primary: postgresAdapter.applications,
+  clients: createPassthroughAdapter({
+    primary: mysqlAdapter.clients,
     secondaries: [
       {
-        adapter: mysqlAdapter.applications,
+        adapter: sqliteAdapter.clients,
         blocking: true,
-        onError: handleSyncError("applications"),
+        onError: handleSyncError("clients"),
       },
     ],
   }),
 
   // Add all other entities...
   connections: createPassthroughAdapter({
-    primary: postgresAdapter.connections,
+    primary: mysqlAdapter.connections,
     secondaries: [
       {
-        adapter: mysqlAdapter.connections,
+        adapter: sqliteAdapter.connections,
         blocking: true,
         onError: handleSyncError("connections"),
       },
@@ -151,10 +151,10 @@ export const dataAdapter = {
   }),
 
   logs: createPassthroughAdapter({
-    primary: postgresAdapter.logs,
+    primary: mysqlAdapter.logs,
     secondaries: [
       {
-        adapter: mysqlAdapter.logs,
+        adapter: sqliteAdapter.logs,
         blocking: false,
         onError: handleSyncError("logs"),
       },
@@ -162,10 +162,10 @@ export const dataAdapter = {
   }),
 
   sessions: createPassthroughAdapter({
-    primary: postgresAdapter.sessions,
+    primary: mysqlAdapter.sessions,
     secondaries: [
       {
-        adapter: mysqlAdapter.sessions,
+        adapter: sqliteAdapter.sessions,
         blocking: true,
         onError: handleSyncError("sessions"),
       },
@@ -173,10 +173,10 @@ export const dataAdapter = {
   }),
 
   codes: createPassthroughAdapter({
-    primary: postgresAdapter.codes,
+    primary: mysqlAdapter.codes,
     secondaries: [
       {
-        adapter: mysqlAdapter.codes,
+        adapter: sqliteAdapter.codes,
         blocking: true,
         onError: handleSyncError("codes"),
       },
@@ -184,19 +184,16 @@ export const dataAdapter = {
   }),
 
   passwords: createPassthroughAdapter({
-    primary: postgresAdapter.passwords,
+    primary: mysqlAdapter.passwords,
     secondaries: [
       {
-        adapter: mysqlAdapter.passwords,
+        adapter: sqliteAdapter.passwords,
         blocking: true,
         onError: handleSyncError("passwords"),
       },
     ],
   }),
 
-  // Include any platform-specific adapters from primary
-  // These typically don't need migration
-  ...postgresAdapter,
 };
 
 // Export sync error stats for monitoring
@@ -209,10 +206,10 @@ Update your application to use the new adapter:
 
 ```typescript
 // src/index.ts
-import { init } from "@authhero/authhero";
+import { init } from "authhero";
 import { dataAdapter } from "./adapters";
 
-const app = init({
+const { app } = init({
   dataAdapter,
   // ... other config
 });
@@ -222,21 +219,91 @@ export default app;
 
 ### Phase 3: Backfill Existing Data
 
-Create a script to copy existing data from PostgreSQL to MySQL:
+List functions return one page at a time — `users.list` returns at most 50 users without pagination parameters — so the scripts below walk every page. Put the walks in a shared module:
+
+```typescript
+// scripts/list-all.ts
+import type { DataAdapters, Tenant, User } from "@authhero/adapter-interfaces";
+import { fetchAll } from "authhero";
+
+// tenants.list has no checkpoint mode; fetchAll walks it with an id cursor.
+export function listAllTenants(adapter: DataAdapters) {
+  return fetchAll<Tenant>((params) => adapter.tenants.list(params), "tenants", {
+    maxItems: -1,
+  });
+}
+
+// A checkpoint walk (from/take, then follow `next`) returns every primary
+// user. Linked accounts — rows with `linked_to` set — are folded into their
+// primary user's identities and are not part of the walk.
+export async function listPrimaryUsers(adapter: DataAdapters, tenantId: string) {
+  const users: User[] = [];
+  let from: string | undefined;
+  do {
+    const page = await adapter.users.list(tenantId, { from, take: 100 });
+    users.push(...page.users);
+    from = page.next;
+  } while (from);
+  return users;
+}
+
+// The Kysely adapter's offset mode does return linked accounts. Read them in
+// a single query: a single SELECT is a consistent snapshot, whereas offset
+// pages would skip an account whenever another one is deleted between pages.
+// (The Drizzle adapter never lists linked accounts; read them one by one with
+// users.get.)
+const LINKED_USERS_LIMIT = 100_000;
+
+export async function listLinkedUsers(adapter: DataAdapters, tenantId: string) {
+  const { users } = await adapter.users.list(tenantId, {
+    page: 0,
+    per_page: LINKED_USERS_LIMIT,
+    q: "_exists_:linked_to",
+  });
+  if (users.length === LINKED_USERS_LIMIT) {
+    throw new Error(`Tenant ${tenantId} may have more linked accounts; raise LINKED_USERS_LIMIT`);
+  }
+  return users;
+}
+```
+
+Then copy the data from MySQL to SQLite:
 
 ```typescript
 // scripts/backfill-data.ts
-import { postgresAdapter, mysqlAdapter } from "../src/database";
+import { mysqlAdapter, sqliteAdapter } from "../src/database";
+import { listAllTenants, listLinkedUsers, listPrimaryUsers } from "./list-all";
+
+// Copies a user's current password hash. passwords.create first marks the
+// user's existing rows as not current and then inserts, so calling it with an
+// id SQLite already has (a rerun) would fail on the primary key after that
+// and leave the user without a current password. An existing copy is updated
+// in place instead: promoted first, other current rows demoted after, so the
+// user always has exactly one current password.
+async function copyCurrentPassword(tenantId: string, userId: string) {
+  const password = await mysqlAdapter.passwords.get(tenantId, userId);
+  if (!password) return;
+
+  const copies = await sqliteAdapter.passwords.list(tenantId, userId);
+  if (!copies.some((copy) => copy.id === password.id)) {
+    await sqliteAdapter.passwords.create(tenantId, password);
+    return;
+  }
+
+  await sqliteAdapter.passwords.update(tenantId, { ...password, is_current: true });
+  for (const copy of copies) {
+    if (copy.id !== password.id && copy.is_current) {
+      await sqliteAdapter.passwords.update(tenantId, { ...copy, is_current: false });
+    }
+  }
+}
 
 async function backfillEntity<T>(
   entityName: string,
-  getAll: () => Promise<T[]>,
-  create: (item: T) => Promise<void>,
+  items: T[],
+  create: (item: T) => Promise<unknown>,
 ) {
-  console.log(`Backfilling ${entityName}...`);
-
-  const items = await getAll();
-  console.log(`Found ${items.length} ${entityName} to migrate`);
+  console.log(`Backfilling ${items.length} ${entityName}...`);
 
   let successful = 0;
   let failed = 0;
@@ -261,50 +328,33 @@ async function backfillEntity<T>(
   return { successful, failed };
 }
 
-async function backfillTenants() {
-  const { tenants } = await postgresAdapter.tenants.list();
-
-  return backfillEntity(
-    "tenants",
-    async () => tenants,
-    async (tenant) => {
-      await mysqlAdapter.tenants.create(tenant);
-    },
-  );
-}
-
-async function backfillUsers() {
-  // Get all tenants first
-  const { tenants } = await postgresAdapter.tenants.list();
-  let totalSuccessful = 0;
-  let totalFailed = 0;
-
-  for (const tenant of tenants) {
-    console.log(`Backfilling users for tenant ${tenant.id}...`);
-
-    const { users } = await postgresAdapter.users.list(tenant.id, {});
-
-    const result = await backfillEntity(
-      `users (${tenant.id})`,
-      async () => users,
-      async (user) => {
-        await mysqlAdapter.users.create(tenant.id, user);
-      },
-    );
-
-    totalSuccessful += result.successful;
-    totalFailed += result.failed;
-  }
-
-  return { successful: totalSuccessful, failed: totalFailed };
-}
-
 async function main() {
   console.log("Starting database backfill...\n");
 
-  // Backfill in dependency order
-  await backfillTenants();
-  await backfillUsers();
+  // Backfill in dependency order: tenants, then users
+  const tenants = await listAllTenants(mysqlAdapter);
+  await backfillEntity("tenants", tenants, (tenant) =>
+    sqliteAdapter.tenants.create(tenant),
+  );
+
+  for (const tenant of tenants) {
+    // Primary users first, so linked accounts find the user they point to
+    const primaryUsers = await listPrimaryUsers(mysqlAdapter, tenant.id);
+    await backfillEntity(`users (${tenant.id})`, primaryUsers, (user) =>
+      sqliteAdapter.users.create(tenant.id, user),
+    );
+
+    const linkedUsers = await listLinkedUsers(mysqlAdapter, tenant.id);
+    await backfillEntity(`linked users (${tenant.id})`, linkedUsers, (user) =>
+      sqliteAdapter.users.create(tenant.id, user),
+    );
+
+    // Password hashes live in their own adapter; copy each user's current one
+    const users = [...primaryUsers, ...linkedUsers];
+    await backfillEntity(`passwords (${tenant.id})`, users, (user) =>
+      copyCurrentPassword(tenant.id, user.user_id),
+    );
+  }
   // Add other entities in correct order
 
   console.log("Backfill complete!");
@@ -321,92 +371,158 @@ tsx scripts/backfill-data.ts
 
 ### Phase 4: Verification
 
-Create a verification script to compare data:
+Create a verification script that compares both sides record by record: every id must exist on both sides, and the fields that matter for login must hold the same values. Comparing counts or ids alone would pass a user whose email or password hash differs.
 
 ```typescript
 // scripts/verify-migration.ts
-import { postgresAdapter, mysqlAdapter } from "../src/database";
+import type { User } from "@authhero/adapter-interfaces";
+import { mysqlAdapter, sqliteAdapter } from "../src/database";
+import { listAllTenants, listLinkedUsers, listPrimaryUsers } from "./list-all";
 
-async function verifyEntity<T extends { id?: string }>(
+// The user fields that must match. Adapters differ in whether an unset field
+// is null or missing, so both count as "unset".
+const USER_FIELDS = [
+  "email",
+  "email_verified",
+  "phone_number",
+  "phone_verified",
+  "username",
+  "connection",
+  "provider",
+  "is_social",
+  "linked_to",
+  "blocked",
+] as const;
+
+function compareRecords<T>(
   entityName: string,
-  getPostgres: () => Promise<T[]>,
-  getMySQL: () => Promise<T[]>,
+  mysqlRecords: T[],
+  sqliteRecords: T[],
+  getId: (record: T) => string,
+  fields: readonly (keyof T)[],
 ) {
   console.log(`Verifying ${entityName}...`);
+  console.log(`  MySQL: ${mysqlRecords.length} records`);
+  console.log(`  SQLite: ${sqliteRecords.length} records`);
 
-  const [postgresItems, mysqlItems] = await Promise.all([
-    getPostgres(),
-    getMySQL(),
-  ]);
+  const sqliteById = new Map(sqliteRecords.map((record) => [getId(record), record]));
+  const mysqlIds = new Set(mysqlRecords.map(getId));
+  const missingInSQLite = [...mysqlIds].filter((id) => !sqliteById.has(id));
+  const extraInSQLite = [...sqliteById.keys()].filter((id) => !mysqlIds.has(id));
+  const differing = mysqlRecords.filter((record) => {
+    const other = sqliteById.get(getId(record));
+    return (
+      other !== undefined &&
+      fields.some((field) => (record[field] ?? null) !== (other[field] ?? null))
+    );
+  });
 
-  console.log(`  PostgreSQL: ${postgresItems.length} records`);
-  console.log(`  MySQL: ${mysqlItems.length} records`);
-
-  if (postgresItems.length !== mysqlItems.length) {
-    console.error(`  ✗ Count mismatch!\n`);
-    return false;
+  if (missingInSQLite.length > 0) {
+    console.error(`  ✗ ${missingInSQLite.length} records missing in SQLite`);
+    console.error(`  Missing IDs:`, missingInSQLite.slice(0, 5));
+  }
+  if (differing.length > 0) {
+    console.error(`  ✗ ${differing.length} records differ`);
+    console.error(`  Differing IDs:`, differing.slice(0, 5).map(getId));
+  }
+  // A record only SQLite has would survive the switchover; reconcile it first
+  if (extraInSQLite.length > 0) {
+    console.error(`  ✗ ${extraInSQLite.length} extra records in SQLite`);
+    console.error(`  Extra IDs:`, extraInSQLite.slice(0, 5));
   }
 
-  // Check for missing records
-  const postgresIds = new Set(postgresItems.map((item) => item.id));
-  const mysqlIds = new Set(mysqlItems.map((item) => item.id));
-
-  const missingInMySQL = [...postgresIds].filter((id) => !mysqlIds.has(id));
-  const extraInMySQL = [...mysqlIds].filter((id) => !postgresIds.has(id));
-
-  if (missingInMySQL.length > 0) {
-    console.error(`  ✗ ${missingInMySQL.length} records missing in MySQL`);
-    console.error(`  Missing IDs:`, missingInMySQL.slice(0, 5));
-    return false;
-  }
-
-  if (extraInMySQL.length > 0) {
-    console.warn(`  ⚠ ${extraInMySQL.length} extra records in MySQL`);
-    console.warn(`  Extra IDs:`, extraInMySQL.slice(0, 5));
-  }
-
-  console.log(`  ✓ ${entityName} verified\n`);
-  return true;
+  const ok =
+    missingInSQLite.length === 0 &&
+    differing.length === 0 &&
+    extraInSQLite.length === 0;
+  if (ok) console.log(`  ✓ ${entityName} verified\n`);
+  return ok;
 }
 
 async function main() {
   console.log("Starting migration verification...\n");
+  const results: boolean[] = [];
 
-  const results = await Promise.all([
-    verifyEntity(
-      "tenants",
-      async () => (await postgresAdapter.tenants.list()).tenants,
-      async () => (await mysqlAdapter.tenants.list()).tenants,
-    ),
+  const mysqlTenants = await listAllTenants(mysqlAdapter);
+  const sqliteTenants = await listAllTenants(sqliteAdapter);
+  results.push(
+    compareRecords("tenants", mysqlTenants, sqliteTenants, (t) => t.id, [
+      "friendly_name",
+      "audience",
+    ]),
+  );
 
-    verifyEntity(
-      "users",
-      async () => {
-        const { tenants } = await postgresAdapter.tenants.list();
-        const allUsers = [];
-        for (const tenant of tenants) {
-          const { users } = await postgresAdapter.users.list(tenant.id, {});
-          allUsers.push(...users);
-        }
-        return allUsers;
-      },
-      async () => {
-        const { tenants } = await mysqlAdapter.tenants.list();
-        const allUsers = [];
-        for (const tenant of tenants) {
-          const { users } = await mysqlAdapter.users.list(tenant.id, {});
-          allUsers.push(...users);
-        }
-        return allUsers;
-      },
-    ),
+  for (const tenant of mysqlTenants) {
+    const [mysqlUsers, sqliteUsers] = await Promise.all([
+      listPrimaryUsers(mysqlAdapter, tenant.id),
+      listPrimaryUsers(sqliteAdapter, tenant.id),
+    ]);
+    results.push(
+      compareRecords(
+        `users (${tenant.id})`,
+        mysqlUsers,
+        sqliteUsers,
+        (user) => user.user_id,
+        USER_FIELDS,
+      ),
+    );
 
-    // Add other entities...
-  ]);
+    // Neither walk lists linked accounts, so one that only SQLite has would
+    // never reach a comparison. Both adapters fold linked accounts into their
+    // primary user's identities, so compare those: an extra linked account in
+    // SQLite shows up as an extra identity.
+    const identityKey = (user: User) =>
+      (user.identities ?? [])
+        .map((identity) => `${identity.connection}/${identity.provider}/${identity.user_id}`)
+        .sort()
+        .join(",");
+    const sqliteUsersById = new Map(sqliteUsers.map((user) => [user.user_id, user]));
+    const identityMismatches = mysqlUsers.filter((user) => {
+      const other = sqliteUsersById.get(user.user_id);
+      return other !== undefined && identityKey(user) !== identityKey(other);
+    });
+    if (identityMismatches.length > 0) {
+      console.error(
+        `  ✗ ${identityMismatches.length} users have different linked accounts (${tenant.id})`,
+      );
+    }
+    results.push(identityMismatches.length === 0);
 
-  const allPassed = results.every((result) => result);
+    // The Drizzle adapter doesn't list linked accounts; look each one up
+    const linkedUsers = await listLinkedUsers(mysqlAdapter, tenant.id);
+    const linkedInSQLite = await Promise.all(
+      linkedUsers.map((user) => sqliteAdapter.users.get(tenant.id, user.user_id)),
+    );
+    results.push(
+      compareRecords(
+        `linked users (${tenant.id})`,
+        linkedUsers,
+        linkedInSQLite.filter((user): user is User => user !== null),
+        (user) => user.user_id,
+        USER_FIELDS,
+      ),
+    );
 
-  if (allPassed) {
+    // Password hashes must match exactly, or those users can't log in
+    let passwordMismatches = 0;
+    for (const user of [...mysqlUsers, ...linkedUsers]) {
+      const [before, after] = await Promise.all([
+        mysqlAdapter.passwords.get(tenant.id, user.user_id),
+        sqliteAdapter.passwords.get(tenant.id, user.user_id),
+      ]);
+      if ((before?.password ?? null) !== (after?.password ?? null)) {
+        passwordMismatches++;
+      }
+    }
+    if (passwordMismatches > 0) {
+      console.error(`  ✗ ${passwordMismatches} password hashes differ (${tenant.id})`);
+    }
+    results.push(passwordMismatches === 0);
+  }
+
+  // Add other entities...
+
+  if (results.every((result) => result)) {
     console.log("✓ All verifications passed! Ready to switch over.");
   } else {
     console.error("✗ Verification failed. Do not switch over yet.");
@@ -453,18 +569,19 @@ export default admin;
 
 ### Phase 6: Switchover
 
-Once verification passes and sync errors are minimal, switch to MySQL as primary:
+Once verification passes and sync errors are minimal, switch to SQLite as primary:
 
 ```typescript
 // src/adapters.ts
 export const dataAdapter = {
+  ...sqliteAdapter,
   users: createPassthroughAdapter({
-    primary: mysqlAdapter.users, // ← Changed to MySQL
+    primary: sqliteAdapter.users, // ← Changed to SQLite
     secondaries: [
       {
-        adapter: postgresAdapter.users, // ← Keep PostgreSQL as backup
+        adapter: mysqlAdapter.users, // ← Keep MySQL as backup
         blocking: false, // Non-blocking now
-        onError: handleSyncError("users (postgres-backup)"),
+        onError: handleSyncError("users (mysql-backup)"),
       },
     ],
   }),
@@ -473,25 +590,25 @@ export const dataAdapter = {
 };
 ```
 
-Deploy this change and monitor for issues. All reads now come from MySQL, while writes still go to both databases.
+Deploy this change and monitor for issues. All reads now come from SQLite, while writes still go to both databases.
 
 ### Phase 7: Cleanup
 
 After running successfully for a reasonable period (e.g., 1 week):
 
-1. **Remove PostgreSQL secondaries**:
+1. **Remove MySQL secondaries**:
 
 ```typescript
 // src/adapters.ts
-export const dataAdapter = mysqlAdapter; // Use MySQL directly
+export const dataAdapter = sqliteAdapter; // Use SQLite directly
 ```
 
-2. **Decommission PostgreSQL database** (after taking a final backup)
+2. **Decommission MySQL database** (after taking a final backup)
 
 3. **Clean up old code and dependencies**:
 
 ```bash
-pnpm remove @authhero/kysely kysely pg
+pnpm remove @authhero/kysely-adapter kysely kysely-planetscale
 ```
 
 ## Migration Checklist
@@ -617,14 +734,18 @@ If verification fails:
 For cross-region migrations with different ORMs:
 
 ```typescript
-// Region 1: PostgreSQL + Kysely
-const region1Adapter = createKyselyAdapter(region1Db);
+import createKyselyAdapters from "@authhero/kysely-adapter";
+import createDrizzleAdapters from "@authhero/drizzle";
 
-// Region 2: MySQL + Drizzle
-const region2Adapter = createDrizzleAdapter(region2Db);
+// Region 1: MySQL on PlanetScale + Kysely
+const region1Adapter = createKyselyAdapters(region1Db);
+
+// Region 2: D1 or SQLite + Drizzle
+const region2Adapter = createDrizzleAdapters(region2Db);
 
 // Write to both regions
 const dataAdapter = {
+  ...region1Adapter,
   users: createPassthroughAdapter({
     primary: region1Adapter.users,
     secondaries: [
@@ -662,7 +783,7 @@ const externalAuthAdapter = createExternalAuthAdapter({
 });
 
 // AuthHero database adapter
-const authHeroAdapter = createKyselyAdapter(db);
+const authHeroAdapter = createAdapters(db); // from "@authhero/drizzle"
 
 // Phase 1: External auth primary, AuthHero secondary (dual-write)
 const dataAdapter = {
@@ -996,7 +1117,7 @@ const auth0Adapter = createAuth0Adapter({
   clientSecret: process.env.AUTH0_CLIENT_SECRET,
 });
 
-const authHeroAdapter = createKyselyAdapter(db);
+const authHeroAdapter = createAdapters(db); // from "@authhero/drizzle"
 
 // Week 1-2: Dual-write, Auth0 primary
 const phase1Adapter = {
@@ -1032,6 +1153,6 @@ If you're migrating from an external auth provider and need assistance designing
 
 - [Adapter Concepts](/architecture/adapters) - Understanding adapter architecture
 - [Adapter Interfaces](/customization/adapter-interfaces/) - Complete adapter API reference
-- [Kysely Adapter](/customization/kysely/) - PostgreSQL/MySQL/SQLite adapter
+- [Kysely Adapter](/customization/kysely/) - SQLite and MySQL (PlanetScale) adapter
 - [Drizzle Adapter](/customization/drizzle/) - Drizzle ORM adapter
 - [AWS Adapter](/customization/aws-adapter/) - DynamoDB adapter

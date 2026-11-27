@@ -33,40 +33,24 @@ interface DatabaseFactory {
 
 ## Cloudflare D1
 
-For Cloudflare D1 databases, use the factory from `@authhero/cloudflare`:
+A Worker can only query the D1 databases bound to it, so a database per tenant on Cloudflare means a Worker per tenant: [Cloudflare Workers for Platforms](/deployment/cloudflare-wfp). `@authhero/cloudflare-adapter` ships a provisioner that creates the tenant's D1, applies the migrations, and uploads the tenant Worker with its bindings and secrets:
 
 ```typescript
-import { setupMultiTenancy } from "@authhero/multi-tenancy";
-import { createD1Factory, createD1Adapter } from "@authhero/cloudflare";
+import {
+  createCloudflareWfpD1Provisioner,
+  createWfpTenantProvisioningHook,
+} from "@authhero/cloudflare-adapter";
 
-const d1Factory = createD1Factory({
-  accountId: env.CF_ACCOUNT_ID,
-  apiToken: env.CF_API_TOKEN,
-  databasePrefix: "tenant_", // Creates databases like "tenant_acme"
-  createAdapters: (db) => createD1Adapter(db),
+const provisioner = createCloudflareWfpD1Provisioner({
+  // Cloudflare API credentials, dispatch namespace, worker bundle,
+  // migrations and a per-tenant secrets resolver — see the type for
+  // the full options.
 });
 
-const multiTenancy = setupMultiTenancy({
-  accessControl: {
-    mainTenantId: "main",
-  },
-  databaseIsolation: {
-    getAdapters: d1Factory.getAdapters,
-    onProvision: async (tenantId) => {
-      await d1Factory.provision(tenantId);
-      // Run migrations
-      await runMigrations(tenantId);
-    },
-    onDeprovision: d1Factory.deprovision,
-  },
-});
+const hook = createWfpTenantProvisioningHook({ provisioner, tenants });
 ```
 
-### How D1 Factory Works
-
-1. **Provisioning**: Creates a new D1 database using the Cloudflare API
-2. **getAdapters**: Returns data adapters connected to the tenant's database
-3. **Deprovisioning**: Deletes the tenant's D1 database
+See [API-driven provisioning](/deployment/cloudflare-wfp#api-driven-provisioning) for the full setup. A single Worker that serves several tenants uses one shared D1, with tenants separated by `tenant_id`.
 
 ## Turso / LibSQL
 

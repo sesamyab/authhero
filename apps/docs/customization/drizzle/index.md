@@ -1,377 +1,139 @@
 ---
 title: Drizzle Adapter
-description: Modern TypeScript ORM adapter for AuthHero with excellent type safety, schema migrations, and edge runtime support for PostgreSQL, MySQL, SQLite.
+description: AuthHero's primary database adapter, built on Drizzle ORM for SQLite and Cloudflare D1, with pre-generated migrations shipped in the package.
 ---
 
 # Drizzle Adapter
 
-The Drizzle adapter provides a modern TypeScript ORM experience for AuthHero using [Drizzle ORM](https://orm.drizzle.team/). It offers excellent TypeScript integration, schema migrations, and edge runtime support.
+`@authhero/drizzle` is AuthHero's primary database adapter. It implements the [adapter interfaces](/customization/adapter-interfaces/) with [Drizzle ORM](https://orm.drizzle.team/) and is what the `create-authhero` templates with a SQL database use — all except `aws-sst` (DynamoDB) and `proxy` (no database).
 
-## Features
+## Supported databases
 
-- **Excellent TypeScript Integration**: Zero-overhead type safety with compile-time validation
-- **Schema Migrations**: Declarative schema management with automatic migration generation
-- **Multiple Databases**: PostgreSQL, MySQL, SQLite support
-- **Edge Runtime Compatible**: Works in Cloudflare Workers, Vercel Edge, and other edge environments
-- **Relational Queries**: Type-safe joins and relations
-- **Performance Optimized**: Minimal runtime overhead
+The adapter is built on Drizzle's SQLite schema, so it runs on SQLite-compatible databases:
+
+| Database | Driver |
+| --- | --- |
+| SQLite (Node.js) | `better-sqlite3` via `drizzle-orm/better-sqlite3` |
+| Cloudflare D1 | `drizzle-orm/d1` |
+
+PostgreSQL and MySQL are not supported by this adapter. For MySQL on PlanetScale, see the [Kysely adapter](/customization/kysely/).
 
 ## Installation
 
 ```bash
-npm install @authhero/drizzle
+npm install @authhero/drizzle drizzle-orm
+npm install better-sqlite3   # for SQLite on Node.js
 ```
+
+The package exports the adapter factory (default export) and the schema at `@authhero/drizzle/schema/sqlite`.
+
+::: warning The schema is published as TypeScript source
+`@authhero/drizzle/schema/sqlite` resolves to a `.ts` file, which plain `node` cannot load from `node_modules`. Run the server with a TypeScript-aware runner such as [`tsx`](https://tsx.is) (the `local` template uses `tsx`), or bundle it (Wrangler does this on Cloudflare Workers).
+:::
 
 ## Configuration
 
-### SQLite
+Create a Drizzle database with the AuthHero schema, then pass the adapters to `init`.
+
+### SQLite on Node.js
 
 ```typescript
-import { Database } from "@authhero/drizzle";
+import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import BetterSqlite3 from "better-sqlite3";
+import createAdapters from "@authhero/drizzle";
+import * as schema from "@authhero/drizzle/schema/sqlite";
+import { init } from "authhero";
 
-const sqlite = new BetterSqlite3("authhero.db");
-const db = drizzle(sqlite);
+const db = drizzle(new Database("db.sqlite"), { schema });
 
-const database = new Database({ db });
+const { app } = init({ dataAdapter: createAdapters(db) });
 ```
 
-### PostgreSQL
+### Cloudflare D1
 
 ```typescript
-import { Database } from "@authhero/drizzle";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-
-const queryClient = postgres(
-  "postgresql://username:password@localhost/authhero",
-);
-const db = drizzle(queryClient);
-
-const database = new Database({ db });
-```
-
-### MySQL
-
-```typescript
-import { Database } from "@authhero/drizzle";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
-
-const connection = await mysql.createConnection({
-  host: "localhost",
-  user: "username",
-  password: "password",
-  database: "authhero",
-});
-
-const db = drizzle(connection);
-const database = new Database({ db });
-```
-
-## Schema Definition
-
-The Drizzle adapter uses strongly-typed schema definitions:
-
-```typescript
-import { pgTable, varchar, boolean, timestamp, primaryKey } from "drizzle-orm/pg-core";
-
-export const tenants = pgTable("tenants", {
-  id: varchar("id", { length: 255 }).primaryKey(),
-  name: varchar("name", { length: 255 }),
-  audience: varchar("audience", { length: 255 }),
-  createdAt: timestamp("created_at").notNull(),
-  updatedAt: timestamp("updated_at").notNull(),
-});
-
-export const users = pgTable(
-  "users",
-  {
-    userId: varchar("user_id", { length: 255 }).notNull(),
-    tenantId: varchar("tenant_id", { length: 255 })
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    email: varchar("email", { length: 255 }),
-    emailVerified: boolean("email_verified").notNull(),
-    // ... other fields
-  },
-  (table) => ({
-    pk: primaryKey(table.userId, table.tenantId),
-  }),
-);
-```
-
-## Database Operations
-
-### Users
-
-```typescript
-// Create a user
-const user = await database.users.create({
-  userId: "user_123",
-  tenantId: "tenant_456",
-  email: "user@example.com",
-  name: "John Doe",
-  provider: "auth0",
-  emailVerified: true,
-  isSocial: false,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-});
-
-// Query with relations
-const userWithSessions = await database.users.get("user_123", "tenant_456", {
-  include: {
-    sessions: true,
-    permissions: true,
-    roles: true,
-  },
-});
-
-// Complex queries with joins
-const activeUsers = await db
-  .select()
-  .from(users)
-  .leftJoin(sessions, eq(users.userId, sessions.userId))
-  .where(
-    and(eq(users.tenantId, "tenant_456"), gte(sessions.expiresAt, new Date())),
-  );
-```
-
-### Type-Safe Queries
-
-```typescript
-// All queries are fully typed
-const result = await db
-  .select({
-    userId: users.userId,
-    email: users.email,
-    sessionCount: count(sessions.id),
-  })
-  .from(users)
-  .leftJoin(sessions, eq(users.userId, sessions.userId))
-  .where(eq(users.tenantId, tenantId))
-  .groupBy(users.userId);
-
-// TypeScript knows the exact shape of result
-type UserWithSessionCount = (typeof result)[0];
-```
-
-## Migrations
-
-Drizzle uses a declarative approach to migrations. You define your schema, and Drizzle generates the migrations:
-
-```bash
-# Generate migrations
-npx drizzle-kit generate:pg
-
-# Run migrations
-npx drizzle-kit migrate:pg
-```
-
-### Migration Configuration
-
-```typescript
-// drizzle.config.ts
-import type { Config } from "drizzle-kit";
-
-export default {
-  schema: "./src/schema.ts",
-  out: "./migrations",
-  driver: "pg",
-  dbCredentials: {
-    connectionString: process.env.DATABASE_URL!,
-  },
-} satisfies Config;
-```
-
-### Schema Evolution
-
-```typescript
-// Add a new column
-export const users = pgTable("users", {
-  // ... existing columns
-  lastLoginAt: timestamp("last_login_at"), // New column
-});
-
-// Drizzle will generate the appropriate ALTER TABLE migration
-```
-
-## Edge Runtime Support
-
-The Drizzle adapter works excellently in edge environments:
-
-```typescript
-// Cloudflare Workers
-import { Database } from "@authhero/drizzle";
 import { drizzle } from "drizzle-orm/d1";
+import createAdapters from "@authhero/drizzle";
+import * as schema from "@authhero/drizzle/schema/sqlite";
+import { init } from "authhero";
 
 export default {
-  async fetch(request: Request, env: Env) {
-    const db = drizzle(env.DB); // D1 binding
-    const database = new Database({ db });
-
-    // All database operations work in edge runtime
-    const user = await database.users.get(userId, tenantId);
-
-    return new Response(JSON.stringify(user));
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const db = drizzle(env.AUTH_DB, { schema });
+    const { app } = init({ dataAdapter: createAdapters(db) });
+    return app.fetch(request, env, ctx);
   },
 };
 ```
 
-## Advanced Features
+The [Cloudflare deployment guide](/deployment/cloudflare) covers bindings, assets and secrets.
 
-### Custom Types
+## Migrations
+
+The schema is owned by AuthHero. The migrations are pre-generated and shipped in the package's `drizzle/` directory — apply them, don't generate your own.
+
+### SQLite on Node.js
 
 ```typescript
-import { customType } from "drizzle-orm/pg-core";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
-const jsonb = customType<{ data: any }>({
-  dataType() {
-    return "jsonb";
-  },
-  toDriver(value) {
-    return JSON.stringify(value);
-  },
-  fromDriver(value) {
-    return JSON.parse(value as string);
-  },
+const sqlite = new Database("db.sqlite");
+migrate(drizzle(sqlite), {
+  migrationsFolder: "node_modules/@authhero/drizzle/drizzle",
 });
-
-export const users = pgTable("users", {
-  // ... other columns
-  metadata: jsonb("metadata"),
-});
+sqlite.close();
 ```
 
-### Transactions
+### Cloudflare D1
 
-```typescript
-await db.transaction(async (tx) => {
-  const user = await tx.insert(users).values(newUser);
-  await tx.insert(passwords).values({
-    userId: user.userId,
-    tenantId: user.tenantId,
-    password: hashedPassword,
-  });
-});
+Point the D1 binding at the shipped migrations in `wrangler.toml`:
+
+```toml
+[[d1_databases]]
+binding = "AUTH_DB"
+database_name = "authhero"
+database_id = "<your-database-id>"
+migrations_dir = "node_modules/@authhero/drizzle/drizzle"
 ```
 
-### Query Building
-
-```typescript
-// Dynamic query building
-const query = db.select().from(users);
-
-if (search) {
-  query.where(ilike(users.email, `%${search}%`));
-}
-
-if (includeInactive) {
-  query.where(eq(users.isActive, true));
-}
-
-const results = await query.limit(limit).offset(offset);
-```
-
-## Performance Optimization
-
-### Prepared Statements
-
-```typescript
-const getUserById = db
-  .select()
-  .from(users)
-  .where(eq(users.userId, placeholder("userId")))
-  .prepare();
-
-// Reuse prepared statement
-const user = await getUserById.execute({ userId: "user_123" });
-```
-
-### Batch Operations
-
-```typescript
-// Batch inserts
-await db.insert(users).values([
-  { userId: "user_1", tenantId: "tenant_1", email: "user1@example.com" },
-  { userId: "user_2", tenantId: "tenant_1", email: "user2@example.com" },
-  // ... more users
-]);
-
-// Batch updates
-await db
-  .update(users)
-  .set({ lastLoginAt: new Date() })
-  .where(inArray(users.userId, userIds));
-```
-
-## Development Tools
-
-### Drizzle Studio
-
-Drizzle includes a web-based database browser:
+and apply them with Wrangler:
 
 ```bash
-npx drizzle-kit studio
+npx wrangler d1 migrations apply authhero --local    # local development
+npx wrangler d1 migrations apply authhero --remote   # production
 ```
 
-This opens a local web interface for exploring your database schema and data.
+After upgrading `@authhero/drizzle`, run the migrations again before deploying the new version.
 
-### Type Generation
+## Using the adapters
 
-Generate TypeScript types from your schema:
-
-```bash
-npx drizzle-kit introspect:pg
-```
-
-## Production Considerations
-
-### Connection Pooling
+`createAdapters(db)` returns a `DataAdapters` object with one adapter per entity. Methods on tenant-scoped entities take the tenant id first. The exceptions are the `tenants` adapter itself (`create` and `list` take only their params, `get`/`update`/`remove` the tenant id), signing keys, which are keyed by `kid`, and `clients.getByClientId`, which resolves a client id to its tenant.
 
 ```typescript
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+const dataAdapter = createAdapters(db);
 
-const queryClient = postgres(databaseUrl, {
-  max: 20, // Maximum connections
-  idle_timeout: 20, // Idle timeout in seconds
-  connect_timeout: 30, // Connection timeout
-});
+const user = await dataAdapter.users.get("tenant_456", "auth2|user_123");
 
-const db = drizzle(queryClient);
-```
-
-### Read Replicas
-
-```typescript
-// Separate read and write connections
-const writeDb = drizzle(writeConnection);
-const readDb = drizzle(readConnection);
-
-const database = new Database({
-  db: writeDb,
-  readDb: readDb,
+const { users } = await dataAdapter.users.list("tenant_456", {
+  page: 0,
+  per_page: 10,
+  q: "john",
 });
 ```
+
+You normally don't call the adapters directly — `init` uses them to serve the Auth and Management APIs. Calling them is useful in seed and migration scripts.
+
+## Transactions
+
+`dataAdapter.transaction(fn)` behaves differently per driver:
+
+- **SQLite (`better-sqlite3`)** — the callback runs inside `BEGIN`/`COMMIT` and is rolled back if it throws. A nested `transaction()` joins the open one behind a `SAVEPOINT`.
+- **Cloudflare D1** — D1 rejects interactive `BEGIN`/`COMMIT`, so the callback runs **without** a surrounding transaction. Multi-statement writes inside a single adapter method are still atomic, because the adapter sends them as one `db.batch()`.
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Migration Conflicts**: Use `drizzle-kit drop` to reset migrations in development
-2. **Type Errors**: Ensure schema types match database columns exactly
-3. **Connection Issues**: Verify database credentials and network connectivity
-4. **Performance**: Use prepared statements for frequently executed queries
-
-### Debug Mode
-
-```typescript
-const db = drizzle(connection, {
-  logger: true, // Enable query logging
-});
-```
-
-This will log all SQL queries to the console, helping with debugging and performance optimization.
+- **`no such table` errors** — the migrations have not been applied to this database. Run them as shown above.
+- **Errors after upgrading** — a new adapter version usually ships new migrations. Apply them before deploying.
+- **Type errors when creating the database** — pass the AuthHero schema: `drizzle(client, { schema })` with `schema` imported from `@authhero/drizzle/schema/sqlite`.

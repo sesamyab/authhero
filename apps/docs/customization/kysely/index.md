@@ -1,182 +1,124 @@
 ---
 title: Kysely Adapter
-description: Type-safe SQL database adapter for AuthHero using Kysely query builder. Supports PostgreSQL, MySQL, SQLite with migrations and transactions.
+description: SQL database adapter for AuthHero built on the Kysely query builder. Tested on SQLite and MySQL (PlanetScale); kept for existing deployments.
 ---
 
 # Kysely Adapter
 
-The Kysely adapter provides type-safe SQL database operations for AuthHero using the [Kysely](https://github.com/kysely-org/kysely) query builder. It supports PostgreSQL, MySQL, SQLite, and other SQL databases with full TypeScript integration.
+`@authhero/kysely-adapter` implements AuthHero's [adapter interfaces](/customization/adapter-interfaces/) on top of the [Kysely](https://github.com/kysely-org/kysely) query builder.
 
-## Features
+::: tip New deployments should use Drizzle
+The Kysely adapter is maintained for existing deployments — notably MySQL on PlanetScale. New deployments, and every `create-authhero` template, use the [Drizzle adapter](/customization/drizzle/) on SQLite or Cloudflare D1.
+:::
 
-- **Type-Safe Queries**: Full TypeScript support with compile-time query validation
-- **Multiple Databases**: PostgreSQL, MySQL, SQLite, SQL Server, and more
-- **Migration System**: Built-in database migration management
-- **Query Builder**: Powerful and flexible query construction
-- **Transaction Support**: Full ACID transaction capabilities
-- **Connection Pooling**: Efficient database connection management
+## Supported databases
+
+| Database | Status |
+| --- | --- |
+| SQLite (`better-sqlite3`) | Tested — used by the adapter's own test suite |
+| MySQL on PlanetScale (`kysely-planetscale`) | Tested — runs in production |
+| PostgreSQL and other Kysely dialects | **Not supported.** The adapter accepts any `Kysely<Database>` instance, but its migrations and queries are only tested on SQLite and MySQL. |
 
 ## Installation
 
 ```bash
-npm install @authhero/kysely
+npm install @authhero/kysely-adapter kysely
+# plus the driver for your database, for example:
+npm install better-sqlite3          # SQLite
+npm install kysely-planetscale      # PlanetScale (MySQL)
 ```
 
 ## Configuration
 
-### SQLite (Development)
+Create a Kysely instance with the dialect for your database, run the migrations, and pass the adapters to `init`.
+
+### SQLite
 
 ```typescript
-import { Database } from "@authhero/kysely";
-import { createSQLiteDialect } from "@authhero/kysely";
+import SQLite from "better-sqlite3";
+import { Kysely, SqliteDialect } from "kysely";
+import createAdapters, {
+  migrateToLatest,
+  type Database,
+} from "@authhero/kysely-adapter";
+import { init } from "authhero";
 
-const database = new Database({
-  dialect: createSQLiteDialect({
-    database: "authhero.db",
-  }),
+const db = new Kysely<Database>({
+  dialect: new SqliteDialect({ database: new SQLite("authhero.db") }),
 });
+
+await migrateToLatest(db);
+
+const { app } = init({ dataAdapter: createAdapters(db) });
 ```
 
-### PostgreSQL (Production)
-
-```typescript
-import { Database } from "@authhero/kysely";
-import { createPostgreSQLDialect } from "@authhero/kysely";
-
-const database = new Database({
-  dialect: createPostgreSQLDialect({
-    host: "localhost",
-    port: 5432,
-    database: "authhero",
-    user: "username",
-    password: "password",
-  }),
-});
-```
-
-### MySQL
-
-```typescript
-import { Database } from "@authhero/kysely";
-import { createMySQLDialect } from "@authhero/kysely";
-
-const database = new Database({
-  dialect: createMySQLDialect({
-    host: "localhost",
-    port: 3306,
-    database: "authhero",
-    user: "username",
-    password: "password",
-  }),
-});
-```
-
-## Database Operations
-
-### Users
-
-```typescript
-// Create a user
-const user = await database.users.create({
-  user_id: "user_123",
-  tenant_id: "tenant_456",
-  email: "user@example.com",
-  name: "John Doe",
-  provider: "auth0",
-  email_verified: true,
-  is_social: false,
-  app_metadata: "{}",
-  user_metadata: "{}",
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-});
-
-// Get users with filtering
-const users = await database.users.list({
-  tenant_id: "tenant_456",
-  page: 0,
-  per_page: 10,
-  search: "john",
-  include_totals: true,
-});
-
-// Update a user
-await database.users.update("user_123", "tenant_456", {
-  name: "John Smith",
-  updated_at: new Date().toISOString(),
-});
-```
-
-### Applications
-
-```typescript
-// Create an application
-const app = await database.applications.create({
-  id: "app_123",
-  tenant_id: "tenant_456",
-  name: "My App",
-  client_secret: "secret_key",
-  callbacks: JSON.stringify(["http://localhost:3000/callback"]),
-  allowed_origins: JSON.stringify(["http://localhost:3000"]),
-  disable_sign_ups: false,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-});
-```
-
-### Sessions
-
-```typescript
-// Create a session
-const session = await database.sessions.create({
-  id: "session_123",
-  tenant_id: "tenant_456",
-  user_id: "user_123",
-  created_at: new Date().toISOString(),
-  expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-  device: JSON.stringify({ browser: "Chrome" }),
-  clients: JSON.stringify(["app_123"]),
-});
-```
-
-## Migrations
-
-The Kysely adapter includes a comprehensive migration system to manage database schema changes:
-
-```bash
-# Run migrations
-npx kysely migrate up
-
-# Create a new migration
-npx kysely migrate create add_new_table
-
-# Rollback migrations
-npx kysely migrate down
-```
-
-### Migration Files
-
-Migrations are TypeScript files that define schema changes:
+### MySQL on PlanetScale
 
 ```typescript
 import { Kysely } from "kysely";
-import { Database } from "@authhero/kysely";
+import { PlanetScaleDialect } from "kysely-planetscale";
+import createAdapters, { type Database } from "@authhero/kysely-adapter";
 
-export async function up(db: Kysely<Database>): Promise<void> {
-  await db.schema
-    .createTable("new_table")
-    .addColumn("id", "varchar(255)", (col) => col.primaryKey())
-    .addColumn("tenant_id", "varchar(255)", (col) =>
-      col.notNull().references("tenants.id").onDelete("cascade"),
-    )
-    .addColumn("created_at", "varchar(255)", (col) => col.notNull())
-    .execute();
-}
+const db = new Kysely<Database>({
+  dialect: new PlanetScaleDialect({ url: process.env.DATABASE_URL }),
+});
 
-export async function down(db: Kysely<Database>): Promise<void> {
-  await db.schema.dropTable("new_table").execute();
-}
+const dataAdapter = createAdapters(db);
 ```
+
+## Using the adapters
+
+`createAdapters(db)` returns a `DataAdapters` object with one adapter per entity. Methods on tenant-scoped entities take the tenant id first. The exceptions are the `tenants` adapter itself (`create` and `list` take only their params, `get`/`update`/`remove` the tenant id), signing keys, which are keyed by `kid`, and `clients.getByClientId`, which resolves a client id to its tenant.
+
+```typescript
+const dataAdapter = createAdapters(db);
+
+const user = await dataAdapter.users.create("tenant_456", {
+  user_id: "auth2|user_123",
+  email: "user@example.com",
+  name: "John Doe",
+  provider: "auth2",
+  connection: "Username-Password-Authentication",
+  email_verified: true,
+  is_social: false,
+});
+
+const { users } = await dataAdapter.users.list("tenant_456", {
+  page: 0,
+  per_page: 10,
+  q: "john",
+});
+
+await dataAdapter.users.update("tenant_456", "auth2|user_123", {
+  name: "John Smith",
+});
+```
+
+You normally don't call the adapters directly — `init` uses them to serve the Auth and Management APIs. Calling them is useful in seed and migration scripts.
+
+## Migrations
+
+The schema migrations ship with the package and run from code. There is no CLI:
+
+```typescript
+import {
+  formatMigrationPlan,
+  migrateDown,
+  migrateToLatest,
+  planMigrations,
+} from "@authhero/kysely-adapter";
+
+// Preview the pending migrations without applying them
+console.log(formatMigrationPlan(await planMigrations(db)));
+
+// Apply every pending migration
+await migrateToLatest(db);
+
+// Roll back the most recent migration
+await migrateDown(db);
+```
+
+Pass `true` as the second argument of `migrateToLatest` or `migrateDown` to log each step.
 
 ## Database Schema
 
@@ -890,41 +832,21 @@ if (typeof window !== 'undefined') {
 }
 </script>
 
-## Performance Considerations
-
-### Query Optimization
-
-- **Use Indexes**: Ensure proper indexing on frequently queried columns
-- **Limit Results**: Always use pagination for large result sets
-- **Select Specific Columns**: Avoid `SELECT *` in production queries
-- **Connection Pooling**: Configure appropriate pool sizes for your workload
-
-### Production Deployment
-
-- **Connection Limits**: Configure max connections based on database capacity
-- **Read Replicas**: Use read replicas for query-heavy workloads
-- **Monitoring**: Set up database performance monitoring
-- **Backups**: Implement regular automated backups
-- **SSL/TLS**: Always use encrypted connections in production
-
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Migration Errors**: Ensure database user has DDL permissions
-2. **Connection Timeouts**: Increase connection timeout settings
-3. **Type Errors**: Verify schema types match database structure
-4. **Performance Issues**: Check query execution plans and indexes
+1. **Migration Errors**: Ensure the database user has DDL permissions. Run `planMigrations` first to see what `migrateToLatest` would apply.
+2. **Connection Timeouts**: Increase the timeout settings of your driver or dialect.
+3. **Type Errors**: Create the Kysely instance as `Kysely<Database>`, with `Database` imported from `@authhero/kysely-adapter`.
 
 ### Debug Logging
 
-Enable debug logging to troubleshoot issues:
+Kysely logs queries and errors when you pass a `log` option to the instance:
 
 ```typescript
-const database = new Database({
-  dialect: dialect,
-  log: ["query", "error"], // Enable query and error logging
+const db = new Kysely<Database>({
+  dialect,
+  log: ["query", "error"],
 });
 ```
-
-This will log all SQL queries and errors to the console, helping with debugging and performance optimization.

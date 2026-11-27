@@ -317,11 +317,13 @@ All of the above is available in the admin console under **Signing Keys → SAML
 // SAML_SIGN_URL = "https://signing-service.com/sign"
 
 import { init } from "authhero";
-import { createCloudflareAdapter } from "@authhero/cloudflare";
+import { drizzle } from "drizzle-orm/d1";
+import createAdapters from "@authhero/drizzle";
+import * as schema from "@authhero/drizzle/schema/sqlite";
 
 export default {
   async fetch(request: Request, env: Env) {
-    const dataAdapter = createCloudflareAdapter(env);
+    const dataAdapter = createAdapters(drizzle(env.AUTH_DB, { schema }));
 
     // Automatically uses HttpSamlSigner with SAML_SIGN_URL
     const { app } = init({ dataAdapter });
@@ -336,9 +338,9 @@ export default {
 ```typescript
 import { init } from "authhero";
 import { LocalSamlSigner } from "@authhero/saml/local-signer";
-import { createKyselyAdapter } from "@authhero/kysely";
+import createAdapters from "@authhero/drizzle";
 
-const dataAdapter = createKyselyAdapter(db);
+const dataAdapter = createAdapters(db);
 
 const { app } = init({
   dataAdapter,

@@ -50,7 +50,7 @@ npx create-authhero my-auth-app
 ```
 
 The CLI will guide you through:
-1. Choosing a template (`local` for SQLite, `cloudflare` for D1, `aws-sst`, or `proxy`)
+1. Choosing a template (`local` for SQLite, `cloudflare` for D1, `aws-sst` for DynamoDB, `proxy`, or one of the three Workers for Platforms templates — see [Templates](/packages/create-authhero/#templates))
 2. Whether to include the admin UI at `/admin` and enable multi-tenant mode
 3. Installing dependencies, running migrations and starting the dev server
 
@@ -59,14 +59,14 @@ The admin user is not created by the CLI. The `local` template serves HTTPS on `
 ### Non-Interactive Mode
 
 ```bash
-npx create-authhero my-app --template local --yes
+npx create-authhero my-app --template local --package-manager npm --yes
 ```
 
 #### CLI Options
 
 | Option | Description |
 | --- | --- |
-| `-t, --template <type>` | `local` (SQLite), `cloudflare` (D1), `aws-sst`, or `proxy` |
+| `-t, --template <type>` | `local` (SQLite), `cloudflare` (D1), `cloudflare-wfp-dispatcher`, `cloudflare-wfp-tenant`, `cloudflare-control-plane`, `aws-sst`, or `proxy` |
 | `--package-manager <pm>` | `npm`, `yarn`, `pnpm`, or `bun` |
 | `--admin-ui` | Serve the admin dashboard at `/admin` (`local` and `cloudflare`) |
 | `--multi-tenant` | Enable multi-tenant support |

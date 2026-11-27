@@ -11,7 +11,7 @@ AWS offers multiple deployment options:
 - **ECS/Fargate** - Container orchestration with DynamoDB
 - **EC2** - Virtual machines with full control
 
-All options use the `@authhero/aws` adapter with DynamoDB for data storage.
+All options use the `@authhero/aws-adapter` adapter with DynamoDB for data storage.
 
 ## Lambda + SST (Recommended) {#sst}
 
@@ -114,7 +114,7 @@ export default $config({
 import { handle } from "hono/aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import createAdapters from "@authhero/aws";
+import createAdapters from "@authhero/aws-adapter";
 import createApp from "./app";
 
 // Initialize outside handler for connection reuse
@@ -304,7 +304,7 @@ Outputs:
 import { handle } from "hono/aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import createAdapters from "@authhero/aws";
+import createAdapters from "@authhero/aws-adapter";
 import { init } from "authhero";
 
 // Initialize outside handler for warm starts
@@ -394,7 +394,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import createAdapters from "@authhero/aws";
+import createAdapters from "@authhero/aws-adapter";
 import { init } from "authhero";
 
 // Initialize DynamoDB client

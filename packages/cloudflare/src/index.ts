@@ -48,6 +48,11 @@ export type { CloudflareRateLimitBinding, CloudflareRateLimitBindings };
 export { createCloudflareRateLimitAdapter } from "./rate-limit";
 export { createCloudflareStorageAdapter } from "./storage";
 export type { CloudflareStorageAdapterConfig, R2BucketLike } from "./storage";
+// Standalone Cache API adapter, e.g. for @authhero/proxy's
+// createCacheAdapterHostCache, without the custom-domain config that
+// createAdapters needs.
+export { createCloudflareCache } from "./cache";
+export type { CloudflareCacheConfig } from "./cache";
 export type { CloudflareConfig };
 export { syncCustomDomains } from "./customDomains/sync";
 export type {

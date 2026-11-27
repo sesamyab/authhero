@@ -128,7 +128,7 @@ export { createProxyDataAdapter } from "@authhero/kysely-adapter";
 export { createProxyDataAdapter } from "@authhero/drizzle";
 ```
 
-`@authhero/aws` exposes an equivalent `createProxyDataAdapter` against its own schema.
+`@authhero/aws-adapter` exposes an equivalent `createProxyDataAdapter` against its own schema.
 
 ## From `authhero` (control-plane KV publisher)
 

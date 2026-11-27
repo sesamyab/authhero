@@ -342,16 +342,23 @@ function setupMultiTenancy(config: MultiTenancyConfig): {
 **Example:**
 
 ```typescript
+import { init } from "authhero";
+import { setupMultiTenancy } from "@authhero/multi-tenancy";
+
 const multiTenancy = setupMultiTenancy({
   accessControl: {
     controlPlaneTenantId: "main",
   },
 });
 
+const { app: authApp } = init({ dataAdapter });
+
 app.use("*", multiTenancy.middleware);
 app.route("/management", multiTenancy.app);
-app.route("/", createAuthhero({ hooks: multiTenancy.hooks }));
+app.route("/", authApp);
 ```
+
+`initMultiTenant` does this wiring for you, and mounts the tenant routes inside the management API.
 
 ### createMultiTenancyHooks()
 
@@ -367,21 +374,30 @@ function createMultiTenancyHooks(config: MultiTenancyConfig): MultiTenancyHooks;
 
 **Returns:**
 
-- Hook functions implementing the AuthHero hooks interface
+- `MultiTenancyHooks`: `onTenantAccessValidation` and the `tenants` lifecycle hooks, consumed by the tenants router
 
 **Example:**
 
 ```typescript
-const hooks = createMultiTenancyHooks({
-  accessControl: { controlPlaneTenantId: "main" },
-  databaseIsolation: { getAdapters: factory.getAdapters },
-});
+import { init } from "authhero";
+import {
+  createMultiTenancyHooks,
+  createTenantsOpenAPIRouter,
+} from "@authhero/multi-tenancy";
 
-const app = createAuthhero({
-  hooks: {
-    ...hooks,
-    // Your custom hooks
-  },
+const config = {
+  accessControl: { controlPlaneTenantId: "main" },
+  databaseIsolation: { getAdapters: async (tenantId) => getTenantAdapters(tenantId) },
+};
+const hooks = createMultiTenancyHooks(config);
+
+const tenantsRouter = createTenantsOpenAPIRouter(config, hooks);
+
+const { app } = init({
+  dataAdapter,
+  managementApiExtensions: [
+    { path: "/tenants", router: tenantsRouter, controlPlane: true },
+  ],
 });
 ```
 

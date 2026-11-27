@@ -32,7 +32,7 @@ Connections are the identity sources users authenticate with — username/passwo
 
 - **Database connections** — configure password policies and signup behavior
 - **Social connections** — provide the upstream provider's client ID and secret
-- **Enterprise connections** — configure SAML or OIDC and assign which applications can use them
+- **Enterprise connections** — configure OIDC or OAuth 2.0 providers (including Okta and Microsoft Entra ID) and assign which applications can use them. Inbound SAML connections are not supported; SAML is configured on the application, where AuthHero acts as the identity provider
 
 ## Managing Domains
 

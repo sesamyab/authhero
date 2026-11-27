@@ -110,23 +110,42 @@ app.get("/example", async (ctx) => {
 
 ### Type-Safe Access
 
-The variables are fully typed through the `Variables` interface:
+`user` is set by the authentication middleware, which runs inside the Management API and only for routes whose OpenAPI definition declares `Bearer` security. A route of your own gets it when you mount it there with `managementApiExtensions`. `authhero` does not export its `Variables` type, so declare the variables your handler reads:
 
 ```typescript
-import { Variables } from "@authhero/authhero";
+import { OpenAPIHono, createRoute } from "@hono/zod-openapi";
+import { init } from "authhero";
 
-app.get("/typed-example", async (ctx: Context<{ Variables: Variables }>) => {
-  // TypeScript will provide full autocomplete and type checking
-  const user = ctx.get("user"); // { sub: string; tenant_id: string } | undefined
-  const countryCode = ctx.get("countryCode"); // CountryCode | undefined
+type AuthHeroVariables = {
+  user?: { sub: string; tenant_id: string };
+  countryCode?: string;
+};
 
-  if (user) {
-    console.log(`Authenticated user: ${user.sub}`);
-  }
+const whoami = new OpenAPIHono<{ Variables: AuthHeroVariables }>();
 
-  return ctx.json({ authenticated: !!user });
+whoami.openapi(
+  createRoute({
+    method: "get",
+    path: "/",
+    security: [{ Bearer: [] }], // the middleware validates the token and sets `user`
+    responses: { 200: { description: "The authenticated caller" } },
+  }),
+  async (ctx) => {
+    const user = ctx.get("user"); // { sub: string; tenant_id: string } | undefined
+    const countryCode = ctx.get("countryCode");
+
+    return ctx.json({ sub: user?.sub, countryCode });
+  },
+);
+
+// Served at GET /api/v2/whoami
+const { app } = init({
+  dataAdapter,
+  managementApiExtensions: [{ path: "/whoami", router: whoami }],
 });
 ```
+
+On a plain route (`app.get(...)`), or on one without `Bearer` security, `user` is `undefined` even when the request carries a valid token.
 
 ### Setting Variables
 
@@ -148,61 +167,28 @@ app.post("/login", async (ctx) => {
 });
 ```
 
-## Utility Functions
+## Reading Client Information
 
-AuthHero provides several utility functions for working with client information variables:
-
-### getClientInfoFromContext
-
-Get all client information as a structured object:
+The client-information variables are set on every request, so read them from the context directly:
 
 ```typescript
-import { getClientInfoFromContext } from "@authhero/authhero";
-
 app.get("/client-info", async (ctx) => {
-  const clientInfo = getClientInfoFromContext(ctx);
+  const auth0Client = ctx.get("auth0_client"); // { name, version, env? } | undefined
 
   return ctx.json({
-    auth0Client: clientInfo.auth0_client,
-    ip: clientInfo.ip,
-    userAgent: clientInfo.useragent,
-    country: clientInfo.countryCode,
+    auth0Client,
+    // e.g. "auth0-spa-js/1.13.6"; AuthHero's logs also append "(env: node/…)" when set
+    auth0ClientString: auth0Client
+      ? `${auth0Client.name}/${auth0Client.version}`
+      : undefined,
+    ip: ctx.get("ip"),
+    userAgent: ctx.get("useragent"),
+    country: ctx.get("countryCode"),
   });
 });
 ```
 
-### getClientInfoWithStringAuth0Client
-
-Get client information with auth0Client formatted as a string (for backward compatibility):
-
-```typescript
-import { getClientInfoWithStringAuth0Client } from "@authhero/authhero";
-
-app.get("/legacy-client-info", async (ctx) => {
-  const clientInfo = getClientInfoWithStringAuth0Client(ctx);
-
-  return ctx.json({
-    auth0Client: clientInfo.auth0Client, // String format: "auth0-spa-js/1.13.6"
-    ip: clientInfo.ip,
-    userAgent: clientInfo.useragent,
-  });
-});
-```
-
-### stringifyAuth0Client
-
-Convert structured auth0_client to string format:
-
-```typescript
-import { stringifyAuth0Client } from "@authhero/authhero";
-
-app.get("/auth0-client-string", async (ctx) => {
-  const auth0Client = ctx.get("auth0_client");
-  const auth0ClientString = stringifyAuth0Client(auth0Client);
-
-  return ctx.json({ clientString: auth0ClientString });
-});
-```
+AuthHero's own helpers for this (`getClientInfoFromContext`, `getClientInfoWithStringAuth0Client` and `stringifyAuth0Client` in `src/utils/client-info.ts`) are internal and not exported from the package.
 
 ## Middleware Chain
 
@@ -240,21 +226,7 @@ if (auth0Client?.name && auth0Client?.version) {
 }
 ```
 
-### 3. Prefer Utility Functions
-
-Use the provided utility functions instead of accessing variables directly when possible:
-
-```typescript
-// Preferred
-const clientInfo = getClientInfoFromContext(ctx);
-
-// Instead of
-const ip = ctx.get("ip");
-const userAgent = ctx.get("useragent");
-const auth0Client = ctx.get("auth0_client");
-```
-
-### 4. Document Custom Variables
+### 3. Document Custom Variables
 
 If you set custom variables in your middleware, document them clearly:
 

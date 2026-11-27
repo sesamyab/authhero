@@ -1,66 +1,47 @@
 ---
 title: Create AuthHero CLI Usage
-description: Create new AuthHero projects with pnpm create, npx, or yarn. Interactive setup with template and adapter selection.
+description: Run create-authhero interactively — the questions it asks, what it installs and runs, and what to do next.
 ---
 
 # Create AuthHero CLI Usage
 
 ## Prerequisites
 
-- Node.js (version 16 or higher)
-- npm, yarn, or pnpm package manager
+- Node.js 22 or later
+- npm, yarn, pnpm or bun
 
-## Creating a New Project
-
-To create a new AuthHero project, use the following command:
+## Creating a project
 
 ```bash
-pnpm create authhero my-auth-app
+npm create authhero@latest my-auth-app
 ```
 
-Or using npx:
+If you leave out the project name, the CLI asks for one (default `auth-server`). The target directory must not exist yet.
 
-```bash
-npx create-authhero my-auth-app
-```
+## What the CLI asks
 
-Or using yarn:
+1. **Setup type** — one of the seven [templates](/packages/create-authhero/#templates).
+2. **Multi-tenant mode** — asked for `local`, `cloudflare` and `aws-sst`. The control-plane template is always multi-tenant; the proxy, dispatcher and tenant-worker templates are single-tenant.
+3. **Admin UI at `/admin`** — asked for `local` and `cloudflare` only.
+4. **GitHub CI with semantic versioning** — asked for `cloudflare` only.
+5. **Install dependencies now?** — and, if yes, which package manager (default `pnpm`).
+6. **Run database migrations?** — after a successful install, for `local`, `cloudflare`, `cloudflare-wfp-tenant` and `cloudflare-control-plane`. Then **Start the development server?**
 
-```bash
-yarn create authhero my-auth-app
-```
+The CLI does not ask which database adapter to use: each template comes with its own (Drizzle on SQLite or D1, or DynamoDB for `aws-sst`).
 
-This will create a new directory `my-auth-app` with a basic AuthHero setup.
+## After the project is created
 
-## Configuration During Setup
-
-The CLI will prompt you for various configuration options:
-
-- **Select a template**: Choose from different project templates
-- **Select a database adapter**: Choose the database adapter for your project
-- **Configure authentication settings**: Set up the basic authentication settings
-
-## Post-Creation Steps
-
-After creating the project, navigate to the project directory and install dependencies:
+If you let the CLI install, migrate and start, the server is already running. Otherwise:
 
 ```bash
 cd my-auth-app
-pnpm install
+npm install
+npm run migrate   # local and the four cloudflare* templates
+npm run dev
 ```
 
-Start the development server:
+The `aws-sst` template has no migration step: SST creates the DynamoDB table when you run `npm run dev` (see the template's README). The `proxy` template has no database.
 
-```bash
-pnpm dev
-```
+For the `local` template, open `https://localhost:3000/setup` on first run. The setup wizard creates the first tenant, the admin user and a `default` application — see [Your first login](/first-login).
 
-## Next Steps
-
-After creating your project, you may want to:
-
-1. Set up your database connection
-2. Configure your authentication settings
-3. Customize your authentication flows
-
-See the main documentation for details on these topics.
+Each template's `README.md` covers deployment for that target.

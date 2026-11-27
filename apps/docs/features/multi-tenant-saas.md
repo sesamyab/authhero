@@ -430,10 +430,18 @@ const orgToken = await auth0Client.getTokenSilently({
 ```typescript
 app.get("/customers/:customerId/users", async (c) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
-  const claims = await auth.verifyToken(token);
+  const claims = await verifyAccessToken(token, ["urn:authhero:management", "internal:platform-api"]); // see Backend Implementation
+  if (!claims) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
 
-  // Check if this is an internal token (no org_id)
-  if (!claims.org_id) {
+  // Internal tokens are the ones issued for the internal API, without an
+  // organization. A management-audience token is always treated as
+  // organization-scoped, even if it carries no org_id.
+  const isInternal =
+    !claims.org_id && [claims.aud].flat().includes("internal:platform-api");
+
+  if (isInternal) {
     // This is an internal/support token
     // Verify they have cross-tenant permissions
     if (!claims.permissions?.includes("support:access")) {
@@ -520,7 +528,10 @@ const response = await fetch(
 ```typescript
 app.get("/customers/:orgId/users", async (c) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
-  const claims = await auth.verifyToken(token);
+  const claims = await verifyAccessToken(token); // see Backend Implementation
+  if (!claims) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
 
   // Verify org_id matches the requested resource
   if (claims.org_id !== c.req.param("orgId")) {
@@ -609,7 +620,10 @@ const response = await fetch(
 ```typescript
 app.get("/internal/customers/:customerId/users", async (c) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
-  const claims = await auth.verifyToken(token);
+  const claims = await verifyAccessToken(token, "internal:platform-api"); // see Backend Implementation
+  if (!claims) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
 
   // Must be an internal token (no org_id)
   if (claims.org_id) {
@@ -1041,28 +1055,61 @@ function CustomerManagement({ token, orgId }: CustomerManagementProps) {
 
 ## Backend Implementation
 
-On your backend, you'll need to validate the organization token and enforce authorization:
+On your backend, you'll need to validate the organization token and enforce authorization. AuthHero's access tokens are standard JWTs signed with the keys published at `/.well-known/jwks.json`, so any JWT library can verify them — here [`jose`](https://github.com/panva/jose). The other backend examples on this page use the same `verifyAccessToken` helper:
 
 ```typescript
 import { Hono } from "hono";
-import { createAuthHero } from "authhero";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from "jose";
 
-const app = new Hono();
+type AccessTokenClaims = JWTPayload & {
+  org_id?: string;
+  permissions: string[];
+};
 
-const auth = createAuthHero({
-  database: adapter,
-});
+const jwks = createRemoteJWKSet(
+  new URL("https://auth.yourplatform.com/.well-known/jwks.json"),
+);
+
+// Returns the token's claims, or undefined when the token is missing, expired,
+// wrongly signed or meant for another audience. Throws when the signing keys
+// can't be fetched, so an outage isn't reported to the caller as a bad token.
+export async function verifyAccessToken(
+  token: string | undefined,
+  // Organization tokens in the examples above are requested for the
+  // management audience; internal tokens pass their own API identifier.
+  audience: string | string[] = "urn:authhero:management",
+): Promise<AccessTokenClaims | undefined> {
+  if (!token) return undefined;
+  try {
+    const { payload } = await jwtVerify(token, jwks, {
+      issuer: "https://auth.yourplatform.com/",
+      audience,
+    });
+    return {
+      ...payload,
+      org_id: typeof payload.org_id === "string" ? payload.org_id : undefined,
+      permissions: Array.isArray(payload.permissions)
+        ? payload.permissions.filter((p): p is string => typeof p === "string")
+        : [],
+    };
+  } catch (error) {
+    if (error instanceof errors.JWKSTimeout || error instanceof errors.JWKSInvalid) {
+      throw error;
+    }
+    if (error instanceof errors.JOSEError) return undefined;
+    throw error;
+  }
+}
+
+const app = new Hono<{ Variables: { user: AccessTokenClaims } }>();
 
 // Middleware to verify organization token
 app.use("/customers/:orgId/*", async (c, next) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
-
-  if (!token) {
+  const claims = await verifyAccessToken(token);
+  if (!claims) {
     return c.json({ error: "Unauthorized" }, 401);
   }
-
-  // Verify the token and extract claims
-  const claims = await auth.verifyToken(token);
 
   // Check that the org_id in the token matches the requested organization
   const requestedOrgId = c.req.param("orgId");
@@ -1071,7 +1118,7 @@ app.use("/customers/:orgId/*", async (c, next) => {
   }
 
   // Check user permissions (roles)
-  if (!claims.permissions?.includes("read:users")) {
+  if (!claims.permissions.includes("read:users")) {
     return c.json({ error: "Insufficient permissions" }, 403);
   }
 
@@ -1305,7 +1352,10 @@ const response = await fetch(
 ```typescript
 app.get("/internal/customers/:customerId/users", async (c) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
-  const claims = await auth.verifyToken(token);
+  const claims = await verifyAccessToken(token, "https://internal.yourplatform.com"); // see Backend Implementation
+  if (!claims) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
 
   // Verify this is an internal token (no org_id)
   if (claims.org_id) {
@@ -1548,7 +1598,10 @@ const supportToken = await auth0Client.getTokenSilently({
 // 5. Backend validates and provides access
 app.get("/internal/customers/:customerId/users", async (c) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
-  const claims = await auth.verifyToken(token);
+  const claims = await verifyAccessToken(token, "internal:platform-api"); // see Backend Implementation
+  if (!claims) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
 
   // Must be an internal token
   if (claims.org_id) {

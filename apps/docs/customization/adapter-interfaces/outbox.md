@@ -95,7 +95,7 @@ Transforms `AuditEvent` into `LogInsert` and writes to the logs table, preservin
 
 ```typescript
 import { AuditEvent } from "@authhero/adapter-interfaces";
-import { EventDestination } from "authhero/helpers/outbox-relay";
+import type { EventDestination } from "authhero";
 
 class WebhookDestination implements EventDestination {
   name = "webhook";

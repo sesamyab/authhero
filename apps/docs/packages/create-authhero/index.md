@@ -1,48 +1,38 @@
 ---
 title: Create AuthHero CLI
-description: CLI tool for scaffolding new AuthHero projects. Choose from Basic, Multi-tenant, Cloudflare Workers, or Next.js templates with automatic setup.
+description: The create-authhero CLI scaffolds a new AuthHero project from one of seven templates — local SQLite, Cloudflare Workers, Workers for Platforms, AWS SST, or a reverse proxy.
 ---
 
 # Create AuthHero
 
-The `create-authhero` CLI tool helps you quickly scaffold new AuthHero projects with the right configuration and boilerplate code.
-
-## Installation
+`create-authhero` scaffolds a ready-to-run AuthHero project. It copies a template, installs dependencies, runs the database migrations and starts the dev server — each step can be skipped.
 
 ```bash
-npm install -g create-authhero
+npm create authhero@latest my-auth-app
+# or
+pnpm create authhero my-auth-app
+# or
+npx create-authhero my-auth-app
 ```
 
-## Usage
+No global install is needed. The generated projects require Node.js 22 or later: the `local` template installs the latest `better-sqlite3`, which requires Node.js 22.
 
-Create a new AuthHero project:
+## Templates
 
-```bash
-create-authhero my-auth-project
-```
+| Template | What you get |
+| --- | --- |
+| `local` | Node.js server on SQLite (Drizzle). Serves HTTPS on `https://localhost:3000` with a self-signed certificate. The quickest way to try AuthHero. |
+| `cloudflare` | Cloudflare Worker on D1 (Drizzle), with optional GitHub CI workflows. |
+| `cloudflare-wfp-dispatcher` | Workers for Platforms dispatcher: a thin worker that routes custom domains to per-tenant workers in a dispatch namespace. |
+| `cloudflare-wfp-tenant` | Workers for Platforms tenant worker: one AuthHero worker with its own D1, inheriting defaults from the control plane. |
+| `cloudflare-control-plane` | Workers for Platforms control plane: tenant management and the config source synced into each tenant worker. Always multi-tenant. |
+| `aws-sst` | AWS Lambda on DynamoDB, deployed with SST. |
+| `proxy` | Host-based reverse proxy on Cloudflare Workers (`@authhero/proxy`), configured statically with no database. |
 
-This will:
+The three Workers for Platforms templates are deployed together; see [Cloudflare Workers for Platforms](/deployment/cloudflare-wfp).
 
-- Set up the project structure
-- Install necessary dependencies
-- Create configuration files
-- Provide example code and middleware setup
+## Next steps
 
-## Project Templates
-
-The CLI provides several project templates:
-
-- **Basic** - Simple authentication setup
-- **Multi-tenant** - Multi-tenant authentication system
-- **Cloudflare Workers** - Optimized for Cloudflare Workers
-- **Next.js** - Integration with Next.js applications
-
-## Getting Started
-
-After creating your project:
-
-```bash
-cd my-auth-project
-npm install
-npm run dev
-```
+- [Usage](./usage) — what the interactive setup asks and what it runs
+- [Commands](./commands) — every option, for scripted use
+- [Your first login](/first-login) — sign in to the scaffolded server

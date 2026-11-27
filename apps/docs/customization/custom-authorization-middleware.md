@@ -578,8 +578,8 @@ Here's a complete example combining all concepts:
 
 ```typescript
 // src/index.ts
-import { init } from "@authhero/authhero";
-import { createKyselyAdapter } from "@authhero/kysely";
+import { init } from "authhero";
+import createAdapters from "@authhero/drizzle";
 import {
   createAuthorizationMiddleware,
   createTenantIsolationMiddleware,
@@ -587,7 +587,7 @@ import {
 } from "./middleware/authorization";
 
 // Create adapters
-const dataAdapter = createKyselyAdapter(db);
+const dataAdapter = createAdapters(db);
 
 // Initialize AuthHero
 const { app, managementApp } = init({

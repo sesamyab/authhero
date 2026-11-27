@@ -9,7 +9,7 @@ AuthHero can run anywhere Node.js or a compatible runtime runs. Choose the deplo
 
 - **[Docker](/deployment/docker)** — Self-contained container with SQLite. Simplest production deployment.
 - **[Cloudflare Workers](/deployment/cloudflare)** — Edge deployment with D1 database and global distribution.
-- **[AWS](/deployment/aws)** — Lambda functions with RDS/Aurora or DynamoDB.
+- **[AWS](/deployment/aws)** — Lambda or ECS/Fargate with DynamoDB.
 - **[Local Development](/deployment/local)** — Run locally with SQLite for development and testing.
 - **[Multi-Cloud](/deployment/multi-cloud)** — Strategies for deploying across multiple cloud providers.
 - **[Custom Domain Setup](/deployment/custom-domain-setup)** — Configure custom domains for branded authentication.

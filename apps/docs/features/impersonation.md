@@ -18,7 +18,7 @@ AuthHero supports impersonation through **config-based hooks** that are Auth0-co
 Configure impersonation hooks directly when initializing your AuthHero application:
 
 ```typescript
-import { init } from "@authhero/authhero";
+import { init } from "authhero";
 
 const authHero = init({
   dataAdapter: myAdapter,

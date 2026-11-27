@@ -621,7 +621,7 @@ Available entity types:
 Entity hooks are configured during AuthHero initialization. Each entity type accepts an **array of hook objects**, allowing you to chain multiple hook handlers together:
 
 ```typescript
-const authhero = new AuthHero({
+const { app } = init({
   // ... other config
   entityHooks: {
     roles: [
@@ -913,7 +913,7 @@ resourceServers: [
 Code-based hooks are functions defined in your application initialization:
 
 ```typescript
-const authhero = new AuthHero({
+const { app } = init({
   hooks: {
     onExecuteValidateRegistrationUsername: async (event, api) => {
       // Validate if email is allowed to sign up
@@ -1142,7 +1142,7 @@ Features:
 Pass hooks during AuthHero initialization:
 
 ```typescript
-const authhero = new AuthHero({
+const { app } = init({
   // ... other config
   hooks: {
     onExecuteValidateRegistrationUsername: async (event, api) => {

@@ -17,8 +17,9 @@ The core `authhero` package never imports a database driver. It depends only on 
 
 AuthHero supports several database adapters:
 
-- **Drizzle Adapter**: The primary adapter (Drizzle ORM; SQLite/D1, PostgreSQL, MySQL) — used by all `create-authhero` templates
-- **Kysely Adapter**: For SQL databases (PostgreSQL, MySQL, SQLite) — maintained for existing deployments
+- **Drizzle Adapter**: The primary adapter (Drizzle ORM; SQLite and Cloudflare D1) — used by the `create-authhero` templates with a SQL database
+- **Kysely Adapter**: Tested on SQLite and MySQL (PlanetScale) — maintained for existing deployments
+- **AWS Adapter**: DynamoDB, for serverless deployments on AWS
 - **Custom Adapters**: Implementing the adapter interfaces for other database systems
 
 ## Setting Up the Drizzle Adapter
@@ -76,7 +77,7 @@ The package is published as `@authhero/kysely-adapter` (note the suffix — the 
 npm install @authhero/kysely-adapter kysely better-sqlite3
 ```
 
-The adapter does not depend on a driver — install the one for your database (`better-sqlite3` here, `pg` for PostgreSQL, `mysql2` for MySQL).
+The adapter does not depend on a driver — install the one for your database (`better-sqlite3` here, `kysely-planetscale` for MySQL on PlanetScale).
 
 Build a `Kysely` instance typed with the adapter's `Database` interface, then hand it to `createAdapters`:
 
@@ -95,7 +96,7 @@ const dataAdapter = createAdapters(db);
 const { app } = init({ dataAdapter });
 ```
 
-Swap the dialect for `PostgresDialect` or `MysqlDialect` (or a PlanetScale dialect) to target another database — the adapter itself is unchanged. `createAdapters` accepts the same `{ useTransactions }` option as the Drizzle one.
+For MySQL on PlanetScale, swap in `PlanetScaleDialect` from `kysely-planetscale` — the adapter itself is unchanged. The adapter accepts any `Kysely<Database>`, but only SQLite and MySQL are tested; PostgreSQL is not supported. `createAdapters` accepts the same `{ useTransactions }` option as the Drizzle one.
 
 ## Database Schema
 

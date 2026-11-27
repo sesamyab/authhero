@@ -59,9 +59,8 @@ graph TB
    - Route 53 with geo-routing
 
 3. **Set up database replication**
-   - Aurora Global Database
-   - CockroachDB multi-region
-   - PlanetScale global replication
+   - DynamoDB global tables
+   - PlanetScale (MySQL) replication
 
 ### Active-Passive (Failover)
 
@@ -93,24 +92,38 @@ graph TB
 1. **Deploy primary and standby**
 
    ```typescript
-   // Primary: Cloudflare Workers
+   // Primary: Cloudflare Workers, on D1
+   import { drizzle } from "drizzle-orm/d1";
+   import createAdapters from "@authhero/drizzle";
+   import * as schema from "@authhero/drizzle/schema/sqlite";
+   import { init } from "authhero";
+
    export default {
-     async fetch(request: Request, env: Env) {
-       const { app } = initMultiTenant({
-         dataAdapter: createCloudflareD1Adapter(env.AUTH_DB),
+     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+       const { app } = init({
+         dataAdapter: createAdapters(drizzle(env.AUTH_DB, { schema })),
        });
-       return app.fetch(request);
+       return app.fetch(request, env, ctx);
      },
    };
    ```
 
    ```typescript
-   // Standby: AWS Lambda
-   const { app } = initMultiTenant({
-     dataAdapter: createAwsAdapter(rdsConfig),
+   // Standby: AWS Lambda, on DynamoDB
+   import { handle } from "hono/aws-lambda";
+   import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+   import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+   import createAdapters from "@authhero/aws-adapter";
+   import { init } from "authhero";
+
+   const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+   const { app } = init({
+     dataAdapter: createAdapters(docClient, { tableName: "authhero" }),
    });
    export const handler = handle(app);
    ```
+
+   The standby only has current data if the primary's writes reach its database — see [Database Strategies](#database-strategies).
 
 2. **Configure health checks**
 
@@ -133,168 +146,106 @@ graph TB
 
 ## Database Strategies
 
-### Option 1: Multi-Region Database
+AuthHero keeps all state — users, sessions, refresh tokens, signing keys — in the data adapter. There is no separate session store, so every deployment that serves a tenant must read the same data, either from one shared database or from replicas you keep in sync.
 
-Use a database that supports multi-region deployments.
+### Option 1: One multi-region database
 
-#### CockroachDB
+Use a database whose replication you trust, and point every deployment at it:
 
-Distributed SQL with geo-partitioning:
+- **MySQL on PlanetScale** through the [Kysely adapter](/customization/kysely/):
 
-```typescript
-import { createKyselyAdapter } from "@authhero/kysely";
-import { CockroachDialect } from "kysely-cockroach";
+  ```typescript
+  import { Kysely } from "kysely";
+  import { PlanetScaleDialect } from "kysely-planetscale";
+  import createAdapters, { type Database } from "@authhero/kysely-adapter";
 
-const dataAdapter = createKyselyAdapter({
-  dialect: new CockroachDialect({
-    connectionString: process.env.COCKROACH_URL,
-  }),
-});
-```
+  const db = new Kysely<Database>({
+    dialect: new PlanetScaleDialect({ url: process.env.DATABASE_URL }),
+  });
+  const dataAdapter = createAdapters(db);
+  ```
 
-**Benefits:**
+- **DynamoDB global tables** through the [AWS adapter](/customization/aws-adapter/). DynamoDB replicates the table across regions; AuthHero does not coordinate the replication itself:
 
-- Automatic replication
-- Geo-partitioning for data locality
-- Strong consistency
-- Automatic failover
+  ```typescript
+  import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+  import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+  import createAdapters from "@authhero/aws-adapter";
 
-**Setup:**
+  const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+  const dataAdapter = createAdapters(docClient, { tableName: "authhero" });
+  ```
 
-1. Create CockroachDB cluster
-2. Configure regions
-3. Set up geo-partitioning rules
-4. Deploy AuthHero to each region
+Other multi-region SQL databases (CockroachDB, Aurora PostgreSQL) are not supported by the built-in adapters.
 
-#### PlanetScale
+### Option 2: Independent databases with mirrored writes
 
-Global MySQL with branching:
-
-```typescript
-import { createKyselyAdapter } from "@authhero/kysely";
-import { MysqlDialect } from "kysely";
-
-const dataAdapter = createKyselyAdapter({
-  dialect: new MysqlDialect({
-    connection: {
-      host: process.env.PLANETSCALE_HOST,
-      username: process.env.PLANETSCALE_USERNAME,
-      password: process.env.PLANETSCALE_PASSWORD,
-    },
-  }),
-});
-```
-
-**Benefits:**
-
-- Global read replicas
-- Branch-based workflows
-- Automatic backups
-- No ops burden
-
-#### Aurora Global Database
-
-Multi-region PostgreSQL:
+Give each provider its own database and mirror writes to the others with `createPassthroughAdapter` from `@authhero/adapter-interfaces`. Reads come from the primary; writes go to the primary first and are then copied to each secondary:
 
 ```typescript
-const dataAdapter = createAwsAdapter({
-  host: process.env.AURORA_GLOBAL_ENDPOINT,
-  database: "authhero",
-  // ...
-});
+import { drizzle } from "drizzle-orm/d1";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { createPassthroughAdapter } from "@authhero/adapter-interfaces";
+import createDrizzleAdapters from "@authhero/drizzle";
+import * as schema from "@authhero/drizzle/schema/sqlite";
+import createAwsAdapters from "@authhero/aws-adapter";
+
+const primary = createDrizzleAdapters(drizzle(env.AUTH_DB, { schema }));
+const backup = createAwsAdapters(
+  DynamoDBDocumentClient.from(new DynamoDBClient({ region: "eu-west-1" })),
+  { tableName: "authhero-backup" },
+);
+
+function mirror<T extends object>(primaryAdapter: T, backupAdapter: T) {
+  return createPassthroughAdapter({
+    primary: primaryAdapter,
+    secondaries: [
+      {
+        adapter: backupAdapter,
+        onError: (error, method) => console.error("mirror failed", method, error),
+      },
+    ],
+  });
+}
+
+// A standby can only take over if it holds everything a request reads:
+// the tenant and its configuration, users and credentials, and the state of
+// sessions in flight. Mirror every adapter your tenants write.
+const dataAdapter = {
+  ...primary,
+  tenants: mirror(primary.tenants, backup.tenants),
+  users: mirror(primary.users, backup.users),
+  passwords: mirror(primary.passwords, backup.passwords),
+  keys: mirror(primary.keys, backup.keys),
+  clients: mirror(primary.clients, backup.clients),
+  clientGrants: mirror(primary.clientGrants, backup.clientGrants),
+  connections: mirror(primary.connections, backup.connections),
+  resourceServers: mirror(primary.resourceServers, backup.resourceServers),
+  roles: mirror(primary.roles, backup.roles),
+  organizations: mirror(primary.organizations, backup.organizations),
+  sessions: mirror(primary.sessions, backup.sessions),
+  loginSessions: mirror(primary.loginSessions, backup.loginSessions),
+  refreshTokens: mirror(primary.refreshTokens, backup.refreshTokens),
+  codes: mirror(primary.codes, backup.codes),
+  // ...and the other adapters in DataAdapters that hold data you need
+};
 ```
 
-**Benefits:**
+Mirroring is per entity and best-effort: a secondary write that fails is reported to `onError` and not retried. See [Adapters → Layering adapters](/architecture/adapters#layering-adapters).
 
-- < 1 second cross-region replication
-- Automatic failover
-- Up to 5 secondary regions
-- Read replicas in each region
+Mirroring only copies writes made after it is switched on, so the standby also needs the data that existed before. AuthHero does not ship a backfill tool for this; write one against the adapters, following the pattern in the [database migration guide](/database/migration#phase-3-backfill-existing-data), whose scripts cover tenants, users and password hashes:
 
-### Option 2: Independent Databases
+- **Copy and verify before the standby may take traffic:** tenants, signing keys, clients and client grants, connections, resource servers, roles and their permissions, organizations, users (including linked accounts) and password hashes. Without these the standby cannot issue or validate tokens, or let users sign in.
+- **Copy, or accept losing:** sessions, login sessions, refresh tokens and codes. If you don't copy them, users who are signed in when you fail over sign in again on the standby.
 
-Separate database for each provider with data sync.
+Repeat the verification regularly while mirroring runs, since failed mirror writes are not retried.
 
-```typescript
-// Cloudflare: D1 Database
-const cloudflareAdapter = createCloudflareD1Adapter(env.AUTH_DB);
-
-// AWS: RDS PostgreSQL
-const awsAdapter = createAwsAdapter(rdsConfig);
-```
-
-**Sync Strategies:**
-
-1. **Event-driven sync**
-
-   ```typescript
-   // On data change, publish event
-   await eventBridge.publish({
-     type: "user.created",
-     data: user,
-   });
-
-   // Sync service listens and replicates
-   ```
-
-2. **Periodic sync**
-
-   ```bash
-   # Cron job every 5 minutes
-   0 */5 * * * /usr/bin/sync-databases.sh
-   ```
-
-3. **On-demand sync**
-   - Sync only when needed
-   - Use cache for reads
-   - Accept eventual consistency
+**Failing back.** Writes the standby accepts during a failover are not mirrored back to D1. Before you route traffic back to the primary, copy those writes from the standby's database to D1 (the same backfill run in the other direction) and verify the two match; until then, keep traffic on the standby.
 
 ## Session Management
 
-Sessions must work across providers.
-
-### Option 1: Shared Session Store
-
-Use Redis or similar:
-
-```typescript
-import { createRedisSessionStore } from "./session-store";
-
-const sessionStore = createRedisSessionStore({
-  url: process.env.REDIS_URL,
-});
-
-const { app } = initMultiTenant({
-  dataAdapter,
-  sessionStore, // Shared across all deployments
-});
-```
-
-### Option 2: JWT Tokens
-
-Stateless authentication:
-
-```typescript
-// No session store needed
-// JWT tokens work everywhere
-const { app } = initMultiTenant({
-  dataAdapter,
-  // JWT signing key must be same across deployments
-  jwtSecret: process.env.JWT_SECRET,
-});
-```
-
-**Benefits:**
-
-- No shared infrastructure needed
-- Works across all providers
-- Scales infinitely
-
-**Tradeoffs:**
-
-- Cannot revoke tokens immediately
-- Larger token size
-- Security considerations
+Sessions, login sessions and refresh tokens are stored through the data adapter, and tokens are signed with the tenant's keys from the `keys` adapter. A deployment can therefore continue a session started on another deployment only if it reads the same data — which the database strategies above provide. No extra session store or shared JWT secret is needed or supported.
 
 ## Traffic Routing
 
@@ -381,7 +332,7 @@ User Request
      │ Database
      ▼
 ┌────────────────────┐
-│ Primary Database   │ ◀─ RDS or managed service
+│ Primary Database   │ ◀─ DynamoDB, PlanetScale or D1
 │ Data Layer         │
 └────────────────────┘
 ```
@@ -391,7 +342,7 @@ User Request
 | Workload            | Best Provider | Monthly Cost (est.) |
 | ------------------- | ------------- | ------------------- |
 | Auth requests (10M) | Cloudflare    | $5                  |
-| Database (100GB)    | AWS RDS       | $100                |
+| Database (100GB)    | DynamoDB      | $100                |
 | Email sending       | AWS SES       | $10                 |
 | File storage        | R2/S3         | $5                  |
 | **Total**           |               | **$120**            |
@@ -433,47 +384,41 @@ app.use("*", async (c, next) => {
 
 ### Cloudflare Primary + AWS Backup
 
-```typescript
-// cloudflare/src/index.ts
-export default {
-  async fetch(request: Request, env: Env) {
-    const { app } = initMultiTenant({
-      dataAdapter: createCloudflareD1Adapter(env.AUTH_DB),
-    });
-    return app.fetch(request);
-  },
-};
-```
+The Cloudflare Worker serves traffic from D1 and mirrors writes to DynamoDB with the passthrough adapter shown in [Option 2](#option-2-independent-databases-with-mirrored-writes). The AWS deployment reads the DynamoDB copy and takes over through DNS failover — only once the existing data has been backfilled into DynamoDB and verified, and traffic returns to Cloudflare only after the writes made on AWS are copied back to D1, as described there:
 
 ```typescript
 // aws/src/index.ts
-const { app } = initMultiTenant({
-  dataAdapter: createAwsAdapter({
-    // Read from Cloudflare D1 backup in S3
-    backupSource: "s3://cloudflare-d1-backup/latest",
-  }),
+import { handle } from "hono/aws-lambda";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import createAdapters from "@authhero/aws-adapter";
+import { init } from "authhero";
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const { app } = init({
+  dataAdapter: createAdapters(docClient, { tableName: "authhero-backup" }),
 });
+
 export const handler = handle(app);
 ```
 
 ### AWS Multi-Region Active-Active
 
+Deploy the same Lambda to each region against a DynamoDB global table:
+
 ```typescript
-// Shared configuration
-const config = {
-  dataAdapter: createAwsAdapter({
-    host: process.env.AURORA_GLOBAL_ENDPOINT,
-    database: "authhero",
-  }),
-};
+// src/index.ts — deployed unchanged to us-east-1 and eu-west-1
+import { handle } from "hono/aws-lambda";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import createAdapters from "@authhero/aws-adapter";
+import { init } from "authhero";
 
-// us-east-1/src/index.ts
-const { app } = initMultiTenant(config);
-export const handler = handle(app);
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const { app } = init({
+  dataAdapter: createAdapters(docClient, { tableName: "authhero" }),
+});
 
-// eu-west-1/src/index.ts
-// Same code, different region
-const { app } = initMultiTenant(config);
 export const handler = handle(app);
 ```
 
