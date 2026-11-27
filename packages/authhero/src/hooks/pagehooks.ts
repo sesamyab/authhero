@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { resolveLoginRoutePrefix } from "../helpers/login-version";
 import { Bindings, Variables } from "../types";
 import { LoginSession, User } from "@authhero/adapter-interfaces";
 import { HTTPException } from "hono/http-exception";
@@ -66,8 +67,8 @@ export async function handlePageHook(
       // If client lookup fails, use default /u prefix
     }
   }
-  if (loginClient?.client_metadata?.universal_login_version === "2") {
-    routePrefix = "/u2";
+  if (loginClient) {
+    routePrefix = resolveLoginRoutePrefix(loginClient);
   }
 
   // If user has permission or no permission is required, redirect to the page

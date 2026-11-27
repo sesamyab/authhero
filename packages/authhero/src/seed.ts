@@ -757,14 +757,20 @@ export async function seed(
     // Enable allow_organization_name_in_authentication_api for main tenant
     // This includes org_name in tokens, which is needed for multi-tenancy
     // where org_name should match tenant_id
+    // New tenants use the widget login (/u2) for every application.
     if (isControlPlane) {
       await adapters.tenants.update(tenantId, {
         allow_organization_name_in_authentication_api: true,
         // Enable permission inheritance so users with global roles (like admin:organizations)
         // can get org tokens without being a member of each organization
         flags: {
+          universal_login_version: "2",
           inherit_global_permissions_in_organizations: true,
         },
+      });
+    } else {
+      await adapters.tenants.update(tenantId, {
+        flags: { universal_login_version: "2" },
       });
     }
 

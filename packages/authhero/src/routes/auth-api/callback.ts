@@ -1,4 +1,5 @@
 import { isDeviceLoginSession } from "../../helpers/device-flow";
+import { resolveLoginRoutePrefix } from "../../helpers/login-version";
 import { HTTPException } from "hono/http-exception";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
@@ -109,7 +110,7 @@ async function returnError(
   let loginPath = "/login/identifier";
   if (client) {
     try {
-      if (client.client_metadata?.universal_login_version === "2") {
+      if (resolveLoginRoutePrefix(client) === "/u2") {
         routePrefix = "/u2";
 
         const promptSettings = await ctx.env.data.promptSettings.get(

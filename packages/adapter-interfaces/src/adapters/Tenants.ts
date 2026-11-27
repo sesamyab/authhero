@@ -10,6 +10,9 @@ export interface CreateTenantParams {
   id?: string;
   session_lifetime?: number;
   idle_session_lifetime?: number;
+  // Initial feature flags, e.g. from multi-tenancy `tenantDefaults` or the
+  // new-tenant login version (#1741).
+  flags?: Tenant["flags"];
 
   // Config inheritance: the tenant this one inherits published config from.
   parent_tenant_id?: string | null;

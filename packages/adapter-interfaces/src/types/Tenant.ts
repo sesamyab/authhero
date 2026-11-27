@@ -156,6 +156,11 @@ export const tenantInsertSchema = z.object({
       // requested scope is echoed into the token verbatim. Opt in for
       // tenants that want defense-in-depth against scope-string forgery.
       restrict_undefined_scopes: z.boolean().optional(),
+      // AuthHero extension — not part of Auth0. The universal login the
+      // tenant's applications use: "2" → the widget login (/u2), "1" or
+      // unset → the classic login (/u). An application can override it with
+      // client_metadata.universal_login_version. Goes away with /u in 1.0.
+      universal_login_version: z.enum(["1", "2"]).optional(),
     })
     .optional(),
 

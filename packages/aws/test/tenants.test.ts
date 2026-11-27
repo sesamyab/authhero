@@ -6,6 +6,22 @@ describe("tenants", () => {
     await teardownTestServer();
   });
 
+  it("persists flags passed on create", async () => {
+    const { data } = await getTestServer();
+
+    await data.tenants.create({
+      id: "flagged",
+      friendly_name: "Flagged",
+      flags: { universal_login_version: "2", enable_sso: true },
+    });
+
+    const fetched = await data.tenants.get("flagged");
+    expect(fetched?.flags).toEqual({
+      universal_login_version: "2",
+      enable_sso: true,
+    });
+  });
+
   it("should support crud operations", async () => {
     const { data } = await getTestServer();
 

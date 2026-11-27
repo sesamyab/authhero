@@ -144,6 +144,8 @@ describe("tenantDefaults on POST /tenants", () => {
     const tenant = await adapters.tenants.get("t1");
     expect(tenant?.mfa?.policy).toBe("confidence");
     expect(tenant?.flags?.disable_impersonation).toBe(true);
+    // New tenants get the widget login (#1741), next to the defaults.
+    expect(tenant?.flags?.universal_login_version).toBe("2");
 
     // A new tenant's default client logs in through v2.
     const { clients } = await adapters.clients.list("t1");

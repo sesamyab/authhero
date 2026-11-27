@@ -77,4 +77,18 @@ describe("ClientMetadataInput", () => {
       foo: "baz",
     });
   });
+
+  it("treats universal_login_version as a dedicated key, not a row", async () => {
+    const onSubmit = renderInput({
+      universal_login_version: "2",
+      foo: "bar",
+    });
+
+    expect(screen.getAllByPlaceholderText("Key")).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText("Remove metadata entry"));
+
+    expect(await submittedMetadata(onSubmit)).toEqual({
+      universal_login_version: "2",
+    });
+  });
 });

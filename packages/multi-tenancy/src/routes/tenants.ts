@@ -609,6 +609,13 @@ export function createTenantsOpenAPIRouter(
         body = await hooks.tenants.beforeCreate(hookCtx, body);
       }
 
+      // A new tenant logs in through the widget login (/u2) unless the request
+      // or the tenant defaults chose otherwise (#1741).
+      body = {
+        ...body,
+        flags: { universal_login_version: "2", ...body.flags },
+      };
+
       await validateTenantParent({
         tenantId: body.id,
         parentTenantId: body.parent_tenant_id,

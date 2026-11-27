@@ -51,6 +51,7 @@ export function createTenantsAdapter(ctx: DynamoDBContext): TenantsDataAdapter {
         sender_email: params.sender_email,
         session_lifetime: params.session_lifetime,
         idle_session_lifetime: params.idle_session_lifetime,
+        flags: params.flags,
         parent_tenant_id: params.parent_tenant_id,
         config_sync: params.config_sync,
         created_at: now,

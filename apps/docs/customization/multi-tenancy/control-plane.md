@@ -551,7 +551,7 @@ initMultiTenant({
 - **The request wins.** A value in the `POST /tenants` body replaces the default. Nested objects such as `flags` merge key by key, and arrays are replaced whole.
 - **A function works too.** `tenantDefaults: (params, ctx) => ({ ... })` is called per creation, so a plan can decide the values.
 - **Not for identity or sync fields.** `id`, `friendly_name`, `audience`, `parent_tenant_id` and the `config_sync` fields are not accepted.
-- **Login version.** A new tenant's default client is created with `client_metadata.universal_login_version: "2"`, so it logs in through `/u2`. Clients created later choose their own version until the tenant-level setting in #1741 exists.
+- **Login version.** A new tenant gets the flag `universal_login_version: "2"`, so its applications log in through `/u2`. `tenantDefaults` or the request can set it to `"1"`. See [Login version](../login-version.md).
 - **Unset means unchanged.** Without `tenantDefaults` nothing is applied.
 - **Tenants with their own database too.** A `wfp` tenant reads its row from its own database, not the control plane's. When it is provisioned, the seed that creates that row copies the tenant's settings from the control plane's copy of its row (where `tenantDefaults` were applied), so the defaults reach it as well. Only the tenant row's settings travel: identity, deployment and sync fields stay on the control plane, as do `default_client_id` and the other references to rows elsewhere, and the Twilio `auth_token` under `mfa` is never copied. The row is created only if missing, so a later sync never overwrites settings the tenant has changed.
 
