@@ -310,6 +310,55 @@ describe("createAuthMiddleware", () => {
     });
   });
 
+  describe("HEAD requests", () => {
+    beforeEach(() => {
+      app.openapi(
+        {
+          method: "get",
+          path: "/api/users",
+          security: [{ Bearer: ["read:users"] }],
+          responses: {
+            200: {
+              description: "Success",
+            },
+          },
+        },
+        async (c) => c.json({ message: "success" }),
+      );
+      // Hono matches a HEAD request against the GET routes.
+      mockCtx.req.method = "HEAD";
+    });
+
+    it("should apply the GET route's security requirements", async () => {
+      mockCtx.req.header.mockReturnValue(undefined);
+
+      await expect(authMiddleware(mockCtx, mockNext)).rejects.toThrow(
+        "Missing authentication",
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it("should allow access with a valid token and the required permission", async () => {
+      const token = await createToken({ permissions: ["read:users"] });
+      mockCtx.req.header.mockReturnValue(`Bearer ${token}`);
+
+      const result = await authMiddleware(mockCtx, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(result).toBe("next-response");
+    });
+
+    it("should reject a token without the required permission", async () => {
+      const token = await createToken({ permissions: ["read:clients"] });
+      mockCtx.req.header.mockReturnValue(`Bearer ${token}`);
+
+      await expect(authMiddleware(mockCtx, mockNext)).rejects.toThrow(
+        HTTPException,
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
   describe("when no matched route is found", () => {
     beforeEach(() => {
       mockCtx.req.matchedRoutes = [];
