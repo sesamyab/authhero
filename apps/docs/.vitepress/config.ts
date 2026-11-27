@@ -313,6 +313,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               text: "Multi-Factor Authentication",
               link: "/features/mfa",
             },
+            {
+              text: "Home Realm Discovery",
+              link: "/features/home-realm-discovery",
+            },
             { text: "Actions", link: "/features/actions" },
             { text: "Hooks", link: "/features/hooks" },
             {
