@@ -64,7 +64,7 @@ AuthHero links automatically when an identity arrives with the same email addres
 
 The check is on the identity that is arriving. The account it joins is not checked. And once two identities are linked they share one profile: by default, a social or company login copies its profile onto the shared account every time it is used, including the fact that the email is verified. So automatic linking extends trust to whoever created the older account.
 
-That is fine when nobody can create an account for an address without proving they own it, as with a code by email or a social login. If people can sign up with a password and an address they have not verified, decide whether you want automatic linking at all. You can switch it off for a whole deployment or for one application, make linking a decision in your own code, or set a connection to copy profile attributes on the first login only (`set_user_root_attributes`).
+That is fine when nobody can create an account for an address without proving they own it, as with a code by email or a social login. If people can sign up with a password and an address they have not verified, decide whether you want automatic linking at all. You can switch it off for a whole deployment or for one application, or make linking a decision in your own code.
 
 A user ID records where the account came from: `auth0|6650f3a1c2` for a database user, `google-oauth2|1098…` for one who arrived through Google. The primary account's ID is the one that appears as `sub` in tokens.
 
