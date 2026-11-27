@@ -435,8 +435,13 @@ app.get("/customers/:customerId/users", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Check if this is an internal token (no org_id)
-  if (!claims.org_id) {
+  // Internal tokens are the ones issued for the internal API, without an
+  // organization. A management-audience token is always treated as
+  // organization-scoped, even if it carries no org_id.
+  const isInternal =
+    !claims.org_id && [claims.aud].flat().includes("internal:platform-api");
+
+  if (isInternal) {
     // This is an internal/support token
     // Verify they have cross-tenant permissions
     if (!claims.permissions?.includes("support:access")) {

@@ -234,7 +234,14 @@ const dataAdapter = {
 
 Mirroring is per entity and best-effort: a secondary write that fails is reported to `onError` and not retried. See [Adapters → Layering adapters](/architecture/adapters#layering-adapters).
 
-Mirroring only copies writes made after it is switched on. Before the standby may take traffic, copy the existing data across and verify it — the [database migration guide](/database/migration#phase-3-backfill-existing-data) has a backfill and verification script for this — and repeat the verification regularly, since failed mirror writes are not retried.
+Mirroring only copies writes made after it is switched on, so the standby also needs the data that existed before. AuthHero does not ship a backfill tool for this; write one against the adapters, following the pattern in the [database migration guide](/database/migration#phase-3-backfill-existing-data), whose scripts cover tenants, users and password hashes:
+
+- **Copy and verify before the standby may take traffic:** tenants, signing keys, clients and client grants, connections, resource servers, roles and their permissions, organizations, users (including linked accounts) and password hashes. Without these the standby cannot issue or validate tokens, or let users sign in.
+- **Copy, or accept losing:** sessions, login sessions, refresh tokens and codes. If you don't copy them, users who are signed in when you fail over sign in again on the standby.
+
+Repeat the verification regularly while mirroring runs, since failed mirror writes are not retried.
+
+**Failing back.** Writes the standby accepts during a failover are not mirrored back to D1. Before you route traffic back to the primary, copy those writes from the standby's database to D1 (the same backfill run in the other direction) and verify the two match; until then, keep traffic on the standby.
 
 ## Session Management
 
@@ -377,7 +384,7 @@ app.use("*", async (c, next) => {
 
 ### Cloudflare Primary + AWS Backup
 
-The Cloudflare Worker serves traffic from D1 and mirrors writes to DynamoDB with the passthrough adapter shown in [Option 2](#option-2-independent-databases-with-mirrored-writes). The AWS deployment reads the DynamoDB copy and takes over through DNS failover — only once the existing data has been backfilled into DynamoDB and verified, as described there:
+The Cloudflare Worker serves traffic from D1 and mirrors writes to DynamoDB with the passthrough adapter shown in [Option 2](#option-2-independent-databases-with-mirrored-writes). The AWS deployment reads the DynamoDB copy and takes over through DNS failover — only once the existing data has been backfilled into DynamoDB and verified, and traffic returns to Cloudflare only after the writes made on AWS are copied back to D1, as described there:
 
 ```typescript
 // aws/src/index.ts

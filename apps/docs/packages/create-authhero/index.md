@@ -15,7 +15,7 @@ pnpm create authhero my-auth-app
 npx create-authhero my-auth-app
 ```
 
-No global install is needed. The generated projects require Node.js 20.6 or later (the `local` template runs with `--env-file`).
+No global install is needed. The generated projects require Node.js 22 or later: the `local` template installs the latest `better-sqlite3`, which requires Node.js 22.
 
 ## Templates
 

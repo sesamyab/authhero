@@ -7,7 +7,7 @@ description: Run create-authhero interactively — the questions it asks, what i
 
 ## Prerequisites
 
-- Node.js 20.6 or later
+- Node.js 22 or later
 - npm, yarn, pnpm or bun
 
 ## Creating a project

@@ -467,6 +467,27 @@ async function main() {
       ),
     );
 
+    // Neither walk lists linked accounts, so one that only SQLite has would
+    // never reach a comparison. Both adapters fold linked accounts into their
+    // primary user's identities, so compare those: an extra linked account in
+    // SQLite shows up as an extra identity.
+    const identityKey = (user: User) =>
+      (user.identities ?? [])
+        .map((identity) => `${identity.connection}/${identity.provider}/${identity.user_id}`)
+        .sort()
+        .join(",");
+    const sqliteUsersById = new Map(sqliteUsers.map((user) => [user.user_id, user]));
+    const identityMismatches = mysqlUsers.filter((user) => {
+      const other = sqliteUsersById.get(user.user_id);
+      return other !== undefined && identityKey(user) !== identityKey(other);
+    });
+    if (identityMismatches.length > 0) {
+      console.error(
+        `  ✗ ${identityMismatches.length} users have different linked accounts (${tenant.id})`,
+      );
+    }
+    results.push(identityMismatches.length === 0);
+
     // The Drizzle adapter doesn't list linked accounts; look each one up
     const linkedUsers = await listLinkedUsers(mysqlAdapter, tenant.id);
     const linkedInSQLite = await Promise.all(
