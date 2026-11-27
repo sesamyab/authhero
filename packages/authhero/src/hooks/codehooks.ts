@@ -214,12 +214,85 @@ async function loadCodeForHook(
   return null;
 }
 
+/**
+ * Why an action produced no usable result: it ran past the host's timeout, or
+ * it failed (threw, returned `success: false`, its code is missing, or no code
+ * executor is configured). Used by the fail-closed option (issue #1816).
+ */
+export type CodeHookFailure = "action_timeout" | "action_failed";
+
 export type HandleCodeHookOutcome = {
   result: ActionExecutionResult;
   logs: CodeExecutionLog[];
   /** True if the executor recorded an API call that cancels the flow. */
   denied: boolean;
+  /** Set when the action did not run to completion. */
+  failure?: CodeHookFailure;
 };
+
+/**
+ * Hook `metadata` key: `true` makes a failing action deny the request instead
+ * of letting it continue. Shared with `pre-screen`, which reads the same key.
+ */
+export const HOOK_FAIL_CLOSED_METADATA_KEY = "fail_closed";
+
+/**
+ * True when the hook binding opted into failing closed: a timeout, a failed
+ * execution or a non-HTTP throw denies the request (issue #1816). Off by
+ * default, so an action that breaks lets the request through as before.
+ */
+export function isFailClosedHook(hook: {
+  metadata?: Record<string, unknown>;
+}): boolean {
+  const value = hook.metadata?.[HOOK_FAIL_CLOSED_METADATA_KEY];
+  return value === true || value === "true";
+}
+
+/**
+ * The outcome to record for an action that threw outside the executor (for
+ * example a replayed API call throwing a plain `Error`).
+ */
+export function thrownOutcome(
+  actionName: string,
+  err: unknown,
+  denied = false,
+): HandleCodeHookOutcome {
+  const now = new Date().toISOString();
+  return {
+    result: {
+      action_name: actionName,
+      error: {
+        id: denied ? "access_denied" : "execution_threw",
+        msg: err instanceof Error ? err.message : String(err),
+      },
+      started_at: now,
+      ended_at: now,
+    },
+    logs: [],
+    denied,
+    ...(denied ? {} : { failure: "action_failed" as const }),
+  };
+}
+
+/**
+ * The outcome to record when no code executor (or no tenant) was available to
+ * run a bound action. Only recorded for fail-closed bindings: a fail-open
+ * binding keeps skipping silently, as before.
+ */
+export function unavailableOutcome(actionName: string): HandleCodeHookOutcome {
+  const now = new Date().toISOString();
+  return {
+    result: {
+      action_name: actionName,
+      error: { id: "execution_failed", msg: "No code executor configured" },
+      started_at: now,
+      ended_at: now,
+    },
+    logs: [],
+    denied: false,
+    failure: "action_failed",
+  };
+}
 
 /**
  * Core code-hook execution, decoupled from the Hono request `ctx`.
@@ -267,6 +340,7 @@ export async function executeCodeHook(params: {
       },
       logs: [],
       denied: false,
+      failure: "action_failed",
     };
   }
 
@@ -277,6 +351,7 @@ export async function executeCodeHook(params: {
 
   const timeoutMs = 5000;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   let execResult: CodeExecutionResult;
   try {
     // Executors such as Worker Loader cannot enforce timeoutMs themselves.
@@ -290,16 +365,15 @@ export async function executeCodeHook(params: {
         timeoutMs,
       }),
       new Promise<CodeExecutionResult>((resolve) => {
-        timer = setTimeout(
-          () =>
-            resolve({
-              success: false,
-              error: `Action execution timed out after ${timeoutMs}ms`,
-              durationMs: timeoutMs,
-              apiCalls: [],
-            }),
-          timeoutMs,
-        );
+        timer = setTimeout(() => {
+          timedOut = true;
+          resolve({
+            success: false,
+            error: `Action execution timed out after ${timeoutMs}ms`,
+            durationMs: timeoutMs,
+            apiCalls: [],
+          });
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -321,6 +395,7 @@ export async function executeCodeHook(params: {
       },
       logs: execResult.logs ?? [],
       denied: false,
+      failure: timedOut ? "action_timeout" : "action_failed",
     };
   }
 
@@ -526,6 +601,11 @@ export async function persistActionExecution(
  * surrounding tenant log (the standard token-exchange log entry). The
  * execution record itself follows Auth0's shape — see
  * GET /api/v2/actions/executions/:id.
+ *
+ * `api.access.deny` stops token issuance: the execution is persisted as
+ * canceled and the 400 from `deny` is rethrown, so no tokens are signed and
+ * later actions don't run. A binding with `metadata.fail_closed` also denies
+ * when its action times out, fails or throws (issue #1816).
  */
 export async function handleCredentialsExchangeCodeHooks(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
@@ -540,10 +620,20 @@ export async function handleCredentialsExchangeCodeHooks(
     (h): h is CodeHook => !!(h as any).enabled && isCodeHook(h),
   );
   const outcomes: HandleCodeHookOutcome[] = [];
+  const persist = () =>
+    persistActionExecution(
+      ctx.env.data,
+      tenant_id,
+      "credentials-exchange",
+      outcomes,
+      { logCapture: ctx.env.actionExecutionLogs },
+    );
 
   for (const hook of codeHooks) {
+    const failClosed = isFailClosedHook(hook);
+    let outcome: HandleCodeHookOutcome | null;
     try {
-      const outcome = await handleCodeHook(
+      outcome = await handleCodeHook(
         ctx,
         getExecutorData(ctx),
         hook,
@@ -551,33 +641,48 @@ export async function handleCredentialsExchangeCodeHooks(
         "credentials-exchange",
         api as unknown as CodeHookApi,
       );
-      if (outcome) outcomes.push(outcome);
+      if (!outcome && failClosed) outcome = unavailableOutcome(hook.code_id);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // api.access.deny throws HTTPException — record as denied so the
-      // execution is persisted as "canceled" rather than "partial".
+      // api.access.deny throws HTTPException: record it as denied so the
+      // execution is persisted as "canceled", then stop the exchange.
       const denied = err instanceof HTTPException;
-      outcomes.push({
-        result: {
-          action_name: hook.code_id,
-          error: {
-            id: denied ? "access_denied" : "execution_threw",
-            msg: message,
-          },
-          started_at: new Date().toISOString(),
-          ended_at: new Date().toISOString(),
-        },
-        logs: [],
-        denied,
-      });
+      outcome = thrownOutcome(hook.code_id, err, denied);
+      if (denied) {
+        outcomes.push(outcome);
+        await persistThenThrow(ctx, persist, err);
+      }
+    }
+    if (!outcome) continue;
+    outcomes.push(outcome);
+
+    if (outcome.failure && failClosed) {
+      outcome.denied = true;
+      try {
+        // Same 400 and audit log as an explicit `api.access.deny`.
+        api.access.deny("access_denied", outcome.failure);
+      } catch (err) {
+        await persistThenThrow(ctx, persist, err);
+      }
     }
   }
 
-  return persistActionExecution(
-    ctx.env.data,
-    tenant_id,
-    "credentials-exchange",
-    outcomes,
-    { logCapture: ctx.env.actionExecutionLogs },
-  );
+  return persist();
+}
+
+/**
+ * Store the execution record of a denied request, then rethrow the denial.
+ * Storing it must not replace the denial with a 500.
+ */
+export async function persistThenThrow(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  persist: () => Promise<string | null>,
+  err: unknown,
+): Promise<never> {
+  try {
+    const executionId = await persist();
+    if (executionId) ctx.set("action_execution_id", executionId);
+  } catch (persistErr) {
+    console.warn("Failed to persist denied action execution:", persistErr);
+  }
+  throw err;
 }

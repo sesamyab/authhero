@@ -8,6 +8,7 @@ import { CountryCode } from "libphonenumber-js";
 import { Auth0Client } from "./Auth0Client";
 import type { PreferState } from "../middlewares/prefer";
 import type { EmbedLoginContext } from "../routes/universal-login/embed";
+import type { PostLoginActionClaims } from "../state-machines/login-session";
 
 export type Variables = {
   /**
@@ -105,6 +106,10 @@ export type Variables = {
   // execution IDs are discovered via tenant logs, then fetched with
   // GET /api/v2/actions/executions/:id.
   action_execution_id?: string;
+  // Token claims set by this request's post-login actions, for tokens minted
+  // in the same request (implicit / hybrid). The code exchange reads them from
+  // the login session instead, where post-login also stores them.
+  post_login_action_claims?: PostLoginActionClaims;
   // Per-request Server-Timing measurements accumulated by the data/cache
   // adapter wrappers and the webhook hook. Flushed once at the end of the
   // request by serverTimingMiddleware, which decides — based on the

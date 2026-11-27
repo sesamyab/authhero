@@ -18,6 +18,19 @@ export interface MfaRequiredByAction {
   allow_remember_browser: boolean;
 }
 
+/**
+ * Custom claims a post-login action set with `api.accessToken.setCustomClaim`
+ * / `api.idToken.setCustomClaim` (issue #1816). Applied to the tokens issued
+ * for this login, including the authorization-code exchange, and only for the
+ * user the hooks settled on. Refresh-token exchanges don't apply them: they
+ * don't re-run post-login actions.
+ */
+export interface PostLoginActionClaims {
+  user_id: string;
+  access_token?: Record<string, unknown>;
+  id_token?: Record<string, unknown>;
+}
+
 /** Persisted context, grouped by responsibility in types, flat on disk. */
 export interface LoginSessionData {
   passwordReset?: PasswordResetFlow;
@@ -29,6 +42,8 @@ export interface LoginSessionData {
    * already run for this login so the resume after MFA does not run them again.
    */
   mfa_required_by_action?: MfaRequiredByAction;
+  /** Token claims set by post-login actions, see {@link PostLoginActionClaims}. */
+  action_claims?: PostLoginActionClaims;
   /** Authentication method type that satisfied MFA (e.g. "totp", "phone") */
   mfa_method?: string;
   /** When MFA was verified (ISO 8601); copied onto the browser session */
