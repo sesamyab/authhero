@@ -14,6 +14,10 @@ import {
   SAML_BINDING_HTTP_REDIRECT,
 } from "../src/sp";
 import { SamlResponseError, validateSamlResponse } from "../src/response";
+import {
+  parseSamlAuthnRequest,
+  verifyRedirectBindingSignature,
+} from "../src/idp";
 import { LocalSamlVerifier } from "../src/verifiers/local";
 import { inflateDecompress } from "../src/helpers";
 
@@ -570,6 +574,118 @@ ${cert}
       expect(normalizeCertificate("not a cert")).toBeUndefined();
       expect(normalizeCertificate("")).toBeUndefined();
       expect(normalizeCertificate("aGVsbG8=")).toBeUndefined();
+    });
+  });
+});
+
+describe("SAML identity provider helpers", () => {
+  it("parses AuthnRequests regardless of namespace prefix", () => {
+    const xml =
+      `<saml2p:AuthnRequest xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion" ID="_r9" Version="2.0" IssueInstant="2026-01-01T00:00:00Z" Destination="https://idp/sso" AssertionConsumerServiceURL="https://sp/acs" ForceAuthn="TRUE">` +
+      `<saml2:Issuer>https://sp/entity</saml2:Issuer></saml2p:AuthnRequest>`;
+    expect(parseSamlAuthnRequest(xml)).toEqual({
+      id: "_r9",
+      issuer: "https://sp/entity",
+      assertionConsumerServiceUrl: "https://sp/acs",
+      destination: "https://idp/sso",
+      protocolBinding: undefined,
+      issueInstant: "2026-01-01T00:00:00Z",
+      forceAuthn: true,
+    });
+    expect(() =>
+      parseSamlAuthnRequest(
+        `<AuthnRequest xmlns="urn:oasis:names:tc:SAML:2.0:protocol" Version="2.0"/>`,
+      ),
+    ).toThrow(/no ID/);
+    expect(() => parseSamlAuthnRequest(`<LogoutRequest ID="x"/>`)).toThrow(
+      /not an AuthnRequest/,
+    );
+  });
+
+  describe("verifyRedirectBindingSignature", () => {
+    let key: KeyMaterial;
+    let spki: Uint8Array;
+    let otherSpki: Uint8Array;
+
+    beforeAll(async () => {
+      key = await createKeyMaterial("sp");
+      spki = new Uint8Array(
+        await crypto.subtle.exportKey("spki", key.publicKey),
+      );
+      const other = await createKeyMaterial("other-sp");
+      otherSpki = new Uint8Array(
+        await crypto.subtle.exportKey("spki", other.publicKey),
+      );
+    });
+
+    async function signedQuery(relayState?: string) {
+      const url = await createRedirectBindingUrl({
+        endpoint: "https://idp.example.com/samlp/client",
+        xml: "<samlp:AuthnRequest/>",
+        relayState,
+        signingKey: { privateKeyPem: key.privateKeyPem },
+      });
+      return url.split("?")[1]!;
+    }
+
+    it("accepts a valid signature, with and without RelayState", async () => {
+      for (const relayState of ["state/with spaces&more", undefined]) {
+        const rawQuery = await signedQuery(relayState);
+        expect(
+          await verifyRedirectBindingSignature({
+            rawQuery,
+            parameter: "SAMLRequest",
+            spkiKeys: [otherSpki, spki],
+          }),
+        ).toBe(true);
+      }
+    });
+
+    it("rejects another key and a tampered query", async () => {
+      const rawQuery = await signedQuery("state");
+      expect(
+        await verifyRedirectBindingSignature({
+          rawQuery,
+          parameter: "SAMLRequest",
+          spkiKeys: [otherSpki],
+        }),
+      ).toBe(false);
+      expect(
+        await verifyRedirectBindingSignature({
+          rawQuery: rawQuery.replace("RelayState=state", "RelayState=other"),
+          parameter: "SAMLRequest",
+          spkiKeys: [spki],
+        }),
+      ).toBe(false);
+    });
+
+    it("throws on unsigned, unsupported or ambiguous queries", async () => {
+      const rawQuery = await signedQuery("state");
+      const unsigned = rawQuery.slice(0, rawQuery.indexOf("&SigAlg="));
+      await expect(
+        verifyRedirectBindingSignature({
+          rawQuery: unsigned,
+          parameter: "SAMLRequest",
+          spkiKeys: [spki],
+        }),
+      ).rejects.toThrow(/not signed/);
+      await expect(
+        verifyRedirectBindingSignature({
+          rawQuery: rawQuery.replace(
+            /SigAlg=[^&]+/,
+            `SigAlg=${encodeURIComponent("http://www.w3.org/2000/09/xmldsig#hmac-sha1")}`,
+          ),
+          parameter: "SAMLRequest",
+          spkiKeys: [spki],
+        }),
+      ).rejects.toThrow(/Unsupported SigAlg/);
+      await expect(
+        verifyRedirectBindingSignature({
+          rawQuery: `${rawQuery}&SAMLRequest=other`,
+          parameter: "SAMLRequest",
+          spkiKeys: [spki],
+        }),
+      ).rejects.toThrow(/repeated/);
     });
   });
 });

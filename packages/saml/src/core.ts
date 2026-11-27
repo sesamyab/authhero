@@ -12,6 +12,9 @@ export * from "./sp";
 export * from "./response";
 export * from "./verifier";
 
+// Identity-provider side request handling
+export * from "./idp";
+
 // Signing interface and HTTP implementation only
 export * from "./signer";
 export * from "./signers/http";

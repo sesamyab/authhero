@@ -14,8 +14,9 @@ SAML 2.0 support is provided by [`@authhero/saml`](/customization/saml/) and wor
 
 ### Implemented
 
-- **SSO endpoint** — `/samlp/{client_id}` accepts an `AuthnRequest` and issues a signed SAML response.
-- **Metadata** — `/samlp/metadata/{client_id}` publishes IdP metadata XML.
+- **SSO endpoint** — `/samlp/{client_id}` accepts an `AuthnRequest` over the HTTP-Redirect (`GET`) and HTTP-POST (`POST`) bindings and issues a signed SAML response. Requests are read whatever namespace prefix the SP uses.
+- **Signed requests** — with the SP's certificate in the application's `addons.samlp.signingCert`, `AuthnRequest`s and `LogoutRequest`s must be signed with it: query-string signatures for HTTP-Redirect, enveloped XML signatures (via the configured `samlVerifier`) for HTTP-POST.
+- **Metadata** — `/samlp/metadata/{client_id}` publishes IdP metadata XML; its `entityID` is the `Issuer` the assertions carry.
 - **HTTP-POST binding** — SAML responses are delivered via an auto-submitting HTML form POST to the SP's `AssertionConsumerServiceURL`, which must be one of the application's callback URLs.
 - **Signed assertions** — assertions are signed with the tenant's X.509 signing key. Certificates are tenant-scoped and can be rotated with a staging window, renewed over the same key pair, or revoked — see [Certificate lifecycle](/customization/saml/configuration#certificate-lifecycle).
 - **Attribute statements** — standard user attributes are mapped into SAML attributes.
@@ -24,8 +25,6 @@ SAML 2.0 support is provided by [`@authhero/saml`](/customization/saml/) and wor
 
 ### Partial / not yet implemented
 
-- **Signed AuthnRequests** — request signatures are not verified; a client with `require_signed_requests` refuses all requests.
-- **HTTP-POST binding for AuthnRequests** — only HTTP-Redirect is accepted on the SSO endpoint.
 - **IdP-initiated SSO** — a response is only issued for an `AuthnRequest`.
 - **Assertion encryption** — assertions are signed but not encrypted.
 

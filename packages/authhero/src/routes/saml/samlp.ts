@@ -13,8 +13,17 @@ import {
   createSamlLogoutResponse,
   createSamlMetadata,
   parseSamlLogoutRequestQuery,
-  parseSamlRequestQuery,
 } from "../../helpers/saml";
+import {
+  decodeSamlPostMessage,
+  inflateDecompress,
+  parseSamlAuthnRequest,
+  SamlAuthnRequestInfo,
+} from "@authhero/saml/core";
+import {
+  SamlRequestSignatureError,
+  verifySamlRequestSignature,
+} from "../../helpers/saml-request-signature";
 import { clearAuthCookie, getAuthCookie } from "../../utils/cookies";
 import { sendBackchannelLogout } from "../../helpers/backchannel-logout";
 import { Context } from "hono";
@@ -159,8 +168,10 @@ const getMetadataByClient_id = defineRoute({
 
     const issuer = ctx.env.ISSUER;
 
+    // The entity ID is what the assertions carry as their Issuer, so an SP
+    // that checks Issuer against this metadata accepts them.
     const metadata = createSamlMetadata({
-      entityId: client.addons?.samlp?.audience || client.client_id,
+      entityId: issuer,
       certificates,
       assertionConsumerServiceUrl: `${issuer}samlp/${client_id}`,
       singleLogoutServiceUrl: `${issuer}samlp/${client_id}/logout`,
@@ -173,6 +184,154 @@ const getMetadataByClient_id = defineRoute({
     });
   },
 });
+
+/** The raw, still URL-encoded query string: redirect signatures cover it. */
+function rawQueryOf(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+) {
+  return new URL(ctx.req.url).search.slice(1);
+}
+
+async function handleAuthnRequest(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  client_id: string,
+  params: {
+    binding: "redirect" | "post";
+    SAMLRequest: string;
+    RelayState?: string;
+  },
+) {
+  const client = await getEnrichedClient(ctx.env, client_id);
+  ctx.set("client_id", client.client_id);
+  setTenantId(ctx, client.tenant.id);
+
+  // Fire-and-forget; never alters the response.
+  const logRejected = (description: string) =>
+    logMessage(ctx, client.tenant.id, {
+      type: LogTypes.FAILED_LOGIN,
+      description: `SAML: ${description}`,
+      details: { client_id, reason: description },
+    });
+
+  let xml: string;
+  let authnRequest: SamlAuthnRequestInfo;
+  try {
+    // HTTP-Redirect messages are raw-deflated; HTTP-POST ones are not.
+    xml =
+      params.binding === "redirect"
+        ? await inflateDecompress(params.SAMLRequest)
+        : decodeSamlPostMessage(params.SAMLRequest);
+    authnRequest = parseSamlAuthnRequest(xml);
+  } catch {
+    logRejected("SAMLRequest could not be parsed");
+    throw new JSONHTTPException(400, {
+      error: "invalid_request",
+      error_description: "SAMLRequest could not be parsed",
+    });
+  }
+
+  // A client with the SP's signingCert (or require_signed_requests) only
+  // accepts requests signed with that certificate.
+  try {
+    await verifySamlRequestSignature(
+      ctx,
+      client,
+      params.binding === "redirect"
+        ? { binding: "redirect", rawQuery: rawQueryOf(ctx) }
+        : {
+            binding: "post",
+            xml,
+            rootElement: "AuthnRequest",
+            requestId: authnRequest.id,
+          },
+    );
+  } catch (err) {
+    if (!(err instanceof SamlRequestSignatureError)) throw err;
+    logRejected(err.message);
+    throw new JSONHTTPException(400, {
+      error: "invalid_request",
+      error_description: err.message,
+    });
+  }
+
+  // Validate the AssertionConsumerServiceURL against the client's registered
+  // callbacks before storing it as `redirect_uri` on the login session — the
+  // SAMLResponse will eventually be POST'd to this URL. Without this check
+  // an attacker can submit a forged SAMLRequest pointing at their own ACS
+  // URL and harvest the issued SAMLResponse (containing the user's identity
+  // assertion) after the victim completes Universal Login.
+  const acsUrl = authnRequest.assertionConsumerServiceUrl;
+  if (!acsUrl) {
+    logRejected("AssertionConsumerServiceURL missing on SAMLRequest");
+    throw new JSONHTTPException(400, {
+      error: "invalid_request",
+      error_description:
+        "AssertionConsumerServiceURL is required on the SAMLRequest",
+    });
+  }
+  if (
+    !isValidRedirectUrl(acsUrl, client.callbacks || [], {
+      allowPathWildcards: true,
+      allowSubDomainWildcards: true,
+    })
+  ) {
+    logRejected(
+      `AssertionConsumerServiceURL ${acsUrl} is not in the client's allowed callbacks`,
+    );
+    throw new JSONHTTPException(400, {
+      error: "invalid_request",
+      error_description:
+        "AssertionConsumerServiceURL is not in the client's allowed callbacks",
+    });
+  }
+
+  const issuer = authnRequest.issuer;
+
+  // Create a new Login session
+  const loginSession = await ctx.env.data.loginSessions.create(
+    ctx.var.tenant_id,
+    {
+      csrf_token: nanoid(),
+      authParams: {
+        client_id: client_id,
+        state: JSON.stringify({
+          requestId: authnRequest.id,
+          relayState: params.RelayState,
+        }),
+        response_mode: AuthorizationResponseMode.SAML_POST,
+        redirect_uri: acsUrl,
+        audience: issuer,
+      },
+      expires_at: new Date(
+        Date.now() + UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS * 1000,
+      ).toISOString(),
+      ip: ctx.get("ip"),
+      useragent: ctx.get("useragent"),
+      auth0Client: stringifyAuth0Client(ctx.get("auth0_client")),
+    },
+  );
+
+  logMessage(ctx, client.tenant.id, {
+    type: LogTypes.INFORMATION,
+    description: "SAML authentication request received",
+    login_session_id: loginSession.id,
+    details: {
+      client_id,
+      issuer,
+      acs_url: acsUrl,
+      request_id: authnRequest.id,
+      binding: params.binding,
+      login_session_id: loginSession.id,
+    },
+  });
+
+  return ctx.redirect(`/u/login/identifier?state=${loginSession.id}`);
+}
+
+const authnRequestResponses = {
+  302: { description: "Redirect to the login page" },
+  400: { description: "Bad Request" },
+};
 
 const getByClient_id = defineRoute({
   route: createRoute({
@@ -190,134 +349,50 @@ const getByClient_id = defineRoute({
         client_id: z.string(),
       }),
     },
-    responses: {
-      200: {
-        description: "Decoded SAML Request",
-        content: {
-          "text/xml": {
-            schema: z.string(),
-          },
-        },
-      },
-      400: {
-        description: "Bad Request",
-      },
-    },
+    responses: authnRequestResponses,
   }),
   handler: async (ctx) => {
     const { client_id } = ctx.req.valid("param");
     const { SAMLRequest, RelayState } = ctx.req.valid("query");
-
-    const client = await getEnrichedClient(ctx.env, client_id);
-    ctx.set("client_id", client.client_id);
-    setTenantId(ctx, client.tenant.id);
-
-    // Fire-and-forget; never alters the response.
-    const logRejected = (description: string) =>
-      logMessage(ctx, client.tenant.id, {
-        type: LogTypes.FAILED_LOGIN,
-        description: `SAML: ${description}`,
-        details: { client_id, reason: description },
-      });
-
-    let samlRequest: Awaited<ReturnType<typeof parseSamlRequestQuery>>;
-    try {
-      samlRequest = await parseSamlRequestQuery(SAMLRequest);
-    } catch (err) {
-      logRejected("SAMLRequest could not be parsed");
-      throw err;
-    }
-
-    // Fail closed when the deployer has flagged this client as requiring
-    // signed requests. Redirect-binding signature verification (xml-crypto
-    // against the SP's public key from the client's SAML metadata) is not
-    // yet implemented, so we cannot prove a Signature query value is valid —
-    // accepting its mere presence would create the illusion of
-    // authentication. Until verification lands, refuse the request entirely.
-    const samlpAddon = client.addons?.samlp as
-      | { require_signed_requests?: boolean }
-      | undefined;
-    if (samlpAddon?.require_signed_requests) {
-      logRejected("SAMLRequest signature required but cannot be verified");
-      throw new JSONHTTPException(400, {
-        error: "invalid_request",
-        error_description:
-          "SAMLRequest signature verification is not implemented; require_signed_requests cannot be honored",
-      });
-    }
-
-    // Validate the AssertionConsumerServiceURL against the client's registered
-    // callbacks before storing it as `redirect_uri` on the login session — the
-    // SAMLResponse will eventually be POST'd to this URL. Without this check
-    // an attacker can submit a forged SAMLRequest pointing at their own ACS
-    // URL and harvest the issued SAMLResponse (containing the user's identity
-    // assertion) after the victim completes Universal Login.
-    const acsUrl =
-      samlRequest["samlp:AuthnRequest"]["@_AssertionConsumerServiceURL"];
-    if (!acsUrl) {
-      logRejected("AssertionConsumerServiceURL missing on SAMLRequest");
-      throw new JSONHTTPException(400, {
-        error: "invalid_request",
-        error_description:
-          "AssertionConsumerServiceURL is required on the SAMLRequest",
-      });
-    }
-    if (
-      !isValidRedirectUrl(acsUrl, client.callbacks || [], {
-        allowPathWildcards: true,
-        allowSubDomainWildcards: true,
-      })
-    ) {
-      logRejected(
-        `AssertionConsumerServiceURL ${acsUrl} is not in the client's allowed callbacks`,
-      );
-      throw new JSONHTTPException(400, {
-        error: "invalid_request",
-        error_description:
-          "AssertionConsumerServiceURL is not in the client's allowed callbacks",
-      });
-    }
-
-    const issuer = samlRequest["samlp:AuthnRequest"]["saml:Issuer"]["#text"];
-
-    // Create a new Login session
-    const loginSession = await ctx.env.data.loginSessions.create(
-      ctx.var.tenant_id,
-      {
-        csrf_token: nanoid(),
-        authParams: {
-          client_id: client_id,
-          state: JSON.stringify({
-            requestId: samlRequest["samlp:AuthnRequest"]["@_ID"],
-            relayState: RelayState,
-          }),
-          response_mode: AuthorizationResponseMode.SAML_POST,
-          redirect_uri: acsUrl,
-          audience: issuer,
-        },
-        expires_at: new Date(
-          Date.now() + UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS * 1000,
-        ).toISOString(),
-        ip: ctx.get("ip"),
-        useragent: ctx.get("useragent"),
-        auth0Client: stringifyAuth0Client(ctx.get("auth0_client")),
-      },
-    );
-
-    logMessage(ctx, client.tenant.id, {
-      type: LogTypes.INFORMATION,
-      description: "SAML authentication request received",
-      login_session_id: loginSession.id,
-      details: {
-        client_id,
-        issuer,
-        acs_url: acsUrl,
-        request_id: samlRequest["samlp:AuthnRequest"]["@_ID"],
-        login_session_id: loginSession.id,
-      },
+    return handleAuthnRequest(ctx, client_id, {
+      binding: "redirect",
+      SAMLRequest,
+      RelayState,
     });
+  },
+});
 
-    return ctx.redirect(`/u/login/identifier?state=${loginSession.id}`);
+// HTTP-POST binding, which the IdP metadata advertises next to HTTP-Redirect.
+const postByClient_id = defineRoute({
+  route: createRoute({
+    tags: ["saml"],
+    method: "post",
+    path: "/{client_id}",
+    request: {
+      params: z.object({
+        client_id: z.string(),
+      }),
+      body: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            schema: z.object({
+              SAMLRequest: z.string(),
+              RelayState: z.string().optional(),
+            }),
+          },
+        },
+      },
+    },
+    responses: authnRequestResponses,
+  }),
+  handler: async (ctx) => {
+    const { client_id } = ctx.req.valid("param");
+    const { SAMLRequest, RelayState } = ctx.req.valid("form");
+    return handleAuthnRequest(ctx, client_id, {
+      binding: "post",
+      SAMLRequest,
+      RelayState,
+    });
   },
 });
 
@@ -326,6 +401,7 @@ async function handleSamlLogout(
   client_id: string,
   SAMLRequest: string,
   RelayState: string | undefined,
+  binding: "redirect" | "post",
 ) {
   const client = await getEnrichedClient(ctx.env, client_id);
   ctx.set("client_id", client.client_id);
@@ -391,17 +467,8 @@ async function handleSamlLogout(
     return new Response("Redirecting", { status: 302, headers });
   };
 
-  const samlpAddon = client.addons?.samlp as
-    | { require_signed_requests?: boolean }
-    | undefined;
-  if (!samlpAddon) {
+  if (!client.addons?.samlp) {
     return respond(false, `SAML addon is not enabled for client ${client_id}`);
-  }
-  if (samlpAddon.require_signed_requests) {
-    return respond(
-      false,
-      "LogoutRequest signature required but cannot be verified",
-    );
   }
 
   try {
@@ -416,6 +483,25 @@ async function handleSamlLogout(
       false,
       `Invalid LogoutRequest: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+
+  // Unauthenticated logout would let any page end the user's session.
+  try {
+    await verifySamlRequestSignature(
+      ctx,
+      client,
+      binding === "redirect"
+        ? { binding: "redirect", rawQuery: rawQueryOf(ctx) }
+        : {
+            binding: "post",
+            xml: decodeSamlPostMessage(SAMLRequest),
+            rootElement: "LogoutRequest",
+            requestId: requestId ?? "",
+          },
+    );
+  } catch (err) {
+    if (!(err instanceof SamlRequestSignatureError)) throw err;
+    return respond(false, err.message.replace(/^SAMLRequest/, "LogoutRequest"));
   }
 
   // The assertion's SessionIndex is the authhero session id; fall back to the
@@ -474,7 +560,13 @@ const getLogout = defineRoute({
   handler: async (ctx) => {
     const { client_id } = ctx.req.valid("param");
     const { SAMLRequest, RelayState } = ctx.req.valid("query");
-    return handleSamlLogout(ctx, client_id, SAMLRequest, RelayState);
+    return handleSamlLogout(
+      ctx,
+      client_id,
+      SAMLRequest,
+      RelayState,
+      "redirect",
+    );
   },
 });
 
@@ -501,7 +593,7 @@ const postLogout = defineRoute({
   handler: async (ctx) => {
     const { client_id } = ctx.req.valid("param");
     const { SAMLRequest, RelayState } = ctx.req.valid("form");
-    return handleSamlLogout(ctx, client_id, SAMLRequest, RelayState);
+    return handleSamlLogout(ctx, client_id, SAMLRequest, RelayState, "post");
   },
 });
 
@@ -513,6 +605,7 @@ export const samlpRoutes = new OpenAPIHono<{
   getSpMetadata,
   getMetadataByClient_id,
   getByClient_id,
+  postByClient_id,
   getLogout,
   postLogout,
 ] as const);

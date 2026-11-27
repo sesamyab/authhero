@@ -9,6 +9,9 @@ export * from "./sp";
 export * from "./response";
 export * from "./verifier";
 
+// Identity-provider side request handling
+export * from "./idp";
+
 // Signing interface and implementations
 export * from "./signer";
 export * from "./signers/local";

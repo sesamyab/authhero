@@ -108,6 +108,28 @@ const signer = new LocalSamlSigner();
 Importing `LocalSamlSigner` adds the `xml-crypto` dependency and its transitive dependencies to your bundle, increasing it by **~200 KB** (~54 KB gzipped). If you only need HTTP-based signing, use `HttpSamlSigner` to keep your bundle 3x smaller.
 :::
 
+## Applications (AuthHero as Identity Provider)
+
+An application with the `samlp` addon receives signed assertions from AuthHero. Give the service provider:
+
+| Setting | Value |
+| --- | --- |
+| SSO URL | `https://{auth-domain}/samlp/{client_id}` (HTTP-Redirect and HTTP-POST) |
+| Single logout URL | `https://{auth-domain}/samlp/{client_id}/logout` |
+| IdP metadata | `https://{auth-domain}/samlp/metadata/{client_id}` |
+| IdP entity ID / Issuer | the tenant's issuer (`ISSUER`) |
+
+The `AssertionConsumerServiceURL` of every `AuthnRequest` must be one of the application's callback URLs.
+
+Addon settings (`addons.samlp`):
+
+| Setting | Description |
+| --- | --- |
+| `audience` | Audience of the assertion. Defaults to the client id. |
+| `signingCert` | The SP's certificate (PEM). When set, `AuthnRequest`s and `LogoutRequest`s must be signed with it, as in Auth0. HTTP-POST signatures need a `samlVerifier`. |
+| `require_signed_requests` | Refuse unsigned requests. Without `signingCert` every request is refused, since nothing can be verified. |
+| `logout.callback` | Where the `LogoutResponse` is sent. |
+
 ## Signature Verification (SAML Connections)
 
 [SAML connections](./connections.md), where AuthHero is the service provider, verify the signature of every response from the identity provider. Verification is pluggable like signing:

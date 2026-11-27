@@ -22,6 +22,13 @@ export function SsoTab() {
         helperText="The Service Provider's Assertion Consumer Service URL where the SAML response will be POSTed."
       />
       <TextInput
+        source="addons.samlp.signingCert"
+        label="Request Signing Certificate"
+        multiline
+        rows={4}
+        helperText="Optional. The Service Provider's X.509 certificate (PEM). When set, SAML authentication and logout requests must be signed with it."
+      />
+      <TextInput
         source="addons.samlp.mappings"
         label="Attribute Mappings"
         multiline
