@@ -70,10 +70,11 @@ const { payload } = await jwtVerify(token, keys, {
   issuer: "https://auth.larder.example/",
   audience: "https://api.larder.example",
   algorithms: ["RS256"],
+  requiredClaims: ["exp"],
 });
 ```
 
-The library fetches the keys once, caches them, and looks again only when it meets a `kid` it has not seen, which is what makes key rotation painless. AuthHero can sign with RS256, ES256, ES384 or ES512. Pin the algorithms you expect, as above, and never take the token's own word for it.
+The last option matters: the library checks `exp` when it is present, and that line makes a token without one fail. The library fetches the keys once, caches them, and looks again only when it meets a `kid` it has not seen, which is what makes key rotation painless. AuthHero can sign with RS256, ES256, ES384 or ES512. Pin the algorithms you expect, as above, and never take the token's own word for it.
 
 Passing those four checks proves the token is genuine and meant for you. It does not yet prove the caller may do what they are asking. That is a fifth check, on `scope`, and chapter 9 is about it.
 

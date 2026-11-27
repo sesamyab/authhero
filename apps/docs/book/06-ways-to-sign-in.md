@@ -60,7 +60,9 @@ Give people several ways in and they will use more than one. Maya signs up with 
 
 **Account linking** merges them. One account is the **primary**. The others hang off it as additional **identities**. Whichever door Maya uses, she arrives as the same user with the same user ID, and her tokens are the same.
 
-AuthHero links automatically when a new identity has the same email address as an existing account in the same tenant, **and that email is verified**. The condition matters. If unverified addresses were enough, anyone could sign up with your address and be merged into your account. You can switch the automatic behaviour off, or decide linking yourself in code.
+AuthHero links automatically when an identity arrives with the same email address as an existing account in the same tenant, **and the arriving identity's email is verified**. The condition matters. If unverified addresses were enough, anyone could sign up with your address and be merged into your account.
+
+The check is on the identity that is arriving. The account it joins is not checked again. So do not leave password accounts usable with an unverified address: have the application require a verified email before a password login completes, as described above. You can also switch the automatic behaviour off, or decide linking yourself in code.
 
 A user ID records where the account came from: `auth0|6650f3a1c2` for a database user, `google-oauth2|1098…` for one who arrived through Google. The primary account's ID is the one that appears as `sub` in tokens.
 

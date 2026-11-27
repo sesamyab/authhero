@@ -25,7 +25,7 @@ Logins are one kind of history. Changes to the configuration are another, and af
 
 AuthHero records an **audit event** for every change made through the Management API: who made it, what was affected, and the state before and after, with secrets blanked out.
 
-With the outbox from chapter 11 enabled, an audit event is written in the same database transaction as the change it describes. Either both exist or neither does. A crash at the wrong moment cannot leave you with a change and no record of it.
+With the outbox from chapter 11 enabled, audit events are stored in the database first and delivered from there, with retries, so a destination that is down does not lose them. When a user is created, the event is committed in the same transaction as the user, and one cannot exist without the other. For other changes the event is written straight after the change, not together with it.
 
 ## Sending it elsewhere
 

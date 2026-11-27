@@ -66,6 +66,7 @@ Three limits are worth knowing before you design around Actions:
 
 - They run in a **sandbox** with no access to AuthHero's database. An Action can call out with `fetch`, and that is all.
 - There is a five-second timeout, and npm packages cannot be loaded.
+- An Action that runs after login cannot yet redirect the user somewhere else. A form, or an Action on the screen trigger, does that job.
 - Something has to execute them. On Cloudflare each Action runs in its own isolate. There is also a local executor meant for development. Without an executor, Actions are stored but do not run.
 
 ## When your code fails

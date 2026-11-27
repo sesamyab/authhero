@@ -42,11 +42,11 @@ With RBAC **on**, AuthHero compares the request with what the user actually hold
 | A standard OpenID scope (`openid`, `profile`, `email`) | Always granted |
 | Defined on the API, and the user has that permission | Granted |
 | Defined on the API, and the user lacks it | Quietly left out |
-| Not defined on the API at all | Passed through |
+| Not defined on the API at all | Passed through, by default |
 
 Maya the cook asks for three API scopes and receives a token containing `read:stock write:stock`. The billing scope is simply absent. She does not get an error, because nothing went wrong. She just got the token she is entitled to.
 
-The last row is the practical one. Only scopes you *define* are restricted, so you can lock down the three sensitive operations and leave everything else alone.
+The last row is the practical one. By default only scopes you *define* are restricted, so you can lock down the three sensitive operations and leave everything else alone. A tenant that prefers the strict reading can set the `restrict_undefined_scopes` flag, which drops undefined scopes whether RBAC is on or off.
 
 A user's permissions are gathered from three places and combined: permissions given to them directly, roles assigned to them, and roles they hold inside an organization, which is the next chapter. Prefer roles to direct permissions. Direct grants are where "why can Dave still do that?" comes from two years later.
 

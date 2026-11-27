@@ -43,7 +43,7 @@ The signed statements are called **tokens**, and the rules for asking for them c
 
 AuthHero is an open-source identity provider. A few things set it apart.
 
-**It speaks Auth0's dialect.** Beyond the standards, AuthHero implements the same APIs as Auth0, one of the most widely used hosted identity services. Auth0's client libraries, its Terraform provider and code written for its Actions work against AuthHero, usually by changing a domain name.
+**It speaks Auth0's dialect.** Beyond the standards, AuthHero implements the same APIs as Auth0, one of the most widely used hosted identity services. Auth0's client libraries and its Terraform provider work against AuthHero, usually by changing a domain name. Most code written for Auth0 Actions runs too, and chapter 11 lists the exceptions.
 
 **It runs where you want it.** AuthHero is a library first. You can mount it inside an existing Node.js server, run it as a Docker container with a SQLite file, or deploy it to Cloudflare Workers or AWS Lambda. The same code runs on a laptop and at the edge.
 
