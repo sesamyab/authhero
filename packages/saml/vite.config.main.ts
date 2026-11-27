@@ -12,7 +12,7 @@ export default defineConfig({
       fileName: (format) => (format === "es" ? "saml.mjs" : "saml.cjs"),
     },
     rollupOptions: {
-      external: ["@hono/zod-openapi", "xml-crypto"],
+      external: ["@hono/zod-openapi", "xml-crypto", "@xmldom/xmldom"],
     },
   },
   resolve: {

@@ -1103,6 +1103,9 @@ importers:
       '@hono/zod-openapi':
         specifier: ^1.4.0
         version: 1.4.0(hono@4.12.30)(zod@4.4.3)
+      '@peculiar/x509':
+        specifier: ^1.14.3
+        version: 1.14.3
       '@types/node':
         specifier: ^22.19.19
         version: 22.19.19
@@ -1122,6 +1125,9 @@ importers:
         specifier: ^4.1.7
         version: 4.1.7(@types/node@22.19.19)(jsdom@29.1.1)(msw@2.14.6(@types/node@22.19.19)(typescript@5.9.3))(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
     optionalDependencies:
+      '@xmldom/xmldom':
+        specifier: ^0.8.13
+        version: 0.8.13
       xml-crypto:
         specifier: ^6.1.2
         version: 6.1.2
@@ -5291,6 +5297,7 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xyflow/react@12.10.2':
     resolution: {integrity: sha512-CgIi6HwlcHXwlkTpr0fxLv/0sRVNZ8IdwKLzzeCscaYBwpvfcH1QFOCeaTCuEn1FQEs/B8CjnTSjhs8udgmBgQ==}

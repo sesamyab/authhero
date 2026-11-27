@@ -33,6 +33,11 @@
       "require": "./dist/local-signer.cjs",
       "import": "./dist/local-signer.mjs",
       "types": "./dist/local-signer.d.ts"
+    },
+    "./local-verifier": {
+      "require": "./dist/local-verifier.cjs",
+      "import": "./dist/local-verifier.mjs",
+      "types": "./dist/local-verifier.d.ts"
     }
   },
   "scripts": {
@@ -45,6 +50,7 @@
   },
   "devDependencies": {
     "@hono/zod-openapi": "^1.4.0",
+    "@peculiar/x509": "^1.14.3",
     "@types/node": "^22.19.19",
     "rollup": "^4.54.0",
     "rollup-plugin-dts": "^6.4.1",
@@ -58,7 +64,8 @@
     "nanoid": "^5.1.11"
   },
   "optionalDependencies": {
-    "xml-crypto": "^6.1.2"
+    "xml-crypto": "^6.1.2",
+    "@xmldom/xmldom": "^0.8.13"
   },
   "peerDependencies": {
     "@hono/zod-openapi": "^1.4.0"
