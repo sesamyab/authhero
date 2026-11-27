@@ -274,6 +274,30 @@ Then copy the data from MySQL to SQLite:
 import { mysqlAdapter, sqliteAdapter } from "../src/database";
 import { listAllTenants, listLinkedUsers, listPrimaryUsers } from "./list-all";
 
+// Copies a user's current password hash. passwords.create first marks the
+// user's existing rows as not current and then inserts, so calling it with an
+// id SQLite already has (a rerun) would fail on the primary key after that
+// and leave the user without a current password. An existing copy is updated
+// in place instead: promoted first, other current rows demoted after, so the
+// user always has exactly one current password.
+async function copyCurrentPassword(tenantId: string, userId: string) {
+  const password = await mysqlAdapter.passwords.get(tenantId, userId);
+  if (!password) return;
+
+  const copies = await sqliteAdapter.passwords.list(tenantId, userId);
+  if (!copies.some((copy) => copy.id === password.id)) {
+    await sqliteAdapter.passwords.create(tenantId, password);
+    return;
+  }
+
+  await sqliteAdapter.passwords.update(tenantId, { ...password, is_current: true });
+  for (const copy of copies) {
+    if (copy.id !== password.id && copy.is_current) {
+      await sqliteAdapter.passwords.update(tenantId, { ...copy, is_current: false });
+    }
+  }
+}
+
 async function backfillEntity<T>(
   entityName: string,
   items: T[],
@@ -327,10 +351,9 @@ async function main() {
 
     // Password hashes live in their own adapter; copy each user's current one
     const users = [...primaryUsers, ...linkedUsers];
-    await backfillEntity(`passwords (${tenant.id})`, users, async (user) => {
-      const password = await mysqlAdapter.passwords.get(tenant.id, user.user_id);
-      if (password) await sqliteAdapter.passwords.create(tenant.id, password);
-    });
+    await backfillEntity(`passwords (${tenant.id})`, users, (user) =>
+      copyCurrentPassword(tenant.id, user.user_id),
+    );
   }
   // Add other entities in correct order
 
