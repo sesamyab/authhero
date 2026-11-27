@@ -7,7 +7,9 @@ import {
 import {
   readLoginSessionData,
   reserveLoginSessionCounter,
+  updateLoginSessionData,
 } from "../../src/state-machines/login-session-data";
+import { LoginSessionEventType } from "../../src/state-machines/login-session";
 import { getTestServer } from "../helpers/test-server";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -83,6 +85,43 @@ describe("reserveLoginSessionCounter", () => {
 
     // Plain read/modify/write: every caller read 0 and passed.
     expect(results.filter((r) => r.status === "reserved").length).toBe(20);
+  });
+
+  it("does not report a reservation when the fallback update writes nothing", async () => {
+    const { adapter } = slowAdapter({}, { cas: false });
+    adapter.update = async () => false;
+
+    const result = await reserveLoginSessionCounter(
+      adapter,
+      "t",
+      "login",
+      "login_otp_sent",
+      5,
+    );
+
+    expect(result.status).not.toBe("reserved");
+  });
+
+  it("keeps reserved slots when ordinary context writes run concurrently", async () => {
+    const { adapter, current } = slowAdapter();
+
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        i % 2 === 0
+          ? reserveLoginSessionCounter(adapter, "t", "login", "mfa_sms_sent", 5)
+          : updateLoginSessionData(adapter, "t", "login", {
+              type: LoginSessionEventType.UPDATE_CONTEXT,
+              data: { mfa_failed_attempts: i },
+            }).then(() => null),
+      ),
+    );
+
+    const reserved = results.filter((r) => r?.status === "reserved").length;
+    expect(reserved).toBe(5);
+    // A stale snapshot written back by an ordinary update would lower this.
+    expect(readLoginSessionData(current().state_data).mfa_sms_sent).toBe(
+      reserved,
+    );
   });
 
   it("keeps other context fields when incrementing", async () => {
