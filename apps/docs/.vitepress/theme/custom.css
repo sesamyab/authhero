@@ -209,3 +209,43 @@ h4,
 .VPFeature {
   border-radius: 12px;
 }
+
+/* The AuthHero Book: the "Chapter 3 · The basics" line above a chapter title. */
+.vp-doc .book-kicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+/* The two buttons on the book's cover page. */
+.vp-doc a.book-cta {
+  display: inline-block;
+  margin: 4px 8px 4px 0;
+  padding: 0 18px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 38px;
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+}
+
+.vp-doc a.book-cta:hover {
+  border-color: var(--vp-c-text-2);
+}
+
+.vp-doc a.book-cta-primary,
+.vp-doc a.book-cta-primary:hover {
+  border-color: transparent;
+  background: var(--ah-saffron);
+  color: var(--ah-ink);
+}
+
+.vp-doc a.book-cta-primary:hover {
+  background: var(--ah-saffron-hover);
+}

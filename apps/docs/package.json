@@ -9,10 +9,12 @@
     "build": "vitepress build",
     "build:full": "cd ../../packages/authhero && pnpm build-storybook && cd ../../apps/docs && vitepress build",
     "preview": "vitepress preview",
+    "book:pdf": "vitepress build && node scripts/build-book-pdf.mjs",
     "deploy": "npx -y wrangler@4 pages deploy .vitepress/dist --project-name=authhero-docs --branch=main",
     "deploy:preview": "npx -y wrangler@4 pages deploy .vitepress/dist --project-name=authhero-docs --branch=preview"
   },
   "devDependencies": {
+    "playwright-core": "^1.60.0",
     "vitepress": "^1.3.4"
   },
   "engines": {

@@ -9,6 +9,8 @@ prev: false
 
 AuthHero is an open-source, multi-tenant identity platform with Auth0-compatible APIs. It runs on Cloudflare Workers, Node.js, Docker or AWS, against Drizzle (SQLite/D1), Kysely or DynamoDB. These docs cover running, extending and operating it. For the product overview, see [authhero.net](https://authhero.net).
 
+<BookPromo />
+
 ## Start here
 
 | I want to…                                    | Read                                                                                                                                                       |

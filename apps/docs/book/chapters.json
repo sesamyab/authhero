@@ -1,0 +1,107 @@
+[
+  {
+    "part": "The basics",
+    "chapters": [
+      {
+        "slug": "01-who-goes-there",
+        "title": "Who goes there?",
+        "blurb": "What authentication is, why login turns into a product of its own, and where AuthHero fits."
+      },
+      {
+        "slug": "02-the-moving-parts",
+        "title": "The moving parts",
+        "blurb": "Tenants, applications, connections, users and APIs, and the three surfaces AuthHero exposes."
+      },
+      {
+        "slug": "03-the-login-dance",
+        "title": "The login dance",
+        "blurb": "The authorization code flow with PKCE, one redirect at a time."
+      },
+      {
+        "slug": "04-tokens",
+        "title": "Tokens",
+        "blurb": "ID tokens, access tokens and refresh tokens: what is inside, how to verify them, how long they live."
+      },
+      {
+        "slug": "05-sessions-and-single-sign-on",
+        "title": "Sessions, single sign-on and logging out",
+        "blurb": "How one login serves many applications, and what logging out really ends."
+      }
+    ]
+  },
+  {
+    "part": "Signing in",
+    "chapters": [
+      {
+        "slug": "06-ways-to-sign-in",
+        "title": "Ways to sign in",
+        "blurb": "Passwords, codes, magic links, social and company logins, passkeys, and one account across all of them."
+      },
+      {
+        "slug": "07-a-second-lock",
+        "title": "A second lock",
+        "blurb": "Multi-factor authentication: the factors, when to ask, and how to roll it out."
+      },
+      {
+        "slug": "08-the-login-page",
+        "title": "The login page",
+        "blurb": "Universal Login: branding, languages, forms, emails and the self-service account page."
+      }
+    ]
+  },
+  {
+    "part": "Who may do what",
+    "chapters": [
+      {
+        "slug": "09-who-may-do-what",
+        "title": "Who may do what",
+        "blurb": "APIs, scopes, roles and permissions, machine-to-machine access and consent."
+      },
+      {
+        "slug": "10-teams-and-companies",
+        "title": "Teams and companies",
+        "blurb": "Organizations, invitations, company single sign-on, SCIM provisioning and SAML."
+      }
+    ]
+  },
+  {
+    "part": "Making it yours",
+    "chapters": [
+      {
+        "slug": "11-your-own-rules",
+        "title": "Your own rules",
+        "blurb": "Actions, hooks, webhooks and flows, and a pipeline that keeps your code from breaking logins."
+      },
+      {
+        "slug": "12-beyond-the-browser",
+        "title": "Beyond the browser tab",
+        "blurb": "Single-page and mobile apps, devices, machines, outside developers and AI agents."
+      }
+    ]
+  },
+  {
+    "part": "Running it",
+    "chapters": [
+      {
+        "slug": "13-many-tenants",
+        "title": "Many tenants",
+        "blurb": "What a tenant isolates, three strengths of isolation, and custom domains."
+      },
+      {
+        "slug": "14-where-it-runs",
+        "title": "Where it runs",
+        "blurb": "A library with pluggable databases, on Docker, Cloudflare or AWS, and the tools to manage it."
+      },
+      {
+        "slug": "15-keeping-watch",
+        "title": "Keeping watch",
+        "blurb": "Logs, audit events, attack protection, encryption, signing keys and conformance."
+      },
+      {
+        "slug": "16-moving-in",
+        "title": "Moving in",
+        "blurb": "Migrating from Auth0 or your own login, what will differ, and where to go next."
+      }
+    ]
+  }
+]

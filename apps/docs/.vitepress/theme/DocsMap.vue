@@ -18,6 +18,8 @@ type SidebarItem = {
 
 const BLURBS: Record<string, string> = {
   "Getting Started": "Run AuthHero locally and sign in for the first time.",
+  "The AuthHero Book":
+    "Authentication from first principles and how AuthHero handles it, in sixteen chapters read in order.",
   Architecture:
     "How the pieces fit: the core package, adapters, universal login, sessions and the hooks pipeline.",
   Entities:
