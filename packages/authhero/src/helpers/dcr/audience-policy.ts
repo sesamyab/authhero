@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import type { Bindings, Variables } from "../../types";
-import { MANAGEMENT_API_AUDIENCE } from "../../middlewares/authentication";
+import { isManagementApiAudience } from "../management-audience";
 
 /**
  * Dynamic Client Registration never provisions a client grant for the
@@ -14,13 +14,5 @@ export async function isRegistrationDeniedAudience(
   tenantId: string,
   audience: string,
 ): Promise<boolean> {
-  if (audience === MANAGEMENT_API_AUDIENCE) {
-    return true;
-  }
-  const resolver = ctx.env.additionalManagementAudiences;
-  if (!resolver) {
-    return false;
-  }
-  const extra = await resolver({ tenant_id: tenantId });
-  return extra.includes(audience);
+  return isManagementApiAudience(ctx, tenantId, audience);
 }
