@@ -273,6 +273,55 @@ describe("authorize", () => {
       const redirectUri = new URL(location!, "https://auth.example.com");
       expect(redirectUri.pathname).toEqual("/u/login/identifier");
     });
+
+    it("refuses other paths on the auth server unless the client registers them", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const oauthClient = testClient(oauthApp, env);
+
+      await env.data.clients.update("tenantId", "clientId", {
+        callbacks: ["https://example.com/callback"],
+      });
+
+      for (const redirect_uri of [
+        "http://localhost:3000/authorize",
+        "http://localhost:3000/v2/logout",
+        "http://localhost:3000/u2/account",
+        "http://localhost:3000/u2/info/extra",
+        "http://localhost:3000/u2/info?next=1",
+      ]) {
+        const response = await oauthClient.authorize.$get({
+          query: {
+            client_id: "clientId",
+            redirect_uri,
+            state: "state",
+            response_type: AuthorizationResponseType.CODE,
+          },
+        });
+
+        expect(response.status).toEqual(400);
+        expect(await response.text()).toContain("Invalid redirect URI");
+      }
+    });
+
+    it("still allows an auth server path the client registers itself", async () => {
+      const { oauthApp, env } = await getTestServer();
+      const oauthClient = testClient(oauthApp, env);
+
+      await env.data.clients.update("tenantId", "clientId", {
+        callbacks: ["http://localhost:3000/admin/auth-callback"],
+      });
+
+      const response = await oauthClient.authorize.$get({
+        query: {
+          client_id: "clientId",
+          redirect_uri: "http://localhost:3000/admin/auth-callback",
+          state: "state",
+          response_type: AuthorizationResponseType.CODE,
+        },
+      });
+
+      expect(response.status).toEqual(302);
+    });
   });
 
   it("should redirect to the universal login when the only connection is a database connection with strategy auth0", async () => {

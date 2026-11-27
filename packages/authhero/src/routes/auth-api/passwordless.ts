@@ -16,10 +16,7 @@ import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { passwordlessGrant } from "../../authentication-flows/passwordless";
 import { nanoid } from "nanoid";
 import { stringifyAuth0Client } from "../../utils/client-info";
-import {
-  getSelfCallbackWildcards,
-  getUniversalLoginUrl,
-} from "../../variables";
+import { getSelfCallbacks, getUniversalLoginUrl } from "../../variables";
 import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { defineRoute } from "../../utils/define-route";
@@ -294,9 +291,7 @@ const getVerifyRedirect = defineRoute({
     // keep it when it is one of the client's callbacks (the /authorize rule).
     const validCallbacks = [...(client.callbacks || [])];
     if (ctx.var.host) {
-      validCallbacks.push(
-        ...getSelfCallbackWildcards(ctx.env, ctx.var.custom_domain),
-      );
+      validCallbacks.push(...getSelfCallbacks(ctx.env, ctx.var.custom_domain));
     }
     const allowedRedirectUri =
       authParams.redirect_uri &&

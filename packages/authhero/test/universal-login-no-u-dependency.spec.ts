@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
-import {
-  getUniversalLoginUrl,
-  getSelfCallbackWildcards,
-} from "../src/variables";
+import { getUniversalLoginUrl, getSelfCallbacks } from "../src/variables";
 import { createWidgetAssetRoutes } from "../src/routes/universal-login/widget-assets";
 import { getTestServer } from "./helpers/test-server";
 
@@ -20,10 +17,15 @@ describe("universal login v2 does not depend on /u", () => {
     );
   });
 
-  it("self callback wildcards cover /u/* and /u2/*", () => {
-    const wildcards = getSelfCallbackWildcards(env);
-    expect(wildcards).toContain("https://auth.example.com/u/*");
-    expect(wildcards).toContain("https://auth.example.com/u2/*");
+  it("self callbacks cover the /u and /u2 info screens", () => {
+    expect(getSelfCallbacks(env)).toEqual([
+      "https://auth.example.com/u/info",
+      "https://auth.example.com/u2/info",
+    ]);
+    expect(getSelfCallbacks(env, "login.example.com")).toEqual([
+      "https://login.example.com/u/info",
+      "https://login.example.com/u2/info",
+    ]);
   });
 
   it("serves the widget and client.js from /widget, with legacy handler compat", async () => {

@@ -46,7 +46,7 @@ import { isCimdClientId } from "../../helpers/cimd";
 import { isDeviceLoginSession } from "../../helpers/device-flow";
 import { isConnectLoginSession } from "../../helpers/dcr/connect-state";
 import { isMcpResourceUrl } from "../mcp/resource";
-import { getIssuer, getSelfCallbackWildcards } from "../../variables";
+import { getIssuer, getSelfCallbacks } from "../../variables";
 import { formPostResponse } from "../../utils/form-post";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { resolveClientDatabaseConnection } from "../../helpers/database-connection-scope";
@@ -666,7 +666,7 @@ const getRoot = defineRoute({
       const validCallbacks = [...(client.callbacks || [])];
       if (ctx.var.host) {
         validCallbacks.push(
-          ...getSelfCallbackWildcards(ctx.env, ctx.var.custom_domain),
+          ...getSelfCallbacks(ctx.env, ctx.var.custom_domain),
         );
       }
 

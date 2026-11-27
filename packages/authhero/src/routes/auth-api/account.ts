@@ -8,10 +8,7 @@ import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { nanoid } from "nanoid";
 import { UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS } from "../../constants";
 import { stringifyAuth0Client } from "../../utils/client-info";
-import {
-  getSelfCallbackWildcards,
-  getUniversalLoginUrl,
-} from "../../variables";
+import { getSelfCallbacks, getUniversalLoginUrl } from "../../variables";
 import { verifyRequestOrigin } from "../../utils/request-origin";
 import { HTTPException } from "hono/http-exception";
 import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
@@ -86,23 +83,25 @@ const getRoot = defineRoute({
       });
     }
 
-    if (authParams.redirect_uri) {
+    // Without `redirect_url` the way back is this request's own URL, which
+    // needs no check. A supplied one must be a callback of the client.
+    if (redirect_url) {
       // Copy: pushing onto client.callbacks directly would mutate the client
       const validCallbacks = [...(client.callbacks || [])];
       if (ctx.var.host) {
         validCallbacks.push(
-          ...getSelfCallbackWildcards(ctx.env, ctx.var.custom_domain),
+          ...getSelfCallbacks(ctx.env, ctx.var.custom_domain),
         );
       }
 
       if (
-        !isValidRedirectUrl(authParams.redirect_uri, validCallbacks, {
+        !isValidRedirectUrl(redirect_url, validCallbacks, {
           allowPathWildcards: true,
           allowSubDomainWildcards: true,
         })
       ) {
         throw new HTTPException(400, {
-          message: `Invalid redirect URI - ${authParams.redirect_uri}`,
+          message: `Invalid redirect URI - ${redirect_url}`,
         });
       }
     }
