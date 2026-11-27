@@ -74,7 +74,7 @@ const { payload } = await jwtVerify(token, keys, {
 });
 ```
 
-The last option matters: the library checks `exp` when it is present, and that line makes a token without one fail. The library fetches the keys once, caches them, and looks again only when it meets a `kid` it has not seen, which is what makes key rotation painless. AuthHero can sign with RS256, ES256, ES384 or ES512. Pin the algorithms you expect, as above, and never take the token's own word for it.
+The last option matters: the library checks `exp` when it is present, and that line makes a token without one fail. The library caches the keys and refreshes them every ten minutes or so. When it meets a `kid` it has not seen, it fetches again early, but never more than once in 30 seconds, so a flood of junk tokens cannot turn your API into a hammer against AuthHero. This is how an API picks up a rotated key on its own, without a redeploy. AuthHero can sign with RS256, ES256, ES384 or ES512. Pin the algorithms you expect, as above, and never take the token's own word for it.
 
 Passing those four checks proves the token is genuine and meant for you. It does not yet prove the caller may do what they are asking. That is a fifth check, on `scope`, and chapter 9 is about it.
 

@@ -68,7 +68,7 @@ This is the stacking of adapters from the last chapter, doing real work. It prot
 
 Every token is trusted because of a signature, so the signing keys are the most valuable thing in the system.
 
-Keys are **rotated** by adding a new one alongside the old. Both are published at the JWKS address during the changeover, which is why chapter 4 told you to look keys up by their ID instead of assuming there is only one. APIs that follow that advice notice nothing. A key can also be revoked at once if you believe it has been exposed.
+Keys are **rotated** by adding a new one alongside the old. Both are published at the JWKS address during the changeover, which is why chapter 4 told you to look keys up by their ID instead of assuming there is only one. APIs that follow that advice pick up the new key on their own. A rotation can also publish the new key some days before AuthHero starts signing with it, so that every cache has it in time. A key can also be revoked at once if you believe it has been exposed.
 
 In a deployment with many tenants and custom domains, a subtler problem appears. An API receives a token whose issuer is `login.luigis.example`. Is that really one of your tenants, or a domain an attacker set up yesterday? AuthHero can issue each signing key a certificate from a certificate authority that you control, naming the tenant it belongs to. An API then needs to trust only your one root certificate, and can check any tenant's tokens without keeping a list of every valid domain.
 
