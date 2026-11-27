@@ -13,7 +13,9 @@ import {
   MFA_LOCKOUT_REASON,
   MFA_MAX_FAILED_ATTEMPTS,
   MFA_MAX_SMS_SENDS,
+  enforceMfaSmsSendLimit,
 } from "../../../src/authentication-flows/mfa-attempts";
+import { FinalizedLoginSessionError } from "../../../src/state-machines/login-session-data";
 
 type TestServer = Awaited<ReturnType<typeof getTestServer>>;
 type TestEnv = TestServer["env"];
@@ -298,6 +300,34 @@ describe("MFA failed-attempt limits", () => {
       expect(getSentSms()).toHaveLength(MFA_MAX_SMS_SENDS);
     });
 
+    it("holds the SMS cap when resends arrive concurrently", async () => {
+      const server = await getTestServer({ testTenantLanguage: "en" });
+      const { env, getSentSms } = server;
+      await env.data.authenticationMethods.create("tenantId", {
+        user_id: USER_ID,
+        type: "phone",
+        phone_number: "+46701234567",
+        confirmed: true,
+      });
+      const session = await createMfaSession(env);
+
+      const responses = await Promise.all(
+        Array.from({ length: MFA_MAX_SMS_SENDS * 3 }, () =>
+          post(server, "/mfa/phone-challenge", session.id, {
+            action: "resend",
+          }),
+        ),
+      );
+      const limited = (
+        await Promise.all(responses.map((res) => res.text()))
+      ).filter((text) =>
+        text.includes("exceeded the maximum number of phone messages"),
+      );
+
+      expect(getSentSms()).toHaveLength(MFA_MAX_SMS_SENDS);
+      expect(limited).toHaveLength(MFA_MAX_SMS_SENDS * 2);
+    });
+
     it("does not send an SMS when the per-user rate limit denies it", async () => {
       const consumed: string[] = [];
       const server = await getTestServer({
@@ -326,6 +356,71 @@ describe("MFA failed-attempt limits", () => {
       );
       expect(consumed).toEqual([`mfa-sms:tenantId:${USER_ID}`]);
       expect(getSentSms()).toHaveLength(0);
+    });
+    it.each([
+      ["completed", { state: LoginSessionState.COMPLETED }],
+      ["failed", { state: LoginSessionState.FAILED }],
+      ["expired", { expires_at: new Date(Date.now() - 1000).toISOString() }],
+    ])(
+      "does not send or consume the SMS rate limit for a %s session",
+      async (_label, fields) => {
+        const consumed: string[] = [];
+        const server = await getTestServer({
+          testTenantLanguage: "en",
+          rateLimit: {
+            consume: async (_scope, key) => {
+              consumed.push(key);
+              return { allowed: true };
+            },
+          },
+        });
+        const { env, getSentSms } = server;
+        const session = await createMfaSession(env);
+        await env.data.loginSessions.update("tenantId", session.id, fields);
+
+        await expect(
+          enforceMfaSmsSendLimit(
+            { env } as unknown as Parameters<typeof enforceMfaSmsSendLimit>[0],
+            "tenantId",
+            session.id,
+            "+46701234567",
+            USER_ID,
+          ),
+        ).rejects.toBeInstanceOf(FinalizedLoginSessionError);
+        expect(consumed).toEqual([]);
+        expect(getSentSms()).toHaveLength(0);
+      },
+    );
+
+    it("does not use up the session SMS allowance when the rate limit rejects", async () => {
+      let allow = false;
+      const server = await getTestServer({
+        testTenantLanguage: "en",
+        rateLimit: { consume: async () => ({ allowed: allow }) },
+      });
+      const { env } = server;
+      await env.data.authenticationMethods.create("tenantId", {
+        user_id: USER_ID,
+        type: "phone",
+        phone_number: "+46701234567",
+        confirmed: true,
+      });
+      const session = await createMfaSession(env);
+
+      await post(server, "/mfa/phone-challenge", session.id, {
+        action: "resend",
+      });
+      const stored = await env.data.loginSessions.get("tenantId", session.id);
+      expect(
+        JSON.parse(stored?.state_data ?? "{}").mfa_sms_sent,
+      ).toBeUndefined();
+
+      allow = true;
+      await post(server, "/mfa/phone-challenge", session.id, {
+        action: "resend",
+      });
+      const after = await env.data.loginSessions.get("tenantId", session.id);
+      expect(JSON.parse(after?.state_data ?? "{}").mfa_sms_sent).toBe(1);
     });
   });
 

@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, isNull, type SQL } from "drizzle-orm";
 import type { LoginSession } from "@authhero/adapter-interfaces";
 import { loginSessions } from "../schema/sqlite";
 import {
@@ -70,6 +70,81 @@ function sqlToLoginSession(row: any): LoginSession {
   });
 }
 
+/**
+ * Shared by `update` and `updateIfStateDataUnchanged`. The optional
+ * `condition` is part of the UPDATE's WHERE clause, so the check and the write
+ * are one atomic statement. Returns whether a row was updated.
+ */
+async function applyUpdate(
+  db: DrizzleDb,
+  tenant_id: string,
+  id: string,
+  session: Partial<LoginSession>,
+  condition?: SQL,
+): Promise<boolean> {
+  const updateData: any = {
+    updated_at_ts: Date.now(),
+  };
+
+  if (session.session_id !== undefined)
+    updateData.session_id = session.session_id;
+  if (session.state !== undefined) updateData.state = session.state;
+  if (session.state_data !== undefined)
+    updateData.state_data = JSON.stringify(session.state_data);
+  if (session.failure_reason !== undefined)
+    updateData.failure_reason = session.failure_reason;
+  if (session.user_id !== undefined) updateData.user_id = session.user_id;
+  if (session.auth_connection !== undefined)
+    updateData.auth_connection = session.auth_connection;
+  if (session.auth_strategy !== undefined) {
+    updateData.auth_strategy_strategy = session.auth_strategy?.strategy;
+    updateData.auth_strategy_strategy_type =
+      session.auth_strategy?.strategy_type;
+  }
+  if (session.authenticated_at !== undefined)
+    updateData.authenticated_at = session.authenticated_at;
+  if (session.authorization_url !== undefined)
+    updateData.authorization_url = session.authorization_url;
+  if (session.expires_at !== undefined)
+    updateData.expires_at_ts = isoToDbDate(session.expires_at);
+
+  // Merge authParams into the existing JSON blob so partial updates
+  // (e.g. `{ authParams: { username } }`) don't wipe sibling fields.
+  if (session.authParams !== undefined) {
+    const existing = await db
+      .select({ auth_params: loginSessions.auth_params })
+      .from(loginSessions)
+      .where(
+        and(eq(loginSessions.tenant_id, tenant_id), eq(loginSessions.id, id)),
+      )
+      .get();
+    const parsed: Record<string, unknown> =
+      existing?.auth_params &&
+      typeof existing.auth_params === "string" &&
+      existing.auth_params.length > 0
+        ? JSON.parse(existing.auth_params)
+        : {};
+    updateData.auth_params = JSON.stringify({
+      ...parsed,
+      ...session.authParams,
+    });
+  }
+
+  const rows = await db
+    .update(loginSessions)
+    .set(updateData)
+    .where(
+      and(
+        eq(loginSessions.tenant_id, tenant_id),
+        eq(loginSessions.id, id),
+        condition,
+      ),
+    )
+    .returning({ id: loginSessions.id });
+
+  return rows.length > 0;
+}
+
 export function createLoginSessionsAdapter(db: DrizzleDb) {
   return {
     async create(tenant_id: string, session: any): Promise<LoginSession> {
@@ -126,65 +201,30 @@ export function createLoginSessionsAdapter(db: DrizzleDb) {
       id: string,
       session: Partial<LoginSession>,
     ): Promise<boolean> {
-      const updateData: any = {
-        updated_at_ts: Date.now(),
-      };
-
-      if (session.session_id !== undefined)
-        updateData.session_id = session.session_id;
-      if (session.state !== undefined) updateData.state = session.state;
-      if (session.state_data !== undefined)
-        updateData.state_data = JSON.stringify(session.state_data);
-      if (session.failure_reason !== undefined)
-        updateData.failure_reason = session.failure_reason;
-      if (session.user_id !== undefined) updateData.user_id = session.user_id;
-      if (session.auth_connection !== undefined)
-        updateData.auth_connection = session.auth_connection;
-      if (session.auth_strategy !== undefined) {
-        updateData.auth_strategy_strategy = session.auth_strategy?.strategy;
-        updateData.auth_strategy_strategy_type =
-          session.auth_strategy?.strategy_type;
-      }
-      if (session.authenticated_at !== undefined)
-        updateData.authenticated_at = session.authenticated_at;
-      if (session.authorization_url !== undefined)
-        updateData.authorization_url = session.authorization_url;
-      if (session.expires_at !== undefined)
-        updateData.expires_at_ts = isoToDbDate(session.expires_at);
-
-      // Merge authParams into the existing JSON blob so partial updates
-      // (e.g. `{ authParams: { username } }`) don't wipe sibling fields.
-      if (session.authParams !== undefined) {
-        const existing = await db
-          .select({ auth_params: loginSessions.auth_params })
-          .from(loginSessions)
-          .where(
-            and(
-              eq(loginSessions.tenant_id, tenant_id),
-              eq(loginSessions.id, id),
-            ),
-          )
-          .get();
-        const parsed: Record<string, unknown> =
-          existing?.auth_params &&
-          typeof existing.auth_params === "string" &&
-          existing.auth_params.length > 0
-            ? JSON.parse(existing.auth_params)
-            : {};
-        updateData.auth_params = JSON.stringify({
-          ...parsed,
-          ...session.authParams,
-        });
-      }
-
-      await db
-        .update(loginSessions)
-        .set(updateData)
-        .where(
-          and(eq(loginSessions.tenant_id, tenant_id), eq(loginSessions.id, id)),
-        );
-
+      await applyUpdate(db, tenant_id, id, session);
       return true;
+    },
+
+    async updateIfStateDataUnchanged(
+      tenant_id: string,
+      id: string,
+      expected_state_data: string | undefined,
+      session: Partial<LoginSession>,
+    ): Promise<boolean> {
+      // state_data is stored JSON-encoded (see create/update); older rows may
+      // hold the raw string, so match either encoding. An empty expectation
+      // matches a missing value too.
+      const condition = expected_state_data
+        ? or(
+            eq(loginSessions.state_data, JSON.stringify(expected_state_data)),
+            eq(loginSessions.state_data, expected_state_data),
+          )
+        : or(
+            isNull(loginSessions.state_data),
+            eq(loginSessions.state_data, ""),
+            eq(loginSessions.state_data, JSON.stringify("")),
+          );
+      return applyUpdate(db, tenant_id, id, session, condition);
     },
 
     async remove(tenant_id: string, id: string): Promise<boolean> {

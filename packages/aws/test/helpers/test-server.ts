@@ -3,6 +3,7 @@ import {
   DynamoDBClient,
   CreateTableCommand,
   DeleteTableCommand,
+  DescribeTableCommand,
 } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -114,6 +115,16 @@ export async function getTestServer(): Promise<{
       },
     }),
   );
+
+  // dynalite reports the table as CREATING until a later tick; requests that
+  // arrive before it is ACTIVE fail with ResourceNotFoundException.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const { Table } = await client.send(
+      new DescribeTableCommand({ TableName: TABLE_NAME }),
+    );
+    if (Table?.TableStatus === "ACTIVE") break;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 
   currentServer = { server, client, docClient, port };
 

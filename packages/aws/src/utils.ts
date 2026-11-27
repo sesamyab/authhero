@@ -336,6 +336,12 @@ export async function updateItem(
   pk: string,
   sk: string,
   updates: Record<string, unknown>,
+  condition?: {
+    /** ANDed with the item-exists check, evaluated atomically with the write. */
+    expression: string;
+    names?: Record<string, string>;
+    values?: Record<string, unknown>;
+  },
 ): Promise<boolean> {
   // Filter out undefined values and build update expression
   const filteredUpdates = Object.entries(updates).filter(
@@ -365,9 +371,17 @@ export async function updateItem(
       TableName: ctx.tableName,
       Key: { PK: pk, SK: sk },
       UpdateExpression: updateExpression,
-      ConditionExpression: "attribute_exists(PK)",
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: expressionAttributeValues,
+      ConditionExpression: condition
+        ? `attribute_exists(PK) AND (${condition.expression})`
+        : "attribute_exists(PK)",
+      ExpressionAttributeNames: {
+        ...expressionAttributeNames,
+        ...condition?.names,
+      },
+      ExpressionAttributeValues: {
+        ...expressionAttributeValues,
+        ...condition?.values,
+      },
     }),
   );
 

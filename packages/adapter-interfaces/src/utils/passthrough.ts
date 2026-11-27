@@ -47,7 +47,40 @@ export interface PassthroughConfig<T> {
    * cannot accept an already-used TOTP code.
    */
   syncMethods?: string[];
+
+  /**
+   * Compare-and-swap writes, keyed by method name. They are mirrored only when
+   * the primary accepted them (resolved `true`), so a write the primary
+   * rejected as stale never lands on a secondary. An accepted write is
+   * mirrored as the unconditional write the mapper returns: the primary has
+   * already decided the outcome, and re-running the comparison on a secondary
+   * would reject every later write once one mirror arrived out of order.
+   *
+   * Like other mirrored writes, this is last-write-wins with no ordering
+   * guarantee across concurrent calls (`blocking` only waits for this call's
+   * own mirror); reads always come from the primary.
+   *
+   * Default: `updateIfStateDataUnchanged` (login session context and send
+   * counters) is mirrored as `update(tenant_id, id, session)`.
+   */
+  conditionalSyncMethods?: Record<string, ConditionalSyncMapper>;
 }
+
+/**
+ * Maps an accepted conditional write's arguments to the unconditional
+ * secondary call that mirrors it.
+ */
+export type ConditionalSyncMapper = (args: unknown[]) => {
+  method: string;
+  args: unknown[];
+};
+
+const defaultConditionalSyncMethods: Record<string, ConditionalSyncMapper> = {
+  updateIfStateDataUnchanged: ([tenantId, id, , session]) => ({
+    method: "update",
+    args: [tenantId, id, session],
+  }),
+};
 
 /**
  * Creates a passthrough adapter that syncs write operations to multiple destinations.
@@ -110,6 +143,7 @@ export function createPassthroughAdapter<T extends object>(
       "set",
       "consumeTotpStep",
     ],
+    conditionalSyncMethods = defaultConditionalSyncMethods,
   } = config;
 
   const handler: ProxyHandler<T> = {
@@ -126,8 +160,15 @@ export function createPassthroughAdapter<T extends object>(
         return primaryValue;
       }
 
+      const conditional = Object.prototype.hasOwnProperty.call(
+        conditionalSyncMethods,
+        prop,
+      )
+        ? conditionalSyncMethods[prop]
+        : undefined;
+
       // If it's not a sync method, just use primary
-      if (!syncMethods.includes(prop)) {
+      if (!conditional && !syncMethods.includes(prop)) {
         return primaryValue.bind(target);
       }
 
@@ -136,13 +177,20 @@ export function createPassthroughAdapter<T extends object>(
         // Call primary first and wait for result
         const result = await primaryValue.apply(target, args);
 
+        // A conditional write the primary rejected is not mirrored; an
+        // accepted one is mirrored as its unconditional equivalent.
+        if (conditional && result !== true) {
+          return result;
+        }
+        const mirror = conditional ? conditional(args) : { method: prop, args };
+
         // Sync to secondaries
         const blockingPromises: Promise<void>[] = [];
 
         for (const secondary of secondaries) {
           const secondaryMethod = (
             secondary.adapter as Record<string, unknown>
-          )[prop];
+          )[mirror.method];
 
           if (typeof secondaryMethod !== "function") {
             continue;
@@ -150,7 +198,7 @@ export function createPassthroughAdapter<T extends object>(
 
           const syncPromise = (async () => {
             try {
-              await secondaryMethod.apply(secondary.adapter, args);
+              await secondaryMethod.apply(secondary.adapter, mirror.args);
             } catch (error) {
               // Wrap onError in try-catch to prevent unhandled rejections
               try {

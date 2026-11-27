@@ -254,6 +254,25 @@ describe("login OTP send cap", () => {
     expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
   });
 
+  it("holds the cap when resends arrive concurrently", async () => {
+    const server = await getTestServer({ mockEmail: true });
+    const state = await createSession(server.env, "foo@example.com");
+
+    const responses = await Promise.all(
+      Array.from({ length: LOGIN_OTP_MAX_SENDS * 3 }, () =>
+        postScreen(server, "email-otp-challenge", state, { action: "resend" }),
+      ),
+    );
+
+    for (const response of responses) {
+      expect(response.status).toBe(200);
+      expect((await response.json()).screen.messages).toEqual([
+        { text: emailOtp.resendSuccess, type: "success" },
+      ]);
+    }
+    expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
+  });
+
   it("counts identifier submits and resends against the same cap", async () => {
     const server = await getTestServer({ mockEmail: true });
     await server.env.data.connections.update("tenantId", "email", {
