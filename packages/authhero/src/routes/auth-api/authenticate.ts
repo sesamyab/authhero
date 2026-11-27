@@ -18,7 +18,7 @@ import { cimdTenantHint, isCimdClientId } from "../../helpers/cimd";
 import { logMessage } from "../../helpers/logging";
 import { defineRoute } from "../../utils/define-route";
 import { normalizeEmail } from "../../utils/email";
-import { resolveClientDatabaseConnection } from "../../helpers/database-connection-scope";
+import { resolveClientDatabaseConnectionName } from "../../helpers/database-connection-scope";
 import { createLoginSessionWithData } from "../../state-machines/login-session-data";
 const postRoot = defineRoute({
   route: createRoute({
@@ -99,11 +99,16 @@ const postRoot = defineRoute({
       } else if ("password" in body) {
         // The database connection the password is checked in (#1703); a realm
         // the client doesn't enable is refused. It is recorded in the login
-        // session's state_data as ticket_connection (see below).
-        const connection = resolveClientDatabaseConnection(
+        // session's state_data as ticket_connection (see below). A client
+        // without a database connection still logs in with the generic
+        // Username-Password-Authentication realm (loginWithPassword falls back
+        // to the tenant's provider), so that name is recorded then. It must be
+        // the name ticketAuth resolves for the same realm, or the ticket is
+        // refused.
+        const connection = resolveClientDatabaseConnectionName(
           client,
           body.realm,
-        )?.name;
+        );
         const loginSession = await createLoginSessionWithData(
           ctx.env.data.loginSessions,
           client.tenant.id,
