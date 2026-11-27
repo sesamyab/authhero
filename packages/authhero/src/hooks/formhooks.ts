@@ -1,4 +1,5 @@
 import { updateLoginSessionData } from "../state-machines/login-session-data";
+import { resolveLoginRoutePrefix } from "../helpers/login-version";
 import { LoginSessionEventType } from "../state-machines/login-session";
 import { Context } from "hono";
 import { Bindings, Variables } from "../types";
@@ -689,9 +690,7 @@ export async function handleFormHook(
     throw new HTTPException(400, { message: "Missing tenant_id in context" });
   }
 
-  // Determine route prefix based on client's universal_login_version
-  const routePrefix =
-    client?.client_metadata?.universal_login_version === "2" ? "/u2" : "/u";
+  const routePrefix = client ? resolveLoginRoutePrefix(client) : "/u";
 
   const form = await data.forms.get(tenant_id, form_id);
   if (!form) {

@@ -18,6 +18,7 @@
  */
 
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { resolveLoginRoutePrefix } from "../../helpers/login-version";
 import { Bindings, Variables } from "../../types";
 import { initJSXRoute } from "./common";
 import { renderWidgetPageResponse, resolveDarkMode } from "./u2-widget-page";
@@ -81,9 +82,7 @@ const getScreenId = defineRoute({
 
     // Build screen context
     // Use client.connections which is already ordered per the client's configuration
-    // Determine route prefix based on client metadata
-    const routePrefix =
-      client.client_metadata?.universal_login_version === "2" ? "/u2" : "/u";
+    const routePrefix = resolveLoginRoutePrefix(client);
     const screenContext: ScreenContext = {
       ctx,
       tenant: client.tenant,
@@ -204,9 +203,7 @@ const postScreenId = defineRoute({
       true,
     );
 
-    // Determine route prefix based on client metadata
-    const routePrefix =
-      client.client_metadata?.universal_login_version === "2" ? "/u2" : "/u";
+    const routePrefix = resolveLoginRoutePrefix(client);
 
     // Build screen context
     const screenContext: ScreenContext = {

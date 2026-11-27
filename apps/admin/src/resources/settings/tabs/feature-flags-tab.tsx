@@ -4,6 +4,13 @@ export function FeatureFlagsTab() {
   return (
     <div className="flex flex-col gap-3">
       <BooleanInput
+        source="flags.universal_login_version"
+        label="Use the widget login (/u2)"
+        format={(value) => value === "2"}
+        parse={(checked) => (checked ? "2" : "1")}
+        helperText="AuthHero extension. When on, the tenant's applications use the widget login at /u2; when off, the classic login at /u, which is removed in 1.0. An application can override this under Applications → Details → Login version."
+      />
+      <BooleanInput
         source="allow_organization_name_in_authentication_api"
         label="Allow Organization Name in Authentication API"
         helperText="Allow using organization names (instead of IDs) in the /authorize endpoint and include org_name claim in tokens"

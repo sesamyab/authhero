@@ -49,8 +49,23 @@ const EMAIL_VALIDATION_CHOICES = [
   { id: "enforced", name: "Enforced" },
 ];
 
+// Per-client override of the tenant's login version. Radix
+// Select can't hold an empty value, so "inherit" stands in for "no key" in the
+// UI and is parsed back to "" (which the edit transform drops on save).
+const LOGIN_VERSION_INHERIT = "inherit";
+const LOGIN_VERSION_CHOICES = [
+  { id: LOGIN_VERSION_INHERIT, name: "Inherit from tenant" },
+  { id: "1", name: "Classic (/u)" },
+  { id: "2", name: "New (/u2)" },
+];
+
 // client_metadata keys that have dedicated inputs on this tab.
-const KEPT_METADATA_KEYS = ["email_validation", "tos_uri", "policy_uri"];
+const KEPT_METADATA_KEYS = [
+  "email_validation",
+  "tos_uri",
+  "policy_uri",
+  "universal_login_version",
+];
 
 // Free-form key/value rows of client_metadata. `email_validation` is rendered
 // separately as a SelectInput above, so it's filtered out here. The legacy
@@ -63,12 +78,7 @@ export function ClientMetadataInput() {
   const value: Record<string, unknown> =
     field.value && typeof field.value === "object" ? field.value : {};
 
-  const reserved = new Set([
-    "email_validation",
-    "disable_sign_ups",
-    "tos_uri",
-    "policy_uri",
-  ]);
+  const reserved = new Set([...KEPT_METADATA_KEYS, "disable_sign_ups"]);
 
   const [rows, setRows] = useState<Array<{ key: string; value: string }>>([]);
 
@@ -245,6 +255,14 @@ export function DetailsTab() {
             label="Email validation"
             choices={EMAIL_VALIDATION_CHOICES}
             defaultValue="disabled"
+          />
+          <SelectInput
+            source="client_metadata.universal_login_version"
+            label="Login version"
+            choices={LOGIN_VERSION_CHOICES}
+            format={(v) => v || LOGIN_VERSION_INHERIT}
+            parse={(v) => (v === LOGIN_VERSION_INHERIT ? "" : v)}
+            helperText="Which login pages this application uses. Inherit follows the tenant setting (Settings → Feature Flags → Use the widget login)."
           />
           <TextInput
             source="client_metadata.tos_uri"

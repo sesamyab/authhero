@@ -27,15 +27,22 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 // Drop top-level/legacy `disable_sign_ups` (now on connection.options.disable_signup)
 // and strip null values from refresh_token.* so cleared NumberInputs don't
 // round-trip null into .optional() schema fields.
-function transformClient(data: Record<string, unknown>) {
+export function transformClient(data: Record<string, unknown>) {
   const out: Record<string, unknown> = { ...data };
 
   if (isPlainObject(out.client_metadata)) {
     const stringified: Record<string, string> = {};
     for (const [k, v] of Object.entries(out.client_metadata)) {
       if (k === "disable_sign_ups") continue;
-      // A cleared legal link falls back to the tenant default.
-      if ((k === "tos_uri" || k === "policy_uri") && v === "") continue;
+      // A cleared legal link or an inherited login version falls back to
+      // the tenant default.
+      if (
+        (k === "tos_uri" ||
+          k === "policy_uri" ||
+          k === "universal_login_version") &&
+        (v === "" || v == null)
+      )
+        continue;
       if (typeof v === "boolean") stringified[k] = v ? "true" : "false";
       else if (v != null) stringified[k] = String(v);
     }

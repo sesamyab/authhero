@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { resolveLoginRoutePrefix } from "../helpers/login-version";
 import { UNIVERSAL_AUTH_SESSION_EXPIRES_IN_SECONDS } from "../constants";
 import {
   AuthParams,
@@ -141,10 +142,9 @@ export async function universalAuth({
   // Lets logMessage tag this request's log entries with the login session.
   ctx.set("loginSession", loginSession);
 
-  // Determine route prefix based on client metadata
-  // Set client_metadata.universal_login_version to "2" to use /u2 routes
-  const routePrefix =
-    client.client_metadata?.universal_login_version === "2" ? "/u2" : "/u";
+  // The tenant flag flags.universal_login_version, unless the client overrides it
+  // with client_metadata.universal_login_version.
+  const routePrefix = resolveLoginRoutePrefix(client);
 
   // Check if the user in the login_hint matches the user in the session
   if (session && login_hint && screen_hint !== "login") {

@@ -752,6 +752,8 @@ export async function seed(
       audience,
       sender_email: "noreply@example.com",
       sender_name: "AuthHero",
+      // New tenants use the widget login (/u2) for every application.
+      flags: { universal_login_version: "2" },
     });
 
     // Enable allow_organization_name_in_authentication_api for main tenant
@@ -763,6 +765,7 @@ export async function seed(
         // Enable permission inheritance so users with global roles (like admin:organizations)
         // can get org tokens without being a member of each organization
         flags: {
+          universal_login_version: "2",
           inherit_global_permissions_in_organizations: true,
         },
       });

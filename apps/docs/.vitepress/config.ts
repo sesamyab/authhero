@@ -621,6 +621,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               link: "/customization/embedded-login",
             },
             {
+              text: "Login Version (/u and /u2)",
+              link: "/customization/login-version",
+            },
+            {
               text: "UI Widget",
               link: "/customization/ui-widget/",
               collapsed: true,
