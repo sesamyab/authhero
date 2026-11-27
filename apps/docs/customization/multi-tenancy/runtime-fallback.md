@@ -99,7 +99,7 @@ const adapters = withRuntimeFallback(baseAdapters, {
 ### Combined with Multi-Tenancy Features
 
 ```typescript
-import { init, withRuntimeFallback } from "@authhero/multi-tenancy";
+import { initMultiTenant, withRuntimeFallback } from "@authhero/multi-tenancy";
 
 // First, wrap adapters with runtime fallback
 const baseAdapters = createAdapters(db);
@@ -108,13 +108,12 @@ const fallbackAdapters = withRuntimeFallback(baseAdapters, {
   controlPlaneClientId: "control_plane_client",
 });
 
-// Then use with multi-tenancy init for entity sync
-const { app } = init({
+// Then hand the wrapped adapters to the multi-tenancy init
+const { app } = initMultiTenant({
   dataAdapter: fallbackAdapters,
-  controlPlaneTenantId: "control_plane",
-  sync: {
-    resourceServers: true,
-    roles: true,
+  controlPlane: {
+    tenantId: "control_plane",
+    clientId: "control_plane_client",
   },
 });
 ```
@@ -467,14 +466,15 @@ whole chain. The `cfgdiff` logs are written to
 the tenant's own logs, which the control plane reads through the usual logs API
 for that tenant.
 
-## Migration from @authhero/authhero
+## Migration from `withMainTenantFallback`
 
-If you were using the deprecated `withMainTenantFallback` from `@authhero/authhero`:
+Older versions of `authhero` exported `withMainTenantFallback`. It has been removed; use `withRuntimeFallback` from `@authhero/multi-tenancy` instead.
 
-### Before (Deprecated)
+### Before (removed)
 
+<!-- docs-imports-ignore -->
 ```typescript
-import { withMainTenantFallback } from "@authhero/authhero";
+import { withMainTenantFallback } from "authhero";
 
 const adapters = withMainTenantFallback(baseAdapters, {
   mainTenantId: "main",

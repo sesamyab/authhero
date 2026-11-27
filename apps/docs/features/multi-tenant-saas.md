@@ -1041,17 +1041,17 @@ function CustomerManagement({ token, orgId }: CustomerManagementProps) {
 
 ## Backend Implementation
 
-On your backend, you'll need to validate the organization token and enforce authorization:
+On your backend, you'll need to validate the organization token and enforce authorization. AuthHero's access tokens are standard JWTs signed with the keys published at `/.well-known/jwks.json`, so any JWT library can verify them — here [`jose`](https://github.com/panva/jose):
 
 ```typescript
 import { Hono } from "hono";
-import { createAuthHero } from "authhero";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const app = new Hono();
 
-const auth = createAuthHero({
-  database: adapter,
-});
+const jwks = createRemoteJWKSet(
+  new URL("https://auth.example.com/.well-known/jwks.json"),
+);
 
 // Middleware to verify organization token
 app.use("/customers/:orgId/*", async (c, next) => {
@@ -1062,7 +1062,10 @@ app.use("/customers/:orgId/*", async (c, next) => {
   }
 
   // Verify the token and extract claims
-  const claims = await auth.verifyToken(token);
+  const { payload: claims } = await jwtVerify(token, jwks, {
+    issuer: "https://auth.example.com/",
+    audience: "https://api.example.com",
+  });
 
   // Check that the org_id in the token matches the requested organization
   const requestedOrgId = c.req.param("orgId");
@@ -1071,7 +1074,8 @@ app.use("/customers/:orgId/*", async (c, next) => {
   }
 
   // Check user permissions (roles)
-  if (!claims.permissions?.includes("read:users")) {
+  const permissions = Array.isArray(claims.permissions) ? claims.permissions : [];
+  if (!permissions.includes("read:users")) {
     return c.json({ error: "Insufficient permissions" }, 403);
   }
 

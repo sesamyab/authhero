@@ -235,7 +235,7 @@ Example row (illustrative JSON):
 
 ## Management API
 
-`@authhero/proxy` is **data-plane only**. CRUD over proxy routes is handled by the regular AuthHero management API at `/api/v2/proxy-routes` (per tenant), exposed automatically whenever your AuthHero data adapter provides a `proxyRoutes` adapter — the default for `@authhero/kysely-adapter`, `@authhero/drizzle`, and `@authhero/aws`.
+`@authhero/proxy` is **data-plane only**. CRUD over proxy routes is handled by the regular AuthHero management API at `/api/v2/proxy-routes` (per tenant), exposed automatically whenever your AuthHero data adapter provides a `proxyRoutes` adapter — the default for `@authhero/kysely-adapter`, `@authhero/drizzle`, and `@authhero/aws-adapter`.
 
 The admin UI, your scripts, and any other consumer manage routes through the same auth context and CORS rules they already use for the rest of the AuthHero API. There's no separate management router to mount.
 

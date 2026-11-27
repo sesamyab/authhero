@@ -10,7 +10,7 @@ description: AuthHero's philosophy, architecture layers, and how the system is d
 AuthHero is designed around a simple idea: **authentication should be easy to run, both locally and at scale**.
 
 - **Run it anywhere** — AuthHero works as a library inside your existing Node.js process, as a standalone Docker container, or as a distributed deployment on Cloudflare Workers or AWS Lambda.
-- **Start simple, scale later** — Begin with SQLite in development, move to PostgreSQL or MySQL in production, or use Cloudflare D1 at the edge. The adapter pattern means you never rewrite your auth logic.
+- **Start simple, scale later** — Begin with SQLite in development, then run on Cloudflare D1 at the edge, DynamoDB on AWS, or SQLite in a container. The adapter pattern means you never rewrite your auth logic.
 - **Auth0-compatible** — Use existing Auth0 SDKs and tools. If you know Auth0, you already know AuthHero.
 - **Open and extensible** — Every layer is pluggable: database adapters, authentication strategies, hooks, signing strategies, and UI components.
 
@@ -31,13 +31,13 @@ AuthHero is designed around a simple idea: **authentication should be easy to ru
 └─────────────────────────────────────────────────────────┘
                            │
 ┌─────────────────────────────────────────────────────────┐
-│              Adapter Layer (pluggable)                    │
-│  Kysely (SQL) │ Drizzle │ AWS │ Cloudflare │ Custom      │
+│              Adapter Layer (pluggable)                  │
+│  Drizzle │ Kysely │ AWS │ Cloudflare │ Custom           │
 └─────────────────────────────────────────────────────────┘
                            │
 ┌─────────────────────────────────────────────────────────┐
-│                   Database / Storage                     │
-│  PostgreSQL │ MySQL │ SQLite │ D1 │ DynamoDB │ etc.     │
+│                   Database / Storage                    │
+│  SQLite │ D1 │ MySQL (PlanetScale) │ DynamoDB           │
 └─────────────────────────────────────────────────────────┘
 ```
 

@@ -185,38 +185,37 @@ const { entityHooks, tenantHooks } = createSyncHooks({
 
 Enable entity synchronization when setting up multi-tenancy:
 
+`initMultiTenant` wires the sync hooks for you. For a manual setup, create them with `createSyncHooks` and pass the entity hooks to `init()` and the tenant hooks to the tenants router:
+
 ```typescript
+import { init } from "authhero";
 import {
-  setupMultiTenancy,
-  createTenantResourceServerSyncHooks,
-  createTenantRoleSyncHooks,
+  createSyncHooks,
+  createTenantsOpenAPIRouter,
 } from "@authhero/multi-tenancy";
 
-// Create sync hooks
-const resourceServerSync = createTenantResourceServerSyncHooks({
+const { entityHooks, tenantHooks } = createSyncHooks({
   controlPlaneTenantId: "main",
-  getControlPlaneAdapters: async () => mainAdapters,
+  getChildTenantIds,
   getAdapters: async (tenantId) => getTenantAdapters(tenantId),
-});
-
-const roleSync = createTenantRoleSyncHooks({
-  controlPlaneTenantId: "main",
   getControlPlaneAdapters: async () => mainAdapters,
-  getAdapters: async (tenantId) => getTenantAdapters(tenantId),
-  syncPermissions: true, // Also sync role permissions
-});
-
-// Setup multi-tenancy with sync hooks
-const multiTenancy = setupMultiTenancy({
-  accessControl: {
-    controlPlaneTenantId: "main",
-  },
-  hooks: {
-    resourceServers: resourceServerSync,
-    roles: roleSync,
+  sync: {
+    resourceServers: true,
+    roles: true,
   },
 });
+
+// Entity hooks mirror control-plane changes to the child tenants
+const { app } = init({ dataAdapter: mainAdapters, entityHooks });
+
+// Tenant hooks copy the synced entities into a newly created tenant
+const tenantsRouter = createTenantsOpenAPIRouter(
+  { accessControl: { controlPlaneTenantId: "main" } },
+  { tenants: tenantHooks },
+);
 ```
+
+Connections are not synced; child tenants read them from the control plane through the [runtime fallback](/customization/multi-tenancy/runtime-fallback).
 
 ### Protected Entities Middleware
 
@@ -387,29 +386,31 @@ const response = await fetch("https://api.example.com/api/v2/users", {
 
 ### 3. Tenant-Specific Token
 
-Request a token directly from a tenant's authorization endpoint:
+Request a token directly from a tenant's token endpoint. For a backend service this is the `client_credentials` grant, with a client of the acme tenant that has a client grant for its Management API:
 
 ```typescript
-// Login directly to acme tenant
-const token = await fetch("https://acme.auth.example.com/oauth/token", {
+// Machine-to-machine token from the acme tenant
+const tokenResponse = await fetch("https://acme.auth.example.com/oauth/token", {
   method: "POST",
   headers: { "Content-Type": "application/x-www-form-urlencoded" },
   body: new URLSearchParams({
-    grant_type: "password",
-    username: "user@acme.com",
-    password: "password",
-    client_id: "client_id",
-    scope: "openid profile",
+    grant_type: "client_credentials",
+    client_id: "acme_m2m_client_id",
+    client_secret: "acme_m2m_client_secret",
+    audience: "https://acme.auth.example.com/api/v2/",
   }),
 });
+const { access_token } = await tokenResponse.json();
 
 // Use token for acme tenant
 const response = await fetch("https://acme.auth.example.com/api/v2/users", {
   headers: {
-    Authorization: `Bearer ${token.access_token}`,
+    Authorization: `Bearer ${access_token}`,
   },
 });
 ```
+
+The password grant (`grant_type=password`) is not supported. Users sign in to a tenant through `/authorize` and its login pages instead.
 
 **How it works:**
 
@@ -571,7 +572,7 @@ A management scope added later reaches tenant owners unless it is listed as oper
 ## Example: Complete Multi-Tenant Setup
 
 ```typescript
-import { init } from "@authhero/authhero";
+import { init } from "authhero";
 import { getAdapters } from "./adapters";
 
 const app = await init({

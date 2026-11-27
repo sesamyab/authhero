@@ -403,49 +403,53 @@ export const userSchema = z.object({
 npm install @authhero/adapter-interfaces
 ```
 
-2. **Implement the DatabaseAdapter interface**:
+2. **Implement the `DataAdapters` interface**. It has one property per entity, each typed by its own adapter interface:
 
 ```typescript
-import { DatabaseAdapter, UserAdapter } from "@authhero/adapter-interfaces";
+import type {
+  DataAdapters,
+  User,
+  UserDataAdapter,
+  UserInsert,
+} from "@authhero/adapter-interfaces";
 
-export class MyCustomAdapter implements DatabaseAdapter {
-  users: UserAdapter;
-  // ... implement all required adapters
-
-  constructor(config: MyAdapterConfig) {
-    this.users = new MyUserAdapter(config);
-    // ... initialize all adapters
-  }
+export function createMyAdapters(config: MyAdapterConfig): DataAdapters {
+  return {
+    users: createMyUsersAdapter(config),
+    // ... one adapter per entity in DataAdapters
+  };
 }
 ```
 
-3. **Implement entity adapters**:
+3. **Implement entity adapters**. Every method takes the tenant id first:
 
 ```typescript
-class MyUserAdapter implements UserAdapter {
-  async create(user: CreateUser): Promise<User> {
-    // Implement user creation logic
-  }
+function createMyUsersAdapter(config: MyAdapterConfig): UserDataAdapter {
+  return {
+    async create(tenantId: string, user: UserInsert): Promise<User> {
+      // Implement user creation logic
+    },
 
-  async get(userId: string, tenantId: string): Promise<User | null> {
-    // Implement user retrieval logic
-  }
+    async get(tenantId: string, userId: string): Promise<User | null> {
+      // Implement user retrieval logic
+    },
 
-  // ... implement all required methods
+    // ... implement all required methods
+  };
 }
 ```
 
 4. **Use validation schemas**:
 
 ```typescript
-import { userSchema } from '@authhero/adapter-interfaces';
+import { userInsertSchema, userSchema } from '@authhero/adapter-interfaces';
 
-async create(userData: CreateUser): Promise<User> {
+async create(tenantId: string, userData: UserInsert): Promise<User> {
   // Validate input
-  const validatedUser = userSchema.parse(userData);
+  const validatedUser = userInsertSchema.parse(userData);
 
   // Store in your backend
-  const storedUser = await this.storage.save(validatedUser);
+  const storedUser = await storage.save(tenantId, validatedUser);
 
   // Validate output
   return userSchema.parse(storedUser);
@@ -475,18 +479,7 @@ throw new AdapterError("User not found", "USER_NOT_FOUND", {
 
 ### Testing
 
-The interfaces package includes test utilities:
-
-```typescript
-import { testDatabaseAdapter } from "@authhero/adapter-interfaces/testing";
-
-describe("MyCustomAdapter", () => {
-  it("should pass all interface tests", async () => {
-    const adapter = new MyCustomAdapter(config);
-    await testDatabaseAdapter(adapter);
-  });
-});
-```
+The interfaces package does not publish test utilities. The built-in adapters' test suites are the reference for expected behaviour: `packages/drizzle/test`, `packages/kysely/test` and `packages/aws/test` in the repository. The checkpoint (keyset) pagination contract has a shared suite in `packages/adapter-interfaces/test-utils/keyset-conformance.ts`, which you can copy into a custom adapter's tests.
 
 ## Best Practices
 

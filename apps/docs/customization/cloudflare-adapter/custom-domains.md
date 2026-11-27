@@ -87,10 +87,10 @@ CLOUDFLARE_ENTERPRISE=false
 
 ```typescript
 import createAdapters from "@authhero/cloudflare-adapter";
-import { createKyselyAdapter } from "@authhero/kysely-adapter";
+import createDatabaseAdapters from "@authhero/drizzle";
 
 // Create database adapter for custom domains
-const database = createKyselyAdapter(db);
+const database = createDatabaseAdapters(db);
 
 // Create Cloudflare adapters
 const cloudflareAdapters = createAdapters({

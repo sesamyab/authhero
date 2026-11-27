@@ -127,13 +127,16 @@ crons = ["*/5 * * * *"]  # Every 5 minutes
 Then in your worker entry:
 
 ```ts
+import { drizzle } from "drizzle-orm/d1";
+import createAdapters from "@authhero/drizzle";
+import * as schema from "@authhero/drizzle/schema/sqlite";
 import { initMultiTenant } from "@authhero/multi-tenancy";
 import { runOutboxRelay } from "authhero";
 import { webhookInvoker } from "./webhook-invoker";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    const dataAdapter = createCloudflareD1Adapter(env.AUTH_DB);
+    const dataAdapter = createAdapters(drizzle(env.AUTH_DB, { schema }));
     const { app } = initMultiTenant({
       dataAdapter,
       webhookInvoker,
@@ -143,7 +146,7 @@ export default {
   },
 
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    const dataAdapter = createCloudflareD1Adapter(env.AUTH_DB);
+    const dataAdapter = createAdapters(drizzle(env.AUTH_DB, { schema }));
     ctx.waitUntil(
       runOutboxRelay({
         dataAdapter,

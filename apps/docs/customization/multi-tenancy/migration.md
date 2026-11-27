@@ -94,8 +94,8 @@ pnpm add @authhero/multi-tenancy
 ### Step 2: Backup Your Data
 
 ```bash
-# PostgreSQL example
-pg_dump -h localhost -U user -d authhero > backup-$(date +%Y%m%d).sql
+# Cloudflare D1 example
+npx wrangler d1 export authhero --remote --output backup-$(date +%Y%m%d).sql
 
 # SQLite example
 sqlite3 authhero.db ".backup backup-$(date +%Y%m%d).db"
@@ -135,10 +135,11 @@ for (const tenantId of existingTenants) {
 #### Before (Single Tenant)
 
 ```typescript
-import { createAuthhero } from "authhero";
+import { init } from "authhero";
+import createAdapters from "@authhero/drizzle";
 
-const app = createAuthhero({
-  dataAdapter: createAdapter(db),
+const { app } = init({
+  dataAdapter: createAdapters(db),
 });
 
 export default app;
@@ -146,34 +147,19 @@ export default app;
 
 #### After (Multi-Tenant)
 
-```typescript
-import { Hono } from "hono";
-import { createAuthhero } from "authhero";
-import { setupMultiTenancy } from "@authhero/multi-tenancy";
+`initMultiTenant` takes the same options as `init`, plus the multi-tenancy settings, and mounts the tenant management routes and middleware for you:
 
-const multiTenancy = setupMultiTenancy({
-  accessControl: {
-    mainTenantId: "main",
-    defaultPermissions: ["tenant:admin"],
+```typescript
+import { initMultiTenant } from "@authhero/multi-tenancy";
+import createAdapters from "@authhero/drizzle";
+
+const { app } = initMultiTenant({
+  dataAdapter: createAdapters(db),
+  controlPlane: {
+    tenantId: "main",
+    clientId: "main-client",
   },
 });
-
-const app = new Hono();
-
-// Apply multi-tenancy middleware
-app.use("*", multiTenancy.middleware);
-
-// Mount tenant management
-app.route("/management", multiTenancy.app);
-
-// Mount AuthHero with hooks
-app.route(
-  "/",
-  createAuthhero({
-    dataAdapter: createAdapter(db),
-    hooks: multiTenancy.hooks,
-  }),
-);
 
 export default app;
 ```
@@ -223,17 +209,12 @@ If implementing database isolation:
 
 #### 7.1 Create Databases
 
+How you create a database per tenant depends on the platform. On Cloudflare, a D1 database per tenant means a Worker per tenant, provisioned with `createCloudflareWfpD1Provisioner` — see [Database Isolation → Cloudflare D1](/customization/multi-tenancy/database-isolation#cloudflare-d1). For other databases, provision them with your own code — the same code your `databaseIsolation.onProvision` callback runs for new tenants:
+
 ```typescript
-import { createD1Factory } from "@authhero/cloudflare";
-
-const factory = createD1Factory({
-  accountId: env.CF_ACCOUNT_ID,
-  apiToken: env.CF_API_TOKEN,
-});
-
 // Provision databases for existing tenants
 for (const tenantId of existingTenants) {
-  await factory.provision(tenantId);
+  await provisionTenantDatabase(tenantId); // your provisioning code
 }
 ```
 

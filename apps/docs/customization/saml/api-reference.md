@@ -1,6 +1,6 @@
 ---
 title: SAML API Reference
-description: Complete API reference for the @authhero/saml package including SAMLRequest, SAMLResponseJSON types, and signing methods.
+description: Complete API reference for the @authhero/saml package including the parsed AuthnRequest shape, SAMLResponseJSON, schemas and signing methods.
 ---
 
 # SAML API Reference
@@ -9,33 +9,34 @@ This document provides a complete API reference for the `@authhero/saml` package
 
 ## Types
 
-### SAMLRequest
+### Parsed AuthnRequest
 
-Parsed SAML authentication request structure.
+`parseSamlRequestQuery` returns the AuthnRequest as parsed XML, validated by `samlRequestSchema`. The package does not export a named type for it; use `z.infer<typeof samlRequestSchema>`:
 
 ```typescript
-interface SAMLRequest {
-  id: string;
-  created: string;
-  issuer: string;
-  destination: string;
-  acsUrl: string;
-  forceAuthn?: boolean;
-  isPassive?: boolean;
-  protocolBinding: string;
-}
+type ParsedAuthnRequest = {
+  "samlp:AuthnRequest": {
+    "saml:Issuer": { "#text": string };
+    "@_ID": string;
+    "@_IssueInstant": string;
+    "@_Destination": string;
+    "@_AssertionConsumerServiceURL"?: string;
+    "@_ProtocolBinding"?: string;
+    "@_ForceAuthn"?: boolean;
+    "@_Version": string;
+  };
+};
 ```
 
-**Properties:**
+**Properties of `samlp:AuthnRequest`:**
 
-- `id` - Unique identifier for the SAML request
-- `created` - Timestamp when the request was created
-- `issuer` - The entity requesting authentication
-- `destination` - The intended destination of the request
-- `acsUrl` - Assertion Consumer Service URL where the response should be sent
-- `forceAuthn` - Whether to force re-authentication
-- `isPassive` - Whether to use passive authentication
-- `protocolBinding` - The SAML protocol binding to use
+- `saml:Issuer` - The entity ID of the service provider requesting authentication
+- `@_ID` - Unique identifier for the SAML request
+- `@_IssueInstant` - Timestamp when the request was created
+- `@_Destination` - The intended destination of the request
+- `@_AssertionConsumerServiceURL` - Where the response should be sent
+- `@_ForceAuthn` - Whether to force re-authentication
+- `@_ProtocolBinding` - The SAML protocol binding to use
 
 ### SAMLResponseJSON
 
@@ -152,17 +153,19 @@ const signedXml = await signer.signSAML(xmlContent, privateKey, publicCert);
 
 ### parseSamlRequestQuery
 
-Parse a SAML request from query parameters.
+Parse the `SAMLRequest` query parameter of an HTTP-Redirect request.
 
 ```typescript
-function parseSamlRequestQuery(query: Record<string, string>): SAMLRequest;
+function parseSamlRequestQuery(
+  samlRequestQuery: string,
+): Promise<z.infer<typeof samlRequestSchema>>;
 ```
 
 **Parameters:**
 
-- `query` - Query parameters containing SAMLRequest
+- `samlRequestQuery` - The value of the `SAMLRequest` query parameter: base64, deflate-compressed or not
 
-**Returns:** Parsed `SAMLRequest` object
+**Returns:** The [parsed AuthnRequest](#parsed-authnrequest)
 
 **Throws:** Error if parsing fails
 
@@ -171,12 +174,12 @@ function parseSamlRequestQuery(query: Record<string, string>): SAMLRequest;
 ```typescript
 import { parseSamlRequestQuery } from "@authhero/saml";
 
-const request = parseSamlRequestQuery({
-  SAMLRequest: "base64EncodedRequest...",
-});
+const url = new URL(request.url);
+const parsed = await parseSamlRequestQuery(url.searchParams.get("SAMLRequest")!);
+const authnRequest = parsed["samlp:AuthnRequest"];
 
-console.log(request.issuer); // SP entity ID
-console.log(request.acsUrl); // Where to send response
+console.log(authnRequest["saml:Issuer"]["#text"]); // SP entity ID
+console.log(authnRequest["@_AssertionConsumerServiceURL"]); // Where to send response
 ```
 
 ### createSamlResponse
@@ -230,7 +233,7 @@ console.log(response); // Signed SAML XML
 
 ### createSamlMetadata
 
-Generate SAML service provider metadata.
+Generate SAML identity provider (IdP) metadata — an `IDPSSODescriptor` for the service providers that log in through AuthHero.
 
 ```typescript
 function createSamlMetadata(params: {
@@ -290,20 +293,20 @@ console.log(xml); // <samlp:AuthnRequest ...>
 
 The package includes Zod schemas for runtime validation:
 
-### SAMLRequestSchema
+### samlRequestSchema
 
 ```typescript
-import { SAMLRequestSchema } from "@authhero/saml";
+import { samlRequestSchema } from "@authhero/saml";
 
-const parsed = SAMLRequestSchema.parse(data);
+const parsed = samlRequestSchema.parse(data);
 ```
 
-### SAMLResponseJSONSchema
+### samlResponseJsonSchema
 
 ```typescript
-import { SAMLResponseJSONSchema } from "@authhero/saml";
+import { samlResponseJsonSchema } from "@authhero/saml";
 
-const validated = SAMLResponseJSONSchema.parse(responseData);
+const validated = samlResponseJsonSchema.parse(responseData);
 ```
 
 ## Entry Points
@@ -315,7 +318,6 @@ Main entry point with all functionality:
 ```typescript
 import {
   // Types
-  type SAMLRequest,
   type SAMLResponseJSON,
   type SamlSigner,
 
@@ -330,8 +332,8 @@ import {
   inflateDecompress,
 
   // Schemas
-  SAMLRequestSchema,
-  SAMLResponseJSONSchema,
+  samlRequestSchema,
+  samlResponseJsonSchema,
 } from "@authhero/saml";
 ```
 
@@ -342,7 +344,6 @@ Core functionality without LocalSamlSigner (no xml-crypto):
 ```typescript
 import {
   // Types
-  type SAMLRequest,
   type SAMLResponseJSON,
   type SamlSigner,
 
@@ -357,8 +358,8 @@ import {
   inflateDecompress,
 
   // Schemas
-  SAMLRequestSchema,
-  SAMLResponseJSONSchema,
+  samlRequestSchema,
+  samlResponseJsonSchema,
 } from "@authhero/saml/core";
 ```
 

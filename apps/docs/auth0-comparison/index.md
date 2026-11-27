@@ -81,7 +81,7 @@ October 2024; AuthHero keeps a hooks system next to Actions:
 Define hooks directly in your application code:
 
 ```typescript
-import { init } from "@authhero/authhero";
+import { init } from "authhero";
 
 const auth = init({
   dataAdapter: myAdapter,
@@ -209,11 +209,11 @@ Built from the ground up for edge computing:
 
 Choose your preferred database:
 
-- **PostgreSQL** via Drizzle or Kysely
-- **MySQL/MariaDB** via Kysely
-- **SQLite** for development
-- **Cloudflare D1** for edge deployment
-- Custom adapters for any database
+- **SQLite** via Drizzle, for development or a single container
+- **Cloudflare D1** via Drizzle, for edge deployment
+- **MySQL on PlanetScale** via Kysely
+- **DynamoDB** via the AWS adapter
+- Custom adapters for any other database
 
 ### 7. Auth0 Compatibility Layer
 

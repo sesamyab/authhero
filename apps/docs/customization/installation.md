@@ -12,22 +12,22 @@ description: Install the AuthHero package using npm, yarn, or pnpm. Requirements
 
 ## Installation
 
-Install the AuthHero package in your project:
+Install AuthHero together with a database adapter in your project:
 
 ```bash
-pnpm add authhero
+pnpm add authhero @authhero/drizzle drizzle-orm better-sqlite3 @hono/node-server
 ```
 
 Or using npm:
 
 ```bash
-npm install authhero
+npm install authhero @authhero/drizzle drizzle-orm better-sqlite3 @hono/node-server
 ```
 
 Or using yarn:
 
 ```bash
-yarn add authhero
+yarn add authhero @authhero/drizzle drizzle-orm better-sqlite3 @hono/node-server
 ```
 
 ## Basic Usage
@@ -35,14 +35,20 @@ yarn add authhero
 Here's a basic example of integrating AuthHero in your application:
 
 ```typescript
-import { AuthHero } from "authhero";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { serve } from "@hono/node-server";
+import createAdapters from "@authhero/drizzle";
+import * as schema from "@authhero/drizzle/schema/sqlite";
+import { init } from "authhero";
 
-// Configuration details will go here
+const db = drizzle(new Database("db.sqlite"), { schema });
+const { app } = init({ dataAdapter: createAdapters(db) });
 
-const authHero = new AuthHero(config);
-
-// Authentication methods will be shown here
+serve({ fetch: app.fetch, port: 3000 });
 ```
+
+Apply the database migrations before the first start — see the [Drizzle adapter](/customization/drizzle/#migrations).
 
 ## Next Steps
 

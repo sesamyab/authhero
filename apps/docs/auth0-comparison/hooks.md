@@ -436,7 +436,7 @@ AuthHero supports two ways to configure hooks:
 Configure hooks directly when initializing your AuthHero application:
 
 ```typescript
-import { init } from "@authhero/authhero";
+import { init } from "authhero";
 
 const authHero = init({
   dataAdapter: myAdapter,
@@ -467,11 +467,11 @@ const authHero = init({
 You can also provide hooks through the environment bindings:
 
 ```typescript
-import { init } from "@authhero/authhero";
-import { createAdapters } from "@authhero/your-adapter";
+import { init } from "authhero";
+import createAdapters from "@authhero/drizzle"; // or your database adapter
 
 const env = {
-  data: createAdapters(/* your database config */),
+  data: createAdapters(db),
   hooks: {
     onExecutePreUserRegistration: async (event, api) => {
       // Add custom user metadata during registration

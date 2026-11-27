@@ -11,7 +11,7 @@ The `@authhero/saml` package provides SAML authentication functionality for Auth
 
 - 🔐 **SAML Request Parsing** - Parse and validate SAML authentication requests
 - ✍️ **SAML Response Generation** - Create signed SAML responses
-- 📄 **SAML Metadata** - Generate SAML service provider metadata
+- 📄 **SAML Metadata** - Generate SAML identity provider (IdP) metadata
 - 🔌 **Pluggable Signing** - Support for local (xml-crypto) or HTTP-based signing
 - 🌍 **Edge Compatible** - Core functionality works in edge/serverless environments
 - 📦 **Tree-shakeable** - Multiple entry points for optimal bundle size
@@ -105,5 +105,5 @@ The SAML package was separated from the core AuthHero library to:
 
 ## Related Packages
 
-- [@authhero/authhero](/customization/) - Core authentication library
+- [authhero](/architecture/authhero-package) - Core authentication library
 - [Database Adapters](/architecture/adapters) - Database adapter interfaces

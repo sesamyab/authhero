@@ -101,9 +101,9 @@ in your database adapter.
 
 ```typescript
 import createAdapters from "@authhero/cloudflare-adapter";
-import { createKyselyAdapter } from "@authhero/kysely-adapter";
+import createDatabaseAdapters from "@authhero/drizzle";
 
-const database = createKyselyAdapter(db);
+const database = createDatabaseAdapters(db);
 
 const cloudflareAdapters = createAdapters({
   zoneId: process.env.CLOUDFLARE_ZONE_ID!,

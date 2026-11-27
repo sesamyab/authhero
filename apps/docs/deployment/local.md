@@ -39,8 +39,8 @@ serve({ fetch: app.fetch, port: 3000 });
 
 ### Recommended Adapters
 
-- `@authhero/kysely` - Best for PostgreSQL, MySQL, or SQLite
-- `@authhero/drizzle` - Alternative ORM with excellent type safety
+- `@authhero/drizzle` - SQLite through `better-sqlite3` (recommended; used by the `local` template)
+- `@authhero/kysely-adapter` - SQLite, or MySQL on PlanetScale, for existing deployments
 
 ### Production Deployment
 
@@ -114,7 +114,7 @@ bun run src/index.ts
 
 ### Recommended Adapters
 
-- `@authhero/kysely` - Works with Bun's built-in SQLite support
+- `@authhero/drizzle` - SQLite through `drizzle-orm/bun-sqlite` (Bun's built-in SQLite). This combination is not covered by AuthHero's test suite.
 
 ## Deno
 
@@ -157,8 +157,8 @@ For Docker deployments, see the dedicated [Docker deployment guide](./docker). T
 Common environment variables for local deployments:
 
 ```bash
-# Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/authhero
+# Database (SQLite file used by your server code)
+DATABASE_PATH=./data/db.sqlite
 
 # Server
 PORT=3000
@@ -229,14 +229,10 @@ kill -9 <PID>
 
 ### Database connection errors
 
-Check your connection string and ensure the database is running:
+Check that the SQLite file exists, is writable by the server process, and has the migrations applied:
 
 ```bash
-# PostgreSQL
-psql $DATABASE_URL -c "SELECT 1;"
-
-# MySQL
-mysql -h localhost -u user -p -e "SELECT 1;"
+sqlite3 ./data/db.sqlite "SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 5;"
 ```
 
 ## Next Steps

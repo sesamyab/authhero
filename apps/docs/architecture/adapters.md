@@ -27,11 +27,11 @@ interface DataAdapters {
 You inject a concrete adapter when initializing AuthHero:
 
 ```typescript
-import { createApp } from "authhero";
-import { createKyselyAdapters } from "@authhero/kysely-adapter";
+import { init } from "authhero";
+import createAdapters from "@authhero/drizzle";
 
-const adapters = createKyselyAdapters(db);
-const app = createApp({ dataAdapter: adapters });
+const dataAdapter = createAdapters(db);
+const { app } = init({ dataAdapter });
 ```
 
 ### Reading the adapters during a request
@@ -44,10 +44,10 @@ Each route group wraps the adapter you pass in with request-scoped layers (cachi
 
 | Adapter | Database | Best For |
 | --- | --- | --- |
-| `@authhero/drizzle` | SQLite, D1, PostgreSQL, MySQL | New deployments (primary adapter) |
-| `@authhero/kysely-adapter` | PostgreSQL, MySQL, SQLite, D1, Turso | Existing deployments |
-| `@authhero/aws-adapter` | DynamoDB + RDS | AWS Lambda deployments |
-| `@authhero/cloudflare-adapter` | D1 + KV + R2 | Cloudflare Workers deployments |
+| `@authhero/drizzle` | SQLite, Cloudflare D1 | New deployments (primary adapter) |
+| `@authhero/kysely-adapter` | SQLite, MySQL (PlanetScale) | Existing deployments |
+| `@authhero/aws-adapter` | DynamoDB | AWS Lambda deployments |
+| `@authhero/cloudflare-adapter` | Platform services (custom domains, cache, R2 storage, logs, rate limiting) — used alongside a database adapter | Cloudflare Workers deployments |
 
 ## Layering Adapters
 

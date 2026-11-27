@@ -135,7 +135,7 @@ Unverified emails are **never** automatically linked. This prevents account take
 For advanced use cases, AuthHero provides the `setLinkedTo()` method in the pre-registration hook:
 
 ```typescript
-import { init } from "@authhero/authhero";
+import { init } from "authhero";
 
 const auth = init({
   dataAdapter: myAdapter,
@@ -310,7 +310,7 @@ AuthHero automatically prevents chain linking. New accounts always link to the *
 Here's a comprehensive example showing various account linking scenarios:
 
 ```typescript
-import { init } from "@authhero/authhero";
+import { init } from "authhero";
 
 const auth = init({
   dataAdapter: myAdapter,

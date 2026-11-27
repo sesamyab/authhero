@@ -1,50 +1,53 @@
 ---
 title: Create AuthHero CLI Commands
-description: Reference for create-authhero CLI commands and options including template, adapter, and skip-install flags.
+description: Reference for every create-authhero option — template, package manager, multi-tenant, admin UI, skip flags, GitHub CI, conformance and workspace mode.
 ---
 
 # Create AuthHero CLI Commands
 
-## Base Command
+## Base command
 
 ```bash
-pnpm create authhero [project-name] [options]
+npx create-authhero [project-name] [options]
 ```
 
 ## Options
 
-- `--template <template>` - Specify the template to use (default: "basic")
-- `--adapter <adapter>` - Specify the database adapter to use (options: "kysely", "drizzle", "cloudflare")
-- `--skip-install` - Skip installing dependencies
-- `--help` - Show help information
-- `--version` - Show version information
+| Option | Description |
+| --- | --- |
+| `-t, --template <type>` | `local`, `cloudflare`, `cloudflare-wfp-dispatcher`, `cloudflare-wfp-tenant`, `cloudflare-control-plane`, `aws-sst` or `proxy`. See [Templates](/packages/create-authhero/#templates). |
+| `--package-manager <pm>` | `npm`, `yarn`, `pnpm` or `bun`. Default: `pnpm`. |
+| `--multi-tenant` | Enable multi-tenant mode (`local`, `cloudflare`, `aws-sst`). |
+| `--admin-ui` | Serve the admin dashboard at `/admin` (`local` and `cloudflare`). |
+| `--skip-install` | Don't install dependencies. |
+| `--skip-migrate` | Don't run the database migrations. |
+| `--skip-start` | Don't start the development server. |
+| `--github-ci` | Add GitHub CI workflows with semantic versioning (`cloudflare`). |
+| `--conformance` | Add test clients for the OpenID Foundation conformance suite. |
+| `--conformance-alias <alias>` | Alias for the conformance suite. Default: `authhero-local`. |
+| `--workspace` | Use `workspace:*` dependencies, for developing inside the AuthHero monorepo. |
+| `-y, --yes` | Skip the prompts and use the defaults or the options given. |
+| `-V, --version` | Print the CLI version. |
+| `-h, --help` | Show help. |
+
+With `--yes`, the project name defaults to `auth-server`, multi-tenant mode is off and the admin UI is on. Pass `--template` as well — without it the CLI still asks for the setup type.
 
 ## Examples
 
-Create a basic project:
+Scaffold a local SQLite server without prompts:
 
 ```bash
-pnpm create authhero my-auth-app
+npx create-authhero my-app --template local --yes
 ```
 
-Create a project with a specific template and adapter:
+Scaffold a multi-tenant Cloudflare Worker with the admin UI, without installing:
 
 ```bash
-pnpm create authhero my-auth-app --template fullstack --adapter kysely
+npx create-authhero my-worker --template cloudflare --multi-tenant --admin-ui --skip-install --yes
 ```
 
-Create a project without installing dependencies:
+Scaffold the Workers for Platforms control plane with npm:
 
 ```bash
-pnpm create authhero my-auth-app --skip-install
+npx create-authhero control-plane --template cloudflare-control-plane --package-manager npm --yes
 ```
-
-## Templates
-
-[Template descriptions will be listed here]
-
-## Environment Variables
-
-You can configure certain aspects of the CLI using environment variables:
-
-[Environment variable descriptions will be listed here]

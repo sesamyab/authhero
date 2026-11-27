@@ -1,11 +1,11 @@
 ---
 title: Connections
-description: Configure authentication methods in AuthHero including database connections, social logins (Google, Facebook, GitHub), and enterprise SAML/LDAP connections.
+description: Configure authentication methods in AuthHero including database connections, social logins (Google, Apple, Facebook, GitHub, Microsoft, Vipps), and enterprise OIDC/OAuth2 connections.
 ---
 
 # Connections
 
-Connections are authentication methods available to users, such as username/password, social logins, or enterprise connections like SAML or LDAP.
+Connections are authentication methods available to users, such as username/password, passwordless email/SMS codes, social logins, or enterprise identity providers that speak OpenID Connect or OAuth 2.0.
 
 ## Connection Types
 
@@ -23,7 +23,7 @@ Username and password authentication with AuthHero storing credentials:
 
 ### Social Connections
 
-Third-party identity providers like Google, Facebook, GitHub:
+Third-party identity providers. The built-in strategies are `google-oauth2`, `apple`, `facebook`, `github`, `windowslive` (Microsoft accounts) and `vipps`:
 
 ```typescript
 {
@@ -39,48 +39,30 @@ Third-party identity providers like Google, Facebook, GitHub:
 
 ### Enterprise Connections
 
-Enterprise identity providers using SAML, LDAP, or other protocols:
+Enterprise identity providers that speak OpenID Connect or OAuth 2.0. The built-in enterprise strategies are `oidc`, `oauth2`, `okta` (handled as OIDC, with Auth0's `okta|<sub>` user ids) and `waad` (Microsoft Entra ID). The `oidc` strategy does not use discovery, so the endpoints are configured explicitly:
 
 ```typescript
 {
-  "name": "corporate-saml",
-  "strategy": "samlp",
+  "name": "corporate-oidc",
+  "strategy": "oidc",
   "options": {
-    "sign_in_endpoint": "https://idp.example.com/saml/sso",
-    "sign_out_endpoint": "https://idp.example.com/saml/slo"
+    "client_id": "upstream_client_id",
+    "client_secret": "upstream_client_secret",
+    "authorization_endpoint": "https://idp.corp.example.com/oauth2/authorize",
+    "token_endpoint": "https://idp.corp.example.com/oauth2/token",
+    "userinfo_endpoint": "https://idp.corp.example.com/oauth2/userinfo",
+    "scope": "openid profile email"
   }
 }
 ```
 
-## SAML Connections
+The upstream provider redirects back to `https://<your-auth-domain>/login/callback` unless the connection sets `options.callback_url`.
 
-SAML (Security Assertion Markup Language) is an enterprise authentication standard that enables single sign-on (SSO) between an identity provider (IdP) and service providers (SP). AuthHero acts as an identity provider and supports:
+## SAML
 
-- **SAML Request Parsing**: Parse authentication requests from service providers
-- **SAML Response Generation**: Create signed SAML responses with user attributes
-- **SAML Metadata**: Provide metadata for service provider configuration
-- **Flexible Signing**: Support for both local signing (Node.js) and HTTP-based signing (edge environments)
+AuthHero is a **SAML identity provider** for applications: a client with the `samlp` addon can start a SAML login at `/samlp/{client_id}`, and AuthHero answers with a signed SAML response. This is configured on the application, not as a connection — see the [SAML package](/customization/saml/) and [SAML 2.0](/standards/saml-2).
 
-SAML connections are particularly useful for enterprise customers who need to integrate with existing identity management systems or provide SSO to third-party applications.
-
-### SAML Configuration Example
-
-```typescript
-{
-  "name": "enterprise-saml",
-  "strategy": "samlp",
-  "options": {
-    "sign_in_endpoint": "https://idp.corp.example.com/saml/sso",
-    "sign_out_endpoint": "https://idp.corp.example.com/saml/slo",
-    "signing_cert": "-----BEGIN CERTIFICATE-----\\n...\\n-----END CERTIFICATE-----",
-    "sign_saml_request": true,
-    "signature_algorithm": "rsa-sha256",
-    "digest_algorithm": "sha256"
-  }
-}
-```
-
-[Learn more about SAML →](/customization/saml/)
+AuthHero does **not** support inbound SAML connections (federating logins to an external SAML identity provider). LDAP and Active Directory connections are not supported either.
 
 ## Passwordless Connections
 
@@ -104,7 +86,7 @@ Connections can be configured per application, allowing different apps to use di
 ```typescript
 // Enable specific connections for an application
 PATCH /api/v2/clients/{client_id}/connections
-["con_database", "con_google", "con_corporate_saml"]
+["con_database", "con_google", "con_corporate_oidc"]
 ```
 
 You can also enable or disable one connection for several applications with `PATCH /api/v2/connections/{id}/clients`.

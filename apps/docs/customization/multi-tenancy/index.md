@@ -142,7 +142,6 @@ const { entityHooks, tenantHooks } = createSyncHooks({
   sync: {
     resourceServers: true,
     roles: true,
-    connections: true,
   },
 });
 
@@ -378,7 +377,7 @@ const token = await getAccessTokenSilently({
 
 ## Related Packages
 
-- **[@authhero/cloudflare](/customization/cloudflare-adapter/)** - Cloudflare D1 database factory
+- **[@authhero/cloudflare-adapter](/customization/cloudflare-adapter/)** - Cloudflare D1 database factory
 - **[authhero](/customization/)** - Core authentication library
 
 ## License
