@@ -1819,9 +1819,10 @@ how to set binding options such as `metadata.screens` on `pre-screen`:
 ```bash
 POST /api/v2/hooks
 {
-  "trigger_id": "post-user-login",
+  "trigger_id": "pre-screen",
   "code_id": "<action id>",
-  "enabled": true
+  "enabled": true,
+  "metadata": { "screens": ["login-id", "signup"] }
 }
 ```
 

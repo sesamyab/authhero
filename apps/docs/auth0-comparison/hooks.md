@@ -50,7 +50,7 @@ Which kind of hook can bind to which trigger:
 | `post-user-login`                | ✅            | ✅      | ✅   | ✅   | ✅       | `onExecutePostLogin`                     |
 | `credentials-exchange`           | ✅            |         |      |      | ✅       | `onExecuteCredentialsExchange`           |
 | `pre-user-update`                | ✅            |         |      |      |          | `onExecutePreUserUpdate`                 |
-| `post-user-update`               | ✅            | ✅      |      |      | ✅       |                                          |
+| `post-user-update`               | ✅            | ✅      |      |      | ✅       | `onExecutePostUserUpdate`                |
 | `pre-user-deletion`              | ✅            | ✅      |      |      |          | `onExecutePreUserDeletion`               |
 | `post-user-deletion`             | ✅            | ✅      |      |      |          | `onExecutePostUserDeletion`              |
 | `pre-screen`                     | ✅            |         |      |      |          | `onExecutePreScreen`                     |

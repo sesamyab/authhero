@@ -194,8 +194,11 @@ run at all (no code executor, or the Action was deleted) is denied too. See
 [Denying a login and failing closed](./hooks.md#denying-a-login-and-failing-closed)
 for an example.
 
-Every failure is recorded on the execution record and logged as a `FAILED_HOOK`
-log event.
+Failures are recorded on the execution record and logged as a `FAILED_HOOK` log
+event. One exception: when no code executor is configured, a fail-open binding is
+skipped without a trace, so no execution record is written for it. Bind with
+`fail_closed`, or check that an executor is configured, if you rely on the
+records.
 
 ## Managing Actions in the admin
 
@@ -276,8 +279,10 @@ limits and the `actionExecutionLogs` option.
 
 ### Testing an Action
 
-`POST /actions/{id}/test` runs the stored code in the configured executor without
-applying anything:
+`POST /actions/{id}/test` runs the stored code in the configured executor with the
+Action's secrets. The `api` calls it makes are recorded and returned, not applied.
+Outbound `fetch()` calls are not intercepted: with `WorkerLoaderCodeExecutor` they
+reach the real endpoints, so a test can create or change data in external systems.
 
 ```bash
 curl -X POST "$AUTH_URL/api/v2/actions/actions/act_123/test" \
