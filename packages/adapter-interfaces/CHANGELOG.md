@@ -1,5 +1,24 @@
 # @authhero/adapter-interfaces
 
+## 4.35.0
+
+### Minor Changes
+
+- 546f80d: Actions can anchor users to a record in an external system (issue #1802). `api.users.ensure({ connection, id, profile, app_metadata })` creates or updates `<connection>|<id>` in a connection with the new non-login `external` strategy and `options.allow_action_users: true`, and `api.user.setLinkedTo` can then link the signing-in user under it. Available in `pre-user-registration` and `post-user-login`. External primaries always stay primary, a user already under one is never moved to another by a login, and `external` connections never appear on login screens or work with `/authorize?connection=`. A `pre-user-registration` `setLinkedTo` to a user that doesn't exist now registers the user unlinked and logs `primary_not_found`, instead of failing the registration.
+- a94f12c: Replace the `pre-account-action` trigger with a generic `pre-screen` trigger (AuthHero extension; Auth0 has no pre-login trigger).
+
+  `pre-screen` runs before every universal-login screen is shown (`event.transaction.phase: "render"`) and when it is submitted (`"submit"`), on all u2 screens and the classic `/u` pages that have the same screen, including the login screens (identifier, password, passwordless code, signup), password reset, MFA, consent and the account pages. Screens are named with Auth0's Universal Login vocabulary (`login-id`, `login-password`, `reset-password-request`, `mfa-otp-challenge`, ...) plus AuthHero-only names for the account, connect and self-service screens. Actions can continue, `api.redirect.sendUserTo(url, { query })` or `api.access.deny(reason)`. A binding picks its screens in `metadata.screens` (empty = all); render fails open unless the binding sets `metadata.fail_closed`, submit always fails closed. The config callback is `onExecutePreScreen`.
+
+  **Removed:** the `pre-account-action` trigger, the `onExecutePreAccountAction` config callback and their types. No tenant used it. The management API now refuses `pre-account-action` with a 400; hooks still stored with it are ignored, and tenant imports and multi-tenancy syncs skip them with a log line. Its operation names live on as `event.operation` in the submit phase.
+
+  Replacing a trigger's bindings (`PATCH /actions/triggers/{id}/bindings`) now keeps the hook `metadata` of actions that stay bound, so screen filters and custom-provider message types survive a reorder.
+
+- 4c3426f: Universal login v2 input types match /u (#1733):
+  - TEXT fields accept `input_mode` and `autocomplete` in their config, and PASSWORD fields accept `autocomplete` (`current-password` or `new-password`).
+  - u2 code fields ask for a numeric keypad and `one-time-code` autofill.
+  - Signup, password reset and invitation password fields are marked `new-password`, so password managers offer to generate one.
+  - The identifier field is only an email field when email is all it accepts; with an SMS connection it is a text field labelled for phone or email.
+
 ## 4.34.0
 
 ### Minor Changes

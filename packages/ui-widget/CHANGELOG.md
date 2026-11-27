@@ -1,5 +1,31 @@
 # @authhero/widget
 
+## 0.43.0
+
+### Minor Changes
+
+- 4c3426f: Universal login v2 input types match /u (#1733):
+  - TEXT fields accept `input_mode` and `autocomplete` in their config, and PASSWORD fields accept `autocomplete` (`current-password` or `new-password`).
+  - u2 code fields ask for a numeric keypad and `one-time-code` autofill.
+  - Signup, password reset and invitation password fields are marked `new-password`, so password managers offer to generate one.
+  - The identifier field is only an email field when email is all it accepts; with an SMS connection it is a text field labelled for phone or email.
+
+### Patch Changes
+
+- e269dcd: Apply the tenant's custom font when `branding.font.url` / `theme.fonts.font_url` points at a font file.
+
+  As in Auth0, the URL is normally a font file (`.woff2`, `.woff`, `.ttf`, `.otf`), but the widget and the u2 pages loaded it with `<link rel="stylesheet">`. The browser downloaded it and threw it away, so the font never applied. A font file is now declared with an `@font-face` for the `ulp-font` family, which the widget stylesheet lists first; the page chrome uses the same family. Any other URL (e.g. a Google Fonts CSS URL) is still loaded as a stylesheet, and its href is no longer HTML-escaped twice on the u2, error and token-info pages.
+
+- 2f802fa: Fix the u2 page layout for forms taller than the screen and floating labels on textarea, URL and number fields.
+  - The u2 page, error page and token-info page now start with `<!DOCTYPE html>`. Without it they rendered in quirks mode, where the flex `<body>` was clamped to the viewport: a tall form (such as the self-service app registration) overflowed it, its top could not be scrolled to, there was no margin above or below the card, and the background image only covered the first screen.
+  - Textarea, URL and number fields now use the same floating label as other inputs, so the label moves out of the way instead of sitting on top of the typed text. A textarea's resting label sits on its first line instead of the vertical centre.
+
+- d29f356: Fix the first click on the primary button (e.g. "Register" on `/u2/signup`) sometimes doing nothing. While required fields were missing the button carried a native `disabled` attribute, and Stencil only removes it on its next render; a click that landed before that render was swallowed by the browser. The required-field gate now renders `aria-disabled` and the click handler re-checks the live form state, so the first click submits as soon as every required field is filled. `disabled` is still used while a submit is in flight.
+- Updated dependencies [546f80d]
+- Updated dependencies [a94f12c]
+- Updated dependencies [4c3426f]
+  - @authhero/adapter-interfaces@4.35.0
+
 ## 0.42.1
 
 ### Patch Changes

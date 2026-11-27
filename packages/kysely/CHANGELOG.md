@@ -1,5 +1,16 @@
 # @authhero/kysely-adapter
 
+## 12.24.2
+
+### Patch Changes
+
+- cf1da4d: Connection `show_as_button` and `is_domain_connection` now round-trip as booleans. The drizzle adapter returned them as `0`/`1` and dropped them on update, and the kysely adapter failed to insert them on SQLite. Login screens can now hide a connection with `show_as_button: false`.
+- Updated dependencies [546f80d]
+- Updated dependencies [a94f12c]
+- Updated dependencies [4c3426f]
+  - @authhero/adapter-interfaces@4.35.0
+  - @authhero/proxy@0.11.22
+
 ## 12.24.1
 
 ### Patch Changes
