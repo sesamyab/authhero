@@ -198,7 +198,7 @@ function collectAttributes(assertion: XmlNode) {
 }
 
 // Conditions this SP evaluates. OneTimeUse holds: each login's state is
-// consumed on first use. ProxyRestriction is checked below. Any other
+// consumed on first use. ProxyRestriction is refused below. Any other
 // condition (a typed <Condition>) is not understood, so the assertion is
 // invalid (SAML Core §2.5.1).
 const UNDERSTOOD_CONDITIONS = new Set([
@@ -378,17 +378,17 @@ export async function validateSamlResponse(
       `Assertion has a condition this service provider does not understand: ${unknownCondition}`,
     );
   }
-  // ProxyRestriction Count="0" forbids issuing any assertion based on this
-  // one (SAML Core §2.5.1.6). A broker exists to do exactly that: every login
-  // ends in a SAML response or tokens for an application, so it is refused.
-  if (
-    asNodes(conditions?.ProxyRestriction).some(
-      (restriction) => attr(restriction, "Count")?.trim() === "0",
-    )
-  ) {
+  // ProxyRestriction (SAML Core §2.5.1.6) constrains every assertion issued on
+  // the basis of this one: Count="0" forbids any, a positive Count requires
+  // each to carry a lower count, and its Audiences limit who may receive
+  // them. A broker issues exactly such assertions on every login (a SAML
+  // response or OIDC tokens for an application) and cannot carry those
+  // obligations into tokens, so an assertion that restricts proxying is
+  // refused rather than accepted with the restriction dropped.
+  if (asNodes(conditions?.ProxyRestriction).length > 0) {
     throw new SamlResponseError(
       "invalid_response",
-      'The identity provider forbids passing this login on (ProxyRestriction Count="0")',
+      "The identity provider restricts passing this login on (ProxyRestriction), which this service provider cannot honour",
     );
   }
   const notBefore = parseInstant(attr(conditions, "NotBefore"), "NotBefore");
