@@ -1,5 +1,21 @@
 # @authhero/docker
 
+## 1.4.150
+
+### Patch Changes
+
+- Updated dependencies [e4f78ea]
+- Updated dependencies [9a92e84]
+- Updated dependencies [12746a2]
+- Updated dependencies [b6c7fe7]
+- Updated dependencies [5b0c6b8]
+- Updated dependencies [0a7eb4f]
+- Updated dependencies [e4f78ea]
+  - @authhero/admin@0.36.0
+  - authhero@9.42.0
+  - @authhero/kysely-adapter@12.25.1
+  - @authhero/widget@0.43.2
+
 ## 1.4.149
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @authhero/aws-adapter
 
+## 1.15.1
+
+### Patch Changes
+
+- e4f78ea: Choose the universal login per tenant. The new tenant flag `flags.universal_login_version` (`"2"` → `/u2`, `"1"` or unset → `/u`) sets the default for a tenant's applications, and `client_metadata.universal_login_version` (`"2"` or `"1"`) still overrides it per application. Unset tenants behave as before, so no data migration is needed. New tenants created by `seed` or the multi-tenancy `POST /tenants` get `"2"`. Adds a `login-migration` CLI (`count`, `check`, `flip`, `rollback`) for moving tenants to `/u2`. `CreateTenantParams` now accepts `flags`, and the DynamoDB adapter stores flags passed on create (it dropped them before, including flags from multi-tenancy `tenantDefaults`).
+- Updated dependencies [5b0c6b8]
+- Updated dependencies [e4f78ea]
+  - @authhero/adapter-interfaces@4.37.0
+  - @authhero/proxy@0.11.24
+
 ## 1.15.0
 
 ### Minor Changes

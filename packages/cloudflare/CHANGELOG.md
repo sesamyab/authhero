@@ -1,5 +1,21 @@
 # @authhero/cloudflare-adapter
 
+## 4.3.7
+
+### Patch Changes
+
+- 9f0d195: Export `createCloudflareCache` and its `CloudflareCacheConfig` type again, so a Cache API `CacheAdapter` can be created on its own — for example for `@authhero/proxy`'s `createCacheAdapterHostCache` — without the custom-domain settings that `createAdapters` requires.
+- Updated dependencies [9a92e84]
+- Updated dependencies [12746a2]
+- Updated dependencies [b6c7fe7]
+- Updated dependencies [5b0c6b8]
+- Updated dependencies [0a7eb4f]
+- Updated dependencies [e4f78ea]
+  - authhero@9.42.0
+  - @authhero/adapter-interfaces@4.37.0
+  - @authhero/multi-tenancy@15.14.0
+  - @authhero/kysely-adapter@12.25.1
+
 ## 4.3.6
 
 ### Patch Changes
