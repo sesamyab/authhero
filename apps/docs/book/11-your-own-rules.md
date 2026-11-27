@@ -100,7 +100,7 @@ It is the same shape as an Action with none of the sandbox. The function runs in
 
 A **webhook** is the lightest option. You register a URL against a trigger, and AuthHero sends it a `POST` with the details. It suits "tell the data warehouse that someone signed up", where the receiving system is already built and you would prefer not to write any code inside the identity provider at all.
 
-## Deliveries that do not get lost
+## Deliveries that get retried
 
 Anything that happens *after* the fact, such as a post-registration webhook, raises an awkward question. What if your endpoint is down at the moment the user signs up?
 
@@ -111,7 +111,7 @@ flowchart LR
     P["Prepare<br/>validate, run blocking hooks"] --> C["Commit<br/>one short database transaction"] --> U["Publish<br/>deliver events, with retries"]
 ```
 
-**Prepare** runs the checks and the hooks that are allowed to say no. This can take a while, since your webhook might be slow, so no database transaction is open yet. **Commit** writes the user, and in the same transaction writes a note that an event needs delivering. This record is called an **outbox**. **Publish** works through the outbox afterwards, retrying with growing pauses when a destination fails, and setting an event aside for inspection if it never succeeds.
+**Prepare** runs the checks and the hooks that are allowed to say no. This can take a while, since your webhook might be slow, so no database transaction is open yet. **Commit** writes the user, and in the same transaction writes a note that an event needs delivering. This record is called an **outbox**. **Publish** works through the outbox afterwards, retrying a few times with growing pauses when a destination fails. An event that still fails is set aside as a failed event, which you can inspect and replay. Chapter 15 says how long those are kept.
 
 The result is that a user cannot be created without the event being recorded, and your slow endpoint never holds a database lock. The outbox is something you switch on, and the guarantee is strongest on databases that support transactions.
 

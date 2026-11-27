@@ -25,7 +25,7 @@ Logins are one kind of history. Changes to the configuration are another, and af
 
 AuthHero records an **audit event** for every change made through the Management API: who made it, what was affected, and the state before and after, with secrets blanked out.
 
-With the outbox from chapter 11 enabled, audit events are stored in the database first and delivered from there, with retries, so a destination that is down does not lose them. When a user is created, the event is committed in the same transaction as the user, and one cannot exist without the other. For other changes the event is written straight after the change, not together with it.
+With the outbox from chapter 11 enabled, audit events are stored in the database first and delivered from there. A delivery that fails is retried with growing pauses, five times by default. An event that still fails is set aside as a **failed event**, which you can list, replay or discard through the Management API. Failed events are kept for a retention period, seven days by default, and then removed. So a destination that is down for a long time needs someone to replay its events before that period ends. When a user is created, the event is committed in the same transaction as the user, and one cannot exist without the other. For other changes the event is written straight after the change, not together with it.
 
 ## Sending it elsewhere
 
@@ -33,7 +33,7 @@ Your security team already has a place where logs go. A **log stream** forwards 
 
 There are two kinds. An HTTP stream posts each event to a URL in the same format Auth0 uses, which Datadog accepts directly and Splunk accepts through a small relay. A Firehose stream delivers to Amazon Data Firehose, and from there to S3, OpenSearch or wherever else you archive things.
 
-Streams are delivered through the outbox, so a destination that is down for an hour receives its events when it comes back.
+Streams are delivered through the outbox, so a brief failure at the destination is retried, and events that run out of retries wait as failed events for you to replay.
 
 ## When someone is trying
 
@@ -93,4 +93,4 @@ For the day before you go live:
 - Applications that do not need a refresh token do not ask for one, and those that do have rotation on.
 - Someone knows how to block a user and revoke a session at three in the morning.
 
-**In the docs:** [Audit Logging](/features/audit-logging) · [Log Stream Recipes](/features/log-streams-recipes) · [Troubleshooting](/troubleshooting) · [Rate limiting and attack protection](/api/overview#rate-limiting) · [Encryption at Rest](/security/encryption-at-rest) · [Signing-key Certificates](/security/signing-key-certificates) · [Standards](/standards/) · [Conformance Testing](/standards/conformance)
+**In the docs:** [Audit Logging](/features/audit-logging) · [Log Stream Recipes](/features/log-streams-recipes) · [Failed Events](/customization/failed-events) · [Troubleshooting](/troubleshooting) · [Rate limiting and attack protection](/api/overview#rate-limiting) · [Encryption at Rest](/security/encryption-at-rest) · [Signing-key Certificates](/security/signing-key-certificates) · [Standards](/standards/) · [Conformance Testing](/standards/conformance)
