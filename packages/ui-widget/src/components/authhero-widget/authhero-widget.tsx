@@ -1769,12 +1769,14 @@ export class AuthheroWidget {
       // Include the clicked button's ID in form data so the server
       // can identify which button was clicked (e.g. for multi-button screens
       // like mfa-login-options where each factor has its own submit button)
-      const submitData = { ...this.formData, [detail.id]: "true" };
-      this.formData = submitData;
-      // Create a synthetic submit event and call handleSubmit
-      // Pass submitData directly to avoid @State() timing issues
+      const buttonData = { [detail.id]: "true" };
+      this.formData = { ...this.formData, ...buttonData };
+      // Pass only the button's value as an explicit override. handleSubmit
+      // collects the rest itself, so a hidden input an inline script updated
+      // after its value landed in formData is sent with its current value
+      // rather than the stale snapshot.
       const syntheticEvent = { preventDefault: () => {} } as Event;
-      this.handleSubmit(syntheticEvent, submitData);
+      this.handleSubmit(syntheticEvent, buttonData);
       return;
     }
 
