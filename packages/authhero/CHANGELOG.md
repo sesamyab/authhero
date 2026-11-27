@@ -1,5 +1,33 @@
 # authhero
 
+## 9.41.0
+
+### Minor Changes
+
+- 90a194e: Actions can now block a login (#1816):
+  - `credentials-exchange`: `api.access.deny` stops token issuance. The token request returns 400 and no tokens are signed; before, the execution was logged as canceled but tokens were still issued.
+  - `post-user-login`: `api.access.deny` fails the login (403 `access_denied`, the login session is marked failed, and a failed-login log is written). `api.idToken.setCustomClaim` and `api.accessToken.setCustomClaim` now add claims to the tokens of that login, including the authorization-code exchange (not refresh-token exchanges). `api.redirect.sendUserTo` and `api.prompt.render` are still not supported, but each call now records an `unsupported_api` error on the execution instead of being dropped silently.
+  - New `metadata.fail_closed` on `credentials-exchange`, `post-user-login` and `pre-user-registration` hook bindings: an action that times out, fails or throws denies the request (`action_timeout` / `action_failed`) instead of letting it through. The default is unchanged (fail open).
+  - The post-login action type declarations now use Auth0's `api.access.deny(reason)` signature.
+
+### Patch Changes
+
+- 7eacf33: Make the per-login-session send caps atomic. `LoginSessionsAdapter` gains an optional `updateIfStateDataUnchanged` (compare-and-swap on `state_data`), implemented by the kysely, drizzle and aws adapters. The login OTP cap (`LOGIN_OTP_MAX_SENDS`) and the MFA SMS cap (`MFA_MAX_SMS_SENDS`) now reserve their slot through it, so concurrent requests on one login session can no longer exceed them. Login session context updates are written the same way, re-applied on a concurrent change, so they no longer write back stale state such as an older send counter. Adapters without the method keep the previous best-effort behaviour. `createPassthroughAdapter` mirrors an accepted `updateIfStateDataUnchanged` to secondaries as a plain `update` (new `conditionalSyncMethods` option); writes the primary rejects are not mirrored.
+- 6ba969b: Fix embedded (cross-origin) password login for clients without an enabled database connection. `/co/authenticate` now records the generic `Username-Password-Authentication` realm on the login ticket when the client has no database connection, so `/authorize` no longer refuses the ticket with `403 Invalid realm`.
+- 1177995: Token issuance now only runs Actions bound to `credentials-exchange`. Before, every enabled code hook on the tenant (`post-user-login`, `pre-screen`, user lifecycle bindings) also ran as `credentials-exchange` on every token request and recorded a failure. A `fail_closed` binding on another trigger denied every token request.
+- 8c37f32: Fix resend on /u2: the widget's resend button now POSTs `{ data: { action: "resend" } }` to the screen API and renders the returned screen, and email-otp-challenge, sms-otp-challenge and magic-link-sent re-send the login code or link. `magic-link-sent` is now a registered screen at `/u2/login/magic-link-sent`, so reloading it no longer returns 400.
+
+  Login OTP delivery (identifier step plus resends) is capped at 5 per login session and consumes the optional per-recipient rate limit; past either limit the screens respond as usual but nothing is sent.
+
+- Updated dependencies [90a194e]
+- Updated dependencies [7eacf33]
+- Updated dependencies [8c37f32]
+- Updated dependencies [d6708b0]
+  - @authhero/adapter-interfaces@4.36.0
+  - @authhero/widget@0.43.1
+  - @authhero/proxy@0.11.23
+  - @authhero/saml@0.6.16
+
 ## 9.40.0
 
 ### Minor Changes
