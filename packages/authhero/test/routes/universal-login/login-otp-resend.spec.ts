@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Strategy } from "@authhero/adapter-interfaces";
+import { LoginSessionState, Strategy } from "@authhero/adapter-interfaces";
 import { getTestServer } from "../../helpers/test-server";
 import { u2Screen } from "../../helpers/u2-screen";
 import en from "../../../locales/en.json";
@@ -342,6 +342,37 @@ describe("login OTP send cap", () => {
     }
     expect(server.getSentEmails()).toHaveLength(LOGIN_OTP_MAX_SENDS);
   });
+
+  it.each([
+    ["completed", { state: LoginSessionState.COMPLETED }],
+    ["failed", { state: LoginSessionState.FAILED }],
+    ["expired", { expires_at: new Date(Date.now() - 1000).toISOString() }],
+  ])(
+    "does not send or consume the recipient rate limit for a %s session",
+    async (_label, update) => {
+      let consumed = 0;
+      const server = await getTestServer({
+        mockEmail: true,
+        rateLimit: {
+          consume: async () => {
+            consumed++;
+            return { allowed: true };
+          },
+        },
+      });
+      const state = await createSession(server.env, "foo@example.com");
+      await server.env.data.loginSessions.update("tenantId", state, update);
+
+      for (let i = 0; i < 3; i++) {
+        await postScreen(server, "email-otp-challenge", state, {
+          action: "resend",
+        });
+      }
+
+      expect(server.getSentEmails()).toHaveLength(0);
+      expect(consumed).toBe(0);
+    },
+  );
 
   it("does not consume the recipient rate limit once the session is at its cap", async () => {
     let consumed = 0;

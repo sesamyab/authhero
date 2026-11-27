@@ -13,7 +13,9 @@ import {
   MFA_LOCKOUT_REASON,
   MFA_MAX_FAILED_ATTEMPTS,
   MFA_MAX_SMS_SENDS,
+  enforceMfaSmsSendLimit,
 } from "../../../src/authentication-flows/mfa-attempts";
+import { FinalizedLoginSessionError } from "../../../src/state-machines/login-session-data";
 
 type TestServer = Awaited<ReturnType<typeof getTestServer>>;
 type TestEnv = TestServer["env"];
@@ -355,6 +357,41 @@ describe("MFA failed-attempt limits", () => {
       expect(consumed).toEqual([`mfa-sms:tenantId:${USER_ID}`]);
       expect(getSentSms()).toHaveLength(0);
     });
+    it.each([
+      ["completed", { state: LoginSessionState.COMPLETED }],
+      ["failed", { state: LoginSessionState.FAILED }],
+      ["expired", { expires_at: new Date(Date.now() - 1000).toISOString() }],
+    ])(
+      "does not send or consume the SMS rate limit for a %s session",
+      async (_label, fields) => {
+        const consumed: string[] = [];
+        const server = await getTestServer({
+          testTenantLanguage: "en",
+          rateLimit: {
+            consume: async (_scope, key) => {
+              consumed.push(key);
+              return { allowed: true };
+            },
+          },
+        });
+        const { env, getSentSms } = server;
+        const session = await createMfaSession(env);
+        await env.data.loginSessions.update("tenantId", session.id, fields);
+
+        await expect(
+          enforceMfaSmsSendLimit(
+            { env } as unknown as Parameters<typeof enforceMfaSmsSendLimit>[0],
+            "tenantId",
+            session.id,
+            "+46701234567",
+            USER_ID,
+          ),
+        ).rejects.toBeInstanceOf(FinalizedLoginSessionError);
+        expect(consumed).toEqual([]);
+        expect(getSentSms()).toHaveLength(0);
+      },
+    );
+
     it("does not use up the session SMS allowance when the rate limit rejects", async () => {
       let allow = false;
       const server = await getTestServer({

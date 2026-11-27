@@ -44,8 +44,9 @@ function isRateLimitDecision(value: unknown): value is RateLimitDecision {
 }
 
 /**
- * login_otp_sent on the stored session, or undefined when it is gone or
- * finalized (no further sends either way).
+ * login_otp_sent on the stored session, or undefined when the session is
+ * gone, finalized or past its expiry: no code may be sent for it, and the
+ * recipient's rate limit must not be consumed on its behalf.
  */
 async function readLoginOtpSent(
   ctx: OtpContext,
@@ -56,7 +57,13 @@ async function readLoginOtpSent(
     tenantId,
     loginSessionId,
   );
-  if (!current || isFinalizedLoginSession(current)) return undefined;
+  if (
+    !current ||
+    isFinalizedLoginSession(current) ||
+    new Date(current.expires_at).getTime() < Date.now()
+  ) {
+    return undefined;
+  }
   return readLoginSessionData(current.state_data).login_otp_sent ?? 0;
 }
 

@@ -9,6 +9,7 @@ import { Bindings, Variables } from "../types";
 import { logMessage } from "../helpers/logging";
 import {
   FinalizedLoginSessionError,
+  isFinalizedLoginSession,
   readLoginSessionData,
   reserveLoginSessionCounter,
   updateLoginSessionData,
@@ -193,10 +194,12 @@ export async function resetMfaFailures(
  * without a user, per-number) rate limit. Throws MfaSmsRateLimitError when
  * either limit is reached. Counted before sending, so failed sends count too.
  *
- * Order: check the session cap without writing, then the rate limit, then
- * reserve the slot atomically (see reserveLoginSessionCounter). A send the
- * rate limit rejects does not use up the session's allowance, and concurrent
- * sends on one session cannot exceed MFA_MAX_SMS_SENDS.
+ * Order: check the session without writing (finalized or expired sessions
+ * throw FinalizedLoginSessionError, at the cap MfaSmsRateLimitError), then the
+ * rate limit, then reserve the slot atomically (see
+ * reserveLoginSessionCounter). Neither a finished session nor a send the rate
+ * limit rejects uses up the shared rate limit or the session's allowance, and
+ * concurrent sends on one session cannot exceed MFA_MAX_SMS_SENDS.
  */
 export async function enforceMfaSmsSendLimit(
   ctx: MfaContext,
@@ -209,6 +212,13 @@ export async function enforceMfaSmsSendLimit(
     tenantId,
     loginSessionId,
   );
+  if (
+    current &&
+    (isFinalizedLoginSession(current) ||
+      new Date(current.expires_at).getTime() < Date.now())
+  ) {
+    throw new FinalizedLoginSessionError(loginSessionId);
+  }
   const sent = readLoginSessionData(current?.state_data).mfa_sms_sent ?? 0;
   // Account sessions carry no user_id, so callers pass the resolved user.
   // The phone number is only the key for genuinely userless flows.
