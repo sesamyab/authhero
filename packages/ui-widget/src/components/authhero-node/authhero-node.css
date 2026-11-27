@@ -49,6 +49,13 @@
   z-index: 1;
 }
 
+/* A textarea grows downwards, so its resting label sits on the first line
+   (16px padding + half a 24px line) instead of the vertical centre. Kept
+   below the floating selectors' specificity so focus/value still lift it. */
+.textarea-container .input-label {
+  top: calc(var(--ah-input-border-width, 1px) + 28px);
+}
+
 .input-label.floating,
 .input-field:focus+.input-label,
 .input-field:not(:placeholder-shown)+.input-label,
@@ -97,6 +104,19 @@ input[type="date"].input-field+.input-label {
 
 .input-field::placeholder {
   color: transparent;
+}
+
+/* Fields with a floating label carry a real placeholder only when the schema
+   configures one (otherwise " "). It would collide with the resting label, so
+   it stays hidden until focus has lifted the label out of the way. */
+.input-field:focus::placeholder {
+  color: var(--ah-color-text-muted, #65676e);
+}
+
+textarea.input-field {
+  display: block;
+  line-height: 1.5;
+  resize: vertical;
 }
 
 .input-field:hover {

@@ -12,3 +12,4 @@ export * from "./colors";
 export * from "./named-colors";
 export * from "./chrome";
 export * from "./css";
+export * from "./font";

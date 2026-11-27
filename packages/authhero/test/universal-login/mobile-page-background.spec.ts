@@ -16,6 +16,7 @@
 import { describe, expect, it } from "vitest";
 import { renderWidgetPageResponse } from "../../src/routes/universal-login/u2-widget-page";
 import { buildPreviewScreen } from "../../src/routes/management-api/branding-preview";
+import { ErrorPage } from "../../src/routes/universal-login/error-page";
 
 const BG_IMAGE = "https://cdn.example.com/hero.jpg";
 
@@ -129,5 +130,27 @@ describe("u2 page — phone layout", () => {
       });
       expect(html).not.toMatch(/<authhero-widget[^>]*\sfloating(?:=""|[\s>])/);
     });
+  });
+});
+
+// Without a doctype the page renders in quirks mode, where the flex <body> is
+// clamped to the viewport: a form taller than the screen overflows it (the top
+// is scrolled out of reach, no margin) and the cover background only spans one
+// screen. The custom-template path already prepended one; the default didn't.
+describe("u2 page — standards mode", () => {
+  it("starts the default page with a doctype", async () => {
+    const html = await render({
+      background_color: "#0f172a",
+      background_image_url: BG_IMAGE,
+      page_layout: "center",
+    });
+    expect(html).toMatch(/^<!DOCTYPE html><html[\s>]/);
+  });
+
+  it("starts the error page with a doctype", async () => {
+    const html = await toHtml(
+      ErrorPage({ message: "Something went wrong", statusCode: 400 }),
+    );
+    expect(html).toMatch(/^<!DOCTYPE html><html[\s>]/);
   });
 });

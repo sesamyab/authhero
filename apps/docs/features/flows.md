@@ -179,8 +179,8 @@ Redirects the user to a predefined or custom URL while maintaining the authentic
 
 **Pre-defined Targets:**
 
-- `change-email`: Redirects to `/u/account/change-email?state=...`
-- `account`: Redirects to `/u/account?state=...`
+- `change-email`: Redirects to `/u2/account/change-email?state=...`. Once the email is changed, the user continues the login.
+- `account`: Redirects to `/u2/account?state=...`. Mid-login the account page shows the user's email, a link to change it and a Continue button that resumes the login; the other account sections need a signed-in session and are not shown.
 - `custom`: Redirects to a custom URL (requires `custom_url` parameter)
 
 **Custom URL Example:**

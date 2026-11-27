@@ -42,7 +42,9 @@
       "linkedAccountsCount": "Propojené účty: ${count}",
       "deleteAccountLabel": "Smazat účet",
       "deleteAccountDetail": "Trvale smazat váš účet a data",
-      "logoutText": "Odhlásit se"
+      "logoutText": "Odhlásit se",
+      "changeEmailLabel": "Změnit e-mailovou adresu",
+      "continueText": "Pokračovat"
     },
     "account-profile": {
       "title": "Upravit profil",

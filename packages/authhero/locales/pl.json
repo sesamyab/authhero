@@ -42,7 +42,9 @@
       "linkedAccountsCount": "Połączone konta: ${count}",
       "deleteAccountLabel": "Usuń konto",
       "deleteAccountDetail": "Trwale usuń swoje konto i dane",
-      "logoutText": "Wyloguj się"
+      "logoutText": "Wyloguj się",
+      "changeEmailLabel": "Zmień adres e-mail",
+      "continueText": "Kontynuuj"
     },
     "account-profile": {
       "title": "Edytuj profil",
