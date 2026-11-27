@@ -20,7 +20,7 @@ AuthHero isn't just a standalone service — it's a library you can embed direct
 Install the core package:
 
 ```bash
-pnpm install authhero @authhero/kysely-adapter
+pnpm install authhero @authhero/drizzle drizzle-orm
 ```
 
 Create an app and mount it:

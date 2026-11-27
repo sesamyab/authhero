@@ -281,15 +281,19 @@ async function verifyMigration(tenantId: string) {
 
 #### 7.4 Switch to New Databases
 
+Point `databaseIsolation` at the per-tenant databases. The three callbacks are your own code, as in step 7.1 (on Cloudflare D1, a tenant database is provisioned with `createCloudflareWfpD1Provisioner`):
+
 ```typescript
-const multiTenancy = setupMultiTenancy({
-  accessControl: {
-    mainTenantId: "main",
-  },
+import { initMultiTenant } from "@authhero/multi-tenancy";
+import createAdapters from "@authhero/drizzle";
+
+const { app } = initMultiTenant({
+  dataAdapter: createAdapters(db),
+  controlPlane: { tenantId: "main", clientId: "main-client" },
   databaseIsolation: {
-    getAdapters: factory.getAdapters,
-    onProvision: factory.provision,
-    onDeprovision: factory.deprovision,
+    getAdapters: (tenantId) => getTenantAdapters(tenantId),
+    onProvision: (tenantId) => provisionTenantDatabase(tenantId),
+    onDeprovision: (tenantId) => deprovisionTenantDatabase(tenantId),
   },
 });
 ```

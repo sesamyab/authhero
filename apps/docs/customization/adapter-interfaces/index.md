@@ -421,7 +421,7 @@ export function createMyAdapters(config: MyAdapterConfig): DataAdapters {
 }
 ```
 
-3. **Implement entity adapters**. Every method takes the tenant id first:
+3. **Implement entity adapters**. Methods on tenant-scoped entities take the tenant id first. The exceptions are the `tenants` adapter itself (`create` and `list` take only their params, `get`/`update`/`remove` the tenant id), signing keys, which are keyed by `kid`, and `clients.getByClientId`, which resolves a client id to its tenant.
 
 ```typescript
 function createMyUsersAdapter(config: MyAdapterConfig): UserDataAdapter {

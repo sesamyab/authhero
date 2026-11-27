@@ -34,10 +34,10 @@ With `--yes`, the project name defaults to `auth-server`, multi-tenant mode is o
 
 ## Examples
 
-Scaffold a local SQLite server without prompts:
+Scaffold a local SQLite server without prompts, installing with npm (without `--package-manager`, `--yes` uses pnpm):
 
 ```bash
-npx create-authhero my-app --template local --yes
+npx create-authhero my-app --template local --package-manager npm --yes
 ```
 
 Scaffold a multi-tenant Cloudflare Worker with the admin UI, without installing:

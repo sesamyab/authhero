@@ -7,7 +7,7 @@ description: Run create-authhero interactively — the questions it asks, what i
 
 ## Prerequisites
 
-- Node.js 20 or later
+- Node.js 20.6 or later
 - npm, yarn, pnpm or bun
 
 ## Creating a project
@@ -25,7 +25,7 @@ If you leave out the project name, the CLI asks for one (default `auth-server`).
 3. **Admin UI at `/admin`** — asked for `local` and `cloudflare` only.
 4. **GitHub CI with semantic versioning** — asked for `cloudflare` only.
 5. **Install dependencies now?** — and, if yes, which package manager (default `pnpm`).
-6. **Run database migrations?** and **Start the development server?** — after a successful install.
+6. **Run database migrations?** — after a successful install, for `local`, `cloudflare`, `cloudflare-wfp-tenant` and `cloudflare-control-plane`. Then **Start the development server?**
 
 The CLI does not ask which database adapter to use: each template comes with its own (Drizzle on SQLite or D1, or DynamoDB for `aws-sst`).
 
@@ -36,9 +36,11 @@ If you let the CLI install, migrate and start, the server is already running. Ot
 ```bash
 cd my-auth-app
 npm install
-npm run migrate   # templates with a database
+npm run migrate   # local and the four cloudflare* templates
 npm run dev
 ```
+
+The `aws-sst` template has no migration step: SST creates the DynamoDB table when you run `npm run dev` (see the template's README). The `proxy` template has no database.
 
 For the `local` template, open `https://localhost:3000/setup` on first run. The setup wizard creates the first tenant, the admin user and a `default` application — see [Your first login](/first-login).
 

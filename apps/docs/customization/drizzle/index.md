@@ -5,7 +5,7 @@ description: AuthHero's primary database adapter, built on Drizzle ORM for SQLit
 
 # Drizzle Adapter
 
-`@authhero/drizzle` is AuthHero's primary database adapter. It implements the [adapter interfaces](/customization/adapter-interfaces/) with [Drizzle ORM](https://orm.drizzle.team/) and is what every `create-authhero` template uses.
+`@authhero/drizzle` is AuthHero's primary database adapter. It implements the [adapter interfaces](/customization/adapter-interfaces/) with [Drizzle ORM](https://orm.drizzle.team/) and is what the `create-authhero` templates with a SQL database use — all except `aws-sst` (DynamoDB) and `proxy` (no database).
 
 ## Supported databases
 
@@ -26,6 +26,10 @@ npm install better-sqlite3   # for SQLite on Node.js
 ```
 
 The package exports the adapter factory (default export) and the schema at `@authhero/drizzle/schema/sqlite`.
+
+::: warning The schema is published as TypeScript source
+`@authhero/drizzle/schema/sqlite` resolves to a `.ts` file, which plain `node` cannot load from `node_modules`. Run the server with a TypeScript-aware runner such as [`tsx`](https://tsx.is) (the `local` template uses `tsx`), or bundle it (Wrangler does this on Cloudflare Workers).
+:::
 
 ## Configuration
 
@@ -105,7 +109,7 @@ After upgrading `@authhero/drizzle`, run the migrations again before deploying t
 
 ## Using the adapters
 
-`createAdapters(db)` returns a `DataAdapters` object with one adapter per entity. Every method takes the tenant id first:
+`createAdapters(db)` returns a `DataAdapters` object with one adapter per entity. Methods on tenant-scoped entities take the tenant id first. The exceptions are the `tenants` adapter itself (`create` and `list` take only their params, `get`/`update`/`remove` the tenant id), signing keys, which are keyed by `kid`, and `clients.getByClientId`, which resolves a client id to its tenant.
 
 ```typescript
 const dataAdapter = createAdapters(db);

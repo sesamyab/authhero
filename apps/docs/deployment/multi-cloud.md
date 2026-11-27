@@ -197,21 +197,44 @@ const backup = createAwsAdapters(
   { tableName: "authhero-backup" },
 );
 
-const dataAdapter = {
-  ...primary,
-  users: createPassthroughAdapter({
-    primary: primary.users,
+function mirror<T extends object>(primaryAdapter: T, backupAdapter: T) {
+  return createPassthroughAdapter({
+    primary: primaryAdapter,
     secondaries: [
       {
-        adapter: backup.users,
+        adapter: backupAdapter,
         onError: (error, method) => console.error("mirror failed", method, error),
       },
     ],
-  }),
+  });
+}
+
+// A standby can only take over if it holds everything a request reads:
+// the tenant and its configuration, users and credentials, and the state of
+// sessions in flight. Mirror every adapter your tenants write.
+const dataAdapter = {
+  ...primary,
+  tenants: mirror(primary.tenants, backup.tenants),
+  users: mirror(primary.users, backup.users),
+  passwords: mirror(primary.passwords, backup.passwords),
+  keys: mirror(primary.keys, backup.keys),
+  clients: mirror(primary.clients, backup.clients),
+  clientGrants: mirror(primary.clientGrants, backup.clientGrants),
+  connections: mirror(primary.connections, backup.connections),
+  resourceServers: mirror(primary.resourceServers, backup.resourceServers),
+  roles: mirror(primary.roles, backup.roles),
+  organizations: mirror(primary.organizations, backup.organizations),
+  sessions: mirror(primary.sessions, backup.sessions),
+  loginSessions: mirror(primary.loginSessions, backup.loginSessions),
+  refreshTokens: mirror(primary.refreshTokens, backup.refreshTokens),
+  codes: mirror(primary.codes, backup.codes),
+  // ...and the other adapters in DataAdapters that hold data you need
 };
 ```
 
 Mirroring is per entity and best-effort: a secondary write that fails is reported to `onError` and not retried. See [Adapters → Layering adapters](/architecture/adapters#layering-adapters).
+
+Mirroring only copies writes made after it is switched on. Before the standby may take traffic, copy the existing data across and verify it — the [database migration guide](/database/migration#phase-3-backfill-existing-data) has a backfill and verification script for this — and repeat the verification regularly, since failed mirror writes are not retried.
 
 ## Session Management
 
@@ -354,7 +377,7 @@ app.use("*", async (c, next) => {
 
 ### Cloudflare Primary + AWS Backup
 
-The Cloudflare Worker serves traffic from D1 and mirrors writes to DynamoDB with the passthrough adapter shown in [Option 2](#option-2-independent-databases-with-mirrored-writes). The AWS deployment reads the DynamoDB copy and takes over through DNS failover:
+The Cloudflare Worker serves traffic from D1 and mirrors writes to DynamoDB with the passthrough adapter shown in [Option 2](#option-2-independent-databases-with-mirrored-writes). The AWS deployment reads the DynamoDB copy and takes over through DNS failover — only once the existing data has been backfilled into DynamoDB and verified, as described there:
 
 ```typescript
 // aws/src/index.ts

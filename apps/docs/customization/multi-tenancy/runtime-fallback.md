@@ -98,25 +98,25 @@ const adapters = withRuntimeFallback(baseAdapters, {
 
 ### Combined with Multi-Tenancy Features
 
+`initMultiTenant` applies the runtime fallback itself, so pass it the base adapters. Wrapping them with `withRuntimeFallback` first would wrap them twice, and the management API would then merge control-plane connection settings into a child tenant's connections, which it deliberately does not do:
+
 ```typescript
-import { initMultiTenant, withRuntimeFallback } from "@authhero/multi-tenancy";
+import { initMultiTenant } from "@authhero/multi-tenancy";
 
-// First, wrap adapters with runtime fallback
 const baseAdapters = createAdapters(db);
-const fallbackAdapters = withRuntimeFallback(baseAdapters, {
-  controlPlaneTenantId: "control_plane",
-  controlPlaneClientId: "control_plane_client",
-});
 
-// Then hand the wrapped adapters to the multi-tenancy init
+// initMultiTenant wraps dataAdapter with the runtime fallback, and keeps the
+// management API's adapter free of connection, client and email-provider merging
 const { app } = initMultiTenant({
-  dataAdapter: fallbackAdapters,
+  dataAdapter: baseAdapters,
   controlPlane: {
     tenantId: "control_plane",
     clientId: "control_plane_client",
   },
 });
 ```
+
+Use `withRuntimeFallback` directly only with `init()` from `authhero`, as in the examples above.
 
 ## How It Works
 

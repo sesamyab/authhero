@@ -323,6 +323,13 @@ async function main() {
     await backfillEntity(`linked users (${tenant.id})`, linkedUsers, (user) =>
       sqliteAdapter.users.create(tenant.id, user),
     );
+
+    // Password hashes live in their own adapter; copy each user's current one
+    const users = [...primaryUsers, ...linkedUsers];
+    await backfillEntity(`passwords (${tenant.id})`, users, async (user) => {
+      const password = await mysqlAdapter.passwords.get(tenant.id, user.user_id);
+      if (password) await sqliteAdapter.passwords.create(tenant.id, password);
+    });
   }
   // Add other entities in correct order
 
@@ -340,36 +347,68 @@ tsx scripts/backfill-data.ts
 
 ### Phase 4: Verification
 
-Create a verification script that compares the full sets of ids on both sides:
+Create a verification script that compares both sides record by record: every id must exist on both sides, and the fields that matter for login must hold the same values. Comparing counts or ids alone would pass a user whose email or password hash differs.
 
 ```typescript
 // scripts/verify-migration.ts
+import type { User } from "@authhero/adapter-interfaces";
 import { mysqlAdapter, sqliteAdapter } from "../src/database";
 import { listAllTenants, listLinkedUsers, listPrimaryUsers } from "./list-all";
 
-function compareIds(entityName: string, mysqlIds: string[], sqliteIds: string[]) {
-  console.log(`Verifying ${entityName}...`);
-  console.log(`  MySQL: ${mysqlIds.length} records`);
-  console.log(`  SQLite: ${sqliteIds.length} records`);
+// The user fields that must match. Adapters differ in whether an unset field
+// is null or missing, so both count as "unset".
+const USER_FIELDS = [
+  "email",
+  "email_verified",
+  "phone_number",
+  "phone_verified",
+  "username",
+  "connection",
+  "provider",
+  "is_social",
+  "linked_to",
+  "blocked",
+] as const;
 
-  const inSQLite = new Set(sqliteIds);
-  const inMySQL = new Set(mysqlIds);
-  const missingInSQLite = mysqlIds.filter((id) => !inSQLite.has(id));
-  const extraInSQLite = sqliteIds.filter((id) => !inMySQL.has(id));
+function compareRecords<T>(
+  entityName: string,
+  mysqlRecords: T[],
+  sqliteRecords: T[],
+  getId: (record: T) => string,
+  fields: readonly (keyof T)[],
+) {
+  console.log(`Verifying ${entityName}...`);
+  console.log(`  MySQL: ${mysqlRecords.length} records`);
+  console.log(`  SQLite: ${sqliteRecords.length} records`);
+
+  const sqliteById = new Map(sqliteRecords.map((record) => [getId(record), record]));
+  const mysqlIds = new Set(mysqlRecords.map(getId));
+  const missingInSQLite = [...mysqlIds].filter((id) => !sqliteById.has(id));
+  const extraInSQLite = [...sqliteById.keys()].filter((id) => !mysqlIds.has(id));
+  const differing = mysqlRecords.filter((record) => {
+    const other = sqliteById.get(getId(record));
+    return (
+      other !== undefined &&
+      fields.some((field) => (record[field] ?? null) !== (other[field] ?? null))
+    );
+  });
 
   if (missingInSQLite.length > 0) {
     console.error(`  ✗ ${missingInSQLite.length} records missing in SQLite`);
     console.error(`  Missing IDs:`, missingInSQLite.slice(0, 5));
-    return false;
   }
-
+  if (differing.length > 0) {
+    console.error(`  ✗ ${differing.length} records differ`);
+    console.error(`  Differing IDs:`, differing.slice(0, 5).map(getId));
+  }
   if (extraInSQLite.length > 0) {
     console.warn(`  ⚠ ${extraInSQLite.length} extra records in SQLite`);
     console.warn(`  Extra IDs:`, extraInSQLite.slice(0, 5));
   }
 
-  console.log(`  ✓ ${entityName} verified\n`);
-  return true;
+  const ok = missingInSQLite.length === 0 && differing.length === 0;
+  if (ok) console.log(`  ✓ ${entityName} verified\n`);
+  return ok;
 }
 
 async function main() {
@@ -379,11 +418,10 @@ async function main() {
   const mysqlTenants = await listAllTenants(mysqlAdapter);
   const sqliteTenants = await listAllTenants(sqliteAdapter);
   results.push(
-    compareIds(
-      "tenants",
-      mysqlTenants.map((tenant) => tenant.id),
-      sqliteTenants.map((tenant) => tenant.id),
-    ),
+    compareRecords("tenants", mysqlTenants, sqliteTenants, (t) => t.id, [
+      "friendly_name",
+      "audience",
+    ]),
   );
 
   for (const tenant of mysqlTenants) {
@@ -392,10 +430,12 @@ async function main() {
       listPrimaryUsers(sqliteAdapter, tenant.id),
     ]);
     results.push(
-      compareIds(
+      compareRecords(
         `users (${tenant.id})`,
-        mysqlUsers.map((user) => user.user_id),
-        sqliteUsers.map((user) => user.user_id),
+        mysqlUsers,
+        sqliteUsers,
+        (user) => user.user_id,
+        USER_FIELDS,
       ),
     );
 
@@ -405,12 +445,30 @@ async function main() {
       linkedUsers.map((user) => sqliteAdapter.users.get(tenant.id, user.user_id)),
     );
     results.push(
-      compareIds(
+      compareRecords(
         `linked users (${tenant.id})`,
-        linkedUsers.map((user) => user.user_id),
-        linkedInSQLite.flatMap((user) => (user ? [user.user_id] : [])),
+        linkedUsers,
+        linkedInSQLite.filter((user): user is User => user !== null),
+        (user) => user.user_id,
+        USER_FIELDS,
       ),
     );
+
+    // Password hashes must match exactly, or those users can't log in
+    let passwordMismatches = 0;
+    for (const user of [...mysqlUsers, ...linkedUsers]) {
+      const [before, after] = await Promise.all([
+        mysqlAdapter.passwords.get(tenant.id, user.user_id),
+        sqliteAdapter.passwords.get(tenant.id, user.user_id),
+      ]);
+      if ((before?.password ?? null) !== (after?.password ?? null)) {
+        passwordMismatches++;
+      }
+    }
+    if (passwordMismatches > 0) {
+      console.error(`  ✗ ${passwordMismatches} password hashes differ (${tenant.id})`);
+    }
+    results.push(passwordMismatches === 0);
   }
 
   // Add other entities...

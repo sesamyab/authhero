@@ -13,7 +13,7 @@ The primary SQL adapter, built on Drizzle ORM:
 
 - SQLite and Cloudflare D1
 - Schema-first approach with pre-generated migrations shipped in the package
-- Used by all `create-authhero` templates
+- Used by every `create-authhero` template with a SQL database (all except `aws-sst`, which uses DynamoDB, and `proxy`)
 
 ```typescript
 import createAdapters from "@authhero/drizzle";

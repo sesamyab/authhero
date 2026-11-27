@@ -110,28 +110,42 @@ app.get("/example", async (ctx) => {
 
 ### Type-Safe Access
 
-`authhero` does not export its `Variables` type, so declare the variables your handler reads:
+`user` is set by the authentication middleware, which runs inside the Management API and only for routes whose OpenAPI definition declares `Bearer` security. A route of your own gets it when you mount it there with `managementApiExtensions`. `authhero` does not export its `Variables` type, so declare the variables your handler reads:
 
 ```typescript
-import type { Context } from "hono";
+import { OpenAPIHono, createRoute } from "@hono/zod-openapi";
+import { init } from "authhero";
 
 type AuthHeroVariables = {
   user?: { sub: string; tenant_id: string };
   countryCode?: string;
 };
 
-app.get("/typed-example", async (ctx: Context<{ Variables: AuthHeroVariables }>) => {
-  // TypeScript will provide full autocomplete and type checking
-  const user = ctx.get("user"); // { sub: string; tenant_id: string } | undefined
-  const countryCode = ctx.get("countryCode"); // CountryCode | undefined
+const whoami = new OpenAPIHono<{ Variables: AuthHeroVariables }>();
 
-  if (user) {
-    console.log(`Authenticated user: ${user.sub}`);
-  }
+whoami.openapi(
+  createRoute({
+    method: "get",
+    path: "/",
+    security: [{ Bearer: [] }], // the middleware validates the token and sets `user`
+    responses: { 200: { description: "The authenticated caller" } },
+  }),
+  async (ctx) => {
+    const user = ctx.get("user"); // { sub: string; tenant_id: string } | undefined
+    const countryCode = ctx.get("countryCode");
 
-  return ctx.json({ authenticated: !!user });
+    return ctx.json({ sub: user?.sub, countryCode });
+  },
+);
+
+// Served at GET /api/v2/whoami
+const { app } = init({
+  dataAdapter,
+  managementApiExtensions: [{ path: "/whoami", router: whoami }],
 });
 ```
+
+On a plain route (`app.get(...)`), or on one without `Bearer` security, `user` is `undefined` even when the request carries a valid token.
 
 ### Setting Variables
 

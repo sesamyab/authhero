@@ -17,7 +17,7 @@ The core `authhero` package never imports a database driver. It depends only on 
 
 AuthHero supports several database adapters:
 
-- **Drizzle Adapter**: The primary adapter (Drizzle ORM; SQLite and Cloudflare D1) — used by all `create-authhero` templates
+- **Drizzle Adapter**: The primary adapter (Drizzle ORM; SQLite and Cloudflare D1) — used by the `create-authhero` templates with a SQL database
 - **Kysely Adapter**: Tested on SQLite and MySQL (PlanetScale) — maintained for existing deployments
 - **AWS Adapter**: DynamoDB, for serverless deployments on AWS
 - **Custom Adapters**: Implementing the adapter interfaces for other database systems

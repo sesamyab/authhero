@@ -59,7 +59,7 @@ The admin user is not created by the CLI. The `local` template serves HTTPS on `
 ### Non-Interactive Mode
 
 ```bash
-npx create-authhero my-app --template local --yes
+npx create-authhero my-app --template local --package-manager npm --yes
 ```
 
 #### CLI Options

@@ -68,7 +68,7 @@ const dataAdapter = createAdapters(db);
 
 ## Using the adapters
 
-`createAdapters(db)` returns a `DataAdapters` object with one adapter per entity. Every method takes the tenant id first:
+`createAdapters(db)` returns a `DataAdapters` object with one adapter per entity. Methods on tenant-scoped entities take the tenant id first. The exceptions are the `tenants` adapter itself (`create` and `list` take only their params, `get`/`update`/`remove` the tenant id), signing keys, which are keyed by `kid`, and `clients.getByClientId`, which resolves a client id to its tenant.
 
 ```typescript
 const dataAdapter = createAdapters(db);
