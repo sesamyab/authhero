@@ -3,7 +3,10 @@ import { testClient } from "hono/testing";
 import * as x509 from "@peculiar/x509";
 import { XMLParser } from "fast-xml-parser";
 import { AuthorizationResponseType } from "@authhero/adapter-interfaces";
-import { inflateDecompress } from "@authhero/saml/core";
+import {
+  inflateDecompress,
+  verifyRedirectBindingSignature,
+} from "@authhero/saml/core";
 import { LocalSamlSigner } from "@authhero/saml/local-signer";
 import { LocalSamlVerifier } from "@authhero/saml/local-verifier";
 import { getTestServer } from "../helpers/test-server";
@@ -57,15 +60,18 @@ function buildResponse(opts: {
   inResponseTo: string;
   status?: string;
   nameId?: string;
+  connection?: string;
 }) {
+  const acs = `http://localhost:3000/login/callback?connection=${opts.connection ?? CONNECTION}`;
+  const audience = `urn:auth0:tenantId:${opts.connection ?? CONNECTION}`;
   const status = opts.status ?? "urn:oasis:names:tc:SAML:2.0:status:Success";
   const assertion =
     status === "urn:oasis:names:tc:SAML:2.0:status:Success"
       ? `<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_a1" Version="2.0" IssueInstant="${iso(0)}">` +
         `<saml:Issuer>${IDP}</saml:Issuer>` +
         `<saml:Subject><saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">${opts.nameId ?? "jane@example.com"}</saml:NameID>` +
-        `<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData InResponseTo="${opts.inResponseTo}" NotOnOrAfter="${iso(300_000)}" Recipient="${ACS.replace(/&/g, "&amp;")}"/></saml:SubjectConfirmation></saml:Subject>` +
-        `<saml:Conditions NotBefore="${iso(-60_000)}" NotOnOrAfter="${iso(300_000)}"><saml:AudienceRestriction><saml:Audience>${SP_ENTITY_ID}</saml:Audience></saml:AudienceRestriction></saml:Conditions>` +
+        `<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData InResponseTo="${opts.inResponseTo}" NotOnOrAfter="${iso(300_000)}" Recipient="${acs.replace(/&/g, "&amp;")}"/></saml:SubjectConfirmation></saml:Subject>` +
+        `<saml:Conditions NotBefore="${iso(-60_000)}" NotOnOrAfter="${iso(300_000)}"><saml:AudienceRestriction><saml:Audience>${audience}</saml:Audience></saml:AudienceRestriction></saml:Conditions>` +
         `<saml:AuthnStatement AuthnInstant="${iso(0)}" SessionIndex="_sess1"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement>` +
         `<saml:AttributeStatement>` +
         `<saml:Attribute Name="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"><saml:AttributeValue>Jane</saml:AttributeValue></saml:Attribute>` +
@@ -130,7 +136,10 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
     return server;
   }
 
-  async function startLogin(server: Awaited<ReturnType<typeof setup>>) {
+  async function startLogin(
+    server: Awaited<ReturnType<typeof setup>>,
+    connection = CONNECTION,
+  ) {
     const oauthClient = testClient(server.oauthApp, server.env);
     const response = await oauthClient.authorize.$get(
       {
@@ -138,7 +147,7 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
           client_id: "clientId",
           redirect_uri: "https://example.com/callback",
           state: "state",
-          connection: CONNECTION,
+          connection,
           response_type: AuthorizationResponseType.CODE,
         },
       },
@@ -147,8 +156,11 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
     return response;
   }
 
-  async function redirectLogin(server: Awaited<ReturnType<typeof setup>>) {
-    const response = await startLogin(server);
+  async function redirectLogin(
+    server: Awaited<ReturnType<typeof setup>>,
+    connection = CONNECTION,
+  ) {
+    const response = await startLogin(server, connection);
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get("location")!);
     const relayState = location.searchParams.get("RelayState")!;
@@ -176,9 +188,10 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
   function postAcs(
     server: Awaited<ReturnType<typeof setup>>,
     fields: Record<string, string>,
+    connection = CONNECTION,
   ) {
     return server.oauthApp.request(
-      `/login/callback?connection=${CONNECTION}`,
+      `/login/callback?connection=${connection}`,
       {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -351,7 +364,77 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
     expect(location.searchParams.get("SigAlg")).toBe(
       "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
     );
-    expect(location.searchParams.get("Signature")).toBeTruthy();
+
+    // The signature verifies with the tenant certificate, and covers the
+    // RelayState and the request.
+    const spki = new Uint8Array(
+      new x509.X509Certificate(samlKey.cert).publicKey.rawData,
+    );
+    const rawQuery = location.search.slice(1);
+    const verify = (query: string) =>
+      verifyRedirectBindingSignature({
+        rawQuery: query,
+        parameter: "SAMLRequest",
+        spkiKeys: [spki],
+      });
+    expect(await verify(rawQuery)).toBe(true);
+    expect(
+      await verify(rawQuery.replace(/RelayState=[^&]+/, "RelayState=changed")),
+    ).toBe(false);
+    expect(
+      await verify(rawQuery.replace(/SAMLRequest=[^&]+/, "SAMLRequest=AAAA")),
+    ).toBe(false);
+  });
+
+  it("never hands one SAML connection's user to another IdP asserting the same email", async () => {
+    const server = await setup();
+    await server.env.data.connections.create("tenantId", {
+      id: "saml-partner",
+      name: "partner-saml",
+      strategy: "samlp",
+      options: {
+        signInEndpoint: SIGN_IN,
+        signingCert: idpKey.certPem,
+        issuer: IDP,
+      },
+    });
+
+    const first = await redirectLogin(server);
+    await postAcs(server, {
+      SAMLResponse: await signedResponse(idpKey, {
+        inResponseTo: first.request["@_ID"],
+      }),
+      RelayState: first.relayState,
+    });
+    expect(
+      await server.env.data.users.get(
+        "tenantId",
+        `samlp|${CONNECTION}|jane@example.com`,
+      ),
+    ).not.toBeNull();
+
+    // The partner IdP asserts the same email for a different subject.
+    const second = await redirectLogin(server, "partner-saml");
+    const response = await postAcs(
+      server,
+      {
+        SAMLResponse: await signedResponse(idpKey, {
+          inResponseTo: second.request["@_ID"],
+          connection: "partner-saml",
+        }),
+        RelayState: second.relayState,
+      },
+      "partner-saml",
+    );
+    const location = response.headers.get("location") ?? "";
+    expect(response.status === 302 && !location.includes("error")).toBe(false);
+    const sessions = await server.env.data.sessions.list("tenantId", {
+      page: 0,
+      per_page: 100,
+      include_totals: false,
+    });
+    // Only the first login produced a session.
+    expect(sessions.sessions).toHaveLength(1);
   });
 
   it("uses an auto-submitting form for the HTTP-POST binding", async () => {

@@ -1005,13 +1005,19 @@ export async function getOrCreateUserByProvider(
         connection,
       )
     : undefined;
+  // samlp user ids embed the connection (samlp|{connection}|{nameid}) while
+  // every SAML connection shares the `samlp` provider, so an email + provider
+  // lookup would hand one SAML connection's user to another IdP that asserts
+  // the same email. The fallback exists for rows from before ids were
+  // provider|sub, which samlp never had: match the asserted subject only.
+  const exactIdOnly = provider === "samlp" && expectedUserId !== undefined;
   const findExistingIdentity = async (): Promise<User | null> => {
     if (expectedUserId) {
       const byId = await ctx.env.data.users.get(
         client.tenant.id,
         expectedUserId,
       );
-      if (byId) {
+      if (byId || exactIdOnly) {
         return byId;
       }
     }

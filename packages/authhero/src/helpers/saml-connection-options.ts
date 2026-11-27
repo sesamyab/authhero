@@ -30,6 +30,8 @@ async function fetchMetadata(
       ...ssrfFetchOptionsFromEnv(ctx.env),
       maxBytes: MAX_METADATA_BYTES,
       timeoutMs: 10_000,
+      accept:
+        "application/samlmetadata+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
     });
     if (response.status < 200 || response.status >= 300) {
       badRequest(

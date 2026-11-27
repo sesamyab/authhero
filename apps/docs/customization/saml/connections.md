@@ -107,7 +107,7 @@ The IdP must:
 3. The IdP posts a `SAMLResponse` to the ACS URL.
 4. AuthHero validates it and continues the login like any other connection: account linking, actions, MFA and the token response all apply.
 
-The user id is Auth0's `samlp|{connection}|{user id}`.
+The user id is Auth0's `samlp|{connection}|{user id}`. Users are found by that id only, never by email: when another SAML connection's IdP asserts an email that a user of a different SAML connection already has, the login fails with a conflict instead of signing in to that account.
 
 ### What is validated
 
