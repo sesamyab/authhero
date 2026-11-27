@@ -247,22 +247,23 @@ export async function listPrimaryUsers(adapter: DataAdapters, tenantId: string) 
   return users;
 }
 
-// The Kysely adapter's offset mode does return linked accounts, so page
-// through them with a filter. (The Drizzle adapter never lists them; read
-// them one by one with users.get.)
+// The Kysely adapter's offset mode does return linked accounts. Read them in
+// a single query: a single SELECT is a consistent snapshot, whereas offset
+// pages would skip an account whenever another one is deleted between pages.
+// (The Drizzle adapter never lists linked accounts; read them one by one with
+// users.get.)
+const LINKED_USERS_LIMIT = 100_000;
+
 export async function listLinkedUsers(adapter: DataAdapters, tenantId: string) {
-  const users: User[] = [];
-  const perPage = 100;
-  for (let page = 0; ; page++) {
-    const result = await adapter.users.list(tenantId, {
-      page,
-      per_page: perPage,
-      q: "_exists_:linked_to",
-      sort: { sort_by: "created_at", sort_order: "asc" },
-    });
-    users.push(...result.users);
-    if (result.users.length < perPage) return users;
+  const { users } = await adapter.users.list(tenantId, {
+    page: 0,
+    per_page: LINKED_USERS_LIMIT,
+    q: "_exists_:linked_to",
+  });
+  if (users.length === LINKED_USERS_LIMIT) {
+    throw new Error(`Tenant ${tenantId} may have more linked accounts; raise LINKED_USERS_LIMIT`);
   }
+  return users;
 }
 ```
 
@@ -401,12 +402,16 @@ function compareRecords<T>(
     console.error(`  ✗ ${differing.length} records differ`);
     console.error(`  Differing IDs:`, differing.slice(0, 5).map(getId));
   }
+  // A record only SQLite has would survive the switchover; reconcile it first
   if (extraInSQLite.length > 0) {
-    console.warn(`  ⚠ ${extraInSQLite.length} extra records in SQLite`);
-    console.warn(`  Extra IDs:`, extraInSQLite.slice(0, 5));
+    console.error(`  ✗ ${extraInSQLite.length} extra records in SQLite`);
+    console.error(`  Extra IDs:`, extraInSQLite.slice(0, 5));
   }
 
-  const ok = missingInSQLite.length === 0 && differing.length === 0;
+  const ok =
+    missingInSQLite.length === 0 &&
+    differing.length === 0 &&
+    extraInSQLite.length === 0;
   if (ok) console.log(`  ✓ ${entityName} verified\n`);
   return ok;
 }
