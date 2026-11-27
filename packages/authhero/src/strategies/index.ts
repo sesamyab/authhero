@@ -9,6 +9,7 @@ import * as windowslive from "./windowslive";
 import * as waad from "./waad";
 import * as oidc from "./oidc";
 import * as oauth2 from "./oauth2";
+import * as samlp from "./samlp";
 import { Bindings, Variables } from "../types";
 import { getAuthUrl } from "../variables";
 
@@ -56,7 +57,15 @@ export type StrategyHandler = {
     ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
     connection: Connection,
     loginHint?: string,
-  ) => Promise<{ redirectUrl: string; code: string; codeVerifier?: string }>;
+  ) => Promise<{
+    redirectUrl: string;
+    code: string;
+    codeVerifier?: string;
+    // When set, the browser must POST these fields to `redirectUrl` (an
+    // auto-submitting form) instead of following a redirect — the SAML
+    // HTTP-POST binding.
+    formPost?: Record<string, string>;
+  }>;
   validateAuthorizationCodeAndGetUser: (
     ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
     connection: Connection,
@@ -74,6 +83,10 @@ export type StrategyHandler = {
     codeVerifier?: string,
   ) => Promise<UserInfoWithRaw>;
   disableEmbeddedBrowsers?: boolean;
+  // Consume the `oauth2_state` on the first callback. For strategies whose
+  // callback carries a bearer credential (a SAMLResponse) rather than a
+  // single-use upstream code.
+  singleUseState?: boolean;
 };
 
 // Built-in strategies that can be displayed on the login page
@@ -90,6 +103,7 @@ export const BUILTIN_STRATEGIES: Record<string, StrategyHandler> = {
   // Okta enterprise connections are OIDC under the hood; aliasing the OIDC
   // handler keeps the wire-level `okta|<sub>` user_id prefix that Auth0 emits.
   [Strategy.OKTA]: oidc,
+  [Strategy.SAMLP]: samlp,
 };
 
 export function getStrategy(
@@ -114,7 +128,7 @@ export function getStrategy(
 // Enterprise strategies (used for classifying the auth session, not for
 // provider-prefix resolution — Auth0 prefixes user_ids with the strategy
 // name regardless of social/enterprise; the connection name is embedded
-// elsewhere in the id body for samlp/oidc).
+// in the id body for samlp: samlp|<connection>|<nameid>).
 export const ENTERPRISE_STRATEGIES = new Set<string>([
   Strategy.OIDC,
   Strategy.SAMLP,

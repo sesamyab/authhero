@@ -23,7 +23,7 @@ import {
 } from "@authhero/adapter-interfaces";
 import type { RolePermissionHooks, Hooks } from "./Hooks";
 import type { OutboxMetricsSink } from "./OutboxMetrics";
-import type { SamlSigner } from "@authhero/saml/core";
+import type { SamlSignatureVerifier, SamlSigner } from "@authhero/saml/core";
 import type { SigningCertificateAuthority } from "../helpers/signing-certificate-authority";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Handler, MiddlewareHandler } from "hono";
@@ -361,6 +361,21 @@ export interface AuthHeroConfig {
 
   allowedOrigins?: string[];
   samlSigner?: SamlSigner;
+
+  /**
+   * Verifies the signatures of SAML responses from upstream identity
+   * providers (`samlp` connections). Required for SAML connections to work.
+   *
+   * @example
+   * ```typescript
+   * import { LocalSamlVerifier } from "@authhero/saml/local-verifier";
+   *
+   * init({ dataAdapter, samlVerifier: new LocalSamlVerifier() });
+   * ```
+   * `LocalSamlVerifier` uses xml-crypto and runs on Node.js and on
+   * Cloudflare Workers with the `nodejs_compat` flag.
+   */
+  samlVerifier?: SamlSignatureVerifier;
 
   /**
    * Auth0-style action hooks for auth flow events.

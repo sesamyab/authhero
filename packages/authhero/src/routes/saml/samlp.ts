@@ -25,6 +25,88 @@ import { isValidRedirectUrl } from "../../utils/is-valid-redirect-url";
 import { JSONHTTPException } from "../../errors/json-http-exception";
 import { resolveSigningKeys } from "../../helpers/signing-keys";
 import { defineRoute } from "../../utils/define-route";
+import { createSamlSpMetadata } from "@authhero/saml/core";
+import { findConnectionByName } from "../../utils/connections";
+import { getSamlAcsUrl, getSamlSpEntityId } from "../../strategies/samlp";
+
+// SP metadata for an inbound `samlp` connection (Auth0's
+// /samlp/metadata?connection=). The IdP admin imports it to register AuthHero.
+const getSpMetadata = defineRoute({
+  route: createRoute({
+    tags: ["saml"],
+    method: "get",
+    path: "/metadata",
+    request: {
+      query: z.object({
+        connection: z.string(),
+      }),
+    },
+    responses: {
+      200: {
+        description: "SAML service provider metadata",
+        content: {
+          "text/xml": {
+            schema: z.string(),
+          },
+        },
+      },
+      400: {
+        description: "Bad Request",
+      },
+      404: {
+        description: "Connection not found",
+      },
+    },
+  }),
+  handler: async (ctx) => {
+    const { connection: connectionName } = ctx.req.valid("query");
+    const tenantId = ctx.var.tenant_id;
+    if (!tenantId) {
+      throw new JSONHTTPException(400, {
+        error: "invalid_request",
+        error_description: "Tenant could not be resolved from the request",
+      });
+    }
+
+    const connection = await findConnectionByName(
+      ctx,
+      tenantId,
+      connectionName,
+    );
+    if (!connection || connection.strategy !== "samlp") {
+      throw new JSONHTTPException(404, {
+        error: "not_found",
+        error_description: "SAML connection not found",
+      });
+    }
+
+    // Publish the tenant's SAML certificates when AuthnRequests are signed,
+    // so the IdP can verify them.
+    let signingCertificates: string[] = [];
+    if (connection.options?.signSAMLRequest) {
+      const keys = await resolveSigningKeys(
+        ctx.env.data.keys,
+        tenantId,
+        ctx.env.signingKeyMode,
+        { purpose: "publish", type: "saml_encryption" },
+      );
+      signingCertificates = keys.map((key) =>
+        new X509Certificate(key.cert).toString("base64"),
+      );
+    }
+
+    const metadata = createSamlSpMetadata({
+      entityId: getSamlSpEntityId(tenantId, connection),
+      assertionConsumerServiceUrl: getSamlAcsUrl(ctx, connection),
+      signingCertificates,
+      authnRequestsSigned: Boolean(connection.options?.signSAMLRequest),
+    });
+
+    return new Response(metadata, {
+      headers: { "Content-Type": "text/xml" },
+    });
+  },
+});
 const getMetadataByClient_id = defineRoute({
   route: createRoute({
     tags: ["saml"],
@@ -427,6 +509,8 @@ export const samlpRoutes = new OpenAPIHono<{
   Bindings: Bindings;
   Variables: Variables;
 }>().openapiRoutes([
+  // Before /{client_id}, which would otherwise match /metadata.
+  getSpMetadata,
   getMetadataByClient_id,
   getByClient_id,
   getLogout,

@@ -669,6 +669,10 @@ gtag('config', 'G-DNZWG3PF2L');`,
               collapsed: true,
               items: [
                 {
+                  text: "SAML Connections",
+                  link: "/customization/saml/connections",
+                },
+                {
                   text: "Configuration",
                   link: "/customization/saml/configuration",
                 },

@@ -113,6 +113,13 @@ export default defineConfig(async ({ mode }) => {
           replacement: path.resolve(__dirname, "../saml/dist/local-signer.mjs"),
         },
         {
+          find: "@authhero/saml/local-verifier",
+          replacement: path.resolve(
+            __dirname,
+            "../saml/dist/local-verifier.mjs",
+          ),
+        },
+        {
           find: "@authhero/saml",
           replacement: path.resolve(__dirname, "../saml/dist/saml.mjs"),
         },

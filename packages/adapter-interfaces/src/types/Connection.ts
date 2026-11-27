@@ -212,6 +212,37 @@ export const connectionOptionsSchema = z.object({
   set_user_root_attributes: z
     .enum(["on_each_login", "on_first_login", "never_on_login"])
     .optional(),
+  // SAML (`samlp`) enterprise connections, with Auth0's option names.
+  // The IdP's SingleSignOnService URL.
+  signInEndpoint: z.string().optional(),
+  // The IdP's SingleLogoutService URL.
+  signOutEndpoint: z.string().optional(),
+  // The IdP signing certificate: PEM, base64 DER, or base64 of the PEM (the
+  // form Auth0 documents). Responses must be signed with it.
+  signingCert: z.string().optional(),
+  // Further trusted IdP certificates, e.g. the incoming one during the IdP's
+  // certificate rotation. Filled from metadata when it lists several.
+  signingCerts: z.array(z.string()).optional(),
+  // IdP metadata; when set on create/update the management API fills
+  // signInEndpoint, signOutEndpoint, signingCert(s) and `issuer` from it.
+  metadataUrl: z.string().optional(),
+  metadataXml: z.string().optional(),
+  // Sign AuthnRequests with the tenant's SAML key (HTTP-Redirect binding).
+  signSAMLRequest: z.boolean().optional(),
+  signatureAlgorithm: z.enum(["rsa-sha256", "rsa-sha1"]).optional(),
+  digestAlgorithm: z.enum(["sha256", "sha1"]).optional(),
+  // Binding used to send the AuthnRequest: HTTP-Redirect (default) or
+  // HTTP-POST.
+  protocolBinding: z.string().optional(),
+  // SAML attribute holding the user id; defaults to the NameID.
+  user_id_attribute: z.string().optional(),
+  // Profile field → SAML attribute name(s), overriding the defaults.
+  fieldsMap: z
+    .record(z.string(), z.union([z.string(), z.array(z.string())]))
+    .optional(),
+  // SP entity ID (the assertion audience). Defaults to
+  // `urn:auth0:{tenant_id}:{connection_name}`, as in Auth0.
+  entityId: z.string().optional(),
 });
 
 // terraform's auth0 provider serializes unset connection-options fields as
