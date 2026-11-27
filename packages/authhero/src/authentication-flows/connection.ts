@@ -35,6 +35,7 @@ import { writeTryConnectionResult } from "./try-connection";
 import { nanoid } from "nanoid";
 import type { SessionCookieDiagnostics } from "../utils/cookies";
 import { createLoginSessionWithData } from "../state-machines/login-session-data";
+import { formPostResponse } from "../utils/form-post";
 
 /**
  * The management API trims connection secrets on write, but a secret saved
@@ -129,6 +130,12 @@ export async function connectionAuth(
       Date.now() + OAUTH2_CODE_EXPIRES_IN_SECONDS * 1000,
     ).toISOString(),
   });
+
+  // SAML HTTP-POST binding: the browser carries the request to the IdP in an
+  // auto-submitting form.
+  if (result.formPost) {
+    return formPostResponse(result.redirectUrl, result.formPost, new Headers());
+  }
 
   // Use direct Response instead of ctx.redirect() to avoid double encoding
   return new Response(null, {
@@ -256,6 +263,20 @@ export async function connectionCallback(
   }
 
   const strategy = getStrategy(ctx, connection.strategy);
+
+  // A replayed SAMLResponse would otherwise log in again for as long as the
+  // assertion is valid. Consume before validating so concurrent replays race
+  // on the same atomic update.
+  if (
+    strategy.singleUseState &&
+    !(await env.data.codes.consume(client.tenant.id, state))
+  ) {
+    await logMessage(ctx, client.tenant.id, {
+      type: LogTypes.FAILED_LOGIN,
+      description: "Connection state already used",
+    });
+    throw new JSONHTTPException(403, { message: "State already used" });
+  }
 
   if (isTryMode) {
     const completedAt = new Date().toISOString();

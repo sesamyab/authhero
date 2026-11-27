@@ -90,9 +90,9 @@ app.post("/sign", async (c) => {
 });
 ```
 
-### LocalSamlSigner (Node.js Only)
+### LocalSamlSigner (Node.js, or Workers with nodejs_compat)
 
-Uses the `xml-crypto` library for local signing. Only works in Node.js environments:
+Uses the `xml-crypto` library for local signing:
 
 ```typescript
 import { LocalSamlSigner } from "@authhero/saml/local-signer";
@@ -100,13 +100,66 @@ import { LocalSamlSigner } from "@authhero/saml/local-signer";
 const signer = new LocalSamlSigner();
 ```
 
-::: warning Node.js Only
-`LocalSamlSigner` requires Node.js crypto APIs and cannot run in edge/serverless environments like Cloudflare Workers.
+::: warning Needs node:crypto
+`LocalSamlSigner` uses Node.js crypto APIs. It runs on Node.js and on Cloudflare Workers with the `nodejs_compat` compatibility flag (checked with xml-crypto 6.1 on workerd), but not on runtimes without `node:crypto`. Use `HttpSamlSigner` there.
 :::
 
 ::: tip Bundle Size
 Importing `LocalSamlSigner` adds the `xml-crypto` dependency and its transitive dependencies to your bundle, increasing it by **~200 KB** (~54 KB gzipped). If you only need HTTP-based signing, use `HttpSamlSigner` to keep your bundle 3x smaller.
 :::
+
+## Applications (AuthHero as Identity Provider)
+
+An application with the `samlp` addon receives signed assertions from AuthHero. Give the service provider:
+
+| Setting                | Value                                                                   |
+| ---------------------- | ----------------------------------------------------------------------- |
+| SSO URL                | `https://{auth-domain}/samlp/{client_id}` (HTTP-Redirect and HTTP-POST) |
+| Single logout URL      | `https://{auth-domain}/samlp/{client_id}/logout`                        |
+| IdP metadata           | `https://{auth-domain}/samlp/metadata/{client_id}`                      |
+| IdP entity ID / Issuer | the tenant's issuer (`ISSUER`)                                          |
+
+The `AssertionConsumerServiceURL` of every `AuthnRequest` must be one of the application's callback URLs.
+
+Addon settings (`addons.samlp`):
+
+| Setting                   | Description                                                                                                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `audience`                | Audience of the assertion. Defaults to the client id.                                                                                                       |
+| `signingCert`             | The SP's certificate (PEM). When set, `AuthnRequest`s and `LogoutRequest`s must be signed with it, as in Auth0. HTTP-POST signatures need a `samlVerifier`. |
+| `require_signed_requests` | Refuse unsigned requests. Without `signingCert` every request is refused, since nothing can be verified.                                                    |
+| `logout.callback`         | Where the `LogoutResponse` is sent.                                                                                                                         |
+
+## Signature Verification (SAML Connections)
+
+[SAML connections](./connections.md), where AuthHero is the service provider, verify the signature of every response from the identity provider. Verification is pluggable like signing:
+
+```typescript
+import { init } from "authhero";
+import { LocalSamlVerifier } from "@authhero/saml/local-verifier";
+
+const app = init({
+  dataAdapter,
+  samlVerifier: new LocalSamlVerifier(),
+});
+```
+
+`LocalSamlVerifier` uses `xml-crypto` and has the same runtime requirements as `LocalSamlSigner`; it loads xml-crypto on the first SAML login, not at startup. To verify some other way, implement `SamlSignatureVerifier`:
+
+```typescript
+import type { SamlSignatureVerifier } from "authhero";
+
+class MyVerifier implements SamlSignatureVerifier {
+  // Return the canonical XML of every element covered by a valid signature,
+  // [] when the message is unsigned, and throw when a signature is invalid.
+  // Trust only `certificates`, never a certificate inside the message.
+  async verifySignedReferences(xml: string, certificates: string[]) {
+    // ...
+  }
+}
+```
+
+Without a verifier, SAML connections reject every response.
 
 ## Custom Signer Implementation
 
@@ -199,7 +252,7 @@ import { HttpSamlSigner } from "@authhero/saml/core";
 
 **Bundled Size:** ~105 KB minified (28 KB gzipped)
 
-### Using Local Signer (Node.js Only)
+### Using Local Signer (Node.js, or Workers with nodejs_compat)
 
 ```typescript
 import { LocalSamlSigner } from "@authhero/saml/local-signer";

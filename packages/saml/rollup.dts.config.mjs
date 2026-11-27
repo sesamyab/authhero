@@ -22,4 +22,10 @@ export default [
     external,
     plugins,
   },
+  {
+    input: "./dist/types/local-verifier.d.ts",
+    output: { file: "./dist/local-verifier.d.ts", format: "es" },
+    external,
+    plugins,
+  },
 ];

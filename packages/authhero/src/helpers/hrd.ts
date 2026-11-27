@@ -16,8 +16,7 @@ export function findHrdConnection(
 
   const matches = connections.filter((c) => {
     // Only route HRD to strategies that have a registered redirect handler.
-    // This excludes Username-Password, email, sms, and SAMLP (which uses a
-    // separate, non-connectionAuth path).
+    // This excludes Username-Password, email and sms.
     const isRegistered =
       c.strategy in BUILTIN_STRATEGIES ||
       (envStrategies !== undefined && c.strategy in envStrategies);

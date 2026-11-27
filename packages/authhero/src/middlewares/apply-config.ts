@@ -42,6 +42,10 @@ export function applyConfigMiddleware(
       ctx.env.samlSigner = config.samlSigner;
     }
 
+    if (config.samlVerifier) {
+      ctx.env.samlVerifier = config.samlVerifier;
+    }
+
     if (config.poweredByLogo) {
       ctx.env.poweredByLogo = config.poweredByLogo;
     }

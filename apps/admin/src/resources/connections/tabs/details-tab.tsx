@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useTenantId } from "@/TenantContext";
 
 const isDbConnection = (strategy?: string) =>
   isDatabaseConnectionStrategy(strategy);
@@ -25,7 +26,6 @@ const NON_HRD_STRATEGIES = new Set<string>([
   Strategy.USERNAME_PASSWORD,
   Strategy.EMAIL,
   Strategy.SMS,
-  Strategy.SAMLP,
   Strategy.ADFS,
 ]);
 
@@ -73,6 +73,142 @@ function ImportModeConfiguration() {
   );
 }
 
+const SAML_BINDING_HTTP_REDIRECT =
+  "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect";
+const SAML_BINDING_HTTP_POST = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST";
+
+function SamlServiceProviderDetails() {
+  const tenantId = useTenantId();
+  const name = useWatch({ name: "name" }) as string | undefined;
+  const entityId = useWatch({ name: "options.entityId" }) as string | undefined;
+  // The ACS URL override is sent to the IdP verbatim, so register that.
+  const acsOverride = useWatch({ name: "options.callback_url" }) as
+    | string
+    | undefined;
+  const connection = name ? encodeURIComponent(name) : "{connection}";
+  const spEntityId =
+    entityId || `urn:auth0:${tenantId ?? "{tenant}"}:${name || "{connection}"}`;
+
+  const rows: { label: string; value: string }[] = [
+    {
+      label: "Assertion Consumer Service (ACS) URL",
+      value:
+        acsOverride ||
+        `https://{auth-domain}/login/callback?connection=${connection}`,
+    },
+    { label: "Entity ID (Audience)", value: spEntityId },
+    {
+      label: "SP Metadata URL",
+      value: `https://{auth-domain}/samlp/metadata?connection=${connection}`,
+    },
+  ];
+
+  return (
+    <Card className="mt-2">
+      <CardHeader>
+        <CardTitle>Service Provider Details</CardTitle>
+        <CardDescription>
+          Register these at the identity provider. Replace{" "}
+          <code>{"{auth-domain}"}</code> with the domain users sign in on (the
+          tenant&apos;s custom domain, if it has one). The IdP must sign its
+          responses or assertions; encrypted assertions are not supported.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 text-sm">
+        {rows.map((row) => (
+          <div key={row.label}>
+            <div className="font-medium">{row.label}</div>
+            <code className="block break-all text-muted-foreground">
+              {row.value}
+            </code>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SamlConfiguration() {
+  return (
+    <>
+      <SamlServiceProviderDetails />
+      <TextInput
+        source="options.metadataUrl"
+        label="IdP Metadata URL"
+        helperText="On save, the sign-in URL, sign-out URL, signing certificate and IdP entity ID are read from the identity provider's metadata."
+      />
+      <TextInput
+        source="options.metadataXml"
+        label="IdP Metadata XML"
+        multiline
+        rows={4}
+        helperText="Or paste the identity provider's metadata XML."
+      />
+      <TextInput
+        source="options.signInEndpoint"
+        label="Sign In URL"
+        helperText="The identity provider's single sign-on (SSO) URL."
+      />
+      <TextInput
+        source="options.signOutEndpoint"
+        label="Sign Out URL"
+        helperText="Optional. The identity provider's single logout URL."
+      />
+      <TextInput
+        source="options.signingCert"
+        label="Signing Certificate"
+        multiline
+        rows={4}
+        helperText="The identity provider's X.509 signing certificate (PEM). Responses not signed with it are rejected."
+      />
+      <TextInput
+        source="options.issuer"
+        label="IdP Entity ID"
+        helperText="Optional. When set, the assertion's Issuer must match it."
+      />
+      <SelectInput
+        source="options.protocolBinding"
+        label="Request Binding"
+        helperText="How the authentication request is sent to the identity provider."
+        defaultValue={SAML_BINDING_HTTP_REDIRECT}
+        choices={[
+          { id: SAML_BINDING_HTTP_REDIRECT, name: "HTTP-Redirect" },
+          { id: SAML_BINDING_HTTP_POST, name: "HTTP-POST" },
+        ]}
+      />
+      <BooleanInput
+        source="options.signSAMLRequest"
+        label="Sign Requests"
+        helperText="Sign authentication requests with the tenant's SAML key (HTTP-Redirect binding only). The SP metadata then includes the certificate."
+      />
+      <SelectInput
+        source="options.signatureAlgorithm"
+        label="Request Signature Algorithm"
+        defaultValue="rsa-sha256"
+        choices={[
+          { id: "rsa-sha256", name: "RSA-SHA256" },
+          { id: "rsa-sha1", name: "RSA-SHA1" },
+        ]}
+      />
+      <TextInput
+        source="options.user_id_attribute"
+        label="User ID Attribute"
+        helperText="Optional. The SAML attribute holding the user id. Defaults to the NameID."
+      />
+      <TextInput
+        source="options.entityId"
+        label="SP Entity ID Override"
+        helperText="Optional. Defaults to urn:auth0:{tenant}:{connection}, as in Auth0."
+      />
+      <TextInput
+        source="options.callback_url"
+        label="ACS URL Override"
+        helperText="Optional. Pin the ACS URL sent to the identity provider instead of deriving it from the request's host."
+      />
+    </>
+  );
+}
+
 export function DetailsTab() {
   const strategy = useWatch({ name: "strategy" }) as string | undefined;
   const isDb = isDbConnection(strategy);
@@ -88,7 +224,9 @@ export function DetailsTab() {
         helperText="Custom display name for the login button (optional)"
       />
 
-      {!isDb && (
+      {strategy === Strategy.SAMLP && <SamlConfiguration />}
+
+      {!isDb && strategy !== Strategy.SAMLP && (
         <>
           <TextInput source="options.client_id" label="Client ID" />
           <SecretInput source="options.client_secret" label="Client Secret" />

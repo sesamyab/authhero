@@ -5,13 +5,19 @@ description: SAML authentication for AuthHero with support for request parsing, 
 
 # @authhero/saml
 
-The `@authhero/saml` package provides SAML authentication functionality for AuthHero. It supports both Node.js environments with local signing and edge/serverless environments with HTTP-based signing.
+The `@authhero/saml` package provides SAML 2.0 for AuthHero, in both directions:
+
+- **AuthHero as identity provider**: the `samlp` addon on an application issues signed assertions to a SAML service provider.
+- **AuthHero as service provider**: a `samlp` [connection](./connections.md) signs users in through an upstream SAML identity provider such as Okta, Microsoft Entra ID or ADFS.
+
+It supports both Node.js environments with local signing and edge/serverless environments with HTTP-based signing.
 
 ## Features
 
 - 🔐 **SAML Request Parsing** - Parse and validate SAML authentication requests
 - ✍️ **SAML Response Generation** - Create signed SAML responses
-- 📄 **SAML Metadata** - Generate SAML identity provider (IdP) metadata
+- 📄 **SAML Metadata** - Generate IdP and SP metadata, parse IdP metadata
+- 🔁 **SAML Connections** - AuthnRequests and signed response validation for upstream identity providers
 - 🔌 **Pluggable Signing** - Support for local (xml-crypto) or HTTP-based signing
 - 🌍 **Edge Compatible** - Core functionality works in edge/serverless environments
 - 📦 **Tree-shakeable** - Multiple entry points for optimal bundle size
@@ -39,7 +45,7 @@ const app = init({
 });
 ```
 
-### Using Local Signing (Node.js)
+### Using Local Signing (Node.js, or Workers with nodejs_compat)
 
 ```typescript
 import { init } from "authhero";
@@ -51,8 +57,21 @@ const app = init({
 });
 ```
 
+### Enabling SAML Connections
+
+```typescript
+import { init } from "authhero";
+import { LocalSamlVerifier } from "@authhero/saml/local-verifier";
+
+const app = init({
+  dataAdapter,
+  samlVerifier: new LocalSamlVerifier(),
+});
+```
+
 ## Documentation
 
+- [SAML Connections](./connections.md) - Sign users in through an upstream SAML identity provider
 - [Configuration](./configuration.md) - Configuration options and usage
 - [Certificate lifecycle](./configuration.md#certificate-lifecycle) - Rotating, renewing and revoking SAML certificates
 - [API Reference](./api-reference.md) - Complete API documentation

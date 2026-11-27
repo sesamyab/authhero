@@ -1,11 +1,11 @@
 ---
 title: Connections
-description: Configure authentication methods in AuthHero including database connections, social logins (Google, Apple, Facebook, GitHub, Microsoft, Vipps), and enterprise OIDC/OAuth2 connections.
+description: Configure authentication methods in AuthHero including database connections, social logins (Google, Apple, Facebook, GitHub, Microsoft, Vipps), and enterprise OIDC/OAuth2 and SAML connections.
 ---
 
 # Connections
 
-Connections are authentication methods available to users, such as username/password, passwordless email/SMS codes, social logins, or enterprise identity providers that speak OpenID Connect or OAuth 2.0.
+Connections are authentication methods available to users, such as username/password, passwordless email/SMS codes, social logins, or enterprise identity providers that speak OpenID Connect, OAuth 2.0 or SAML 2.0.
 
 ## Connection Types
 
@@ -39,7 +39,7 @@ Third-party identity providers. The built-in strategies are `google-oauth2`, `ap
 
 ### Enterprise Connections
 
-Enterprise identity providers that speak OpenID Connect or OAuth 2.0. The built-in enterprise strategies are `oidc`, `oauth2`, `okta` (handled as OIDC, with Auth0's `okta|<sub>` user ids) and `waad` (Microsoft Entra ID). The `oidc` strategy does not use discovery, so the endpoints are configured explicitly:
+Enterprise identity providers that speak OpenID Connect, OAuth 2.0 or SAML 2.0. The built-in enterprise strategies are `oidc`, `oauth2`, `okta` (handled as OIDC, with Auth0's `okta|<sub>` user ids), `waad` (Microsoft Entra ID) and `samlp` (any SAML 2.0 identity provider, see [SAML](#saml) below). The `oidc` strategy does not use discovery, so the endpoints are configured explicitly:
 
 ```typescript
 {
@@ -60,9 +60,31 @@ The upstream provider redirects back to `https://<your-auth-domain>/login/callba
 
 ## SAML
 
-AuthHero is a **SAML identity provider** for applications: a client with the `samlp` addon can start a SAML login at `/samlp/{client_id}`, and AuthHero answers with a signed SAML response. This is configured on the application, not as a connection — see the [SAML package](/customization/saml/) and [SAML 2.0](/standards/saml-2).
+SAML 2.0 works in both directions in AuthHero:
 
-AuthHero does **not** support inbound SAML connections (federating logins to an external SAML identity provider). LDAP and Active Directory connections are not supported either.
+- **AuthHero as service provider** — a `samlp` connection lets users sign in with an upstream SAML identity provider (Okta, Microsoft Entra ID, ADFS, Google Workspace, Shibboleth). AuthHero sends an `AuthnRequest`, validates the signed response and creates the user as `samlp|{connection}|{user id}`.
+- **AuthHero as identity provider** — a client with the `samlp` addon can start a SAML login at `/samlp/{client_id}`, and AuthHero answers with a signed SAML response. This is configured on the application, not as a connection — see the [SAML package](/customization/saml/) and [SAML 2.0](/standards/saml-2).
+
+### SAML Connection Example
+
+```typescript
+{
+  "name": "enterprise-saml",
+  "strategy": "samlp",
+  "options": {
+    "signInEndpoint": "https://idp.corp.example.com/saml/sso",
+    "signOutEndpoint": "https://idp.corp.example.com/saml/slo",
+    "signingCert": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+    "issuer": "https://idp.corp.example.com/saml/metadata",
+    "signSAMLRequest": true,
+    "signatureAlgorithm": "rsa-sha256"
+  }
+}
+```
+
+Or set `options.metadataUrl` (or `metadataXml`) and AuthHero fills in the endpoints, certificate and issuer from the identity provider's metadata. SAML connections need a signature verifier passed to `init({ samlVerifier })`. [Set up SAML connections →](/customization/saml/connections)
+
+LDAP and Active Directory connections are not supported.
 
 ## Passwordless Connections
 

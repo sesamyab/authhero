@@ -29,6 +29,7 @@ import { nanoid } from "nanoid";
 import { defineRoute } from "../../utils/define-route";
 import { requireTenantId, withTotals, listResponse } from "./helpers";
 import { withoutSelfService } from "../../helpers/self-service-connections";
+import { resolveSamlConnectionOptions } from "../../helpers/saml-connection-options";
 
 const connectionsWithTotalsSchema = withTotals({
   connections: z.array(connectionSchema),
@@ -414,7 +415,17 @@ const patchById = defineRoute({
         }
       }
 
-      patchBody = { ...body, options: mergedOptions };
+      patchBody = {
+        ...body,
+        options:
+          (body.strategy ?? connectionBefore?.strategy) === "samlp"
+            ? await resolveSamlConnectionOptions(
+                ctx,
+                mergedOptions,
+                connectionBefore?.options,
+              )
+            : mergedOptions,
+      };
     }
 
     const result = await ctx.env.data.connections.update(
@@ -492,12 +503,17 @@ const postRoot = defineRoute({
     // Generate ID if not provided
     const connectionId = body.id || generateConnectionId();
 
+    let options = body.options
+      ? normalizeSecretWrites(body.options)
+      : body.options;
+    if (body.strategy === "samlp" && options) {
+      options = await resolveSamlConnectionOptions(ctx, options);
+    }
+
     const connection = await ctx.env.data.connections.create(tenantId, {
       ...body,
       id: connectionId,
-      options: body.options
-        ? normalizeSecretWrites(body.options)
-        : body.options,
+      options,
     });
 
     await logMessage(ctx, tenantId, {

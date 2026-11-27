@@ -7,14 +7,16 @@ export default defineConfig({
     outDir: "./dist",
     emptyOutDir: false,
     lib: {
-      entry: path.resolve(__dirname, "src/local-signer.ts"),
-      name: "samlLocalSigner",
+      entry: {
+        "local-signer": path.resolve(__dirname, "src/local-signer.ts"),
+        "local-verifier": path.resolve(__dirname, "src/local-verifier.ts"),
+      },
       formats: ["es", "cjs"],
-      fileName: (format) =>
-        format === "es" ? "local-signer.mjs" : "local-signer.cjs",
+      fileName: (format, entryName) =>
+        `${entryName}.${format === "es" ? "mjs" : "cjs"}`,
     },
     rollupOptions: {
-      external: ["xml-crypto"],
+      external: ["xml-crypto", "@xmldom/xmldom"],
     },
   },
   resolve: {

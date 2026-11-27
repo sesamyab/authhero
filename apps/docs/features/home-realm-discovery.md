@@ -37,17 +37,18 @@ Some consequences:
 
 HRD routes only to strategies that use a redirect-based login. The built-in ones are:
 
-| Strategy                                                               | Example                       |
-| ---------------------------------------------------------------------- | ----------------------------- |
-| `oidc`                                                                 | Any OpenID Connect provider   |
-| `okta`                                                                 | Okta                          |
-| `waad`                                                                 | Microsoft Entra ID (Azure AD) |
-| `oauth2`                                                               | Generic OAuth 2.0 provider    |
-| `google-oauth2`, `windowslive`, `github`, `facebook`, `apple`, `vipps` | Social providers              |
+| Strategy                                                               | Example                        |
+| ---------------------------------------------------------------------- | ------------------------------ |
+| `oidc`                                                                 | Any OpenID Connect provider    |
+| `okta`                                                                 | Okta                           |
+| `waad`                                                                 | Microsoft Entra ID (Azure AD)  |
+| `samlp`                                                                | Any SAML 2.0 identity provider |
+| `oauth2`                                                               | Generic OAuth 2.0 provider     |
+| `google-oauth2`, `windowslive`, `github`, `facebook`, `apple`, `vipps` | Social providers               |
 
 Custom strategies registered through `env.STRATEGIES` are supported as well.
 
-`domain_aliases` is **ignored** on `Username-Password-Authentication` and other database connections, and on `email`, `sms`, `samlp` and `adfs` connections. The admin UI hides the field for those strategies.
+`domain_aliases` is **ignored** on `Username-Password-Authentication` and other database connections, and on `email`, `sms` and `adfs` connections. The admin UI hides the field for those strategies.
 
 `login_hint` is forwarded to the IdP by the `oidc`, `okta`, `oauth2`, `google-oauth2`, `waad` and `windowslive` strategies. Other strategies redirect without it.
 
@@ -143,18 +144,18 @@ Content-Type: application/json
 
 ## Compared with Auth0
 
-|                              | Auth0                                           | AuthHero                                                                          |
-| ---------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| Configuration field          | `options.domain_aliases`                        | `options.domain_aliases`                                                          |
-| Where it runs                | Identifier-first Universal Login                | Identifier screen on `/u` and `/u2`                                               |
-| Eligible connections         | Enterprise connections, including SAML and ADFS | Redirect-based enterprise **and social** connections; SAML and ADFS not supported |
-| `login_hint` sent to the IdP | Yes                                             | Yes, for `oidc`, `okta`, `oauth2`, `google-oauth2`, `waad` and `windowslive`      |
-| Hidden from the button row   | Yes, unless shown as a button                   | Yes, unless `show_as_button: true`                                                |
-| Matching                     | Exact domain                                    | Exact domain, case-insensitive; no wildcards or subdomain matching                |
+|                              | Auth0                                           | AuthHero                                                                                  |
+| ---------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Configuration field          | `options.domain_aliases`                        | `options.domain_aliases`                                                                  |
+| Where it runs                | Identifier-first Universal Login                | Identifier screen on `/u` and `/u2`                                                       |
+| Eligible connections         | Enterprise connections, including SAML and ADFS | Redirect-based enterprise (including SAML) **and social** connections; ADFS not supported |
+| `login_hint` sent to the IdP | Yes                                             | Yes, for `oidc`, `okta`, `oauth2`, `google-oauth2`, `waad` and `windowslive`              |
+| Hidden from the button row   | Yes, unless shown as a button                   | Yes, unless `show_as_button: true`                                                        |
+| Matching                     | Exact domain                                    | Exact domain, case-insensitive; no wildcards or subdomain matching                        |
 
 The differences that matter when migrating from Auth0:
 
-- **SAML and ADFS connections don't support HRD yet.** In Auth0 they are the most common HRD targets. On AuthHero, users of these connections need a login button or a `connection` parameter on `/authorize`.
+- **ADFS connections don't support HRD yet.** On AuthHero, users of an `adfs` connection need a login button or a `connection` parameter on `/authorize`. SAML (`samlp`) connections do take part, so an ADFS server can be connected as a SAML IdP instead.
 - **Social connections can use HRD.** Auth0 only offers domain aliases on enterprise connections. AuthHero also accepts them on, for example, `google-oauth2`, which is useful when one company's Google Workspace domain should always go to Google.
 - **Subdomains must be listed explicitly.** `acme.com` does not match `eu.acme.com`.
 

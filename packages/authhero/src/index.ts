@@ -230,9 +230,11 @@ export { tenantMiddleware } from "./middlewares/tenant";
 export { clientInfoMiddleware } from "./middlewares/client-info";
 
 // Export SAML types and signers for configuration
-export type { SamlSigner } from "@authhero/saml/core";
+export type { SamlSigner, SamlSignatureVerifier } from "@authhero/saml/core";
 export { HttpSamlSigner } from "@authhero/saml/core";
-// LocalSamlSigner is available via @authhero/saml/local-signer for Node.js users
+// LocalSamlSigner and LocalSamlVerifier are available via
+// @authhero/saml/local-signer and @authhero/saml/local-verifier (xml-crypto:
+// Node.js, or Cloudflare Workers with nodejs_compat).
 
 // Export utilities
 export { fetchAll } from "./utils/fetchAll";

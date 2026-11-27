@@ -4,7 +4,7 @@ import {
   CodeExecutor,
   DataAdapters,
 } from "@authhero/adapter-interfaces";
-import type { SamlSigner } from "@authhero/saml/core";
+import type { SamlSignatureVerifier, SamlSigner } from "@authhero/saml/core";
 import type { ManagementAudienceResolver } from "../middlewares/authentication";
 import { Hooks } from "./Hooks";
 import {
@@ -67,6 +67,12 @@ export type Bindings = {
   // Optional SAML signer instance (takes precedence over SAML_SIGN_URL)
   // Set via init({ samlSigner: ... }) to use a custom signer
   samlSigner?: SamlSigner;
+
+  // Optional SAML signature verifier for inbound SAML (`samlp` connections).
+  // Set via init({ samlVerifier: ... }). Without one, SAML connections refuse
+  // every response, since an assertion whose signature can't be checked
+  // must not be trusted.
+  samlVerifier?: SamlSignatureVerifier;
 
   // Optional powered-by logo for the login widget
   // Set via init({ poweredByLogo: ... })

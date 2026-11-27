@@ -74,6 +74,8 @@ export interface SsrfFetchOptions {
    * `localhost`) are allowed. Intended for tests only.
    */
   allowPrivateHosts?: boolean;
+  /** The Accept header. Defaults to JSON, JWT and plain text. */
+  accept?: string;
 }
 
 /**
@@ -167,7 +169,9 @@ export async function ssrfSafeFetch(
       method: "GET",
       redirect: "manual",
       signal: controller.signal,
-      headers: { accept: "application/json, application/jwt, text/plain" },
+      headers: {
+        accept: opts.accept ?? "application/json, application/jwt, text/plain",
+      },
     });
 
     if (response.status >= 300 && response.status < 400) {

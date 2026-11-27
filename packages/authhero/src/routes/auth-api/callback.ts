@@ -18,6 +18,7 @@ import { getEnrichedClient } from "../../helpers/client";
 import { setTenantId } from "../../helpers/set-tenant-id";
 import { resolveLoginSessionTenant } from "../../helpers/login-session-tenant";
 import { getIssuer } from "../../variables";
+import { SamlResponseError } from "@authhero/saml/core";
 
 function redirectToErrorPage(
   ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
@@ -202,6 +203,19 @@ async function handleCallback(
 
     return result;
   } catch (err) {
+    // The SAML IdP answered with an error status (the user cancelled, has no
+    // access to the app, …): a denial, not a broken connection.
+    if (err instanceof SamlResponseError && err.code === "idp_error") {
+      return returnError(
+        ctx,
+        state,
+        "access_denied",
+        err.status?.message || "The identity provider did not sign you in",
+        undefined,
+        `SAML: ${err.message}`,
+      );
+    }
+
     if (err instanceof JSONHTTPException) {
       // State/session not found - redirect to branded error page
       if (err.status === 403) {
@@ -269,6 +283,16 @@ const callbackQuerySchema = z.object({
   error_reason: z.string().optional(),
 });
 
+// The SAML ACS (HTTP-POST binding) posts SAMLResponse + RelayState; the
+// RelayState is the state. `?connection=` is part of the ACS URL registered at
+// the IdP (Auth0's format) and is informational here: the state identifies
+// the connection.
+const callbackFormSchema = callbackQuerySchema.extend({
+  state: z.string().optional(),
+  SAMLResponse: z.string().optional(),
+  RelayState: z.string().optional(),
+});
+
 function buildCallbackRoutes(opts: {
   operationIdPrefix: string;
   deprecated?: boolean;
@@ -325,10 +349,11 @@ function buildCallbackRoutes(opts: {
         operationId: `${opts.operationIdPrefix}Post`,
         deprecated: opts.deprecated,
         request: {
+          query: z.object({ connection: z.string().optional() }),
           body: {
             content: {
               "application/x-www-form-urlencoded": {
-                schema: callbackQuerySchema,
+                schema: callbackFormSchema,
               },
             },
           },
@@ -360,7 +385,23 @@ function buildCallbackRoutes(opts: {
         },
       }),
       async (ctx) => {
-        return handleCallback(ctx, ctx.req.valid("form"));
+        const { SAMLResponse, RelayState, ...form } = ctx.req.valid("form");
+        if (SAMLResponse !== undefined) {
+          if (!RelayState) {
+            // IdP-initiated SSO: nothing ties the response to a login this
+            // browser started.
+            return redirectToErrorPage(
+              ctx,
+              "invalid_request",
+              "IdP-initiated SAML login is not supported; start the login from the application",
+            );
+          }
+          return handleCallback(ctx, { state: RelayState, code: SAMLResponse });
+        }
+        if (!form.state) {
+          throw new HTTPException(400, { message: "State is required" });
+        }
+        return handleCallback(ctx, { ...form, state: form.state });
       },
     );
 }
