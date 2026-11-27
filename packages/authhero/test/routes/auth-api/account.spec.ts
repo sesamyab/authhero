@@ -71,6 +71,41 @@ describe("account", () => {
     expect(loginSession?.authParams.username).toBe("test@example.com");
   });
 
+  it("uses the current URL without the client registering it", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+
+    await env.data.clients.update("tenantId", "clientId", {
+      callbacks: ["https://example.com/callback"],
+    });
+
+    const response = await oauthClient.account.$get({
+      query: {
+        client_id: "clientId",
+      },
+    });
+
+    expect(response.status).toEqual(302);
+  });
+
+  it("refuses a redirect_url on the auth server the client has not registered", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+
+    await env.data.clients.update("tenantId", "clientId", {
+      callbacks: ["https://example.com/callback"],
+    });
+
+    const response = await oauthClient.account.$get({
+      query: {
+        client_id: "clientId",
+        redirect_url: "http://localhost:3000/authorize",
+      },
+    });
+
+    expect(response.status).toEqual(400);
+  });
+
   it("should return 403 for invalid client_id", async () => {
     const { oauthApp, env } = await getTestServer();
     const oauthClient = testClient(oauthApp, env);
