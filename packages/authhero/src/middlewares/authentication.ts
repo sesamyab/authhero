@@ -114,9 +114,14 @@ export function createAuthMiddleware(
     ctx: Context<{ Bindings: Bindings; Variables }>,
     next: Next,
   ) => {
+    // Hono serves a HEAD request with the GET handler, so the routes it
+    // matches are the GET ones. Look those up, or a HEAD request would find no
+    // route and no definition and skip the checks its GET twin gets.
+    const routeMethod = ctx.req.method === "HEAD" ? "GET" : ctx.req.method;
+
     const matchedRoute = ctx.req.matchedRoutes.find(
       (route) =>
-        route.method.toUpperCase() === ctx.req.method && route.path !== "/*",
+        route.method.toUpperCase() === routeMethod && route.path !== "/*",
     );
 
     if (!matchedRoute) {
@@ -138,7 +143,7 @@ export function createAuthMiddleware(
       (def) =>
         "route" in def &&
         def.route.path === relativePath &&
-        def.route.method.toUpperCase() === ctx.req.method.toUpperCase(),
+        def.route.method.toUpperCase() === routeMethod.toUpperCase(),
     );
 
     if (definition && "route" in definition) {
