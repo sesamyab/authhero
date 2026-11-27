@@ -286,6 +286,47 @@ describe("cross-origin ticket flow on a client without a database connection", (
     if (!location) throw new Error("no redirect from /authorize");
     expect(new URL(location).searchParams.get("code")).toBeTypeOf("string");
   });
+
+  // A tenant with only social and passwordless connections, and a client with
+  // no explicit connection list (so it falls back to all of them). Password
+  // users still exist under the username-password provider.
+  it("redeems the ticket on a tenant with no database connection at all", async () => {
+    const { oauthApp, env } = await getTestServer();
+    const oauthClient = testClient(oauthApp, env);
+    await createPasswordUser(env);
+    await env.data.connections.remove("tenantId", Strategy.USERNAME_PASSWORD);
+
+    const loginResponse = await oauthClient.co.authenticate.$post({
+      json: {
+        client_id: "clientId",
+        credential_type: "http://auth0.com/oauth/grant-type/password-realm",
+        realm: Strategy.USERNAME_PASSWORD,
+        password: "Test1234!",
+        username: "foo@example.com",
+      },
+    });
+    expect(loginResponse.status).toBe(200);
+    const { login_ticket } = (await loginResponse.json()) as {
+      login_ticket: string;
+    };
+
+    const authorizeResponse = await oauthClient.authorize.$get({
+      query: {
+        client_id: "clientId",
+        login_ticket,
+        realm: Strategy.USERNAME_PASSWORD,
+        response_type: "code",
+        redirect_uri: "https://example.com/callback",
+        scope: "openid profile email",
+        state: "state",
+        nonce: "nonce",
+      },
+    });
+    expect(authorizeResponse.status).toBe(302);
+    const location = authorizeResponse.headers.get("location");
+    if (!location) throw new Error("no redirect from /authorize");
+    expect(new URL(location).searchParams.get("code")).toBeTypeOf("string");
+  });
 });
 
 describe("cross-origin ticket flow identity binding", () => {
