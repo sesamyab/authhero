@@ -1,5 +1,18 @@
 # @authhero/widget
 
+## 0.43.1
+
+### Patch Changes
+
+- 8c37f32: Fix resend on /u2: the widget's resend button now POSTs `{ data: { action: "resend" } }` to the screen API and renders the returned screen, and email-otp-challenge, sms-otp-challenge and magic-link-sent re-send the login code or link. `magic-link-sent` is now a registered screen at `/u2/login/magic-link-sent`, so reloading it no longer returns 400.
+
+  Login OTP delivery (identifier step plus resends) is capped at 5 per login session and consumes the optional per-recipient rate limit; past either limit the screens respond as usual but nothing is sent.
+
+- d6708b0: Send the current value of hidden inputs when a submit button is clicked. The button click no longer passes the whole form-data snapshot as explicit overrides, so a hidden input updated by an inline script after render is submitted with its new value instead of the stale one.
+- Updated dependencies [90a194e]
+- Updated dependencies [7eacf33]
+  - @authhero/adapter-interfaces@4.36.0
+
 ## 0.43.0
 
 ### Minor Changes

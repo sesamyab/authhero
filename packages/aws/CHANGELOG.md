@@ -1,5 +1,18 @@
 # @authhero/aws-adapter
 
+## 1.15.0
+
+### Minor Changes
+
+- 7eacf33: Make the per-login-session send caps atomic. `LoginSessionsAdapter` gains an optional `updateIfStateDataUnchanged` (compare-and-swap on `state_data`), implemented by the kysely, drizzle and aws adapters. The login OTP cap (`LOGIN_OTP_MAX_SENDS`) and the MFA SMS cap (`MFA_MAX_SMS_SENDS`) now reserve their slot through it, so concurrent requests on one login session can no longer exceed them. Login session context updates are written the same way, re-applied on a concurrent change, so they no longer write back stale state such as an older send counter. Adapters without the method keep the previous best-effort behaviour. `createPassthroughAdapter` mirrors an accepted `updateIfStateDataUnchanged` to secondaries as a plain `update` (new `conditionalSyncMethods` option); writes the primary rejects are not mirrored.
+
+### Patch Changes
+
+- Updated dependencies [90a194e]
+- Updated dependencies [7eacf33]
+  - @authhero/adapter-interfaces@4.36.0
+  - @authhero/proxy@0.11.23
+
 ## 1.14.2
 
 ### Patch Changes

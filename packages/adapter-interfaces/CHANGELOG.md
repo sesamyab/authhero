@@ -1,5 +1,19 @@
 # @authhero/adapter-interfaces
 
+## 4.36.0
+
+### Minor Changes
+
+- 7eacf33: Make the per-login-session send caps atomic. `LoginSessionsAdapter` gains an optional `updateIfStateDataUnchanged` (compare-and-swap on `state_data`), implemented by the kysely, drizzle and aws adapters. The login OTP cap (`LOGIN_OTP_MAX_SENDS`) and the MFA SMS cap (`MFA_MAX_SMS_SENDS`) now reserve their slot through it, so concurrent requests on one login session can no longer exceed them. Login session context updates are written the same way, re-applied on a concurrent change, so they no longer write back stale state such as an older send counter. Adapters without the method keep the previous best-effort behaviour. `createPassthroughAdapter` mirrors an accepted `updateIfStateDataUnchanged` to secondaries as a plain `update` (new `conditionalSyncMethods` option); writes the primary rejects are not mirrored.
+
+### Patch Changes
+
+- 90a194e: Actions can now block a login (#1816):
+  - `credentials-exchange`: `api.access.deny` stops token issuance. The token request returns 400 and no tokens are signed; before, the execution was logged as canceled but tokens were still issued.
+  - `post-user-login`: `api.access.deny` fails the login (403 `access_denied`, the login session is marked failed, and a failed-login log is written). `api.idToken.setCustomClaim` and `api.accessToken.setCustomClaim` now add claims to the tokens of that login, including the authorization-code exchange (not refresh-token exchanges). `api.redirect.sendUserTo` and `api.prompt.render` are still not supported, but each call now records an `unsupported_api` error on the execution instead of being dropped silently.
+  - New `metadata.fail_closed` on `credentials-exchange`, `post-user-login` and `pre-user-registration` hook bindings: an action that times out, fails or throws denies the request (`action_timeout` / `action_failed`) instead of letting it through. The default is unchanged (fail open).
+  - The post-login action type declarations now use Auth0's `api.access.deny(reason)` signature.
+
 ## 4.35.0
 
 ### Minor Changes
