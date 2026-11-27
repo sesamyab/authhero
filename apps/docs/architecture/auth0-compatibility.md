@@ -15,6 +15,7 @@ AuthHero implements the Auth0 Management API v2 and Authentication API, which me
 - **Token format** — JWT access tokens and ID tokens with the same claim structure
 - **RBAC** — Resource servers, scopes, roles, and permissions work the same way
 - **Organizations** — Organization membership, roles, and invitations follow the same model
+- **Actions** — Stored Actions, versions, deploys, trigger bindings and execution records use the same API and the same `exports.onExecute…(event, api)` code format
 
 ## Key Differences
 
@@ -22,17 +23,31 @@ AuthHero implements the Auth0 Management API v2 and Authentication API, which me
 
 AuthHero runs in your infrastructure. You control the database, the deployment, and the data. There is no hosted dashboard — use the [Admin UI](/apps/admin/) or the Management API directly.
 
-### Hooks Instead of Actions
+### Actions and Hooks
 
-Auth0 uses "Actions" (JavaScript snippets that run in Auth0's cloud). AuthHero uses **hooks** — either code-based callbacks in your application or URL webhooks:
+AuthHero implements **Auth0 Actions**: JavaScript stored per tenant, bound to
+triggers and run in a sandboxed code executor. The `/api/v2/actions/*` endpoints
+(Actions, versions, deploy, trigger bindings, executions) follow Auth0's
+contract. The main differences:
 
-- **Code hooks** — Functions you pass during initialization (`onExecutePostLogin`, `onExecutePreUserRegistration`, etc.)
-- **URL hooks** — HTTP webhooks configured via the Management API
-- **Form hooks** — Custom forms rendered during the auth flow
+- **You choose the executor.** Actions only run when a code executor is
+  configured, for example `WorkerLoaderCodeExecutor` on Cloudflare.
+- **npm dependencies aren't loaded**, and the timeout is 5 seconds instead of 20.
+- **Not every Auth0 trigger or API exists.** `post-login` Actions support claims,
+  denials, account linking and MFA, but not `api.redirect` or `api.prompt`, and
+  they don't run again on refresh. `post-change-password`, `send-phone-message`
+  and `password-reset-post-challenge` are not available.
+- **More triggers.** `validate-registration-username`, `pre-user-update`,
+  `post-user-update`, `pre-user-deletion`, `post-user-deletion` and `pre-screen`,
+  which runs before universal-login screens are shown and when they are
+  submitted (Auth0 has no pre-login trigger).
 
-AuthHero also supports hooks that Auth0 doesn't offer, such as `onExecutePreUserDeletion`, `onExecutePostUserDeletion` and `onExecutePreScreen` (the `pre-screen` trigger, which runs before universal-login screens are shown and when they are submitted, including the login screens, and can redirect or deny; Auth0 has no pre-login trigger).
+Next to Actions, AuthHero keeps **hooks**: callbacks passed to `init()` that run
+with full server access, URL webhooks, form and page hooks, and built-in
+template hooks.
 
-See [Auth0 Comparison — Hooks](/auth0-comparison/hooks) for a detailed mapping.
+See [Actions](/features/actions) for the full reference and
+[Auth0 Comparison — Actions & Hooks](/auth0-comparison/hooks) for a mapping.
 
 ### Account Linking
 

@@ -8,6 +8,7 @@ description: AuthHero features — authentication flows, MFA, hooks, account lin
 - **[Authentication Flows](/features/authentication-flows)** — OAuth2 authorization code flow, PKCE, client credentials, device authorization
 - **[SPA Authentication](/features/spa-authentication)** — Patterns for securing single-page applications
 - **[Multi-Factor Authentication](/features/mfa)** — TOTP, email, and SMS second factors
+- **[Actions](/features/actions)** — Auth0-compatible Actions: tenant-stored JavaScript bound to login, token, registration, user lifecycle and screen triggers
 - **[Hooks](/features/hooks)** — Customize the authentication lifecycle with code hooks, webhooks, and form hooks
 - **[Invitations & Tickets](/features/invitations-and-tickets)** — Send Auth0-compatible organization invitations and issue email-verification / password-change tickets
 - **[Account Linking](/features/account-linking)** — Consolidate multiple identities into a single user profile

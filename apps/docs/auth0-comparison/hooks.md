@@ -1,68 +1,66 @@
 ---
-title: Hooks Comparison
-description: Compare AuthHero hooks with Auth0 Actions. AuthHero offers pre/post user deletion hooks, form rendering, and entity hooks not available in Auth0.
+title: Actions & Hooks Comparison
+description: Compare AuthHero Actions and hooks with Auth0 Actions. AuthHero implements the Auth0 Actions API and adds user update and deletion triggers, a pre-screen trigger, form and page hooks, template hooks and entity hooks.
 ---
 
-# Hooks: AuthHero vs. Auth0
+# Actions & Hooks: AuthHero vs. Auth0
 
-Auth0 made the decision to deprecate its Hooks feature in October 2024, moving towards Actions as the primary way to customize authentication flows. While Actions offer powerful capabilities, AuthHero continues to support a flexible Hooks system that provides distinct advantages, especially for certain use cases.
+Auth0 deprecated its legacy Hooks in October 2024 in favour of Actions.
+AuthHero implements **Actions** with Auth0's Management API and code format, and
+also keeps a **hooks** system for things Actions don't cover: callbacks passed to
+`init()`, URL webhooks, form and page hooks, template hooks and entity hooks.
 
-::: tip Complete Hooks Documentation
-For comprehensive documentation on hooks including lifecycle, configuration, payloads, and examples, see the [Hooks Guide](/features/hooks).
+::: tip
+For the Actions reference, including the `api` methods per trigger and the full
+list of differences, see [Actions](/features/actions). For hooks, see the
+[Hooks Guide](/features/hooks).
 :::
 
 ## Quick Comparison
 
-| Feature                    | Auth0 Actions             | AuthHero Hooks       |
-| -------------------------- | ------------------------- | -------------------- |
-| **Status**                 | Active (Hooks deprecated) | Active & expanding   |
-| **Validate Signup Email**  | ❌ Not available          | ✅ **AuthHero-only** |
-| **Pre-User Registration**  | ✅                        | ✅                   |
-| **Post-User Registration** | ✅                        | ✅                   |
-| **Post-Login**             | ✅                        | ✅                   |
-| **Pre-User Update**        | ❌ Limited                | ✅ Full support      |
-| **Pre-User Deletion**      | ❌ Not available          | ✅ **AuthHero-only** |
-| **Post-User Deletion**     | ❌ Not available          | ✅ **AuthHero-only** |
-| **Credentials Exchange**   | ✅                        | ✅                   |
-| **Form Rendering**         | ❌                        | ✅ **AuthHero-only** |
-| **Entity Hooks**           | ❌ Not available          | ✅ **AuthHero-only** |
-| **URL Webhooks**           | ✅                        | ✅                   |
-
-::: tip AuthHero Exclusive Features
-AuthHero provides several hooks not available in Auth0:
-
-- **Validate Signup Email**: Check if signup is allowed before creating user
-- **Pre/Post User Deletion**: Full control over user deletion lifecycle
-- **Form Rendering**: Present custom forms directly in authentication flow
-- **Pre-User Update**: Validate and modify all user updates
-- **Entity Hooks**: Lifecycle hooks for roles, connections, resource servers, and role permissions
-  :::
+| Feature                                   | Auth0                       | AuthHero                                                                 |
+| ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------ |
+| Actions Management API                    | ✅                          | ✅ Actions, versions, deploy, test, trigger bindings, executions          |
+| `post-login` Action                       | ✅                          | ✅ Claims, deny, linking and MFA; ⚠️ no `api.redirect` / `api.prompt`, not re-run on refresh |
+| `credentials-exchange` Action             | ✅ Client credentials only  | ✅ Every grant, including refresh tokens                                 |
+| `pre-user-registration` Action            | ✅                          | ✅                                                                       |
+| `post-user-registration` Action           | ✅                          | ✅ Delivered through the outbox, with retries                             |
+| `custom-email-provider` / `custom-phone-provider` | ✅                  | ✅ Plus per-message-type selection and `useDefaultProvider()`             |
+| `custom-token-exchange` Action            | ✅                          | ✅ Plus a declarative JWT verification mode                               |
+| `post-change-password`, `send-phone-message`, `password-reset-post-challenge` | ✅ | ❌                                                       |
+| Validate registration username            | ❌                          | ✅ Action, webhook or config hook                                         |
+| Pre/post user update                      | ❌                          | ✅ Action or config hook (webhook for post-update)                        |
+| Pre/post user deletion                    | ❌                          | ✅ Action, webhook or config hook                                         |
+| Pre-screen (before a login screen)        | ❌                          | ✅ Action or config hook                                                  |
+| npm dependencies in Actions               | ✅                          | ❌ Stored but not loaded                                                  |
+| Forms in the login flow                   | ✅ `api.prompt.render`      | ✅ Form hooks on `post-user-login`                                         |
+| URL webhooks on auth triggers             | ❌ (Log Streams only)       | ✅                                                                        |
+| Config callbacks with server access       | ❌                          | ✅ `init({ hooks })`                                                      |
+| Entity hooks (roles, connections, …)      | ❌                          | ✅                                                                        |
 
 ## Supported Trigger IDs
 
-AuthHero supports the following trigger points for hooks:
+Which kind of hook can bind to which trigger:
 
-### Via Management API (URL/Form/Page Hooks)
+| Trigger                          | Action (code) | Webhook | Form | Page | Template | Config callback                          |
+| -------------------------------- | :-----------: | :-----: | :--: | :--: | :------: | ---------------------------------------- |
+| `validate-registration-username` | ✅            | ✅      |      |      |          | `onExecuteValidateRegistrationUsername`  |
+| `pre-user-registration`          | ✅            | ✅      |      |      |          | `onExecutePreUserRegistration`           |
+| `post-user-registration`         | ✅            | ✅      |      |      | ✅       | `onExecutePostUserRegistration`          |
+| `post-user-login`                | ✅            | ✅      | ✅   | ✅   | ✅       | `onExecutePostLogin`                     |
+| `credentials-exchange`           | ✅            |         |      |      | ✅       | `onExecuteCredentialsExchange`           |
+| `pre-user-update`                | ✅            |         |      |      |          | `onExecutePreUserUpdate`                 |
+| `post-user-update`               | ✅            | ✅      |      |      | ✅       |                                          |
+| `pre-user-deletion`              | ✅            | ✅      |      |      |          | `onExecutePreUserDeletion`               |
+| `post-user-deletion`             | ✅            | ✅      |      |      |          | `onExecutePostUserDeletion`              |
+| `pre-screen`                     | ✅            |         |      |      |          | `onExecutePreScreen`                     |
+| `custom-email-provider`          | ✅            |         |      |      |          |                                          |
+| `custom-phone-provider`          | ✅            |         |      |      |          |                                          |
 
-- `validate-registration-username` - Validate if email can sign up (before user exists)
-- `pre-user-registration` - Before user creation
-- `post-user-registration` - After user creation
-- `post-user-login` - After authentication
-- `pre-user-deletion` - Before user deletion
-- `post-user-deletion` - After user deletion
-
-### Via Code (Programmatic Hooks)
-
-- `onExecuteValidateRegistrationUsername` - Validate signup eligibility
-- `onExecutePreUserRegistration` - Before user creation
-- `onExecutePostUserRegistration` - After user creation
-- `onExecutePostLogin` - After authentication
-- `onExecutePreUserUpdate` - Before user updates
-- `onExecutePreUserDeletion` - Before user deletion
-- `onExecutePostUserDeletion` - After user deletion
-- `onExecuteCredentialsExchange` - During token exchange
-
-````
+`custom-token-exchange` Actions are not bound to a trigger; a
+[Custom Token Exchange](/features/custom-token-exchange) profile names the Action
+it runs. On the Actions API, `post-login` is accepted as an alias for
+`post-user-login`.
 
 For detailed information on each hook including payloads, API methods, and examples, see the [Hooks Guide](/features/hooks).
 
@@ -70,15 +68,17 @@ For detailed information on each hook including payloads, API methods, and examp
 
 ### Hook Types
 
-AuthHero supports multiple hook types:
+AuthHero supports these kinds of hooks:
 
-1. **Code-Based Hooks**: Functions defined in application initialization
-2. **URL Hooks (Webhooks)**: HTTP endpoints called at trigger points
-3. **Form Hooks**: Render custom forms in the authentication flow
-4. **Page Hooks**: Redirect to custom pages with permission checks
-5. **Entity Hooks**: Lifecycle hooks for management entities (roles, connections, etc.)
+1. **Actions**: JavaScript stored per tenant and run in a sandbox, as in Auth0. See [Actions](/features/actions).
+2. **Config hooks**: Functions passed to `init({ hooks })`, with full server access
+3. **URL Hooks (Webhooks)**: HTTP endpoints called at trigger points
+4. **Form Hooks**: Render custom forms in the authentication flow
+5. **Page Hooks**: Redirect to custom pages with permission checks
+6. **Template Hooks**: Built-in functions, such as account linking, enabled per tenant
+7. **Entity Hooks**: Lifecycle hooks for management entities (roles, connections, etc.)
 
-Auth0 Actions primarily focus on code-based actions with limited webhook support and no entity-level hooks.
+Auth0 offers Actions only. It has no webhooks on auth triggers and no entity-level hooks.
 
 ### User Lifecycle Hooks: Synchronous vs. Asynchronous
 
@@ -125,7 +125,8 @@ See the [Entity Hooks Guide](/features/hooks#entity-hooks) for detailed document
 ### Via Code (Initialization)
 
 ```typescript
-const authhero = new AuthHero({
+const { app } = init({
+  dataAdapter,
   hooks: {
     onExecuteValidateRegistrationUsername: async (event, api) => {
       // Validate signup
@@ -156,11 +157,17 @@ const authhero = new AuthHero({
     ],
   },
 });
-````
+```
 
 ### Via Management API
 
 ```bash
+# Bind Actions to a trigger (Auth0-compatible)
+PATCH /api/v2/actions/triggers/post-login/bindings
+{
+  "bindings": [{ "ref": { "type": "action_name", "value": "My Action" } }]
+}
+
 # Create webhook
 POST /api/v2/hooks
 {
@@ -183,21 +190,29 @@ For complete configuration examples, see the [Hooks Guide Configuration Section]
 
 ## Migration from Auth0
 
-If you're migrating from Auth0 Actions to AuthHero Hooks:
+Auth0 Actions can be moved across as they are:
 
-1. **Post-Login Actions** → `onExecutePostLogin` (Auth0-compatible API)
-2. **Pre-User Registration** → `onExecutePreUserRegistration`
-3. **Post-User Registration** → `onExecutePostUserRegistration`
-4. **Credentials Exchange** → `onExecuteCredentialsExchange`
+1. Export your Actions and their trigger bindings, for example with the Auth0
+   Deploy CLI or the Auth0 Terraform provider, and apply them to AuthHero's
+   Management API.
+2. Configure a code executor on the AuthHero server so the Actions run.
+3. Check each Action against [Differences from Auth0](/features/actions#differences-from-auth0).
+   Replace `require`d npm packages with `fetch` calls. Move claims that must
+   survive a refresh from `post-login` to a `credentials-exchange` Action, and
+   replace `api.redirect` / `api.prompt.render` with a form or page hook.
 
-AuthHero's `onExecutePostLogin` hook provides an Auth0-compatible event object and API, making migration straightforward.
+Logic that needs server access, or a trigger Auth0 doesn't have, can be written
+as a config hook (`onExecutePostLogin`, `onExecutePreUserRegistration`, …) with
+the same `(event, api)` signature.
 
 ## Hook Templates
 
 AuthHero ships with **pre-defined hook templates** — ready-to-use hooks that implement common authentication patterns. Instead of writing hooks from scratch, you can import a template and plug it straight into your configuration.
 
-::: tip AuthHero Exclusive
-Auth0 does not offer pre-built hook templates. In Auth0 you must write every Action from scratch or copy examples manually.
+::: tip
+Auth0 offers Action templates that you copy into your own code. AuthHero's
+templates are functions that ship with AuthHero, so a tenant enables them
+without owning any code.
 :::
 
 ### Available Templates
@@ -271,52 +286,13 @@ const { app } = init({
 
 ## Additional Resources
 
+- [Actions](/features/actions) - Actions reference
 - [Hooks Guide](/features/hooks) - Complete hooks documentation
 - [Hook Lifecycle](/features/hooks#hook-lifecycle) - Detailed execution flow
 - [Hook Types](/features/hooks#hook-types) - Code, webhooks, forms, and pages
 - [API Objects](/features/hooks#api-objects) - Available APIs in each hook
 - [Best Practices](/features/hooks#best-practices) - Implementation guidelines
 - [Common Use Cases](/features/hooks#common-use-cases) - Real-world examples
-
-## AuthHero's Approach to Hooks
-
-AuthHero's Hooks are designed to be a straightforward way to intercept and modify various stages of the authentication and user lifecycle. A key differentiator in AuthHero is the dual nature of its hooks:
-
-1.  **URL Hooks (Web Hooks)**:
-    - Similar to traditional webhooks, you can specify a URL that AuthHero will call at a specific trigger point (e.g., "pre-user-signup", "post-user-login").
-    - This allows you to execute custom server-side logic, integrate with external systems, or perform data validation by sending a payload to your endpoint.
-
-2.  **Form Hooks**:
-    - Unique to AuthHero, you can configure a hook to render a specific Form instead of calling a URL.
-    - By specifying a Form ID, AuthHero will present this form to the user at the designated trigger point in the authentication flow.
-    - This is particularly powerful for scenarios like progressive profiling, custom consent gathering, or presenting terms of service updates directly within the flow, often without needing to write any backend code for the form interaction itself.
-
-### Available Triggers for URL/Form Hooks
-
-The following trigger points are available for both URL and Form hooks via the Management API:
-
-- `validate-registration-username` - Validate registration eligibility
-- `pre-user-registration` - Before a new user is created
-- `post-user-registration` - After a new user is successfully created
-- `post-user-login` - After successful authentication
-- `pre-user-deletion` - Before user deletion
-- `post-user-deletion` - After user deletion
-
-::: info Note on User Deletion and Updates
-URL and Form hooks now support user deletion triggers (`pre-user-deletion` and `post-user-deletion`). For user updates and other events, you can use **programmatic hooks** (see below) which provide more direct access to the authentication flow.
-:::
-
-```
-
-## Key Differences Summarized
-
-| Feature            | Auth0 (Legacy Hooks) | AuthHero                                        |
-| ------------------ | -------------------- | ----------------------------------------------- |
-| **Status**         | Deprecated (2024)    | Actively Supported                              |
-| **Target Type**    | URL only             | URL (Web Hook) **or** Form ID (Form Hook)       |
-| **Use Case Focus** | Custom server logic  | Custom server logic & Codeless form integration |
-
-AuthHero's continued support for Hooks, especially with the addition of Form Hooks, provides a versatile tool for developers looking for both code-based and low-code/no-code customization options within their authentication pipelines.
 
 ## Programmatic Hooks in AuthHero
 
@@ -328,27 +304,8 @@ AuthHero supports the following programmatic hooks that can be configured when i
 
 ### Hook Availability Comparison
 
-| Event/Trigger          | URL/Form Hooks (Management API)        | Programmatic Hooks (Config)        |
-| ---------------------- | -------------------------------------- | ---------------------------------- |
-| Validate Registration  | ✅ `validate-registration-username`    | ✅ `onExecuteValidateRegistrationUsername`  |
-| Pre User Registration  | ✅ `pre-user-registration`             | ✅ `onExecutePreUserRegistration`  |
-| Post User Registration | ✅ `post-user-registration`            | ✅ `onExecutePostUserRegistration` |
-| Post User Login        | ✅ `post-user-login`                   | ✅ `onExecutePostLogin`            |
-| Pre User Update        | ❌ Not Available                       | ✅ `onExecutePreUserUpdate`        |
-| Pre User Deletion      | ✅ `pre-user-deletion`                 | ✅ `onExecutePreUserDeletion`      |
-| Post User Deletion     | ✅ `post-user-deletion`                | ✅ `onExecutePostUserDeletion`     |
-| Credentials Exchange   | ❌ Not Available                       | ✅ `onExecuteCredentialsExchange`  |
-| Pre Screen¹            | ❌ Not Available (code Actions only)   | ✅ `onExecutePreScreen`            |
-| Custom Email Provider² | ❌ Not Available (code Actions only)   | ❌ Not Available                   |
-| Custom Phone Provider² | ❌ Not Available (code Actions only)   | ❌ Not Available                   |
-
-¹ AuthHero extension with no Auth0 equivalent (Auth0 has no pre-login trigger): runs before a universal-login screen is shown and when it is submitted, and can redirect or deny. Replaces the removed `pre-account-action` trigger. URL, form and page hooks can't bind to it; use a code Action bound to `pre-screen` or the config callback. See the [Hooks guide](../features/hooks.md#screen-action-pre-screen).
-
-² Auth0's `custom-email-provider` and `custom-phone-provider` triggers: a code Action delivers outgoing emails or text messages instead of the tenant's provider. Auth0 Actions run unchanged; AuthHero adds per-message-type selection and `api.notification.useDefaultProvider()`. See [Custom Email and SMS Providers](../features/custom-email-and-sms-providers.md).
-
-```
-
-**Note:** Programmatic hooks provide more direct access to the authentication flow and are executed synchronously within your application. URL/Form hooks are configured via the Management API and can be modified without code changes.
+See [Supported Trigger IDs](#supported-trigger-ids) for which kind of hook can
+bind to each trigger.
 
 #### 1. `onExecuteCredentialsExchange`
 
