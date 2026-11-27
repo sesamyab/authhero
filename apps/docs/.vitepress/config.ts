@@ -34,6 +34,8 @@ function changelogSidebar() {
   });
 }
 
+const DOCS_ORIGIN = "https://docs.authhero.net";
+
 // https://vitepress.dev/reference/site-config
 export default withMermaid(
   defineConfig({
@@ -90,7 +92,6 @@ export default withMermaid(
       ["meta", { property: "og:type", content: "website" }],
       ["meta", { property: "og:locale", content: "en_US" }],
       ["meta", { property: "og:site_name", content: "AuthHero" }],
-      ["meta", { property: "og:url", content: "https://www.authhero.net/" }],
       [
         "meta",
         {
@@ -142,9 +143,6 @@ export default withMermaid(
         },
       ],
 
-      // Canonical URL
-      ["link", { rel: "canonical", href: "https://www.authhero.net/" }],
-
       // Google Analytics
       [
         "script",
@@ -163,15 +161,28 @@ gtag('config', 'G-DNZWG3PF2L');`,
       ],
     ],
     sitemap: {
-      hostname: "https://www.authhero.net",
+      hostname: "https://docs.authhero.net",
     },
     lastUpdated: true,
     cleanUrls: true,
+    // Per-page canonical + og:url on the docs host. The product site lives on
+    // authhero.net; a site-wide canonical pointing there would tell search
+    // engines every docs page is a duplicate of the marketing homepage.
+    transformHead({ pageData }) {
+      const path = pageData.relativePath
+        .replace(/(^|\/)index\.md$/, "$1")
+        .replace(/\.md$/, "");
+      const url = `${DOCS_ORIGIN}/${path}`;
+      return [
+        ["link", { rel: "canonical", href: url }],
+        ["meta", { property: "og:url", content: url }],
+      ];
+    },
     themeConfig: {
       // https://vitepress.dev/reference/default-theme-config
       logo: "/favicon.svg",
       nav: [
-        { text: "Home", link: "/" },
+        { text: "Overview", link: "/" },
         { text: "Getting Started", link: "/getting-started" },
         { text: "Architecture", link: "/architecture/" },
         { text: "Standards", link: "/standards/" },
@@ -183,7 +194,7 @@ gtag('config', 'G-DNZWG3PF2L');`,
         {
           text: "Getting Started",
           items: [
-            { text: "What is AuthHero?", link: "/" },
+            { text: "Docs Overview", link: "/" },
             { text: "Installation", link: "/getting-started" },
             { text: "Your First Login", link: "/first-login" },
           ],
