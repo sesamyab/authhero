@@ -79,6 +79,25 @@ test("extractCodeBlocks does not split a longer outer fence on an inner one", ()
   assert.equal(blocks[0].lang, "md");
 });
 
+test("extractCodeBlocks keeps a block whose fence is never closed", () => {
+  const blocks = extractCodeBlocks(
+    ["# Title", `${fence}ts`, 'import { missing } from "authhero";'].join("\n"),
+  );
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].code, 'import { missing } from "authhero";');
+});
+
+test("extractImports parses ts blocks as TypeScript, not TSX", () => {
+  const code = [
+    'const value = <string>"x";',
+    'import { missing } from "authhero";',
+  ].join("\n");
+  assert.deepEqual(
+    extractImports(code, "ts").map((entry) => entry.names),
+    [["missing"]],
+  );
+});
+
 test("extractImports returns imported names, not local aliases", () => {
   const imports = extractImports(
     [

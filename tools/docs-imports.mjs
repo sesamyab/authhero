@@ -34,19 +34,6 @@ import ts from "typescript";
 
 export const IGNORE_MARKER = "<!-- docs-imports-ignore -->";
 
-const CODE_LANGUAGES = new Set([
-  "ts",
-  "typescript",
-  "tsx",
-  "mts",
-  "cts",
-  "js",
-  "javascript",
-  "jsx",
-  "mjs",
-  "cjs",
-]);
-
 const SKIPPED_DIRS = new Set(["node_modules", "dist", "cache", "changelog"]);
 const SKIPPED_FILES = new Set(["CHANGELOG.md"]);
 
@@ -55,7 +42,8 @@ const SKIPPED_FILES = new Set(["CHANGELOG.md"]);
  *
  * Fences may be indented (code blocks inside list items); the indentation of
  * the opening fence is removed from every line of the block. `line` is the
- * 1-based line number of the first line of code in the document.
+ * 1-based line number of the first line of code in the document. A fence that
+ * is never closed runs to the end of the document, as in CommonMark.
  */
 export function extractCodeBlocks(markdown) {
   const lines = markdown.split(/\r?\n/);
@@ -102,6 +90,14 @@ export function extractCodeBlocks(markdown) {
     }
     open.body.push(removeIndent(line, open.indent));
   }
+  if (open) {
+    blocks.push({
+      lang: open.lang,
+      ignored: open.ignored,
+      line: open.start,
+      code: open.body.join("\n"),
+    });
+  }
   return blocks;
 }
 
@@ -111,20 +107,40 @@ function removeIndent(line, indent) {
   return line.slice(i);
 }
 
+// The fence languages this check reads, with how TypeScript parses each and
+// the file extension that goes with it.
+const SCRIPT_KINDS = {
+  ts: [ts.ScriptKind.TS, "ts"],
+  typescript: [ts.ScriptKind.TS, "ts"],
+  mts: [ts.ScriptKind.TS, "ts"],
+  cts: [ts.ScriptKind.TS, "ts"],
+  tsx: [ts.ScriptKind.TSX, "tsx"],
+  js: [ts.ScriptKind.JS, "js"],
+  javascript: [ts.ScriptKind.JS, "js"],
+  mjs: [ts.ScriptKind.JS, "js"],
+  cjs: [ts.ScriptKind.JS, "js"],
+  jsx: [ts.ScriptKind.JSX, "jsx"],
+};
+
 /**
  * Returns the static imports and re-exports of a code sample.
+ *
+ * The sample is parsed according to its fence language: as TSX only when it is
+ * marked `tsx`, because in TSX a type assertion such as `<string>value` reads
+ * as JSX and can swallow the statements after it.
  *
  * Each entry has the module specifier, the 0-based line within the sample,
  * whether it imports the default export, and the names it imports by name
  * (the exported name, not the local alias).
  */
-export function extractImports(code) {
+export function extractImports(code, lang = "ts") {
+  const [scriptKind, extension] = SCRIPT_KINDS[lang] ?? SCRIPT_KINDS.ts;
   const source = ts.createSourceFile(
-    "sample.tsx",
+    `sample.${extension}`,
     code,
     ts.ScriptTarget.Latest,
     true,
-    ts.ScriptKind.TSX,
+    scriptKind,
   );
   const imports = [];
   for (const statement of source.statements) {
@@ -338,8 +354,8 @@ export function checkDocs({ repoRoot, docsDir }) {
   for (const file of listMarkdownFiles(docsDir)) {
     const markdown = readFileSync(file, "utf8");
     for (const block of extractCodeBlocks(markdown)) {
-      if (block.ignored || !CODE_LANGUAGES.has(block.lang)) continue;
-      for (const entry of extractImports(block.code)) {
+      if (block.ignored || !Object.hasOwn(SCRIPT_KINDS, block.lang)) continue;
+      for (const entry of extractImports(block.code, block.lang)) {
         if (!isWorkspaceSpecifier(entry.specifier, packages)) continue;
         samples.push({ file, line: block.line + entry.line, entry });
       }
