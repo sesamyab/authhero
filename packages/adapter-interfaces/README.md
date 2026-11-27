@@ -81,9 +81,14 @@ interface PassthroughConfig<T> {
   // Methods to sync to secondaries (default: ["create", "update", "remove", "delete", "set"])
   syncMethods?: string[];
 
-  // Compare-and-swap writes, synced only when the primary returns true
-  // (default: ["updateIfStateDataUnchanged"])
-  conditionalSyncMethods?: string[];
+  // Compare-and-swap writes, synced only when the primary returns true, as the
+  // unconditional call the mapper returns (default: updateIfStateDataUnchanged
+  // is mirrored as update(tenant_id, id, session)). Last-write-wins, like the
+  // other synced methods.
+  conditionalSyncMethods?: Record<
+    string,
+    (args: unknown[]) => { method: string; args: unknown[] }
+  >;
 }
 ```
 
