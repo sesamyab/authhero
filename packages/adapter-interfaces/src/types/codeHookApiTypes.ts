@@ -20,7 +20,7 @@ export interface ActionAccessAPI {
 }
 
 export interface ActionBlockingAccessAPI {
-  /** Cancel registration, update, or deletion with an optional reason. */
+  /** Cancel the login, registration, update, or deletion with an optional reason. */
   deny(reason?: string): void;
 }
 
@@ -136,10 +136,18 @@ export interface CodeHookApiByTrigger {
   "post-user-login": {
     accessToken: ActionClaimAPI;
     idToken: ActionClaimAPI;
-    access: ActionAccessAPI;
+    access: ActionBlockingAccessAPI;
+    /**
+     * Not supported in AuthHero yet: the call is reported as an
+     * `unsupported_api` error on the execution and ignored.
+     */
     prompt: {
       render(formId: string): void;
     };
+    /**
+     * Not supported in AuthHero yet: the call is reported as an
+     * `unsupported_api` error on the execution and ignored.
+     */
     redirect: ActionRedirectAPI;
     user: ActionLinkAPI;
     users: ActionUsersAPI;

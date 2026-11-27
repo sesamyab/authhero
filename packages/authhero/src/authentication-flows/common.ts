@@ -588,6 +588,39 @@ export async function createAuthTokens(
     user,
   );
 
+  // Claims a post-login action set for this login (issue #1816): from this
+  // request when post-login ran in it (implicit / hybrid), otherwise from the
+  // login session (authorization-code exchange). Applied before the
+  // credentials-exchange hooks, which may still overwrite them. Refresh
+  // exchanges don't re-run post-login, so they don't carry these claims.
+  if (user && grantType !== GrantType.RefreshToken) {
+    const actionClaims =
+      ctx.var.post_login_action_claims ??
+      readLoginSessionData(params.loginSession?.state_data).action_claims;
+    if (actionClaims?.user_id === user.user_id) {
+      for (const [claim, value] of Object.entries(
+        actionClaims.access_token ?? {},
+      )) {
+        applyCustomClaim(accessTokenPayload, claim, value, {
+          kind: "access_token",
+          source: "post-login-code-hook",
+          ctx,
+        });
+      }
+      if (idTokenPayload) {
+        for (const [claim, value] of Object.entries(
+          actionClaims.id_token ?? {},
+        )) {
+          applyCustomClaim(idTokenPayload, claim, value, {
+            kind: "id_token",
+            source: "post-login-code-hook",
+            ctx,
+          });
+        }
+      }
+    }
+  }
+
   if (ctx.env.hooks?.onExecuteCredentialsExchange) {
     await ctx.env.hooks.onExecuteCredentialsExchange(
       {

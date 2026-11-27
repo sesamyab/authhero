@@ -14,8 +14,12 @@ import {
 import { commitUserHook } from "./link-users";
 import {
   isCodeHook,
+  isFailClosedHook,
   handleCodeHook,
   persistActionExecution,
+  persistThenThrow,
+  thrownOutcome,
+  unavailableOutcome,
   HandleCodeHookOutcome,
 } from "./codehooks";
 import { isTemplateHook, handleTemplateHook } from "./templatehooks";
@@ -191,9 +195,26 @@ export function createUserHooks(
           Object.keys(ctx.env.STRATEGIES ?? {}),
         ),
       });
+      const persist = () =>
+        persistActionExecution(
+          data,
+          tenant_id,
+          "pre-user-registration",
+          outcomes,
+          { logCapture: ctx.env.actionExecutionLogs },
+        );
+      const deny = (code: string, reason?: string): never => {
+        throw new JSONHTTPException(400, {
+          message: reason
+            ? `Registration denied: ${code} - ${reason}`
+            : `Registration denied: ${code}`,
+        });
+      };
       for (const hook of preRegCodeHooks) {
+        const failClosed = isFailClosedHook(hook);
+        let outcome: HandleCodeHookOutcome | null;
         try {
-          const outcome = await handleCodeHook(
+          outcome = await handleCodeHook(
             ctx,
             data,
             hook,
@@ -206,15 +227,7 @@ export function createUserHooks(
                 setLinkedTo,
               },
               users: actionUsers.api.users,
-              access: {
-                deny: (code: string, reason?: string) => {
-                  throw new JSONHTTPException(400, {
-                    message: reason
-                      ? `Registration denied: ${code} - ${reason}`
-                      : `Registration denied: ${code}`,
-                  });
-                },
-              },
+              access: { deny },
               validation: {
                 error: (code: string, message: string) => {
                   throw new SignupValidationError(code, message);
@@ -222,56 +235,37 @@ export function createUserHooks(
               },
             },
           );
-          if (outcome) outcomes.push(outcome);
+          if (!outcome && failClosed) {
+            outcome = unavailableOutcome(hook.code_id);
+          }
         } catch (err) {
           if (err instanceof HTTPException) {
             // Blocking API calls are recorded before re-throwing so the
             // canceled execution is persisted and discoverable.
-            outcomes.push({
-              result: {
-                action_name: hook.code_id,
-                error: {
-                  id:
-                    err instanceof SignupValidationError
-                      ? err.code
-                      : "access_denied",
-                  msg: err instanceof Error ? err.message : String(err),
-                },
-                started_at: new Date().toISOString(),
-                ended_at: new Date().toISOString(),
-              },
-              logs: [],
-              denied: true,
-            });
-            await persistActionExecution(
-              data,
-              tenant_id,
-              "pre-user-registration",
-              outcomes,
-              { logCapture: ctx.env.actionExecutionLogs },
-            );
-            throw err;
+            const denial = thrownOutcome(hook.code_id, err, true);
+            if (err instanceof SignupValidationError && denial.result.error) {
+              denial.result.error.id = err.code;
+            }
+            outcomes.push(denial);
+            await persistThenThrow(ctx, persist, err);
           }
-          const message = err instanceof Error ? err.message : String(err);
-          outcomes.push({
-            result: {
-              action_name: hook.code_id,
-              error: { id: "execution_threw", msg: message },
-              started_at: new Date().toISOString(),
-              ended_at: new Date().toISOString(),
-            },
-            logs: [],
-            denied: false,
-          });
+          outcome = thrownOutcome(hook.code_id, err);
+        }
+        if (!outcome) continue;
+        outcomes.push(outcome);
+
+        // `metadata.fail_closed` (issue #1816): an action that timed out,
+        // failed or threw refuses the registration instead of letting it on.
+        if (outcome.failure && failClosed) {
+          outcome.denied = true;
+          try {
+            deny("access_denied", outcome.failure);
+          } catch (err) {
+            await persistThenThrow(ctx, persist, err);
+          }
         }
       }
-      const executionId = await persistActionExecution(
-        data,
-        tenant_id,
-        "pre-user-registration",
-        outcomes,
-        { logCapture: ctx.env.actionExecutionLogs },
-      );
+      const executionId = await persist();
       if (executionId) {
         ctx.set("action_execution_id", executionId);
       }

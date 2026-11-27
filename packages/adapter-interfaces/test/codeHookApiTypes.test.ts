@@ -111,6 +111,7 @@ const signatureChecks: Record<string, string> = {
   "post-user-login": `
     declare const api: ActionAPI;
     api.idToken.setCustomClaim("role", "reader");
+    api.access.deny("Members only");
     api.redirect.sendUserTo("https://example.com", { query: { next: "/" } });
     const result: void = api.user.setLinkedTo("auth0|123");
     // @ts-expect-error server-side token helpers do not exist in the sandbox

@@ -13,17 +13,23 @@ import { EnrichedClient } from "../helpers/client";
 import { logMessage } from "../helpers/logging";
 import { stripInternalUserFields } from "../helpers/hook-user-payload";
 import {
+  failLoginSession,
   startLoginSessionContinuation,
   startLoginSessionHook,
 } from "../authentication-flows/common";
+import { HTTPException } from "hono/http-exception";
+import { JSONHTTPException } from "../errors/json-http-exception";
 import { isFormHook, handleFormHook } from "./formhooks";
 import { resolvePrimaryUser } from "../helpers/users";
 import { isPageHook, handlePageHook } from "./pagehooks";
 import { isTemplateHook, handleTemplateHook } from "./templatehooks";
 import {
   isCodeHook,
+  isFailClosedHook,
   handleCodeHook,
   persistActionExecution,
+  thrownOutcome,
+  unavailableOutcome,
   HandleCodeHookOutcome,
 } from "./codehooks";
 import { HookEvent } from "../types/Hooks";
@@ -46,6 +52,7 @@ import { waitUntil } from "../helpers/wait-until";
 import {
   LoginSessionEventType,
   MfaRequiredByAction,
+  PostLoginActionClaims,
   readLoginSessionData,
 } from "../state-machines/login-session";
 import { updateLoginSessionData } from "../state-machines/login-session-data";
@@ -272,6 +279,62 @@ export function mergeMfaRequest(
   };
 }
 
+/** The human-readable reason carried by a denial, for the failed-login log. */
+function httpExceptionReason(err: HTTPException): string {
+  try {
+    const body: unknown = JSON.parse(err.message);
+    if (typeof body === "object" && body !== null) {
+      if (
+        "error_description" in body &&
+        typeof body.error_description === "string"
+      ) {
+        return body.error_description;
+      }
+      if ("message" in body && typeof body.message === "string") {
+        return body.message;
+      }
+    }
+  } catch {
+    // Not a JSON body: use the message as is.
+  }
+  return err.message || "access_denied";
+}
+
+/**
+ * Make the claims post-login actions set available to the tokens of this
+ * login: on the request for tokens minted right away (implicit / hybrid) and
+ * on the login session for the authorization-code exchange. Claims left on
+ * the session by an earlier run of the hooks are cleared when none are set.
+ */
+async function storeActionClaims(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  tenantId: string,
+  loginSession: LoginSession | undefined,
+  claims: PostLoginActionClaims,
+): Promise<void> {
+  const hasClaims = Boolean(claims.access_token || claims.id_token);
+  if (hasClaims) ctx.set("post_login_action_claims", claims);
+  else ctx.set("post_login_action_claims", undefined);
+  if (!loginSession) return;
+  const stored = readLoginSessionData(loginSession.state_data).action_claims;
+  if (!hasClaims && !stored) return;
+  try {
+    await updateLoginSessionData(
+      ctx.env.data.loginSessions,
+      tenantId,
+      loginSession.id,
+      {
+        type: LoginSessionEventType.UPDATE_CONTEXT,
+        data: { action_claims: hasClaims ? claims : undefined },
+      },
+    );
+  } catch (err) {
+    // E.g. an expired login session being completed: the request variable
+    // still covers tokens minted in this request.
+    console.warn("Failed to store post-login action claims:", err);
+  }
+}
+
 /**
  * Record an action's MFA request on the login session and, when the login is
  * otherwise ready to complete, send the browser through `/u/continue` so the
@@ -425,6 +488,10 @@ export async function postUserLoginHook(
   const outcomes: HandleCodeHookOutcome[] = [];
   // `api.multifactor.enable(...)` calls from the env hook and code hooks.
   let mfaRequest: MfaRequiredByAction | undefined;
+  // Set when a post-login action refused the login (`api.access.deny`, or a
+  // fail-closed binding whose action failed). The login is then logged as
+  // failed rather than successful.
+  let deniedReason: string | undefined;
   try {
     // Update the user's last login info. Deferred off the critical path:
     // nothing in this request reads the result (the in-memory `user` keeps
@@ -730,6 +797,21 @@ export async function postUserLoginHook(
         ensuredUserIds: actionUsers.ensuredUserIds,
         externalConnections,
       });
+      // `api.accessToken` / `api.idToken` (issue #1816): collected across the
+      // actions and applied when this login's tokens are minted.
+      const accessTokenClaims: Record<string, unknown> = {};
+      const idTokenClaims: Record<string, unknown> = {};
+      // Verbs the isolate records but this trigger can't act on yet. They are
+      // reported on the action's execution result instead of being dropped.
+      let unsupportedCalls: string[] = [];
+      const unsupported = (name: string) => () => {
+        unsupportedCalls.push(name);
+      };
+      const setClaim =
+        (target: Record<string, unknown>) =>
+        (claim: unknown, value: unknown) => {
+          if (typeof claim === "string" && claim) target[claim] = value;
+        };
       const codeHookApi = {
         ...linkingApi.api,
         ...actionUsers.api,
@@ -738,10 +820,51 @@ export async function postUserLoginHook(
             mfaRequest = mergeMfaRequest(mfaRequest, provider, options);
           },
         },
+        accessToken: { setCustomClaim: setClaim(accessTokenClaims) },
+        idToken: { setCustomClaim: setClaim(idTokenClaims) },
+        access: {
+          // Auth0's post-login signature is `deny(reason)`. Earlier type
+          // declarations advertised `deny(code, reason)`, so a second string
+          // argument is taken as the reason too.
+          deny: (first?: unknown, second?: unknown): never => {
+            const reason = [second, first].find(
+              (v): v is string => typeof v === "string" && v.trim() !== "",
+            );
+            throw new JSONHTTPException(403, {
+              error: "access_denied",
+              error_description: reason ?? "Access denied",
+            });
+          },
+        },
+        redirect: { sendUserTo: unsupported("redirect.sendUserTo") },
+        prompt: { render: unsupported("prompt.render") },
+      };
+
+      // Stop the login: the session is marked failed so it can't be resumed,
+      // and the denial propagates like a throwing `onExecutePostLogin`.
+      const denyLogin = async (
+        reason: string,
+        err: unknown,
+      ): Promise<never> => {
+        deniedReason = reason;
+        if (loginSession) {
+          try {
+            await failLoginSession(
+              ctx,
+              tenant_id,
+              loginSession,
+              `post_login_denied: ${reason}`,
+            );
+          } catch (failErr) {
+            console.warn("Failed to mark denied login session:", failErr);
+          }
+        }
+        throw err;
       };
 
       for (const hook of codeHooks) {
         if (!isCodeHook(hook)) continue;
+        const failClosed = isFailClosedHook(hook);
         // Only hooks that opted in see `link_candidates` — otherwise an
         // unrelated action would receive other accounts' ids/emails just
         // because a *different* hook on the same tenant opted in.
@@ -749,8 +872,10 @@ export async function postUserLoginHook(
           hook.metadata?.resolve_link_candidates === true
             ? { ...enhancedEvent, link_candidates: serializedCandidates }
             : enhancedEvent;
+        unsupportedCalls = [];
+        let outcome: HandleCodeHookOutcome | null;
         try {
-          const outcome = await handleCodeHook(
+          outcome = await handleCodeHook(
             ctx,
             data,
             hook,
@@ -758,19 +883,47 @@ export async function postUserLoginHook(
             "post-user-login",
             codeHookApi,
           );
-          if (outcome) outcomes.push(outcome);
+          if (!outcome && failClosed) {
+            outcome = unavailableOutcome(hook.code_id);
+          }
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          outcomes.push({
-            result: {
-              action_name: hook.code_id,
-              error: { id: "execution_threw", msg: message },
-              started_at: new Date().toISOString(),
-              ended_at: new Date().toISOString(),
-            },
-            logs: [],
-            denied: false,
+          if (err instanceof HTTPException) {
+            // `api.access.deny` (or another blocking call): record the
+            // canceled execution, then fail the login.
+            outcomes.push(thrownOutcome(hook.code_id, err, true));
+            await denyLogin(httpExceptionReason(err), err);
+          }
+          outcome = thrownOutcome(hook.code_id, err);
+        }
+        if (!outcome) continue;
+        outcomes.push(outcome);
+
+        if (unsupportedCalls.length > 0 && !outcome.result.error) {
+          const calls = [...new Set(unsupportedCalls)]
+            .map((c) => `api.${c}`)
+            .join(", ");
+          outcome.result.error = {
+            id: "unsupported_api",
+            msg: `${calls} is not supported in post-login actions and was ignored`,
+          };
+          logMessage(ctx, tenant_id, {
+            type: LogTypes.FAILED_HOOK,
+            description: `Post-login action ${outcome.result.action_name} called ${calls}, which is not supported and was ignored`,
+            userId: user.user_id,
           });
+        }
+
+        // `metadata.fail_closed` (issue #1816): an action that timed out,
+        // failed or threw refuses the login instead of letting it through.
+        if (outcome.failure && failClosed) {
+          outcome.denied = true;
+          await denyLogin(
+            outcome.failure,
+            new JSONHTTPException(403, {
+              error: "access_denied",
+              error_description: outcome.failure,
+            }),
+          );
         }
       }
 
@@ -789,6 +942,16 @@ export async function postUserLoginHook(
         const primary = await data.users.get(tenant_id, refreshId);
         if (primary) user = primary;
       }
+
+      await storeActionClaims(ctx, tenant_id, loginSession, {
+        user_id: user.user_id,
+        ...(Object.keys(accessTokenClaims).length
+          ? { access_token: accessTokenClaims }
+          : {}),
+        ...(Object.keys(idTokenClaims).length
+          ? { id_token: idTokenClaims }
+          : {}),
+      });
     }
 
     // Handle webhook hooks (invoke all enabled webhooks)
@@ -857,8 +1020,10 @@ export async function postUserLoginHook(
         : {}),
     };
     logMessage(ctx, tenant_id, {
-      type: LogTypes.SUCCESS_LOGIN,
-      description: `Successful login for ${user.user_id}`,
+      type: deniedReason ? LogTypes.FAILED_LOGIN : LogTypes.SUCCESS_LOGIN,
+      description: deniedReason
+        ? `Login for ${user.user_id} denied by a post-login action: ${deniedReason}`
+        : `Successful login for ${user.user_id}`,
       userId: user.user_id,
       username: user.email || user.phone_number || user.name,
       client_name: params?.client?.name,

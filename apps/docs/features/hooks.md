@@ -1720,6 +1720,32 @@ Supported triggers and their export names:
 | `pre-user-deletion`      | `exports.onExecutePreUserDeletion`      | Inline (can deny deletion)                          |
 | `post-user-deletion`     | `exports.onExecutePostUserDeletion`     | Outbox-backed (retried); best effort without outbox |
 
+### Denying a login and failing closed
+
+An action can refuse the request it runs for. The execution is stored with status `canceled` and later actions on the trigger don't run.
+
+| Trigger                 | Call                            | Result                                                                                         |
+| ----------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `credentials-exchange`  | `api.access.deny(code, reason)` | The token request returns 400 and no tokens are signed. Covers every grant, including refresh. |
+| `post-user-login`       | `api.access.deny(reason)`       | The login fails with 403 `access_denied`, the login session is marked failed, and a failed-login log (`f`) is written instead of a successful one. |
+| `pre-user-registration` | `api.access.deny(code, reason)` | The signup returns 400 and the user is not created.                                            |
+
+In `post-user-login`, `api.idToken.setCustomClaim` and `api.accessToken.setCustomClaim` add claims to the tokens issued for that login, including the authorization-code exchange. Unlike Auth0, AuthHero doesn't run post-login actions again on a refresh-token exchange, so tokens from a refresh don't carry these claims. Set claims that must survive a refresh in a `credentials-exchange` action, which runs on every grant. `api.redirect.sendUserTo` and `api.prompt.render` aren't supported in post-login actions yet: the call is ignored and the execution records an `unsupported_api` error.
+
+By default an action that doesn't finish lets the request through: a run past the 5-second timeout, an execution that fails, or a thrown error is recorded on the execution and the request continues. For an action whose job is to refuse (a membership check, a fraud check), set `fail_closed` on the hook binding:
+
+```bash
+curl -X POST /api/v2/hooks \
+  -d '{
+    "trigger_id": "credentials-exchange",
+    "code_id": "<action id>",
+    "enabled": true,
+    "metadata": { "fail_closed": true }
+  }'
+```
+
+With `fail_closed`, `credentials-exchange`, `post-user-login` and `pre-user-registration` deny the request instead, with the reason `action_timeout` or `action_failed`. A binding whose action can't run at all (no code executor configured, or the action was deleted) is denied too. `pre-screen` reads the same key, see [Ordering and failures](#ordering-and-failures).
+
 ### Console output is persisted
 
 `console.log` inside a code hook is not just a development aid — the executor captures it and AuthHero writes it to the `action_executions` table, one row per execution, where it stays for the [retention window](/deployment/data-retention).
