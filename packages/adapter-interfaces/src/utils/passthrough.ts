@@ -47,6 +47,16 @@ export interface PassthroughConfig<T> {
    * cannot accept an already-used TOTP code.
    */
   syncMethods?: string[];
+
+  /**
+   * Compare-and-swap writes that are mirrored to secondaries only when the
+   * primary accepted them (resolved `true`), so a write the primary rejected
+   * as stale cannot land on a secondary.
+   * Default: ["updateIfStateDataUnchanged"]. Login session context and send
+   * counters are written this way, so a secondary that should stay current
+   * needs to implement it as well as `update`.
+   */
+  conditionalSyncMethods?: string[];
 }
 
 /**
@@ -110,6 +120,7 @@ export function createPassthroughAdapter<T extends object>(
       "set",
       "consumeTotpStep",
     ],
+    conditionalSyncMethods = ["updateIfStateDataUnchanged"],
   } = config;
 
   const handler: ProxyHandler<T> = {
@@ -126,8 +137,10 @@ export function createPassthroughAdapter<T extends object>(
         return primaryValue;
       }
 
+      const conditional = conditionalSyncMethods.includes(prop);
+
       // If it's not a sync method, just use primary
-      if (!syncMethods.includes(prop)) {
+      if (!conditional && !syncMethods.includes(prop)) {
         return primaryValue.bind(target);
       }
 
@@ -135,6 +148,11 @@ export function createPassthroughAdapter<T extends object>(
       return async (...args: unknown[]) => {
         // Call primary first and wait for result
         const result = await primaryValue.apply(target, args);
+
+        // A conditional write the primary rejected is not mirrored.
+        if (conditional && result !== true) {
+          return result;
+        }
 
         // Sync to secondaries
         const blockingPromises: Promise<void>[] = [];

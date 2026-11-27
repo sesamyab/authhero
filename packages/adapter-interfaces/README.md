@@ -80,6 +80,10 @@ interface PassthroughConfig<T> {
 
   // Methods to sync to secondaries (default: ["create", "update", "remove", "delete", "set"])
   syncMethods?: string[];
+
+  // Compare-and-swap writes, synced only when the primary returns true
+  // (default: ["updateIfStateDataUnchanged"])
+  conditionalSyncMethods?: string[];
 }
 ```
 
