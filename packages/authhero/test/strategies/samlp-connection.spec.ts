@@ -531,6 +531,23 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
       expect(() => subFor({ fieldsMap: { user_id: "toString" } })).toThrow(
         /no value for the user id attribute/,
       );
+      // user_id_attribute names an attribute, never the NameID alias.
+      expect(() =>
+        subFor({
+          user_id_attribute:
+            "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+        }),
+      ).toThrow(/no value for the user id attribute/);
+    });
+
+    it("maps custom fields whose names exist on Object.prototype", () => {
+      const { raw } = mapSamlAssertion(
+        connectionWith({ fieldsMap: { constructor: "employeeId" } }),
+        assertion,
+      );
+      expect(
+        raw && Object.getOwnPropertyDescriptor(raw, "constructor")?.value,
+      ).toBe("E42");
     });
   });
 

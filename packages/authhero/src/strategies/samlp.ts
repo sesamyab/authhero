@@ -200,16 +200,20 @@ export function mapSamlAssertion(
 ): UserInfoWithRaw {
   const { attributes } = assertion;
   const fieldsMap = connection.options?.fieldsMap || {};
-  const namesFor = (field: string) => {
-    const mapped = fieldsMap[field];
+  // Own properties only, so a field named e.g. "constructor" is a field.
+  const namesFor = (field: string): string[] => {
+    const mapped = Object.hasOwn(fieldsMap, field)
+      ? fieldsMap[field]
+      : undefined;
     if (mapped) return Array.isArray(mapped) ? mapped : [mapped];
-    return DEFAULT_FIELDS[field] || [];
+    return Object.hasOwn(DEFAULT_FIELDS, field) ? DEFAULT_FIELDS[field]! : [];
   };
 
   // The user id comes from `user_id_attribute`, else Auth0's
-  // `fieldsMap.user_id`, else the NameID. As in Auth0, the NameID is also
-  // addressable as the nameidentifier claim, so a fieldsMap.user_id list can
-  // name it as one of its candidates.
+  // `fieldsMap.user_id`, else the NameID. As in Auth0, a fieldsMap.user_id list
+  // can name the NameID as the nameidentifier claim. `user_id_attribute` is a
+  // SAML attribute only: a missing attribute fails rather than silently
+  // falling back to the NameID, which would give one user two ids.
   const userIdAttribute = connection.options?.user_id_attribute;
   const mappedUserId = fieldsMap.user_id;
   const idSources: SamlAssertion["attributes"] = {
@@ -224,7 +228,7 @@ export function mapSamlAssertion(
         : [mappedUserId]
       : undefined;
   const userId = userIdNames
-    ? firstValue(idSources, userIdNames)
+    ? firstValue(userIdAttribute ? attributes : idSources, userIdNames)
     : assertion.nameId;
   if (!userId) {
     throw new Error(
@@ -250,7 +254,7 @@ export function mapSamlAssertion(
   // Custom fieldsMap entries surface as profile fields of their own.
   const mappedExtras: Record<string, string> = {};
   for (const field of Object.keys(fieldsMap)) {
-    if (field in DEFAULT_FIELDS || field === "user_id") continue;
+    if (Object.hasOwn(DEFAULT_FIELDS, field) || field === "user_id") continue;
     const value = firstValue(attributes, namesFor(field));
     if (value !== undefined) mappedExtras[field] = value;
   }

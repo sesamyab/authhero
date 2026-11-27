@@ -120,7 +120,7 @@ The user id is Auth0's `samlp|{connection}|{user id}`. Users are found by that i
 - `NotBefore` / `NotOnOrAfter` and `SessionNotOnOrAfter` hold, with two minutes of clock skew.
 - The `Issuer` matches `options.issuer`, when set.
 - Each login's state is consumed on first use, so a captured response cannot be replayed.
-- The assertion has an `AuthnStatement`, and no condition other than `AudienceRestriction`, `OneTimeUse` or `ProxyRestriction` (an unknown condition makes it invalid).
+- The assertion has an `AuthnStatement`, and no condition other than `AudienceRestriction`, `OneTimeUse` or `ProxyRestriction` (an unknown condition makes it invalid). `ProxyRestriction Count="0"` is refused: it forbids passing the login on, and every AuthHero login ends in tokens or a SAML response for an application.
 - Documents with a `DOCTYPE` are rejected.
 
 An IdP error status (the user cancelled, or has no access to the application) is shown to the user as `access_denied` with the IdP's status message.

@@ -353,6 +353,23 @@ describe("SAML service provider", () => {
       await expect(validate(b64(oneTimeUse))).resolves.toBeDefined();
     });
 
+    it('refuses ProxyRestriction Count="0" and accepts a positive count', async () => {
+      const proxy = (count: string) =>
+        sign(
+          wrapResponse(
+            buildAssertion({
+              extraConditions: `<saml:ProxyRestriction Count="${count}"/>`,
+            }),
+          ),
+          idpKey,
+          "assertion",
+        );
+      const promise = validate(b64(proxy("0")));
+      await expectCode(promise, "invalid_response");
+      await expect(promise).rejects.toThrow(/ProxyRestriction/);
+      await expect(validate(b64(proxy("1")))).resolves.toBeDefined();
+    });
+
     it("requires an AuthnStatement", async () => {
       const signed = sign(
         wrapResponse(buildAssertion({ omitAuthnStatement: true })),
