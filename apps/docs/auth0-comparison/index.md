@@ -18,7 +18,8 @@ AuthHero is designed as a modern, open-source alternative to Auth0 with enhanced
 | **Database**                 | Managed           | Your choice (SQL, etc.)                  |
 | **Edge Deployment**          | Limited           | Full support (Workers, Edge Functions)   |
 | **Source Code**              | Closed            | Open source (AGPL-3.0-only / commercial) |
-| **Hooks System**             | Deprecated (2024) | Active & expanding                       |
+| **Actions**                  | ✅                | ✅ Same API, plus extra triggers          |
+| **Config hooks & webhooks**  | ❌ (legacy Hooks deprecated 2024) | ✅ Active                 |
 | **User Deletion Hooks**      | ❌ Not available  | ✅ Pre & Post hooks                      |
 | **Connection Order Control** | ❌ Not available  | ✅ Configurable ordering                 |
 | **Flow Redirect Actions**    | ❌ Not available  | ✅ Built-in redirect support             |
@@ -69,9 +70,11 @@ hooks: {
 
 [Learn more about Account Linking →](./account-linking)
 
-### 4. Enhanced Hooks System
+### 4. Actions and an Enhanced Hooks System
 
-While Auth0 deprecated their Hooks feature in October 2024, AuthHero continues to expand its hooks capabilities:
+AuthHero implements Auth0's [Actions](/features/actions) API, so stored Actions
+and their trigger bindings carry over. Auth0 deprecated its legacy Hooks in
+October 2024; AuthHero keeps a hooks system next to Actions:
 
 #### Programmatic Hooks (Code-Based)
 
@@ -330,8 +333,9 @@ AuthHero provides a per-client `auth0_conformant` flag (default: `true`) to ensu
 | SDK Libraries      | ✅ Many       | ✅ Growing      |
 | REST API           | ✅            | ✅              |
 | GraphQL API        | ❌            | 🚧 Planned      |
-| Webhooks           | ✅ Limited    | ✅ Extensive    |
-| Programmatic Hooks | ❌ Deprecated | ✅ Active       |
+| Actions            | ✅            | ✅ Compatible   |
+| Webhooks on triggers | ❌          | ✅              |
+| Config hooks       | ❌            | ✅              |
 | Local Development  | ⚠️ Limited    | ✅ Full support |
 | Testing Support    | ⚠️ Complex    | ✅ Built-in     |
 

@@ -20,6 +20,12 @@ AuthHero provides a flexible hooks system that allows you to execute custom logi
 - **Form hooks**: Redirect users to custom forms
 - **Page hooks**: Redirect users to custom pages with permission checks
 
+::: tip Actions
+Tenant-stored JavaScript bound to triggers is documented on the
+[Actions](./actions.md) page: triggers, the `api` object per trigger, error
+handling, versions, testing, executions and the differences from Auth0.
+:::
+
 Actions store reusable JavaScript code. A hook connects an Action, webhook, form,
 template, or page to a trigger. The admin Triggers page groups every binding type by
 event. Add a binding to select an Action, webhook, form, template, or page, then
@@ -1707,7 +1713,10 @@ exports.onExecutePostLogin = async (event, api) => {
 };
 ```
 
-Supported triggers and their export names:
+Supported triggers and their export names. This table covers the user lifecycle
+triggers; see [Actions → Triggers](./actions.md#triggers) for the full list,
+including `validate-registration-username`, `pre-screen`, the custom provider
+triggers and `custom-token-exchange`.
 
 | Trigger                  | Export Function                         | Execution                                           |
 | ------------------------ | --------------------------------------- | --------------------------------------------------- |
@@ -1799,32 +1808,27 @@ When running the [outbox as a cron drain](/deployment/outbox-cron), pass the sam
 
 ### Management API
 
-Code hooks are managed through two API endpoints:
+Manage stored code with the Auth0-compatible Actions API
+(`/api/v2/actions/actions`) and bind it with
+`PATCH /api/v2/actions/triggers/{triggerId}/bindings`. See
+[Actions → Management API](./actions.md#management-api).
 
-**Hook Code** — stores the code itself:
-
-```bash
-# Create hook code
-POST /api/v2/hook-code
-{ "code": "exports.onExecutePostLogin = async (event, api) => { ... }" }
-
-# Update hook code (triggers re-deploy if executor supports it)
-PUT /api/v2/hook-code/{id}
-{ "code": "exports.onExecutePostLogin = async (event, api) => { ... }" }
-```
-
-**Hooks** — binds code to a trigger:
+A binding is stored as a code hook, so you can also create one directly. This is
+how to set binding options such as `metadata.screens` on `pre-screen`:
 
 ```bash
-# Create a code hook bound to a trigger
 POST /api/v2/hooks
 {
-  "name": "VIP Claims",
-  "trigger_id": "post-user-login",
-  "code_id": "hc_abc123",
-  "enabled": true
+  "trigger_id": "pre-screen",
+  "code_id": "<action id>",
+  "enabled": true,
+  "metadata": { "screens": ["login-id", "signup"] }
 }
 ```
+
+The older `/api/v2/hook-code` endpoints store code without versions, names or
+admin support. A code hook's `code_id` can point to either, but new code should
+use Actions.
 
 ## Best Practices
 
@@ -1857,14 +1861,6 @@ Example log entry:
   "user_id": "auth0|123",
   "date": "2025-11-04T10:30:00.000Z"
 }
-```
-
-## Common Use Cases
-
-### Block signups from certain domains
-
-```typescript
-
 ```
 
 ## Common Use Cases
