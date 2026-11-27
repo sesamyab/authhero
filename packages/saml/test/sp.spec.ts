@@ -570,7 +570,23 @@ ${cert}
       );
     });
 
+    it("accepts a PEM with literal \\n escapes from a JSON string", () => {
+      const escaped = idpKey.certPem.trim().replace(/\n/g, "\\n");
+      expect(escaped).toContain("\\n");
+      expect(normalizeCertificate(escaped)).toBe(idpKey.certDer);
+    });
+
     it("rejects garbage", () => {
+      expect(
+        normalizeCertificate(
+          "-----BEGIN CERTIFICATE-----\nnot base64!\n-----END CERTIFICATE-----",
+        ),
+      ).toBeUndefined();
+      expect(
+        normalizeCertificate(
+          "-----BEGIN CERTIFICATE-----\naGVsbG8=\n-----END CERTIFICATE-----",
+        ),
+      ).toBeUndefined();
       expect(normalizeCertificate("not a cert")).toBeUndefined();
       expect(normalizeCertificate("")).toBeUndefined();
       expect(normalizeCertificate("aGVsbG8=")).toBeUndefined();

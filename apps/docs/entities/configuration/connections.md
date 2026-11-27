@@ -74,7 +74,7 @@ SAML 2.0 works in both directions in AuthHero:
   "options": {
     "signInEndpoint": "https://idp.corp.example.com/saml/sso",
     "signOutEndpoint": "https://idp.corp.example.com/saml/slo",
-    "signingCert": "-----BEGIN CERTIFICATE-----\\n...\\n-----END CERTIFICATE-----",
+    "signingCert": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
     "issuer": "https://idp.corp.example.com/saml/metadata",
     "signSAMLRequest": true,
     "signatureAlgorithm": "rsa-sha256"

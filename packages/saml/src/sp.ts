@@ -148,14 +148,20 @@ export async function createRedirectBindingUrl(params: {
  * Returns undefined when the input is none of those.
  */
 export function normalizeCertificate(input: string): string | undefined {
-  const trimmed = input.trim();
+  // A PEM copied out of a JSON string can carry literal "\n" escapes; a
+  // backslash is never part of base64, so treat them as line breaks.
+  const trimmed = input.replace(/\\[rn]/g, "\n").trim();
   if (!trimmed) return undefined;
 
   if (trimmed.startsWith("-----BEGIN")) {
     const match = trimmed.match(
       /-----BEGIN CERTIFICATE-----([\s\S]+?)-----END CERTIFICATE-----/,
     );
-    return match?.[1]?.replace(/\s/g, "") || undefined;
+    const body = match?.[1]?.replace(/\s/g, "");
+    if (!body) return undefined;
+    // The armored body must itself be a DER certificate.
+    const der = normalizeCertificate(body);
+    return der === body ? body : undefined;
   }
 
   const compact = trimmed.replace(/\s/g, "");
