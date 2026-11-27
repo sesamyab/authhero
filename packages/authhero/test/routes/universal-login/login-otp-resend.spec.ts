@@ -150,6 +150,44 @@ describe("login OTP resend", () => {
     expect(JSON.parse(stored!.state!).recipient).toBe("foo@example.com");
   });
 
+  it("shows the delivery error when a resend fails", async () => {
+    const server = await getTestServer({ mockEmail: true });
+    server.env.data.emailService!.send = async () => {
+      throw new Error("provider down");
+    };
+    const state = await createSession(server.env, "foo@example.com");
+
+    const response = await postScreen(server, "email-otp-challenge", state, {
+      action: "resend",
+    });
+
+    expect(response.status).toBe(400);
+    expect(JSON.stringify((await response.json()).screen.messages)).toContain(
+      emailOtp.resendFailed,
+    );
+  });
+
+  it("hides a delivery error in enumeration-safe mode", async () => {
+    const server = await getTestServer({ mockEmail: true });
+    await server.env.data.clients.update("tenantId", "clientId", {
+      hide_sign_up_disabled_error: true,
+    });
+    server.env.data.emailService!.send = async () => {
+      throw new Error("provider down");
+    };
+    const state = await createSession(server.env, "foo@example.com");
+
+    const response = await postScreen(server, "email-otp-challenge", state, {
+      action: "resend",
+    });
+
+    // Same answer as the stub path, which sends nothing
+    expect(response.status).toBe(200);
+    expect((await response.json()).screen.messages).toEqual([
+      { text: emailOtp.resendSuccess, type: "success" },
+    ]);
+  });
+
   it("reports an expired session when the session has no username", async () => {
     const server = await getTestServer({ mockEmail: true });
     const state = await createSession(server.env, undefined);

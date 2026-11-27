@@ -275,7 +275,10 @@ export async function resendLoginOtp(
 /**
  * POST handler body for the RESEND_BUTTON on the login OTP screens
  * (email-otp-challenge, sms-otp-challenge, magic-link-sent): re-send and
- * re-render the screen with a success or error message.
+ * re-render the screen with a success or error message. A delivery error is
+ * shown as such, except in enumeration-safe mode
+ * (client.hide_sign_up_disabled_error), where it gets the usual success
+ * message like every other resend.
  */
 export async function loginOtpResendResult(
   context: ScreenContext,
@@ -306,13 +309,19 @@ export async function loginOtpResendResult(
         ? { name: err.name, message: err.message }
         : { name: "UnknownError" };
     console.error("Failed to resend login code:", safeErr);
-    return {
-      error: failedText,
-      screen: await render({
-        ...context,
-        messages: [{ text: failedText, type: "error" }],
-      }),
-    };
+    // In enumeration-safe mode the stub path answers "code sent" without
+    // sending anything, so a delivery error must look the same: otherwise it
+    // would reveal that a code was issued, i.e. that the account exists.
+    if (context.client.hide_sign_up_disabled_error !== true) {
+      return {
+        error: failedText,
+        screen: await render({
+          ...context,
+          messages: [{ text: failedText, type: "error" }],
+        }),
+      };
+    }
+    sent = true;
   }
 
   if (!sent) {
