@@ -1735,7 +1735,9 @@ In `post-user-login`, `api.idToken.setCustomClaim` and `api.accessToken.setCusto
 By default an action that doesn't finish lets the request through: a run past the 5-second timeout, an execution that fails, or a thrown error is recorded on the execution and the request continues. For an action whose job is to refuse (a membership check, a fraud check), set `fail_closed` on the hook binding:
 
 ```bash
-curl -X POST /api/v2/hooks \
+curl -X POST "${AUTH_URL}/api/v2/hooks" \
+  -H "Authorization: Bearer ${MANAGEMENT_API_TOKEN}" \
+  -H "Content-Type: application/json" \
   -d '{
     "trigger_id": "credentials-exchange",
     "code_id": "<action id>",
