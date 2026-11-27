@@ -138,8 +138,14 @@ export async function createRedirectBindingUrl(params: {
     query += `&Signature=${encodeURIComponent(encodeBase64(new Uint8Array(signature)))}`;
   }
 
-  const separator = params.endpoint.includes("?") ? "&" : "?";
-  return `${params.endpoint}${separator}${query}`;
+  // Keep the SAML parameters in the query, ahead of any fragment, which the
+  // browser would not send.
+  const hashIndex = params.endpoint.indexOf("#");
+  const base =
+    hashIndex === -1 ? params.endpoint : params.endpoint.slice(0, hashIndex);
+  const fragment = hashIndex === -1 ? "" : params.endpoint.slice(hashIndex);
+  const separator = base.includes("?") ? "&" : "?";
+  return `${base}${separator}${query}${fragment}`;
 }
 
 /**
@@ -200,7 +206,10 @@ export interface SamlIdpMetadata {
   signingCertificates: string[];
 }
 
+const SAML2_PROTOCOL = "urn:oasis:names:tc:SAML:2.0:protocol";
+
 const ARRAY_TAGS = new Set([
+  "EntitiesDescriptor",
   "EntityDescriptor",
   "IDPSSODescriptor",
   "X509Certificate",
@@ -274,15 +283,26 @@ export function parseSamlIdpMetadata(xml: string): SamlIdpMetadata {
   });
   const doc = parser.parse(xml) as XmlNode;
 
-  const entities = [
-    ...asNodes(doc.EntityDescriptor),
-    ...asNodes(asNode(doc.EntitiesDescriptor)?.EntityDescriptor),
-  ];
-  const entity = entities.find((e) => asNodes(e.IDPSSODescriptor).length > 0);
-  const idp = entity && asNodes(entity.IDPSSODescriptor)[0];
+  // EntitiesDescriptor groups may nest; walk them depth-first.
+  const entities: XmlNode[] = [];
+  const collect = (group: XmlNode) => {
+    entities.push(...asNodes(group.EntityDescriptor));
+    for (const nested of asNodes(group.EntitiesDescriptor)) collect(nested);
+  };
+  collect(doc);
+
+  // The IdP role that speaks SAML 2.0, not a SAML 1.x role listed first.
+  const saml2Role = (e: XmlNode) =>
+    asNodes(e.IDPSSODescriptor).find((role) =>
+      (attr(role, "protocolSupportEnumeration") || "")
+        .split(/\s+/)
+        .includes(SAML2_PROTOCOL),
+    );
+  const entity = entities.find((e) => saml2Role(e));
+  const idp = entity && saml2Role(entity);
   const entityId = attr(entity, "entityID");
   if (!entity || !idp || !entityId) {
-    throw new Error("Metadata does not describe a SAML identity provider");
+    throw new Error("Metadata does not describe a SAML 2.0 identity provider");
   }
 
   const signingCertificates = asNodes(idp.KeyDescriptor)

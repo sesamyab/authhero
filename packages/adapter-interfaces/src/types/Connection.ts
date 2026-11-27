@@ -232,8 +232,14 @@ export const connectionOptionsSchema = z.object({
   signatureAlgorithm: z.enum(["rsa-sha256", "rsa-sha1"]).optional(),
   digestAlgorithm: z.enum(["sha256", "sha1"]).optional(),
   // Binding used to send the AuthnRequest: HTTP-Redirect (default) or
-  // HTTP-POST.
-  protocolBinding: z.string().optional(),
+  // HTTP-POST. Anything else is rejected rather than silently sent as a
+  // redirect to an endpoint that may only accept POST.
+  protocolBinding: z
+    .enum([
+      "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+      "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+    ])
+    .optional(),
   // SAML attribute holding the user id; defaults to the NameID.
   user_id_attribute: z.string().optional(),
   // Profile field → SAML attribute name(s), overriding the defaults.

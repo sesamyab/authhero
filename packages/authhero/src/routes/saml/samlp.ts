@@ -238,12 +238,7 @@ async function handleAuthnRequest(
       client,
       params.binding === "redirect"
         ? { binding: "redirect", rawQuery: rawQueryOf(ctx) }
-        : {
-            binding: "post",
-            xml,
-            rootElement: "AuthnRequest",
-            requestId: authnRequest.id,
-          },
+        : { binding: "post", xml, rootElement: "AuthnRequest" },
     );
   } catch (err) {
     if (!(err instanceof SamlRequestSignatureError)) throw err;
@@ -496,7 +491,6 @@ async function handleSamlLogout(
             binding: "post",
             xml: decodeSamlPostMessage(SAMLRequest),
             rootElement: "LogoutRequest",
-            requestId: requestId ?? "",
           },
     );
   } catch (err) {

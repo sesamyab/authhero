@@ -18,9 +18,8 @@ type SamlRequestToVerify =
   | {
       binding: "post";
       xml: string;
-      /** The root element and ID the signature must cover. */
+      /** The root element the signature must cover. */
       rootElement: "AuthnRequest" | "LogoutRequest";
-      requestId: string;
     };
 
 export class SamlRequestSignatureError extends Error {
@@ -48,25 +47,35 @@ function getAddonSigning(client: EnrichedClient): SamlpAddonSigning {
   };
 }
 
-function signedRootMatches(
-  reference: string,
-  rootElement: string,
-  requestId: string,
-): boolean {
+/**
+ * The exact, untrimmed ID attribute of the document's root element, when the
+ * root is `rootElement`. Attribute values must not be trimmed here: xml-crypto
+ * resolves a reference by the exact value, so `ID=" _r "` and `ID="_r"` are
+ * different elements to it.
+ */
+function rootId(xml: string, rootElement: string): string | undefined {
   try {
     const doc = new XMLParser({
       ignoreAttributes: false,
       attributeNamePrefix: "@_",
       removeNSPrefix: true,
-    }).parse(reference) as Record<string, unknown>;
-    const root = doc[rootElement];
-    return (
-      !!root &&
-      typeof root === "object" &&
-      (root as Record<string, unknown>)["@_ID"] === requestId
+      trimValues: false,
+      parseAttributeValue: false,
+      ignoreDeclaration: true,
+      ignorePiTags: true,
+    }).parse(xml) as Record<string, unknown>;
+    const elements = Object.keys(doc).filter(
+      (key) => !key.startsWith("@_") && !key.startsWith("#"),
     );
+    if (elements.length !== 1 || elements[0] !== rootElement) return undefined;
+    const root = doc[rootElement];
+    if (!root || typeof root !== "object" || Array.isArray(root)) {
+      return undefined;
+    }
+    const id = (root as Record<string, unknown>)["@_ID"];
+    return typeof id === "string" && id ? id : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -78,7 +87,9 @@ function signedRootMatches(
  *
  * HTTP-Redirect signatures are checked with WebCrypto. HTTP-POST requests
  * carry an XML signature, checked with `ctx.env.samlVerifier`; it must cover
- * the request element itself, so a signed element wrapped in an unsigned
+ * the document's root request element itself: a signed reference counts only
+ * when its root has exactly the posted root's ID, and IDs are unique (the
+ * verifier refuses duplicates), so a signed element wrapped in an unsigned
  * request is refused.
  *
  * @throws SamlRequestSignatureError when the request must be signed and isn't.
@@ -122,6 +133,13 @@ export async function verifySamlRequestSignature(
     return;
   }
 
+  const postedRootId = rootId(request.xml, request.rootElement);
+  if (!postedRootId) {
+    throw new SamlRequestSignatureError(
+      `SAMLRequest signature verification failed: the message is not a single ${request.rootElement} with an ID`,
+    );
+  }
+
   const verifier = ctx.env.samlVerifier;
   if (!verifier) {
     throw new SamlRequestSignatureError(
@@ -137,8 +155,8 @@ export async function verifySamlRequestSignature(
     );
   }
   if (
-    !references.some((reference) =>
-      signedRootMatches(reference, request.rootElement, request.requestId),
+    !references.some(
+      (reference) => rootId(reference, request.rootElement) === postedRootId,
     )
   ) {
     throw new SamlRequestSignatureError(

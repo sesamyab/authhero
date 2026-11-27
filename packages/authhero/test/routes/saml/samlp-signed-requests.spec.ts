@@ -174,6 +174,24 @@ describe("SAML IdP: signed requests and the HTTP-POST binding", () => {
       );
     });
 
+    it("rejects a signed request wrapped in one with a padded copy of its ID", async () => {
+      const { post } = await setup({ signingCert: spKey.cert });
+      const genuine = signXml(authnRequest("_good"), spKey, "AuthnRequest");
+      // Trimmed, the outer ID equals the signed one; xml-crypto sees two IDs.
+      const wrapped = authnRequest(
+        " _good ",
+        "https://example.com/callback?evil",
+      ).replace(
+        "</saml:Issuer>",
+        `</saml:Issuer><samlp:Extensions>${genuine}</samlp:Extensions>`,
+      );
+      const response = await post("/clientId", { SAMLRequest: b64(wrapped) });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error_description).toMatch(
+        /signature verification failed/,
+      );
+    });
+
     it("requires a signed LogoutRequest", async () => {
       const { env, samlApp } = await setup({
         signingCert: spKey.cert,

@@ -177,11 +177,15 @@ const DEFAULT_FIELDS: Record<string, string[]> = {
 const EMAIL_NAME_ID_FORMAT =
   "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
 
+const NAME_IDENTIFIER_CLAIM = `${CLAIMS}/nameidentifier`;
+
 function firstValue(
   attributes: SamlAssertion["attributes"],
   names: string[],
 ): string | undefined {
   for (const name of names) {
+    // Own properties only: an attribute name must never hit Object.prototype.
+    if (!Object.hasOwn(attributes, name)) continue;
     const value = attributes[name];
     const first = Array.isArray(value) ? value[0] : value;
     if (first) return first;
@@ -202,13 +206,29 @@ export function mapSamlAssertion(
     return DEFAULT_FIELDS[field] || [];
   };
 
+  // The user id comes from `user_id_attribute`, else Auth0's
+  // `fieldsMap.user_id`, else the NameID. As in Auth0, the NameID is also
+  // addressable as the nameidentifier claim, so a fieldsMap.user_id list can
+  // name it as one of its candidates.
   const userIdAttribute = connection.options?.user_id_attribute;
-  const userId = userIdAttribute
-    ? firstValue(attributes, [userIdAttribute])
+  const mappedUserId = fieldsMap.user_id;
+  const idSources: SamlAssertion["attributes"] = {
+    [NAME_IDENTIFIER_CLAIM]: assertion.nameId,
+    ...attributes,
+  };
+  const userIdNames = userIdAttribute
+    ? [userIdAttribute]
+    : mappedUserId
+      ? Array.isArray(mappedUserId)
+        ? mappedUserId
+        : [mappedUserId]
+      : undefined;
+  const userId = userIdNames
+    ? firstValue(idSources, userIdNames)
     : assertion.nameId;
   if (!userId) {
     throw new Error(
-      `SAML assertion has no value for the user id attribute ${userIdAttribute}`,
+      `SAML assertion has no value for the user id attribute ${userIdNames?.join(", ")}`,
     );
   }
 
@@ -230,7 +250,7 @@ export function mapSamlAssertion(
   // Custom fieldsMap entries surface as profile fields of their own.
   const mappedExtras: Record<string, string> = {};
   for (const field of Object.keys(fieldsMap)) {
-    if (field in DEFAULT_FIELDS) continue;
+    if (field in DEFAULT_FIELDS || field === "user_id") continue;
     const value = firstValue(attributes, namesFor(field));
     if (value !== undefined) mappedExtras[field] = value;
   }

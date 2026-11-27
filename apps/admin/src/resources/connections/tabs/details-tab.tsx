@@ -81,6 +81,10 @@ function SamlServiceProviderDetails() {
   const tenantId = useTenantId();
   const name = useWatch({ name: "name" }) as string | undefined;
   const entityId = useWatch({ name: "options.entityId" }) as string | undefined;
+  // The ACS URL override is sent to the IdP verbatim, so register that.
+  const acsOverride = useWatch({ name: "options.callback_url" }) as
+    | string
+    | undefined;
   const connection = name ? encodeURIComponent(name) : "{connection}";
   const spEntityId =
     entityId || `urn:auth0:${tenantId ?? "{tenant}"}:${name || "{connection}"}`;
@@ -88,7 +92,9 @@ function SamlServiceProviderDetails() {
   const rows: { label: string; value: string }[] = [
     {
       label: "Assertion Consumer Service (ACS) URL",
-      value: `https://{auth-domain}/login/callback?connection=${connection}`,
+      value:
+        acsOverride ||
+        `https://{auth-domain}/login/callback?connection=${connection}`,
     },
     { label: "Entity ID (Audience)", value: spEntityId },
     {

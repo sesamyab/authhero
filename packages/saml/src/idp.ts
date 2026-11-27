@@ -62,7 +62,10 @@ export function parseSamlAuthnRequest(xml: string): SamlAuthnRequestInfo {
     destination: stringAttr(node, "Destination"),
     protocolBinding: stringAttr(node, "ProtocolBinding"),
     issueInstant: stringAttr(node, "IssueInstant"),
-    forceAuthn: stringAttr(node, "ForceAuthn")?.toLowerCase() === "true",
+    // xs:boolean: "true" and "1" are both true.
+    forceAuthn: ["true", "1"].includes(
+      stringAttr(node, "ForceAuthn")?.trim().toLowerCase() ?? "",
+    ),
   };
 }
 
@@ -143,13 +146,19 @@ export async function verifyRedirectBindingSignature(params: {
   }
 
   for (const spki of params.spkiKeys) {
-    const key = await crypto.subtle.importKey(
-      "spki",
-      Uint8Array.from(spki),
-      { name: "RSASSA-PKCS1-v1_5", hash },
-      false,
-      ["verify"],
-    );
+    let key: CryptoKey;
+    try {
+      key = await crypto.subtle.importKey(
+        "spki",
+        Uint8Array.from(spki),
+        { name: "RSASSA-PKCS1-v1_5", hash },
+        false,
+        ["verify"],
+      );
+    } catch {
+      // Not an RSA key (e.g. EC): it can't have made this signature.
+      continue;
+    }
     if (
       await crypto.subtle.verify(
         "RSASSA-PKCS1-v1_5",

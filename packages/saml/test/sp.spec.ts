@@ -76,6 +76,9 @@ interface ResponseOptions {
   status?: string;
   extraAssertion?: string;
   assertionId?: string;
+  extraConditions?: string;
+  omitAuthnStatement?: boolean;
+  extraAttributes?: string;
 }
 
 function buildAssertion(o: ResponseOptions = {}) {
@@ -88,12 +91,15 @@ function buildAssertion(o: ResponseOptions = {}) {
     `<saml:Issuer>${o.issuer ?? IDP}</saml:Issuer>` +
     `<saml:Subject><saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">${o.nameId ?? "jane@example.com"}</saml:NameID>` +
     `<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData${inResponseTo} NotOnOrAfter="${o.confirmationNotOnOrAfter ?? iso(300_000)}" Recipient="${o.recipient ?? ACS}"/></saml:SubjectConfirmation></saml:Subject>` +
-    `<saml:Conditions NotBefore="${o.notBefore ?? iso(-60_000)}" NotOnOrAfter="${o.notOnOrAfter ?? iso(300_000)}"><saml:AudienceRestriction><saml:Audience>${o.audience ?? SP}</saml:Audience></saml:AudienceRestriction></saml:Conditions>` +
-    `<saml:AuthnStatement AuthnInstant="${iso(0)}" SessionIndex="_sess1"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement>` +
+    `<saml:Conditions NotBefore="${o.notBefore ?? iso(-60_000)}" NotOnOrAfter="${o.notOnOrAfter ?? iso(300_000)}"><saml:AudienceRestriction><saml:Audience>${o.audience ?? SP}</saml:Audience></saml:AudienceRestriction>${o.extraConditions ?? ""}</saml:Conditions>` +
+    (o.omitAuthnStatement
+      ? ""
+      : `<saml:AuthnStatement AuthnInstant="${iso(0)}" SessionIndex="_sess1"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement>`) +
     `<saml:AttributeStatement>` +
     `<saml:Attribute Name="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"><saml:AttributeValue>jane@example.com</saml:AttributeValue></saml:Attribute>` +
     `<saml:Attribute Name="groups"><saml:AttributeValue>admins</saml:AttributeValue><saml:AttributeValue>staff</saml:AttributeValue></saml:Attribute>` +
     `<saml:Attribute Name="employeeNumber"><saml:AttributeValue xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">00123</saml:AttributeValue></saml:Attribute>` +
+    (o.extraAttributes ?? "") +
     `</saml:AttributeStatement>` +
     `</saml:Assertion>`
   );
@@ -246,17 +252,18 @@ describe("SAML service provider", () => {
     });
 
     it("rejects a second, unsigned assertion next to the signed one", async () => {
+      // Sign a response with one assertion, then add the unsigned sibling.
       const signed = sign(
-        wrapResponse(buildAssertion(), {
-          extraAssertion: buildAssertion({
-            assertionId: "_evil",
-            nameId: "admin@example.com",
-          }),
-        }),
+        wrapResponse(buildAssertion()),
         idpKey,
         "assertion",
+      ).replace(
+        "</samlp:Response>",
+        `${buildAssertion({ assertionId: "_evil", nameId: "admin@example.com" })}</samlp:Response>`,
       );
-      await expectCode(validate(b64(signed)), "invalid_response");
+      const promise = validate(b64(signed));
+      await expectCode(promise, "invalid_response");
+      await expect(promise).rejects.toThrow(/exactly one assertion, found 2/);
     });
 
     it("never reads the assertion from unsigned content (signature wrapping)", async () => {
@@ -311,14 +318,72 @@ describe("SAML service provider", () => {
     });
 
     it("rejects an answer to another request", async () => {
+      // The envelope matches; only the signed confirmation answers _other.
       const signed = sign(
-        wrapResponse(buildAssertion({ inResponseTo: "_other" }), {
-          inResponseTo: "_other",
-        }),
+        wrapResponse(buildAssertion({ inResponseTo: "_other" })),
         idpKey,
         "assertion",
       );
-      await expectCode(validate(b64(signed)), "in_response_to_mismatch");
+      const promise = validate(b64(signed));
+      await expectCode(promise, "in_response_to_mismatch");
+      await expect(promise).rejects.toThrow(
+        /does not answer this authentication request/,
+      );
+    });
+
+    it("rejects conditions it does not understand, accepts OneTimeUse", async () => {
+      const unknown = sign(
+        wrapResponse(
+          buildAssertion({
+            extraConditions: `<saml:Condition xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ext:Custom"/>`,
+          }),
+        ),
+        idpKey,
+        "assertion",
+      );
+      const promise = validate(b64(unknown));
+      await expectCode(promise, "invalid_response");
+      await expect(promise).rejects.toThrow(/does not understand: Condition/);
+
+      const oneTimeUse = sign(
+        wrapResponse(buildAssertion({ extraConditions: `<saml:OneTimeUse/>` })),
+        idpKey,
+        "assertion",
+      );
+      await expect(validate(b64(oneTimeUse))).resolves.toBeDefined();
+    });
+
+    it("requires an AuthnStatement", async () => {
+      const signed = sign(
+        wrapResponse(buildAssertion({ omitAuthnStatement: true })),
+        idpKey,
+        "assertion",
+      );
+      const promise = validate(b64(signed));
+      await expectCode(promise, "invalid_response");
+      await expect(promise).rejects.toThrow(/no AuthnStatement/);
+    });
+
+    it("keeps attribute names like toString and __proto__ as plain values", async () => {
+      const signed = sign(
+        wrapResponse(
+          buildAssertion({
+            extraAttributes:
+              `<saml:Attribute Name="toString"><saml:AttributeValue>display</saml:AttributeValue></saml:Attribute>` +
+              `<saml:Attribute Name="__proto__"><saml:AttributeValue>polluted</saml:AttributeValue></saml:Attribute>`,
+          }),
+        ),
+        idpKey,
+        "assertion",
+      );
+      const { attributes } = await validate(b64(signed));
+      expect(
+        Object.getOwnPropertyDescriptor(attributes, "toString")?.value,
+      ).toBe("display");
+      expect(
+        Object.getOwnPropertyDescriptor(attributes, "__proto__")?.value,
+      ).toBe("polluted");
+      expect(Object.getPrototypeOf(attributes)).toBe(Object.prototype);
     });
 
     it("rejects an unsolicited response in an SP-initiated flow", async () => {
@@ -456,6 +521,20 @@ describe("SAML service provider", () => {
       ).toBe(xml);
     });
 
+    it("puts the SAML parameters ahead of a fragment", async () => {
+      const url = new URL(
+        await createRedirectBindingUrl({
+          endpoint: "https://idp.example.com/sso?tenant=alpha#login",
+          xml: "<samlp:AuthnRequest/>",
+          relayState: "rs",
+        }),
+      );
+      expect(url.searchParams.get("tenant")).toBe("alpha");
+      expect(url.searchParams.get("SAMLRequest")).toBeTruthy();
+      expect(url.searchParams.get("RelayState")).toBe("rs");
+      expect(url.hash).toBe("#login");
+    });
+
     it("signs the redirect query string with the SP key", async () => {
       const { xml } = createSamlAuthnRequest({
         destination: "https://idp.example.com/sso",
@@ -526,6 +605,28 @@ ${cert}
         .replace('<?xml version="1.0"?>', "")
         .replace(/md:/g, "")}</EntitiesDescriptor>`;
       expect(parseSamlIdpMetadata(xml).entityId).toBe(IDP);
+    });
+
+    it("finds the IdP in nested EntitiesDescriptor groups", () => {
+      const entity = metadata(idpKey.certDer)
+        .replace('<?xml version="1.0"?>', "")
+        .replace(/md:/g, "");
+      const xml =
+        `<EntitiesDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata">` +
+        `<EntitiesDescriptor>${entity}</EntitiesDescriptor></EntitiesDescriptor>`;
+      expect(parseSamlIdpMetadata(xml).entityId).toBe(IDP);
+    });
+
+    it("uses the SAML 2.0 role, not a SAML 1.x role listed first", () => {
+      const xml = metadata(idpKey.certDer).replace(
+        "<md:IDPSSODescriptor",
+        `<md:IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:1.1:protocol"><md:KeyDescriptor use="signing"><ds:KeyInfo><ds:X509Data><ds:X509Certificate>SAML1CERT</ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor><md:SingleSignOnService Binding="urn:mace:shibboleth:1.0:profiles:AuthnRequest" Location="https://idp.example.com/saml1"/></md:IDPSSODescriptor><md:IDPSSODescriptor`,
+      );
+      const parsed = parseSamlIdpMetadata(xml);
+      expect(parsed.signingCertificates).toEqual([idpKey.certDer]);
+      expect(selectSamlEndpoint(parsed.singleSignOnServices)?.location).toBe(
+        "https://idp.example.com/sso/redirect",
+      );
     });
 
     it("rejects metadata without an IdP", () => {
@@ -616,6 +717,14 @@ describe("SAML identity provider helpers", () => {
     expect(() => parseSamlAuthnRequest(`<LogoutRequest ID="x"/>`)).toThrow(
       /not an AuthnRequest/,
     );
+    const forceAuthn = (value: string) =>
+      parseSamlAuthnRequest(
+        `<AuthnRequest xmlns="urn:oasis:names:tc:SAML:2.0:protocol" ID="_x" ForceAuthn="${value}"/>`,
+      ).forceAuthn;
+    expect(forceAuthn("1")).toBe(true);
+    expect(forceAuthn("true")).toBe(true);
+    expect(forceAuthn("0")).toBe(false);
+    expect(forceAuthn("false")).toBe(false);
   });
 
   describe("verifyRedirectBindingSignature", () => {
@@ -655,6 +764,24 @@ describe("SAML identity provider helpers", () => {
           }),
         ).toBe(true);
       }
+    });
+
+    it("skips keys that are not RSA keys", async () => {
+      const ec = await crypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign", "verify"],
+      );
+      const ecSpki = new Uint8Array(
+        await crypto.subtle.exportKey("spki", ec.publicKey),
+      );
+      expect(
+        await verifyRedirectBindingSignature({
+          rawQuery: await signedQuery("state"),
+          parameter: "SAMLRequest",
+          spkiKeys: [ecSpki, spki],
+        }),
+      ).toBe(true);
     });
 
     it("rejects another key and a tampered query", async () => {

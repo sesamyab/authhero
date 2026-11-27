@@ -170,7 +170,9 @@ function decodeResponse(samlResponse: string): string {
 }
 
 function collectAttributes(assertion: XmlNode) {
-  const attributes: Record<string, string | string[]> = {};
+  // A Map, so attribute names like "toString" or "__proto__" never meet
+  // Object.prototype; fromEntries then defines them as own properties.
+  const attributes = new Map<string, string | string[]>();
   for (const statement of asNodes(assertion.AttributeStatement)) {
     for (const attribute of asNodes(statement.Attribute)) {
       const name = attr(attribute, "Name");
@@ -180,7 +182,7 @@ function collectAttributes(assertion: XmlNode) {
         .map((v) => textOf(v))
         .filter((v): v is string => v !== undefined);
       if (values.length === 0) continue;
-      const existing = attributes[name];
+      const existing = attributes.get(name);
       const merged = [
         ...(existing === undefined
           ? []
@@ -189,11 +191,21 @@ function collectAttributes(assertion: XmlNode) {
             : [existing]),
         ...values,
       ];
-      attributes[name] = merged.length === 1 ? merged[0]! : merged;
+      attributes.set(name, merged.length === 1 ? merged[0]! : merged);
     }
   }
-  return attributes;
+  return Object.fromEntries(attributes);
 }
+
+// Conditions this SP evaluates or may ignore. OneTimeUse holds: each login's
+// state is consumed on first use. ProxyRestriction only constrains assertions
+// the SP issues on to others. Any other condition (a typed <Condition>) is not
+// understood, so the assertion is invalid (SAML Core §2.5.1).
+const UNDERSTOOD_CONDITIONS = new Set([
+  "AudienceRestriction",
+  "OneTimeUse",
+  "ProxyRestriction",
+]);
 
 export async function validateSamlResponse(
   params: ValidateSamlResponseParams,
@@ -352,6 +364,18 @@ export async function validateSamlResponse(
   }
 
   const conditions = asNode(assertion.Conditions);
+  const unknownCondition = Object.keys(conditions ?? {}).find(
+    (key) =>
+      !key.startsWith("@_") &&
+      key !== "#text" &&
+      !UNDERSTOOD_CONDITIONS.has(key),
+  );
+  if (unknownCondition) {
+    throw new SamlResponseError(
+      "invalid_response",
+      `Assertion has a condition this service provider does not understand: ${unknownCondition}`,
+    );
+  }
   const notBefore = parseInstant(attr(conditions, "NotBefore"), "NotBefore");
   const notOnOrAfterAttr = attr(conditions, "NotOnOrAfter");
   const notOnOrAfter = parseInstant(notOnOrAfterAttr, "NotOnOrAfter");
@@ -443,7 +467,14 @@ export async function validateSamlResponse(
     );
   }
 
+  // The Web Browser SSO profile requires an authentication statement.
   const authnStatement = asNodes(assertion.AuthnStatement)[0];
+  if (!authnStatement) {
+    throw new SamlResponseError(
+      "invalid_response",
+      "Assertion has no AuthnStatement",
+    );
+  }
   const sessionNotOnOrAfter = parseInstant(
     attr(authnStatement, "SessionNotOnOrAfter"),
     "SessionNotOnOrAfter",

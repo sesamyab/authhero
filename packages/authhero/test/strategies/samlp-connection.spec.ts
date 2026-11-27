@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { testClient } from "hono/testing";
 import * as x509 from "@peculiar/x509";
 import { XMLParser } from "fast-xml-parser";
@@ -10,6 +10,8 @@ import { getTestServer } from "../helpers/test-server";
 import { getAdminToken } from "../helpers/token";
 import { findHrdConnection } from "../../src/helpers/hrd";
 import { createX509Certificate } from "../../src/utils/encryption";
+import { mapSamlAssertion } from "../../src/strategies/samlp";
+import type { Connection } from "@authhero/adapter-interfaces";
 
 const IDP = "https://idp.example.com/metadata";
 const SIGN_IN = "https://idp.example.com/sso";
@@ -398,6 +400,57 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
     );
   });
 
+  describe("user id mapping", () => {
+    const assertion = {
+      assertionId: "_a",
+      nameId: "jane@example.com",
+      nameIdFormat: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+      attributes: { employeeId: "E42", upn: "jane@corp.example.com" },
+    };
+    const connectionWith = (options: Connection["options"]): Connection => ({
+      id: "c",
+      name: CONNECTION,
+      strategy: "samlp",
+      options,
+      created_at: "",
+      updated_at: "",
+    });
+    const subFor = (options: Connection["options"]) =>
+      mapSamlAssertion(connectionWith(options), assertion).userinfo.sub;
+
+    it("defaults to the NameID", () => {
+      expect(subFor({})).toBe(`${CONNECTION}|jane@example.com`);
+    });
+
+    it("follows Auth0's fieldsMap.user_id, with the NameID as nameidentifier", () => {
+      expect(
+        subFor({ fieldsMap: { user_id: ["missing", "employeeId"] } }),
+      ).toBe(`${CONNECTION}|E42`);
+      expect(
+        subFor({
+          fieldsMap: {
+            user_id: [
+              "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+              "employeeId",
+            ],
+          },
+        }),
+      ).toBe(`${CONNECTION}|jane@example.com`);
+    });
+
+    it("prefers user_id_attribute and fails when the attribute is missing", () => {
+      expect(
+        subFor({
+          user_id_attribute: "upn",
+          fieldsMap: { user_id: "employeeId" },
+        }),
+      ).toBe(`${CONNECTION}|jane@corp.example.com`);
+      expect(() => subFor({ fieldsMap: { user_id: "toString" } })).toThrow(
+        /no value for the user id attribute/,
+      );
+    });
+  });
+
   describe("management API", () => {
     const idpMetadata = (certDer: string) =>
       `<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" entityID="${IDP}">` +
@@ -406,6 +459,15 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
       `<md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.example.com/slo"/>` +
       `<md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="${SIGN_IN}"/>` +
       `</md:IDPSSODescriptor></md:EntityDescriptor>`;
+
+    const REDIRECT = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect";
+    const POST = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST";
+    const POST_SIGN_IN = "https://idp.example.com/sso/post";
+    const bothBindings = (certDer: string) =>
+      idpMetadata(certDer).replace(
+        "</md:IDPSSODescriptor>",
+        `<md:SingleSignOnService Binding="${POST}" Location="${POST_SIGN_IN}"/></md:IDPSSODescriptor>`,
+      );
 
     async function createConnection(options: Record<string, unknown>) {
       const { managementApp, env } = await getTestServer();
@@ -419,6 +481,91 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
         { headers: { authorization: `Bearer ${token}` } },
       );
     }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("keeps the sign-in endpoint paired with a changed binding", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+      const token = await getAdminToken();
+      const auth = { headers: { authorization: `Bearer ${token}` } };
+      const header = { "tenant-id": "tenantId" };
+
+      const created = await managementClient.connections.$post(
+        {
+          json: {
+            name: "saml-bindings",
+            strategy: "samlp",
+            options: { metadataXml: bothBindings(idpKey.certDer) },
+          },
+          header,
+        },
+        auth,
+      );
+      const connection = await created.json();
+      expect(connection.options).toMatchObject({
+        signInEndpoint: SIGN_IN,
+        protocolBinding: REDIRECT,
+      });
+
+      // Resubmit the full options with only the binding changed.
+      const patched = await managementClient.connections[":id"].$patch(
+        {
+          param: { id: connection.id },
+          json: { options: { ...connection.options, protocolBinding: POST } },
+          header,
+        },
+        auth,
+      );
+      expect(patched.status).toBe(200);
+      expect((await patched.json()).options).toMatchObject({
+        signInEndpoint: POST_SIGN_IN,
+        protocolBinding: POST,
+      });
+    });
+
+    it("rejects a binding the metadata does not offer", async () => {
+      const response = await createConnection({
+        metadataXml: idpMetadata(idpKey.certDer),
+        protocolBinding: POST,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("HTTP-POST binding");
+    });
+
+    it("rejects signed requests over HTTP-POST", async () => {
+      const response = await createConnection({
+        signInEndpoint: SIGN_IN,
+        signingCert: idpKey.certPem,
+        protocolBinding: POST,
+        signSAMLRequest: true,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("signSAMLRequest");
+    });
+
+    it("rejects an empty metadata download", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(null, { status: 204 })),
+      );
+      const response = await createConnection({
+        metadataUrl: "https://idp.example.com/metadata",
+      });
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("is empty");
+    });
+
+    it("rejects DER that is not an X.509 certificate", async () => {
+      // A bare SEQUENCE: looks like DER, is no certificate.
+      const response = await createConnection({
+        signInEndpoint: SIGN_IN,
+        signingCert: "MAMCAQA=",
+      });
+      expect(response.status).toBe(400);
+    });
 
     it("fills the connection from metadataXml", async () => {
       const response = await createConnection({
