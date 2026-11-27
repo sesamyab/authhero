@@ -219,21 +219,66 @@ export default app;
 
 ### Phase 3: Backfill Existing Data
 
-Create a script to copy existing data from MySQL to SQLite:
+List functions return one page at a time — `users.list` returns at most 50 users without pagination parameters — so the scripts below walk every page. Put the walks in a shared module:
+
+```typescript
+// scripts/list-all.ts
+import type { DataAdapters, Tenant, User } from "@authhero/adapter-interfaces";
+import { fetchAll } from "authhero";
+
+// tenants.list has no checkpoint mode; fetchAll walks it with an id cursor.
+export function listAllTenants(adapter: DataAdapters) {
+  return fetchAll<Tenant>((params) => adapter.tenants.list(params), "tenants", {
+    maxItems: -1,
+  });
+}
+
+// A checkpoint walk (from/take, then follow `next`) returns every primary
+// user. Linked accounts — rows with `linked_to` set — are folded into their
+// primary user's identities and are not part of the walk.
+export async function listPrimaryUsers(adapter: DataAdapters, tenantId: string) {
+  const users: User[] = [];
+  let from: string | undefined;
+  do {
+    const page = await adapter.users.list(tenantId, { from, take: 100 });
+    users.push(...page.users);
+    from = page.next;
+  } while (from);
+  return users;
+}
+
+// The Kysely adapter's offset mode does return linked accounts, so page
+// through them with a filter. (The Drizzle adapter never lists them; read
+// them one by one with users.get.)
+export async function listLinkedUsers(adapter: DataAdapters, tenantId: string) {
+  const users: User[] = [];
+  const perPage = 100;
+  for (let page = 0; ; page++) {
+    const result = await adapter.users.list(tenantId, {
+      page,
+      per_page: perPage,
+      q: "_exists_:linked_to",
+      sort: { sort_by: "created_at", sort_order: "asc" },
+    });
+    users.push(...result.users);
+    if (result.users.length < perPage) return users;
+  }
+}
+```
+
+Then copy the data from MySQL to SQLite:
 
 ```typescript
 // scripts/backfill-data.ts
 import { mysqlAdapter, sqliteAdapter } from "../src/database";
+import { listAllTenants, listLinkedUsers, listPrimaryUsers } from "./list-all";
 
 async function backfillEntity<T>(
   entityName: string,
-  getAll: () => Promise<T[]>,
-  create: (item: T) => Promise<void>,
+  items: T[],
+  create: (item: T) => Promise<unknown>,
 ) {
-  console.log(`Backfilling ${entityName}...`);
-
-  const items = await getAll();
-  console.log(`Found ${items.length} ${entityName} to migrate`);
+  console.log(`Backfilling ${items.length} ${entityName}...`);
 
   let successful = 0;
   let failed = 0;
@@ -258,50 +303,27 @@ async function backfillEntity<T>(
   return { successful, failed };
 }
 
-async function backfillTenants() {
-  const { tenants } = await mysqlAdapter.tenants.list();
-
-  return backfillEntity(
-    "tenants",
-    async () => tenants,
-    async (tenant) => {
-      await sqliteAdapter.tenants.create(tenant);
-    },
-  );
-}
-
-async function backfillUsers() {
-  // Get all tenants first
-  const { tenants } = await mysqlAdapter.tenants.list();
-  let totalSuccessful = 0;
-  let totalFailed = 0;
-
-  for (const tenant of tenants) {
-    console.log(`Backfilling users for tenant ${tenant.id}...`);
-
-    const { users } = await mysqlAdapter.users.list(tenant.id, {});
-
-    const result = await backfillEntity(
-      `users (${tenant.id})`,
-      async () => users,
-      async (user) => {
-        await sqliteAdapter.users.create(tenant.id, user);
-      },
-    );
-
-    totalSuccessful += result.successful;
-    totalFailed += result.failed;
-  }
-
-  return { successful: totalSuccessful, failed: totalFailed };
-}
-
 async function main() {
   console.log("Starting database backfill...\n");
 
-  // Backfill in dependency order
-  await backfillTenants();
-  await backfillUsers();
+  // Backfill in dependency order: tenants, then users
+  const tenants = await listAllTenants(mysqlAdapter);
+  await backfillEntity("tenants", tenants, (tenant) =>
+    sqliteAdapter.tenants.create(tenant),
+  );
+
+  for (const tenant of tenants) {
+    // Primary users first, so linked accounts find the user they point to
+    const primaryUsers = await listPrimaryUsers(mysqlAdapter, tenant.id);
+    await backfillEntity(`users (${tenant.id})`, primaryUsers, (user) =>
+      sqliteAdapter.users.create(tenant.id, user),
+    );
+
+    const linkedUsers = await listLinkedUsers(mysqlAdapter, tenant.id);
+    await backfillEntity(`linked users (${tenant.id})`, linkedUsers, (user) =>
+      sqliteAdapter.users.create(tenant.id, user),
+    );
+  }
   // Add other entities in correct order
 
   console.log("Backfill complete!");
@@ -318,38 +340,22 @@ tsx scripts/backfill-data.ts
 
 ### Phase 4: Verification
 
-Create a verification script to compare data:
+Create a verification script that compares the full sets of ids on both sides:
 
 ```typescript
 // scripts/verify-migration.ts
 import { mysqlAdapter, sqliteAdapter } from "../src/database";
+import { listAllTenants, listLinkedUsers, listPrimaryUsers } from "./list-all";
 
-async function verifyEntity<T extends { id?: string }>(
-  entityName: string,
-  getMySQL: () => Promise<T[]>,
-  getSQLite: () => Promise<T[]>,
-) {
+function compareIds(entityName: string, mysqlIds: string[], sqliteIds: string[]) {
   console.log(`Verifying ${entityName}...`);
+  console.log(`  MySQL: ${mysqlIds.length} records`);
+  console.log(`  SQLite: ${sqliteIds.length} records`);
 
-  const [mysqlItems, sqliteItems] = await Promise.all([
-    getMySQL(),
-    getSQLite(),
-  ]);
-
-  console.log(`  MySQL: ${mysqlItems.length} records`);
-  console.log(`  SQLite: ${sqliteItems.length} records`);
-
-  if (mysqlItems.length !== sqliteItems.length) {
-    console.error(`  ✗ Count mismatch!\n`);
-    return false;
-  }
-
-  // Check for missing records
-  const mysqlIds = new Set(mysqlItems.map((item) => item.id));
-  const sqliteIds = new Set(sqliteItems.map((item) => item.id));
-
-  const missingInSQLite = [...mysqlIds].filter((id) => !sqliteIds.has(id));
-  const extraInSQLite = [...sqliteIds].filter((id) => !mysqlIds.has(id));
+  const inSQLite = new Set(sqliteIds);
+  const inMySQL = new Set(mysqlIds);
+  const missingInSQLite = mysqlIds.filter((id) => !inSQLite.has(id));
+  const extraInSQLite = sqliteIds.filter((id) => !inMySQL.has(id));
 
   if (missingInSQLite.length > 0) {
     console.error(`  ✗ ${missingInSQLite.length} records missing in SQLite`);
@@ -368,42 +374,48 @@ async function verifyEntity<T extends { id?: string }>(
 
 async function main() {
   console.log("Starting migration verification...\n");
+  const results: boolean[] = [];
 
-  const results = await Promise.all([
-    verifyEntity(
+  const mysqlTenants = await listAllTenants(mysqlAdapter);
+  const sqliteTenants = await listAllTenants(sqliteAdapter);
+  results.push(
+    compareIds(
       "tenants",
-      async () => (await mysqlAdapter.tenants.list()).tenants,
-      async () => (await sqliteAdapter.tenants.list()).tenants,
+      mysqlTenants.map((tenant) => tenant.id),
+      sqliteTenants.map((tenant) => tenant.id),
     ),
+  );
 
-    verifyEntity(
-      "users",
-      async () => {
-        const { tenants } = await mysqlAdapter.tenants.list();
-        const allUsers = [];
-        for (const tenant of tenants) {
-          const { users } = await mysqlAdapter.users.list(tenant.id, {});
-          allUsers.push(...users);
-        }
-        return allUsers;
-      },
-      async () => {
-        const { tenants } = await sqliteAdapter.tenants.list();
-        const allUsers = [];
-        for (const tenant of tenants) {
-          const { users } = await sqliteAdapter.users.list(tenant.id, {});
-          allUsers.push(...users);
-        }
-        return allUsers;
-      },
-    ),
+  for (const tenant of mysqlTenants) {
+    const [mysqlUsers, sqliteUsers] = await Promise.all([
+      listPrimaryUsers(mysqlAdapter, tenant.id),
+      listPrimaryUsers(sqliteAdapter, tenant.id),
+    ]);
+    results.push(
+      compareIds(
+        `users (${tenant.id})`,
+        mysqlUsers.map((user) => user.user_id),
+        sqliteUsers.map((user) => user.user_id),
+      ),
+    );
 
-    // Add other entities...
-  ]);
+    // The Drizzle adapter doesn't list linked accounts; look each one up
+    const linkedUsers = await listLinkedUsers(mysqlAdapter, tenant.id);
+    const linkedInSQLite = await Promise.all(
+      linkedUsers.map((user) => sqliteAdapter.users.get(tenant.id, user.user_id)),
+    );
+    results.push(
+      compareIds(
+        `linked users (${tenant.id})`,
+        linkedUsers.map((user) => user.user_id),
+        linkedInSQLite.flatMap((user) => (user ? [user.user_id] : [])),
+      ),
+    );
+  }
 
-  const allPassed = results.every((result) => result);
+  // Add other entities...
 
-  if (allPassed) {
+  if (results.every((result) => result)) {
     console.log("✓ All verifications passed! Ready to switch over.");
   } else {
     console.error("✗ Verification failed. Do not switch over yet.");
