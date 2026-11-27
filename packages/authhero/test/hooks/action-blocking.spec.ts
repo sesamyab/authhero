@@ -427,11 +427,29 @@ describe("post-user-login actions", () => {
         args: ["member", true],
       }),
     });
-    const update = server.env.data.loginSessions.update;
-    server.env.data.loginSessions.update = async (tenantId, id, session) =>
+    // Fail the claims write on both adapter write paths: a plain update that
+    // returns false, and the compare-and-swap update erroring like a storage
+    // failure would.
+    const sessions = server.env.data.loginSessions;
+    const update = sessions.update;
+    sessions.update = async (tenantId, id, session) =>
       session.state_data?.includes("action_claims")
         ? false
         : update(tenantId, id, session);
+    const casUpdate = sessions.updateIfStateDataUnchanged;
+    if (casUpdate) {
+      sessions.updateIfStateDataUnchanged = async (
+        tenantId,
+        id,
+        expected,
+        session,
+      ) => {
+        if (session.state_data?.includes("action_claims")) {
+          throw new Error("storage unavailable");
+        }
+        return casUpdate(tenantId, id, expected, session);
+      };
+    }
     const { response } = await login(server);
 
     expect(response.status).toBe(500);
