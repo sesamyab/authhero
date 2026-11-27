@@ -53,9 +53,11 @@ async function fetchMetadata(
  * signingCert(s) and the IdP entity ID (stored as `issuer`, which responses
  * are then checked against).
  *
- * Metadata is (re)read when it is new or changed, when the request binding
- * changed, or when the options still lack a sign-in endpoint or certificate,
- * so the saved endpoint is always one the IdP offers for the saved binding.
+ * Metadata is (re)read when it is new or changed, when clearing
+ * `metadataXml` leaves `metadataUrl` as the only source, when the request
+ * binding changed, or when the options still lack a sign-in endpoint or
+ * certificate, so the saved values always come from the current source and
+ * the saved endpoint is one the IdP offers for the saved binding.
  * Then validates the result, so a bad configuration fails the save rather
  * than every login: certificates must parse as X.509, and signed requests
  * need the HTTP-Redirect binding.
@@ -69,6 +71,8 @@ export async function resolveSamlConnectionOptions(
 
   const xmlChanged = resolved.metadataXml !== previous?.metadataXml;
   const urlChanged = resolved.metadataUrl !== previous?.metadataUrl;
+  // The saved values came from the XML that is now gone.
+  const xmlCleared = Boolean(previous?.metadataXml) && !resolved.metadataXml;
   const bindingChanged = resolved.protocolBinding !== previous?.protocolBinding;
   const incomplete = !resolved.signInEndpoint || !resolved.signingCert;
   const reread = incomplete || bindingChanged;
@@ -77,7 +81,7 @@ export async function resolveSamlConnectionOptions(
   let metadataXml: string | undefined;
   if (resolved.metadataXml && (xmlChanged || reread)) {
     metadataXml = resolved.metadataXml;
-  } else if (resolved.metadataUrl && (urlChanged || reread)) {
+  } else if (resolved.metadataUrl && (urlChanged || reread || xmlCleared)) {
     metadataXml = await fetchMetadata(ctx, resolved.metadataUrl);
     if (!metadataXml.trim()) {
       badRequest("SAML metadata downloaded from metadataUrl is empty");

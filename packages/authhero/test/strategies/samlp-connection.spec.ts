@@ -609,6 +609,62 @@ describe("samlp connections (AuthHero as SAML SP)", () => {
       });
     });
 
+    it("re-reads metadataUrl when metadataXml is cleared", async () => {
+      const { managementApp, env } = await getTestServer();
+      const managementClient = testClient(managementApp, env);
+      const token = await getAdminToken();
+      const auth = { headers: { authorization: `Bearer ${token}` } };
+      const header = { "tenant-id": "tenantId" };
+      const fromUrl = vi.fn(
+        async () =>
+          new Response(
+            idpMetadata(idpKey.certDer).replace(SIGN_IN, POST_SIGN_IN),
+            { status: 200 },
+          ),
+      );
+      vi.stubGlobal("fetch", fromUrl);
+
+      const created = await managementClient.connections.$post(
+        {
+          json: {
+            name: "saml-both-sources",
+            strategy: "samlp",
+            options: {
+              metadataXml: idpMetadata(idpKey.certDer),
+              metadataUrl: "https://idp.example.com/metadata",
+            },
+          },
+          header,
+        },
+        auth,
+      );
+      const connection = await created.json();
+      expect(connection.options.signInEndpoint).toBe(SIGN_IN);
+      expect(fromUrl).not.toHaveBeenCalled();
+
+      const { metadataXml: _cleared, ...withoutXml } = connection.options;
+      const patched = await managementClient.connections[":id"].$patch(
+        { param: { id: connection.id }, json: { options: withoutXml }, header },
+        auth,
+      );
+      expect(patched.status).toBe(200);
+      expect(fromUrl).toHaveBeenCalledTimes(1);
+      const patchedConnection = await patched.json();
+      expect(patchedConnection.options.signInEndpoint).toBe(POST_SIGN_IN);
+
+      // Unchanged source and binding: no fetch.
+      const again = await managementClient.connections[":id"].$patch(
+        {
+          param: { id: connection.id },
+          json: { options: patchedConnection.options },
+          header,
+        },
+        auth,
+      );
+      expect(again.status).toBe(200);
+      expect(fromUrl).toHaveBeenCalledTimes(1);
+    });
+
     it("rejects a binding the metadata does not offer", async () => {
       const response = await createConnection({
         metadataXml: idpMetadata(idpKey.certDer),
