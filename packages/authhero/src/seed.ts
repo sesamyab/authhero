@@ -752,12 +752,13 @@ export async function seed(
       audience,
       sender_email: "noreply@example.com",
       sender_name: "AuthHero",
+      // New tenants use the widget login (/u2) for every application.
+      flags: { universal_login_version: "2" },
     });
 
     // Enable allow_organization_name_in_authentication_api for main tenant
     // This includes org_name in tokens, which is needed for multi-tenancy
     // where org_name should match tenant_id
-    // New tenants use the widget login (/u2) for every application.
     if (isControlPlane) {
       await adapters.tenants.update(tenantId, {
         allow_organization_name_in_authentication_api: true,
@@ -767,10 +768,6 @@ export async function seed(
           universal_login_version: "2",
           inherit_global_permissions_in_organizations: true,
         },
-      });
-    } else {
-      await adapters.tenants.update(tenantId, {
-        flags: { universal_login_version: "2" },
       });
     }
 

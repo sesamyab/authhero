@@ -14,7 +14,8 @@
  *
  * `flip` sets the tenant flag `flags.universal_login_version` to "2";
  * `rollback` removes it again. Client overrides are never changed, so a
- * rollback restores exactly what the tenant had.
+ * rollback restores the earlier routing when the tenant had no flag or "1"
+ * before; `flip` prints the previous value as `from`.
  */
 import { Kysely, SqliteDialect } from "kysely";
 import createAdapters, { Database } from "@authhero/kysely-adapter";

@@ -137,12 +137,12 @@ A custom function that replaces the default webhook invocation logic. By default
 
 The function receives an object with these properties:
 
-| Parameter             | Type                                  | Description                                                                                    |
-| --------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `hook`                | `Hook`                                | The hook being invoked (contains `url`, `hook_id`, `trigger_id`, etc.)                         |
-| `data`                | `Record<string, unknown>`             | The payload data for the webhook                                                               |
-| `tenant_id`           | `string`                              | The tenant ID                                                                                  |
-| `createServiceToken`  | `(scope?: string) => Promise<string>` | Lazily creates a service token. Only generates the token when called — no overhead if not used. |
+| Parameter            | Type                                  | Description                                                                                     |
+| -------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `hook`               | `Hook`                                | The hook being invoked (contains `url`, `hook_id`, `trigger_id`, etc.)                          |
+| `data`               | `Record<string, unknown>`             | The payload data for the webhook                                                                |
+| `tenant_id`          | `string`                              | The tenant ID                                                                                   |
+| `createServiceToken` | `(scope?: string) => Promise<string>` | Lazily creates a service token. Only generates the token when called — no overhead if not used. |
 
 The function must return a `Response` object. If the response status is >= 400, the invocation will be logged as failed.
 

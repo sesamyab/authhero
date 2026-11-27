@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getTestServer } from "./test-server";
 import {
   auditLoginMigration,
+  checkWidgetServed,
   setTenantLoginVersion,
 } from "../../src/helpers/login-migration";
 
@@ -56,5 +57,37 @@ describe("login migration tooling", () => {
     tenant = await env.data.tenants.get("tenantId");
     expect(tenant?.flags?.universal_login_version).toBeUndefined();
     expect(tenant?.flags?.enable_sso).toBe(true);
+  });
+});
+
+describe("checkWidgetServed", () => {
+  const respond = (status: number, contentType?: string) => async () =>
+    new Response("x", {
+      status,
+      headers: contentType ? { "content-type": contentType } : {},
+    });
+
+  it("accepts a JavaScript bundle", async () => {
+    const check = await checkWidgetServed(
+      "https://login.example.com",
+      respond(200, "application/javascript; charset=utf-8") as typeof fetch,
+    );
+    expect(check.status).toBe("ok");
+  });
+
+  it("rejects an HTML fallback served with 200", async () => {
+    const check = await checkWidgetServed(
+      "https://login.example.com",
+      respond(200, "text/html") as typeof fetch,
+    );
+    expect(check.status).toBe("warn");
+  });
+
+  it("rejects an error status", async () => {
+    const check = await checkWidgetServed(
+      "https://login.example.com",
+      respond(404, "text/plain") as typeof fetch,
+    );
+    expect(check.status).toBe("warn");
   });
 });

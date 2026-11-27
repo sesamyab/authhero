@@ -45,8 +45,9 @@ carries `Content-Security-Policy: frame-ancestors 'none'`.
   must be on the origin that owns the iframe: that origin is where the
   messages are posted.
 - The application uses the widget-based login (`/u2`): the tenant flag
-  `flags.universal_login_version` is `"2"`, or the application overrides it
-  with `client_metadata.universal_login_version = "2"`. See
+  `flags.universal_login_version` is `"2"` and the application has no `"1"`
+  override, or the application sets
+  `client_metadata.universal_login_version = "2"`. See
   [Login version](./login-version.md).
 - The application is a public client using PKCE. The authorization code is
   delivered to browser JavaScript, so there is no client secret.

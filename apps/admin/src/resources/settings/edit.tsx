@@ -31,12 +31,29 @@ function removeNullValues(
   return result;
 }
 
+// The login-version toggle is a BooleanInput, which seeds an untouched field
+// with `false` without running `parse`. Only "1" and "2" are valid values, so
+// drop anything else rather than failing the whole save.
+export function transformSettings(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = removeNullValues(data);
+  if (isPlainObject(result.flags)) {
+    const { universal_login_version, ...flags } = result.flags;
+    result.flags =
+      universal_login_version === "1" || universal_login_version === "2"
+        ? { ...flags, universal_login_version }
+        : flags;
+  }
+  return result;
+}
+
 export function SettingsEdit() {
   return (
     <Edit
       mutationMode="pessimistic"
       redirect={false}
-      transform={removeNullValues as never}
+      transform={transformSettings as never}
       actions={false}
     >
       <SimpleForm className="max-w-none">

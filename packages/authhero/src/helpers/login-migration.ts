@@ -254,13 +254,24 @@ export async function checkWidgetServed(
   const url = new URL("/widget/authhero-widget.esm.js", baseUrl).toString();
   try {
     const response = await fetchFn(url, { redirect: "follow" });
-    return response.ok
-      ? { id: "widget", status: "ok", message: `Widget served at ${url}.` }
-      : {
-          id: "widget",
-          status: "warn",
-          message: `Widget not served at ${url} (HTTP ${response.status}). Mount widgetHandler or ship the bundle.`,
-        };
+    if (!response.ok) {
+      return {
+        id: "widget",
+        status: "warn",
+        message: `Widget not served at ${url} (HTTP ${response.status}). Mount widgetHandler or ship the bundle.`,
+      };
+    }
+    // A 200 can be an HTML fallback or a login page reached by a redirect,
+    // so only a JavaScript response counts.
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!/javascript|ecmascript/i.test(contentType)) {
+      return {
+        id: "widget",
+        status: "warn",
+        message: `${url} answered with ${contentType || "no content type"}, not the widget bundle. Mount widgetHandler or ship the bundle.`,
+      };
+    }
+    return { id: "widget", status: "ok", message: `Widget served at ${url}.` };
   } catch (err) {
     return {
       id: "widget",
@@ -280,8 +291,9 @@ export interface SetTenantVersionResult {
 
 /**
  * Sets (or with `undefined`, removes) the tenant flag
- * `flags.universal_login_version`. Client overrides are left untouched, so a
- * rollback restores exactly what the tenant had.
+ * `flags.universal_login_version`. Client overrides are left untouched.
+ * Removing the flag restores the earlier routing only if the tenant had no
+ * flag or "1" before; `from` in the result reports the previous value.
  */
 export async function setTenantLoginVersion(
   data: Pick<LoginMigrationData, "tenants" | "clients">,
@@ -289,14 +301,15 @@ export async function setTenantLoginVersion(
   version: "1" | "2" | undefined,
   { dryRun = false }: { dryRun?: boolean } = {},
 ): Promise<SetTenantVersionResult> {
-  const [tenant, clients] = await Promise.all([
-    getTenant(data, tenantId),
-    listAllClients(data, tenantId),
-  ]);
+  const clients = await listAllClients(data, tenantId);
+  // Read the tenant after the (paged) client listing and right before the
+  // write, so the window for a concurrent change to another flag is one
+  // request. Adapters replace `flags` as a whole, so the other flags are
+  // written back as read.
+  const tenant = await getTenant(data, tenantId);
   const { universal_login_version: from, ...otherFlags } = tenant.flags ?? {};
 
   if (!dryRun) {
-    // Adapters replace `flags` as a whole, so write the other flags back.
     await data.tenants.update(tenantId, {
       flags: version
         ? { ...otherFlags, universal_login_version: version }

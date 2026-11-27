@@ -22,7 +22,7 @@ DATABASE_URL=... pnpm authhero login-migration count
 - `count` lists the tenants that still have applications on `/u`, with totals.
 - `check --tenant <id>` (or `--all`) prints the checklist for a tenant. Add `--base-url https://login.example.com` to also check that the widget bundle is served.
 - `flip --tenant <id>` sets the tenant flag to `"2"`. Applications pinned to `"1"` stay on `/u` and are listed. Use `--dry-run` first.
-- `rollback --tenant <id>` removes the tenant flag again. Application overrides are never changed, so a rollback restores what the tenant had.
+- `rollback --tenant <id>` removes the tenant flag again. Application overrides are never changed, so this restores the earlier routing when the tenant had no flag or `"1"` before `flip`. If it had another value, note the `from` value that `flip` prints and set it back yourself.
 
 ### Checklist
 
