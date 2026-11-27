@@ -1,5 +1,28 @@
 # @authhero/saml
 
+## 0.7.0
+
+### Minor Changes
+
+- b6c7fe7: Close gaps in AuthHero as SAML identity provider:
+  - `POST /samlp/{client_id}` accepts AuthnRequests over the HTTP-POST binding, which the IdP metadata already advertised.
+  - AuthnRequests are read whatever namespace prefix the service provider uses (`samlp:`, `saml2p:`, default namespace), via the new `parseSamlAuthnRequest`.
+  - Signed requests: with the SP's certificate in `addons.samlp.signingCert` (Auth0's setting), AuthnRequests and LogoutRequests must be signed with it. HTTP-Redirect query-string signatures are checked with WebCrypto (`verifyRedirectBindingSignature`), HTTP-POST XML signatures with the configured `samlVerifier`. `require_signed_requests` without a certificate still refuses every request.
+  - The IdP metadata's `entityID` is now the issuer the assertions carry, instead of the SP's audience.
+  - Admin: the client's SSO tab takes the SP's request signing certificate.
+
+- 5b0c6b8: Add SAML connections (`samlp` strategy): AuthHero can now be the SAML service provider and sign users in through an upstream SAML 2.0 identity provider such as Okta, Microsoft Entra ID or ADFS, with Auth0-compatible options and endpoints.
+  - `@authhero/saml`: AuthnRequest builder, HTTP-Redirect encoding with query-string signing (WebCrypto), IdP metadata parser, SP metadata builder and `validateSamlResponse`, which reads the assertion only from signed content and checks signature, InResponseTo, recipient, audience, issuer and validity window. Signatures are checked through the new `SamlSignatureVerifier` interface; `LocalSamlVerifier` (new `@authhero/saml/local-verifier` entry) implements it with xml-crypto and runs on Node.js and on Cloudflare Workers with `nodejs_compat`.
+  - `@authhero/adapter-interfaces`: Auth0's `samlp` connection options (`signInEndpoint`, `signOutEndpoint`, `signingCert`, `metadataUrl`, `metadataXml`, `signSAMLRequest`, `protocolBinding`, `user_id_attribute`, `fieldsMap`, `entityId`, …). The user id is taken from `user_id_attribute`, else `fieldsMap.user_id` (as in Auth0), else the NameID; when migrating from Auth0, keep the same setting so users keep their ids.
+  - `authhero`: the `samlp` strategy, the ACS on `POST /login/callback?connection=…`, SP metadata on `GET /samlp/metadata?connection=…`, single-use login state against replay, `init({ samlVerifier })`, metadata resolution on connection create/update, and Home Realm Discovery for SAML connections.
+  - `@authhero/admin`: SAML fields on the connection details tab, with the ACS URL and entity ID to give the identity provider.
+
+### Patch Changes
+
+- Updated dependencies [5b0c6b8]
+- Updated dependencies [e4f78ea]
+  - @authhero/adapter-interfaces@4.37.0
+
 ## 0.6.16
 
 ### Patch Changes

@@ -1,5 +1,37 @@
 # authhero
 
+## 9.42.0
+
+### Minor Changes
+
+- b6c7fe7: Close gaps in AuthHero as SAML identity provider:
+  - `POST /samlp/{client_id}` accepts AuthnRequests over the HTTP-POST binding, which the IdP metadata already advertised.
+  - AuthnRequests are read whatever namespace prefix the service provider uses (`samlp:`, `saml2p:`, default namespace), via the new `parseSamlAuthnRequest`.
+  - Signed requests: with the SP's certificate in `addons.samlp.signingCert` (Auth0's setting), AuthnRequests and LogoutRequests must be signed with it. HTTP-Redirect query-string signatures are checked with WebCrypto (`verifyRedirectBindingSignature`), HTTP-POST XML signatures with the configured `samlVerifier`. `require_signed_requests` without a certificate still refuses every request.
+  - The IdP metadata's `entityID` is now the issuer the assertions carry, instead of the SP's audience.
+  - Admin: the client's SSO tab takes the SP's request signing certificate.
+
+- 5b0c6b8: Add SAML connections (`samlp` strategy): AuthHero can now be the SAML service provider and sign users in through an upstream SAML 2.0 identity provider such as Okta, Microsoft Entra ID or ADFS, with Auth0-compatible options and endpoints.
+  - `@authhero/saml`: AuthnRequest builder, HTTP-Redirect encoding with query-string signing (WebCrypto), IdP metadata parser, SP metadata builder and `validateSamlResponse`, which reads the assertion only from signed content and checks signature, InResponseTo, recipient, audience, issuer and validity window. Signatures are checked through the new `SamlSignatureVerifier` interface; `LocalSamlVerifier` (new `@authhero/saml/local-verifier` entry) implements it with xml-crypto and runs on Node.js and on Cloudflare Workers with `nodejs_compat`.
+  - `@authhero/adapter-interfaces`: Auth0's `samlp` connection options (`signInEndpoint`, `signOutEndpoint`, `signingCert`, `metadataUrl`, `metadataXml`, `signSAMLRequest`, `protocolBinding`, `user_id_attribute`, `fieldsMap`, `entityId`, …). The user id is taken from `user_id_attribute`, else `fieldsMap.user_id` (as in Auth0), else the NameID; when migrating from Auth0, keep the same setting so users keep their ids.
+  - `authhero`: the `samlp` strategy, the ACS on `POST /login/callback?connection=…`, SP metadata on `GET /samlp/metadata?connection=…`, single-use login state against replay, `init({ samlVerifier })`, metadata resolution on connection create/update, and Home Realm Discovery for SAML connections.
+  - `@authhero/admin`: SAML fields on the connection details tab, with the ACS URL and entity ID to give the identity provider.
+
+- e4f78ea: Choose the universal login per tenant. The new tenant flag `flags.universal_login_version` (`"2"` → `/u2`, `"1"` or unset → `/u`) sets the default for a tenant's applications, and `client_metadata.universal_login_version` (`"2"` or `"1"`) still overrides it per application. Unset tenants behave as before, so no data migration is needed. New tenants created by `seed` or the multi-tenancy `POST /tenants` get `"2"`. Adds a `login-migration` CLI (`count`, `check`, `flip`, `rollback`) for moving tenants to `/u2`. `CreateTenantParams` now accepts `flags`, and the DynamoDB adapter stores flags passed on create (it dropped them before, including flags from multi-tenancy `tenantDefaults`).
+
+### Patch Changes
+
+- 9a92e84: Resolve a `HEAD` request to its `GET` route definition in the auth middleware, so `HEAD` gets the same authentication and scope checks as `GET`.
+- 12746a2: Resolve the scopes requested for a Management API audience against the user's permissions in every case. A requested scope the resource server does not define is kept in the `scope` claim only when the user holds it as a permission, and user permissions apply even when that resource server has RBAC turned off. Other resource servers behave as before.
+- 0a7eb4f: Narrow the auth server's always-allowed redirect targets to the `/u/info` and `/u2/info` test screens. Any other path on the auth server now has to be registered in the client's callbacks to be used as a `redirect_uri` on `/authorize` or as `redirect_url` on `/account`. `/account` without `redirect_url` still returns to its own URL.
+- Updated dependencies [b6c7fe7]
+- Updated dependencies [5b0c6b8]
+- Updated dependencies [e4f78ea]
+  - @authhero/saml@0.7.0
+  - @authhero/adapter-interfaces@4.37.0
+  - @authhero/proxy@0.11.24
+  - @authhero/widget@0.43.2
+
 ## 9.41.0
 
 ### Minor Changes
