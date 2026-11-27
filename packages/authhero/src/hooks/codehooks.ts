@@ -616,8 +616,14 @@ export async function handleCredentialsExchangeCodeHooks(
   const tenant_id = ctx.var.tenant_id || ctx.req.header("tenant-id");
   if (!tenant_id) return null;
 
+  // The caller passes the tenant's full hook list, so filter on the trigger:
+  // without it every enabled code hook (post-login, pre-screen, ...) ran here
+  // on every token request, and a fail_closed one denied them all (#1820).
   const codeHooks: CodeHook[] = (hooks as Hook[]).filter(
-    (h): h is CodeHook => !!(h as any).enabled && isCodeHook(h),
+    (h): h is CodeHook =>
+      !!(h as any).enabled &&
+      h.trigger_id === "credentials-exchange" &&
+      isCodeHook(h),
   );
   const outcomes: HandleCodeHookOutcome[] = [];
   const persist = () =>
