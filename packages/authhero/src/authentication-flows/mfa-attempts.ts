@@ -9,7 +9,9 @@ import { Bindings, Variables } from "../types";
 import { logMessage } from "../helpers/logging";
 import {
   FinalizedLoginSessionError,
+  isFinalizedLoginSession,
   readLoginSessionData,
+  reserveLoginSessionCounter,
   updateLoginSessionData,
 } from "../state-machines/login-session-data";
 import { LoginSessionEventType } from "../state-machines/login-session";
@@ -191,6 +193,13 @@ export async function resetMfaFailures(
  * Count an MFA SMS send on the login session and consume the per-user (or,
  * without a user, per-number) rate limit. Throws MfaSmsRateLimitError when
  * either limit is reached. Counted before sending, so failed sends count too.
+ *
+ * Order: check the session without writing (finalized or expired sessions
+ * throw FinalizedLoginSessionError, at the cap MfaSmsRateLimitError), then the
+ * rate limit, then reserve the slot atomically (see
+ * reserveLoginSessionCounter). Neither a finished session nor a send the rate
+ * limit rejects uses up the shared rate limit or the session's allowance, and
+ * concurrent sends on one session cannot exceed MFA_MAX_SMS_SENDS.
  */
 export async function enforceMfaSmsSendLimit(
   ctx: MfaContext,
@@ -203,32 +212,47 @@ export async function enforceMfaSmsSendLimit(
     tenantId,
     loginSessionId,
   );
+  if (
+    current &&
+    (isFinalizedLoginSession(current) ||
+      new Date(current.expires_at).getTime() < Date.now())
+  ) {
+    throw new FinalizedLoginSessionError(loginSessionId);
+  }
   const sent = readLoginSessionData(current?.state_data).mfa_sms_sent ?? 0;
   // Account sessions carry no user_id, so callers pass the resolved user.
   // The phone number is only the key for genuinely userless flows.
   const subject = userId ?? current?.user_id ?? phoneNumber;
 
-  if (
-    sent >= MFA_MAX_SMS_SENDS ||
-    !(await consumeRateLimit(ctx, `mfa-sms:${tenantId}:${subject}`))
-  ) {
+  const limitReached = () => {
     logMessage(ctx, tenantId, {
       type: LogTypes.ERROR_SENDING_MFA_SMS,
       description: "MFA SMS send limit reached",
       userId: userId ?? current?.user_id,
     });
-    throw new MfaSmsRateLimitError();
+    return new MfaSmsRateLimitError();
+  };
+
+  if (
+    sent >= MFA_MAX_SMS_SENDS ||
+    !(await consumeRateLimit(ctx, `mfa-sms:${tenantId}:${subject}`))
+  ) {
+    throw limitReached();
   }
 
-  if (current) {
-    await updateLoginSessionData(
-      ctx.env.data.loginSessions,
-      tenantId,
-      loginSessionId,
-      {
-        type: LoginSessionEventType.UPDATE_CONTEXT,
-        data: { mfa_sms_sent: sent + 1 },
-      },
-    );
+  // Without a session there is no per-session cap, only the rate limit.
+  if (!current) return;
+  const { status } = await reserveLoginSessionCounter(
+    ctx.env.data.loginSessions,
+    tenantId,
+    loginSessionId,
+    "mfa_sms_sent",
+    MFA_MAX_SMS_SENDS,
+  );
+  if (status === "finalized") {
+    throw new FinalizedLoginSessionError(loginSessionId);
+  }
+  if (status === "limit_reached" || status === "contended") {
+    throw limitReached();
   }
 }

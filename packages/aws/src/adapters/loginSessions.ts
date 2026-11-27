@@ -46,6 +46,23 @@ function toLoginSession(item: LoginSessionItem): LoginSession {
   return loginSessionSchema.parse(data);
 }
 
+function toUpdates(session: Partial<LoginSession>): Record<string, unknown> {
+  const updates: Record<string, unknown> = {
+    ...session,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Serialize authParams if present
+  if (session.authParams !== undefined) {
+    updates.authParams = JSON.stringify(session.authParams);
+  }
+
+  // Remove id and tenant_id from updates: the row's tenant is its key.
+  delete updates.id;
+  delete updates.tenant_id;
+  return updates;
+}
+
 export function createLoginSessionsAdapter(
   ctx: DynamoDBContext,
 ): LoginSessionsAdapter {
@@ -107,26 +124,52 @@ export function createLoginSessionsAdapter(
       id: string,
       session: Partial<LoginSession>,
     ): Promise<boolean> {
-      const updates: Record<string, unknown> = {
-        ...session,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Serialize authParams if present
-      if (session.authParams !== undefined) {
-        updates.authParams = JSON.stringify(session.authParams);
-      }
-
-      // Remove id and tenant_id from updates: the row's tenant is its key.
-      delete updates.id;
-      delete updates.tenant_id;
-
       return updateItem(
         ctx,
         loginSessionKeys.pk(tenantId),
         loginSessionKeys.sk(id),
-        updates,
+        toUpdates(session),
       );
+    },
+
+    async updateIfStateDataUnchanged(
+      tenantId: string,
+      id: string,
+      expectedStateData: string | undefined,
+      session: Partial<LoginSession>,
+    ): Promise<boolean> {
+      // An empty expectation matches a missing, null or empty attribute.
+      const condition = expectedStateData
+        ? {
+            expression: "#casStateData = :casStateData",
+            names: { "#casStateData": "state_data" },
+            values: { ":casStateData": expectedStateData },
+          }
+        : {
+            expression:
+              "attribute_not_exists(#casStateData) OR attribute_type(#casStateData, :casNullType) OR #casStateData = :casEmpty",
+            names: { "#casStateData": "state_data" },
+            values: { ":casNullType": "NULL", ":casEmpty": "" },
+          };
+
+      try {
+        return await updateItem(
+          ctx,
+          loginSessionKeys.pk(tenantId),
+          loginSessionKeys.sk(id),
+          toUpdates(session),
+          condition,
+        );
+      } catch (error) {
+        // The state_data changed, or the session does not exist.
+        if (
+          error instanceof Error &&
+          error.name === "ConditionalCheckFailedException"
+        ) {
+          return false;
+        }
+        throw error;
+      }
     },
 
     async remove(tenantId: string, id: string): Promise<boolean> {

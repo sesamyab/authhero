@@ -1,5 +1,4 @@
 import type { Context } from "hono";
-import { LoginSessionState } from "@authhero/adapter-interfaces";
 import type {
   LoginSession,
   RateLimitDecision,
@@ -15,11 +14,10 @@ import {
 } from "../../../helpers/code-recipient";
 import type { ScreenContext, ScreenFactory, ScreenResult } from "./types";
 import {
-  FinalizedLoginSessionError,
+  isFinalizedLoginSession,
   readLoginSessionData,
-  updateLoginSessionData,
+  reserveLoginSessionCounter,
 } from "../../../state-machines/login-session-data";
-import { LoginSessionEventType } from "../../../state-machines/login-session";
 
 type OtpContext = Context<{ Bindings: Bindings; Variables: Variables }>;
 
@@ -27,11 +25,12 @@ type OtpContext = Context<{ Bindings: Bindings; Variables: Variables }>;
  * Login OTP codes or magic links (identifier step plus resends) delivered per
  * login session. Further requests are accepted but nothing is sent.
  *
- * Best effort: the counter is a read/modify/write on the login session (see
- * updateLoginSessionData), so concurrent requests on one session can each
- * pass the check. The optional per-recipient rate limit adds a bound across
- * sessions, but it is not configured by default and fails open on adapter
- * errors, so neither is a hard guarantee.
+ * Reserved atomically (see reserveLoginSessionCounter), so concurrent requests
+ * on one session cannot exceed it on adapters that implement
+ * `updateIfStateDataUnchanged`; other adapters fall back to a best-effort
+ * read/modify/write. The optional per-recipient rate limit adds a bound
+ * across sessions, but it is not configured by default and fails open on
+ * adapter errors, so it is not a hard guarantee.
  */
 export const LOGIN_OTP_MAX_SENDS = 5;
 
@@ -43,12 +42,6 @@ function isRateLimitDecision(value: unknown): value is RateLimitDecision {
     typeof value.allowed === "boolean"
   );
 }
-
-const FINALIZED_LOGIN_SESSION_STATES: string[] = [
-  LoginSessionState.COMPLETED,
-  LoginSessionState.FAILED,
-  LoginSessionState.EXPIRED,
-];
 
 /**
  * login_otp_sent on the stored session, or undefined when the session is
@@ -66,8 +59,8 @@ async function readLoginOtpSent(
   );
   if (
     !current ||
-    FINALIZED_LOGIN_SESSION_STATES.includes(current.state ?? "") ||
-    current.expires_at < new Date().toISOString()
+    isFinalizedLoginSession(current) ||
+    new Date(current.expires_at).getTime() < Date.now()
   ) {
     return undefined;
   }
@@ -82,11 +75,10 @@ async function readLoginOtpSent(
  * the address exists. Counted before sending, so failed sends count too.
  *
  * Order: check the session cap without writing, then the recipient rate
- * limit, then reserve the slot. A request the rate limit rejects does not use
- * up the session's allowance, and a session already at its cap does not
- * consume the recipient's rate limit. The reservation re-reads the counter
- * right before writing to keep the window for concurrent requests small; it
- * is not atomic (see LOGIN_OTP_MAX_SENDS).
+ * limit, then reserve the slot atomically. A request the rate limit rejects
+ * does not use up the session's allowance, and a session already at its cap
+ * does not consume the recipient's rate limit. Concurrent requests may all
+ * pass the first check, but only LOGIN_OTP_MAX_SENDS of them can reserve.
  */
 export async function allowLoginOtpSend(
   ctx: OtpContext,
@@ -122,27 +114,17 @@ export async function allowLoginOtpSend(
     }
   }
 
-  const sent = await readLoginOtpSent(ctx, tenantId, loginSessionId);
-  if (sent === undefined) return false;
-  if (sent >= LOGIN_OTP_MAX_SENDS) {
+  const { status } = await reserveLoginSessionCounter(
+    ctx.env.data.loginSessions,
+    tenantId,
+    loginSessionId,
+    "login_otp_sent",
+    LOGIN_OTP_MAX_SENDS,
+  );
+  if (status === "limit_reached" || status === "contended") {
     console.warn("Login OTP send limit reached for login session");
-    return false;
   }
-  try {
-    await updateLoginSessionData(
-      ctx.env.data.loginSessions,
-      tenantId,
-      loginSessionId,
-      {
-        type: LoginSessionEventType.UPDATE_CONTEXT,
-        data: { login_otp_sent: sent + 1 },
-      },
-    );
-  } catch (error) {
-    if (error instanceof FinalizedLoginSessionError) return false;
-    throw error;
-  }
-  return true;
+  return status === "reserved";
 }
 
 /**

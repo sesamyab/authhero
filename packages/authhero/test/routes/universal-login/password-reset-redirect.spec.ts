@@ -417,22 +417,32 @@ describe("password reset request ownership", () => {
           emails[emails.length - 1].data.passwordResetUrl!,
         ).searchParams.get("code")!;
       }
-      const originalUpdate = ctx.env.data.loginSessions.update.bind(
-        ctx.env.data.loginSessions,
-      );
+      const sessions = ctx.env.data.loginSessions;
       const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
-      vi.spyOn(ctx.env.data.loginSessions, "update").mockImplementation(
-        async (tenant, id, fields) => {
-          if (
-            fields.state_data &&
-            JSON.parse(fields.state_data).passwordReset?.state === "completed"
-          ) {
-            if (failure === "false") return false;
-            throw new Error("completion store unavailable");
-          }
-          return originalUpdate(tenant, id, fields);
-        },
+      // Context writes go through the compare-and-swap when the adapter has
+      // it, so fail the completion write on both paths.
+      const failCompletion = (fields: { state_data?: string }) => {
+        if (
+          fields.state_data &&
+          JSON.parse(fields.state_data).passwordReset?.state === "completed"
+        ) {
+          if (failure === "false") return false;
+          throw new Error("completion store unavailable");
+        }
+        return undefined;
+      };
+      const originalUpdate = sessions.update.bind(sessions);
+      vi.spyOn(sessions, "update").mockImplementation(
+        async (tenant, id, fields) =>
+          failCompletion(fields) ?? originalUpdate(tenant, id, fields),
       );
+      const originalCas = sessions.updateIfStateDataUnchanged?.bind(sessions);
+      if (originalCas) {
+        vi.spyOn(sessions, "updateIfStateDataUnchanged").mockImplementation(
+          async (tenant, id, expected, fields) =>
+            failCompletion(fields) ?? originalCas(tenant, id, expected, fields),
+        );
+      }
       const response =
         transport === "u2"
           ? await submitCode(ctx, code)
