@@ -64,33 +64,33 @@ In the admin UI, create a connection with the **SAML** strategy and fill in its 
 
 ### Options
 
-| Option | Description |
-| --- | --- |
-| `metadataUrl` | IdP metadata URL. Fetched on create/update when it changes or when the sign-in URL or certificate is missing. Must be a public `https` URL. |
-| `metadataXml` | IdP metadata XML, as an alternative to `metadataUrl`. |
-| `signInEndpoint` | The IdP's single sign-on URL. |
-| `signOutEndpoint` | The IdP's single logout URL (stored; SP-initiated logout is not sent yet). |
-| `signingCert` | The IdP's signing certificate: PEM, base64 DER, or base64 of the PEM (Auth0's format). |
-| `signingCerts` | Further trusted certificates, e.g. the incoming one during an IdP certificate rotation. Filled from metadata that lists several. |
-| `issuer` | The IdP entity ID. When set, the assertion's `Issuer` must match it. Filled from metadata. |
-| `protocolBinding` | How the `AuthnRequest` is sent: `urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect` (default) or `…:HTTP-POST`. |
-| `signSAMLRequest` | Sign the `AuthnRequest` with the tenant's SAML key. HTTP-Redirect binding only. |
-| `signatureAlgorithm` | `rsa-sha256` (default) or `rsa-sha1`, for signed requests. |
-| `user_id_attribute` | SAML attribute holding the user id. Defaults to the `NameID`. |
-| `fieldsMap` | Profile field → SAML attribute name(s), e.g. `{ "email": "mail", "department": "dept" }`. Overrides the defaults below; other keys become profile fields. |
-| `entityId` | SP entity ID override. Defaults to `urn:auth0:{tenant_id}:{connection}`. |
-| `callback_url` | ACS URL override, used verbatim. |
-| `domain_aliases` | Email domains routed to this connection by [Home Realm Discovery](/features/home-realm-discovery). |
+| Option               | Description                                                                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `metadataUrl`        | IdP metadata URL. Fetched on create/update when it changes or when the sign-in URL or certificate is missing. Must be a public `https` URL.               |
+| `metadataXml`        | IdP metadata XML, as an alternative to `metadataUrl`.                                                                                                     |
+| `signInEndpoint`     | The IdP's single sign-on URL.                                                                                                                             |
+| `signOutEndpoint`    | The IdP's single logout URL (stored; SP-initiated logout is not sent yet).                                                                                |
+| `signingCert`        | The IdP's signing certificate: PEM, base64 DER, or base64 of the PEM (Auth0's format).                                                                    |
+| `signingCerts`       | Further trusted certificates, e.g. the incoming one during an IdP certificate rotation. Filled from metadata that lists several.                          |
+| `issuer`             | The IdP entity ID. When set, the assertion's `Issuer` must match it. Filled from metadata.                                                                |
+| `protocolBinding`    | How the `AuthnRequest` is sent: `urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect` (default) or `…:HTTP-POST`.                                          |
+| `signSAMLRequest`    | Sign the `AuthnRequest` with the tenant's SAML key. HTTP-Redirect binding only.                                                                           |
+| `signatureAlgorithm` | `rsa-sha256` (default) or `rsa-sha1`, for signed requests.                                                                                                |
+| `user_id_attribute`  | SAML attribute holding the user id. Defaults to the `NameID`.                                                                                             |
+| `fieldsMap`          | Profile field → SAML attribute name(s), e.g. `{ "email": "mail", "department": "dept" }`. Overrides the defaults below; other keys become profile fields. |
+| `entityId`           | SP entity ID override. Defaults to `urn:auth0:{tenant_id}:{connection}`.                                                                                  |
+| `callback_url`       | ACS URL override, used verbatim.                                                                                                                          |
+| `domain_aliases`     | Email domains routed to this connection by [Home Realm Discovery](/features/home-realm-discovery).                                                        |
 
 ## Register AuthHero at the IdP
 
 Give the IdP administrator these values, with `{auth-domain}` the domain users sign in on (the tenant's custom domain if it has one):
 
-| Setting | Value |
-| --- | --- |
+| Setting                                      | Value                                                          |
+| -------------------------------------------- | -------------------------------------------------------------- |
 | Assertion Consumer Service (ACS) / Reply URL | `https://{auth-domain}/login/callback?connection={connection}` |
-| Entity ID / Audience | `urn:auth0:{tenant_id}:{connection}` (or `options.entityId`) |
-| SP metadata | `https://{auth-domain}/samlp/metadata?connection={connection}` |
+| Entity ID / Audience                         | `urn:auth0:{tenant_id}:{connection}` (or `options.entityId`)   |
+| SP metadata                                  | `https://{auth-domain}/samlp/metadata?connection={connection}` |
 
 These are Auth0's URL shapes, so an IdP configured for an Auth0 connection keeps working once the domain and entity ID match. The SP metadata includes the tenant's SAML certificate when `signSAMLRequest` is on.
 
@@ -128,12 +128,12 @@ An IdP error status (the user cancelled, or has no access to the application) is
 
 All SAML attributes are stored on the identity's profile under their full names, along with `nameIdAttributes`, `sessionIndex` and `issuer`. The user's root attributes are filled from:
 
-| Field | SAML attributes (first match) |
-| --- | --- |
-| `email` | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress`, `email`, `mail`, `emailAddress`, `urn:oid:0.9.2342.19200300.100.1.3`, else the `NameID` if its format is `emailAddress` |
-| `given_name` | `…/claims/givenname`, `given_name`, `givenName`, `firstName`, `urn:oid:2.5.4.42` |
-| `family_name` | `…/claims/surname`, `family_name`, `surname`, `sn`, `lastName`, `urn:oid:2.5.4.4` |
-| `name` | `…/claims/name`, `name`, `displayName`, `urn:oid:2.16.840.1.113730.3.1.241` |
+| Field         | SAML attributes (first match)                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `email`       | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress`, `email`, `mail`, `emailAddress`, `urn:oid:0.9.2342.19200300.100.1.3`, else the `NameID` if its format is `emailAddress` |
+| `given_name`  | `…/claims/givenname`, `given_name`, `givenName`, `firstName`, `urn:oid:2.5.4.42`                                                                                                              |
+| `family_name` | `…/claims/surname`, `family_name`, `surname`, `sn`, `lastName`, `urn:oid:2.5.4.4`                                                                                                             |
+| `name`        | `…/claims/name`, `name`, `displayName`, `urn:oid:2.16.840.1.113730.3.1.241`                                                                                                                   |
 
 The UPN is deliberately not used as an email: it need not be a mailbox the user owns, and email drives account linking.
 

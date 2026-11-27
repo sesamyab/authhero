@@ -37,14 +37,14 @@ Some consequences:
 
 HRD routes only to strategies that use a redirect-based login. The built-in ones are:
 
-| Strategy                                                               | Example                       |
-| ---------------------------------------------------------------------- | ----------------------------- |
-| `oidc`                                                                 | Any OpenID Connect provider   |
-| `okta`                                                                 | Okta                          |
-| `waad`                                                                 | Microsoft Entra ID (Azure AD) |
+| Strategy                                                               | Example                        |
+| ---------------------------------------------------------------------- | ------------------------------ |
+| `oidc`                                                                 | Any OpenID Connect provider    |
+| `okta`                                                                 | Okta                           |
+| `waad`                                                                 | Microsoft Entra ID (Azure AD)  |
 | `samlp`                                                                | Any SAML 2.0 identity provider |
-| `oauth2`                                                               | Generic OAuth 2.0 provider    |
-| `google-oauth2`, `windowslive`, `github`, `facebook`, `apple`, `vipps` | Social providers              |
+| `oauth2`                                                               | Generic OAuth 2.0 provider     |
+| `google-oauth2`, `windowslive`, `github`, `facebook`, `apple`, `vipps` | Social providers               |
 
 Custom strategies registered through `env.STRATEGIES` are supported as well.
 
@@ -144,14 +144,14 @@ Content-Type: application/json
 
 ## Compared with Auth0
 
-|                              | Auth0                                           | AuthHero                                                                          |
-| ---------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| Configuration field          | `options.domain_aliases`                        | `options.domain_aliases`                                                          |
-| Where it runs                | Identifier-first Universal Login                | Identifier screen on `/u` and `/u2`                                               |
+|                              | Auth0                                           | AuthHero                                                                                  |
+| ---------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Configuration field          | `options.domain_aliases`                        | `options.domain_aliases`                                                                  |
+| Where it runs                | Identifier-first Universal Login                | Identifier screen on `/u` and `/u2`                                                       |
 | Eligible connections         | Enterprise connections, including SAML and ADFS | Redirect-based enterprise (including SAML) **and social** connections; ADFS not supported |
-| `login_hint` sent to the IdP | Yes                                             | Yes, for `oidc`, `okta`, `oauth2`, `google-oauth2`, `waad` and `windowslive`      |
-| Hidden from the button row   | Yes, unless shown as a button                   | Yes, unless `show_as_button: true`                                                |
-| Matching                     | Exact domain                                    | Exact domain, case-insensitive; no wildcards or subdomain matching                |
+| `login_hint` sent to the IdP | Yes                                             | Yes, for `oidc`, `okta`, `oauth2`, `google-oauth2`, `waad` and `windowslive`              |
+| Hidden from the button row   | Yes, unless shown as a button                   | Yes, unless `show_as_button: true`                                                        |
+| Matching                     | Exact domain                                    | Exact domain, case-insensitive; no wildcards or subdomain matching                        |
 
 The differences that matter when migrating from Auth0:
 
