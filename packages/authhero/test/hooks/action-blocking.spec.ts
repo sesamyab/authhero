@@ -185,7 +185,13 @@ async function exchangeRefreshToken(
 }
 
 /** Complete a login for USER_ID the way a login screen does. */
-async function login(server: Awaited<ReturnType<typeof getTestServer>>) {
+async function login(
+  server: Awaited<ReturnType<typeof getTestServer>>,
+  options: {
+    responseType?: AuthorizationResponseType;
+    stateData?: Record<string, unknown>;
+  } = {},
+) {
   const { env } = server;
   const loginSession = await env.data.loginSessions.create("tenantId", {
     expires_at: new Date(Date.now() + 600_000).toISOString(),
@@ -194,10 +200,13 @@ async function login(server: Awaited<ReturnType<typeof getTestServer>>) {
       client_id: "clientId",
       redirect_uri: "https://example.com/callback",
       scope: "openid email",
-      response_type: AuthorizationResponseType.CODE,
+      response_type: options.responseType ?? AuthorizationResponseType.CODE,
       state: "state",
       nonce: "nonce",
     },
+    ...(options.stateData
+      ? { state_data: JSON.stringify(options.stateData) }
+      : {}),
   });
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
   app.post("/login", async (ctx) => {
@@ -389,6 +398,44 @@ describe("post-user-login actions", () => {
     expect(parseJWT(body.access_token)?.payload).toMatchObject({
       plan: "pro",
     });
+  });
+
+  it("does not reapply claims an earlier run left on the login session", async () => {
+    // This run sets no claims; the session still holds an earlier run's.
+    const server = await setup({ "post-user-login": recorded() });
+    const { response, loginSession } = await login(server, {
+      responseType: AuthorizationResponseType.ID_TOKEN,
+      stateData: {
+        action_claims: { user_id: USER_ID, id_token: { stale: true } },
+      },
+    });
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location")!);
+    const idToken = new URLSearchParams(location.hash.slice(1)).get("id_token");
+    expect(idToken).toBeTruthy();
+    expect(parseJWT(idToken!)?.payload).not.toHaveProperty("stale");
+    expect(JSON.parse(loginSession!.state_data || "{}")).not.toHaveProperty(
+      "action_claims",
+    );
+  });
+
+  it("fails the login when the claims can't be stored for the code exchange", async () => {
+    const server = await setup({
+      "post-user-login": recorded({
+        method: "idToken.setCustomClaim",
+        args: ["member", true],
+      }),
+    });
+    const update = server.env.data.loginSessions.update;
+    server.env.data.loginSessions.update = async (tenantId, id, session) =>
+      session.state_data?.includes("action_claims")
+        ? false
+        : update(tenantId, id, session);
+    const { response } = await login(server);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("location") ?? "").not.toContain("code=");
   });
 
   it("does not apply post-login claims to another login's exchange", async () => {

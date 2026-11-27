@@ -55,7 +55,10 @@ import {
   PostLoginActionClaims,
   readLoginSessionData,
 } from "../state-machines/login-session";
-import { updateLoginSessionData } from "../state-machines/login-session-data";
+import {
+  FinalizedLoginSessionError,
+  updateLoginSessionData,
+} from "../state-machines/login-session-data";
 import { sessionSatisfiesMfa } from "../helpers/session-mfa";
 import { getPrivateBrowsingCookie } from "../utils/cookies";
 import { stripSessionTransferToken } from "../utils/session-transfer-token";
@@ -312,14 +315,15 @@ async function storeActionClaims(
   loginSession: LoginSession | undefined,
   claims: PostLoginActionClaims,
 ): Promise<void> {
-  const hasClaims = Boolean(claims.access_token || claims.id_token);
-  if (hasClaims) ctx.set("post_login_action_claims", claims);
-  else ctx.set("post_login_action_claims", undefined);
+  // Set even when no claims were set: tokens minted in this request must
+  // reflect this run, not claims on a login-session object read before it.
+  ctx.set("post_login_action_claims", claims);
   if (!loginSession) return;
+  const hasClaims = Boolean(claims.access_token || claims.id_token);
   const stored = readLoginSessionData(loginSession.state_data).action_claims;
   if (!hasClaims && !stored) return;
   try {
-    await updateLoginSessionData(
+    const written = await updateLoginSessionData(
       ctx.env.data.loginSessions,
       tenantId,
       loginSession.id,
@@ -328,10 +332,18 @@ async function storeActionClaims(
         data: { action_claims: hasClaims ? claims : undefined },
       },
     );
+    if (!written) {
+      throw new Error(
+        `Failed to store post-login action claims on login session ${loginSession.id}`,
+      );
+    }
   } catch (err) {
-    // E.g. an expired login session being completed: the request variable
-    // still covers tokens minted in this request.
-    console.warn("Failed to store post-login action claims:", err);
+    // An expired login session being completed can't be written to. No code
+    // exchange follows from it; the request variable covers tokens minted in
+    // this request. Any other failure fails the login rather than letting the
+    // code exchange issue tokens without the claims.
+    if (!(err instanceof FinalizedLoginSessionError)) throw err;
+    console.warn("Post-login action claims not stored:", err.message);
   }
 }
 
