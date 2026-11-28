@@ -37,6 +37,8 @@ The **device flow** moves the typing to a device that is good at it.
 
 ```mermaid
 sequenceDiagram
+    accTitle: The device flow
+    accDescr: The display gets a user code and a device code from AuthHero and keeps asking for approval. The user scans the code with a phone, logs in and confirms, and the next request from the display returns tokens.
     participant D as Kitchen display
     participant AH as AuthHero
     participant P as Maya's phone

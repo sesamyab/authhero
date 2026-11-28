@@ -1,6 +1,6 @@
 ---
 title: The AuthHero Book
-description: A short book that explains authentication from first principles and how AuthHero handles it, in sixteen chapters meant to be read in order. Free to read online or as a PDF.
+description: A short book that explains authentication from first principles and how AuthHero handles it, in sixteen chapters meant to be read in order. Free to read online, as a PDF or as an EPUB.
 prev: false
 next:
   text: "1. Who goes there?"
@@ -17,7 +17,8 @@ It starts with what a login actually is and ends with running AuthHero in produc
 
 <p>
   <a class="book-cta book-cta-primary" href="/book/01-who-goes-there">Start with chapter 1</a>
-  <a class="book-cta" href="/authhero-book.pdf" target="_blank" rel="noopener">Download the PDF</a>
+  <a class="book-cta" href="/authhero-book.pdf" target="_blank" rel="noopener">Download PDF</a>
+  <a class="book-cta" href="/authhero-book.epub" download>Download EPUB</a>
 </p>
 
 ## Who it is for

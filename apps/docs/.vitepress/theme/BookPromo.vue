@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * The book's block on the docs landing page: a small cover, a pitch and the
- * two ways to read it.
+ * ways to read it.
  */
 import { withBase } from "vitepress";
 import parts from "../../book/chapters.json";
@@ -35,7 +35,10 @@ const chapterCount = parts.reduce((sum, part) => sum + part.chapters.length, 0);
           target="_blank"
           rel="noopener"
         >
-          Download the PDF
+          Download PDF
+        </a>
+        <a class="book-promo-button" :href="withBase('/authhero-book.epub')" download>
+          Download EPUB
         </a>
       </p>
     </div>
