@@ -1,17 +1,19 @@
 /**
- * Builds the PDF edition of the AuthHero Book.
+ * Builds the PDF and EPUB editions of the AuthHero Book.
  *
- *   pnpm --filter @authhero/docs book:pdf
+ *   pnpm --filter @authhero/docs book:build
  *
- * The chapters are ordinary docs pages, so the PDF is made from the built site
- * rather than from the markdown: that way diagrams, code highlighting, tables
- * and fonts in the PDF are the ones VitePress already rendered. The script
- * serves `.vitepress/dist`, opens every chapter in headless Chromium, lifts the
- * rendered article out of each page, stitches them into one document with a
- * cover and a table of contents, and prints it.
+ * The chapters are ordinary docs pages, so both editions are made from the
+ * built site rather than from the markdown: that way diagrams, code
+ * highlighting and tables are the ones VitePress already rendered. The script
+ * serves `.vitepress/dist`, opens every chapter in headless Chromium and lifts
+ * the rendered article out of each page. For the PDF it stitches the chapters
+ * into one document with a cover and a table of contents, and prints it. For
+ * the EPUB it hands them to `book-epub.mjs`.
  *
- * Output: `public/authhero-book.pdf`, which is committed so the docs deploy
- * needs no browser. Run this again after editing a chapter.
+ * Output: `public/authhero-book.pdf` and `public/authhero-book.epub`, which
+ * are committed so the docs deploy needs no browser. Run this again after
+ * editing a chapter.
  *
  * Needs a Chromium that matches playwright-core. If none is installed:
  *   pnpm --filter @authhero/docs exec playwright-core install chromium
@@ -22,10 +24,12 @@ import { existsSync } from "node:fs";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { chapterFile, extractChapterXhtml, writeEpub } from "./book-epub.mjs";
 
 const DOCS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(DOCS_ROOT, ".vitepress/dist");
-const OUTPUT = join(DOCS_ROOT, "public/authhero-book.pdf");
+const PDF_NAME = "authhero-book.pdf";
+const EPUB_NAME = "authhero-book.epub";
 const DOCS_ORIGIN = "https://docs.authhero.net";
 const BLANK_PAGE = "/__book-blank";
 
@@ -199,6 +203,13 @@ const PRINT_CSS = `
   .vp-doc .mermaid svg { max-width: 100%; height: auto; }
 `;
 
+const COVER_IMAGE_CSS = `
+  .cover {
+    width: 800px; height: 1280px; padding: 120px 80px 90px 100px;
+    border-left-width: 44px;
+  }
+`;
+
 function escapeHtml(text) {
   return text
     .replace(/&/g, "&amp;")
@@ -210,7 +221,7 @@ function escapeHtml(text) {
 async function main() {
   if (!existsSync(join(DIST, "book/index.html"))) {
     throw new Error(
-      "No built site in .vitepress/dist. Run `vitepress build` first (the book:pdf script does).",
+      "No built site in .vitepress/dist. Run `vitepress build` first (the book:build script does).",
     );
   }
 
@@ -232,8 +243,17 @@ async function main() {
   try {
     const page = await browser.newPage({
       viewport: { width: 1280, height: 900 },
+      // Diagrams are photographed for the EPUB; twice the pixels keeps their
+      // text sharp when a reader scales them up.
+      deviceScaleFactor: 2,
       colorScheme: "light",
     });
+    const chapterFiles = Object.fromEntries(
+      chapters.map((chapter) => [
+        `/book/${chapter.slug}`,
+        chapterFile(chapter.number),
+      ]),
+    );
 
     let stylesheets = [];
     for (const chapter of chapters) {
@@ -247,6 +267,20 @@ async function main() {
         ),
       );
       chapter.html = await page.evaluate(extractChapter, chapter.id);
+
+      const diagrams = page.locator("main .vp-doc .mermaid svg");
+      chapter.images = [];
+      for (let i = 0; i < (await diagrams.count()); i++) {
+        chapter.images.push({
+          name: `images/${chapter.id}-${i + 1}.png`,
+          data: await diagrams.nth(i).screenshot(),
+        });
+      }
+      chapter.xhtml = await page.evaluate(extractChapterXhtml, {
+        images: chapter.images.map((image) => image.name),
+        chapterFiles,
+        docsOrigin: DOCS_ORIGIN,
+      });
       if (!stylesheets.length) {
         stylesheets = await page.evaluate(() =>
           [...document.querySelectorAll('link[rel~="stylesheet"]')].map(
@@ -281,16 +315,10 @@ async function main() {
       year: "numeric",
     }).format(new Date());
 
-    const html = `<!doctype html>
-      <html lang="en">
-        <head>
-          <meta charset="utf-8" />
-          <title>The AuthHero Book</title>
-          <meta name="author" content="AuthHero" />
-          ${stylesheets.map((href) => `<link rel="stylesheet" href="${href}" />`).join("")}
-          <style>${PRINT_CSS}</style>
-        </head>
-        <body>
+    const styles = stylesheets
+      .map((href) => `<link rel="stylesheet" href="${href}" />`)
+      .join("");
+    const cover = `
           <section class="cover">
             <div class="cover-mark">AuthHero</div>
             <div>
@@ -303,7 +331,19 @@ async function main() {
               ${edition} edition<br />
               Read online at <a href="${DOCS_ORIGIN}/book/">docs.authhero.net/book</a>
             </div>
-          </section>
+          </section>`;
+
+    const html = `<!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <title>The AuthHero Book</title>
+          <meta name="author" content="AuthHero" />
+          ${styles}
+          <style>${PRINT_CSS}</style>
+        </head>
+        <body>
+          ${cover}
           <section class="front vp-doc">
             <h1>Contents</h1>
             ${toc}
@@ -347,23 +387,41 @@ async function main() {
     await page.evaluate(() => document.fonts.ready);
 
     await page.pdf({
-      path: OUTPUT,
+      path: join(DOCS_ROOT, "public", PDF_NAME),
       preferCSSPageSize: true,
       printBackground: true,
       outline: true,
       tagged: true,
+    });
+
+    // The EPUB's cover is the same cover, photographed at a book's proportions.
+    await page.setViewportSize({ width: 800, height: 1280 });
+    await page.setContent(
+      `<!doctype html><html lang="en"><head><meta charset="utf-8" />${styles}
+        <style>${PRINT_CSS}${COVER_IMAGE_CSS}</style></head><body>${cover}</body></html>`,
+      { waitUntil: "networkidle" },
+    );
+    await page.evaluate(() => document.fonts.ready);
+    const coverPng = await page.locator(".cover").screenshot();
+
+    await writeEpub({
+      parts,
+      chapters,
+      coverPng,
+      output: join(DOCS_ROOT, "public", EPUB_NAME),
+      docsOrigin: DOCS_ORIGIN,
     });
   } finally {
     await browser.close();
     server.close();
   }
 
-  // The site was built before the PDF existed, so the build has no copy yet.
-  await copyFile(OUTPUT, join(DIST, "authhero-book.pdf"));
-  const { size } = await stat(OUTPUT);
-  console.log(
-    `Wrote public/authhero-book.pdf (${(size / 1024 / 1024).toFixed(1)} MB)`,
-  );
+  // The site was built before these files existed, so the build has no copy.
+  for (const name of [PDF_NAME, EPUB_NAME]) {
+    await copyFile(join(DOCS_ROOT, "public", name), join(DIST, name));
+    const { size } = await stat(join(DOCS_ROOT, "public", name));
+    console.log(`Wrote public/${name} (${(size / 1024 / 1024).toFixed(1)} MB)`);
+  }
 }
 
 main().catch((error) => {

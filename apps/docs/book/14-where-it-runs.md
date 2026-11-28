@@ -38,6 +38,8 @@ The core package contains no SQL. Whenever it needs to read a user or store a se
 
 ```mermaid
 flowchart TB
+    accTitle: The layers of an AuthHero deployment
+    accDescr: Applications call authhero, authhero calls an adapter through the adapter interfaces, and the adapter talks to the database.
     A["Your applications and the admin dashboard"]
     B["authhero<br/>Auth API · Universal Login · Management API"]
     C["An adapter<br/>Drizzle · Kysely · DynamoDB · your own"]

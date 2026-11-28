@@ -17,6 +17,8 @@ Ten minutes later Maya opens Larder's ordering tool, a different application wit
 
 ```mermaid
 sequenceDiagram
+    accTitle: Single sign-on
+    accDescr: A second application redirects the browser to AuthHero, which finds the existing session and redirects straight back with a code, without showing a login page.
     participant B as Maya's browser
     participant O as Ordering tool
     participant AH as AuthHero

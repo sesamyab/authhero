@@ -108,6 +108,8 @@ AuthHero handles every write in three phases:
 
 ```mermaid
 flowchart LR
+    accTitle: The three phases of a write
+    accDescr: Prepare validates and runs blocking hooks, commit is one short database transaction, and publish delivers events with retries.
     P["Prepare<br/>validate, run blocking hooks"] --> C["Commit<br/>one short database transaction"] --> U["Publish<br/>deliver events, with retries"]
 ```
 

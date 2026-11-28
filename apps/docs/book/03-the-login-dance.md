@@ -15,6 +15,8 @@ Maya is a cook. She opens Larder's web app and clicks *Log in*.
 
 ```mermaid
 sequenceDiagram
+    accTitle: The authorization code flow
+    accDescr: The app redirects the browser to AuthHero, the user logs in there, AuthHero redirects back with a code, and the app exchanges the code for tokens.
     participant B as Maya's browser
     participant App as Larder web app
     participant AH as AuthHero

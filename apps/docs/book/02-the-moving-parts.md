@@ -34,6 +34,8 @@ Three more nouns turn up later. **Organizations** group users into customer comp
 
 ```mermaid
 flowchart LR
+    accTitle: What lives in a tenant
+    accDescr: Inside the tenant, users sign in through connections, applications offer connections, and applications ask for access to APIs.
     subgraph T["Tenant: larder"]
         direction LR
         U["Users<br/>cooks, managers, owners"]

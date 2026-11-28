@@ -41,6 +41,8 @@ How far apart tenants really live is a deployment decision, and AuthHero offers 
 
 ```mermaid
 flowchart LR
+    accTitle: Three levels of tenant isolation
+    accDescr: From a shared database where tenants are rows, to a control plane that tenants inherit from, to a separate Worker and database per tenant.
     A["1. Shared database<br/>tenants are rows"] --> B["2. Control plane<br/>tenants inherit shared settings"] --> C["3. Isolated<br/>own Worker and database per tenant"]
 ```
 

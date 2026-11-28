@@ -39,19 +39,20 @@ npm run preview
 
 ## The AuthHero Book
 
-`/book/` is a short book that explains authentication and AuthHero from start to finish. It is promoted on the homepage and is also published as a PDF.
+`/book/` is a short book that explains authentication and AuthHero from start to finish. It is promoted on the homepage and is also published as a PDF and an EPUB.
 
-- `book/chapters.json` is the one list of chapters, grouped into parts. The sidebar, the contents on `/book/` and the PDF all read it, so adding or reordering a chapter is a change there plus the chapter's markdown file.
+- `book/chapters.json` is the one list of chapters, grouped into parts. The sidebar, the contents on `/book/`, the PDF and the EPUB all read it, so adding or reordering a chapter is a change there plus the chapter's markdown file.
 - Each chapter is an ordinary page: `book/NN-slug.md`. Keep the "Chapter N · Part" line above the title in step with `chapters.json`.
-- The PDF is `public/authhero-book.pdf`. Like the Storybook build, it is **committed**, so deploying the docs needs no browser.
+- The downloads are `public/authhero-book.pdf` and `public/authhero-book.epub`. Like the Storybook build, they are **committed**, so deploying the docs needs no browser.
+- Give every diagram in a chapter an `accDescr:` line. The EPUB shows diagrams as images, and that line becomes the image's alternative text.
 
-After editing a chapter, rebuild the PDF and commit it:
+After editing a chapter, rebuild both files and commit them:
 
 ```bash
-pnpm --filter @authhero/docs book:pdf
+pnpm --filter @authhero/docs book:build
 ```
 
-This builds the site, opens every chapter in headless Chromium and prints them as one document with a cover and contents (see `scripts/build-book-pdf.mjs`). If Chromium is missing, install it once with `pnpm --filter @authhero/docs exec playwright-core install chromium`.
+This builds the site and opens every chapter in headless Chromium. The PDF is the chapters printed as one document with a cover and contents (`scripts/build-book.mjs`); the EPUB is the same chapters repacked for e-readers (`scripts/book-epub.mjs`). If Chromium is missing, install it once with `pnpm --filter @authhero/docs exec playwright-core install chromium`.
 
 ## Storybook Integration
 
